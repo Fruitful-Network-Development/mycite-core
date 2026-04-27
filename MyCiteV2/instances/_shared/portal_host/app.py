@@ -70,10 +70,16 @@ def _as_text(value: object) -> str:
 
 PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
+PORTAL_SHELL_INITIAL_LOAD_BUDGET_GZIP_BYTES = 41000
+PORTAL_SHELL_TOTAL_BUDGET_GZIP_BYTES = 65000
+PORTAL_SHELL_DEFERRED_BUDGET_GZIP_BYTES = 30000
 PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "region_renderers",
         "file": "v2_portal_shell_region_renderers.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shell_chrome",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "PortalShellRegionRenderers",
@@ -84,6 +90,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "tool_surface_adapter",
         "file": "v2_portal_tool_surface_adapter.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shared_tool_host",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "PortalToolSurfaceAdapter",
@@ -100,6 +109,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "aws_workspace",
         "file": "v2_portal_aws_workspace.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.tools.aws_csm",),
+        "budget_group": "deferred_tool_renderers",
         "exports": (
             {
                 "global": "PortalAwsCsmWorkspaceRenderer",
@@ -114,6 +126,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "system_workspace",
         "file": "v2_portal_system_workspace.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.root",),
+        "budget_group": "deferred_tool_renderers",
         "exports": (
             {
                 "global": "PortalSystemWorkspaceRenderer",
@@ -124,6 +139,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "network_workspace",
         "file": "v2_portal_network_workspace.js",
+        "load_phase": "deferred",
+        "loading_scope": ("network.root",),
+        "budget_group": "deferred_tool_renderers",
         "exports": (
             {
                 "global": "PortalNetworkWorkspaceRenderer",
@@ -138,6 +156,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "workbench_renderers",
         "file": "v2_portal_workbench_renderers.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shared_workbench_host",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "PortalShellWorkbenchRenderer",
@@ -147,7 +168,10 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     },
     {
         "module_id": "inspector_renderers",
-        "file": "v2_portal_inspector_renderers.js",
+        "file": "v2_portal_inspector_host.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shared_interface_panel_host",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "PortalShellInspectorRenderer",
@@ -156,8 +180,24 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
+        "module_id": "cts_gis_surface",
+        "file": "v2_portal_inspector_renderers.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.tools.cts_gis",),
+        "budget_group": "deferred_tool_renderers",
+        "exports": (
+            {
+                "global": "PortalCtsGisInspectorRenderer",
+                "callable": "render",
+            },
+        ),
+    },
+    {
         "module_id": "shell_core",
         "file": "v2_portal_shell_core.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shell_core",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "PortalShellCore",
@@ -168,6 +208,9 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
     {
         "module_id": "shell_watchdog",
         "file": "v2_portal_shell_watchdog.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shell_watchdog",),
+        "budget_group": "initial_shell",
         "exports": (
             {
                 "global": "__MYCITE_V2_SHELL_WATCHDOG",
@@ -198,6 +241,13 @@ def _shell_module_descriptor(module_contract: Mapping[str, Any], *, build_id: st
         asset_id=filename.rsplit(".", 1)[0],
     )
     descriptor["module_id"] = _as_text(module_contract.get("module_id"))
+    descriptor["load_phase"] = _as_text(module_contract.get("load_phase")) or "startup_critical"
+    descriptor["loading_scope"] = [
+        _as_text(scope)
+        for scope in module_contract.get("loading_scope") or []
+        if _as_text(scope)
+    ]
+    descriptor["budget_group"] = _as_text(module_contract.get("budget_group")) or "initial_shell"
     descriptor["exports"] = [
         {
             "global": _as_text(export_contract.get("global")),
@@ -215,9 +265,41 @@ def _shell_module_descriptor(module_contract: Mapping[str, Any], *, build_id: st
 
 def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any]:
     safe_build_id = _as_text(build_id)
+    shell_modules = [
+        _shell_module_descriptor(
+            module_contract,
+            build_id=safe_build_id,
+        )
+        for module_contract in PORTAL_SHELL_MODULE_CONTRACTS
+    ]
+    startup_module_ids = [
+        module["module_id"]
+        for module in shell_modules
+        if _as_text(module.get("load_phase")) != "deferred"
+    ]
+    deferred_module_ids = [
+        module["module_id"]
+        for module in shell_modules
+        if _as_text(module.get("load_phase")) == "deferred"
+    ]
     return {
         "schema": PORTAL_SHELL_ASSET_MANIFEST_SCHEMA,
         "build_id": safe_build_id,
+        "cache_policy": {
+            "version_query_param": "v",
+            "build_id": safe_build_id,
+            "invalidation_mode": "query_versioned_static_assets",
+        },
+        "budget_policy": {
+            "initial_load_gzip_bytes_max": PORTAL_SHELL_INITIAL_LOAD_BUDGET_GZIP_BYTES,
+            "initial_load_gzip_bytes_enforcement": "hard",
+            "total_gzip_bytes_max": PORTAL_SHELL_TOTAL_BUDGET_GZIP_BYTES,
+            "total_gzip_bytes_enforcement": "hard",
+            "deferred_gzip_bytes_max": PORTAL_SHELL_DEFERRED_BUDGET_GZIP_BYTES,
+            "deferred_gzip_bytes_enforcement": "advisory",
+            "startup_module_ids": startup_module_ids,
+            "deferred_module_ids": deferred_module_ids,
+        },
         "styles": {
             "portal_css": _static_asset_descriptor(
                 "portal.css",
@@ -236,13 +318,7 @@ def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any
                 build_id=safe_build_id,
                 asset_id="shell_entry",
             ),
-            "shell_modules": [
-                _shell_module_descriptor(
-                    module_contract,
-                    build_id=safe_build_id,
-                )
-                for module_contract in PORTAL_SHELL_MODULE_CONTRACTS
-            ],
+            "shell_modules": shell_modules,
         },
     }
 

@@ -155,6 +155,11 @@
   function resolvePresentationSurfaceModuleSpec(region, surfacePayload) {
     var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
     var moduleSpecs = {
+      "system.tools.cts_gis": {
+        moduleId: "cts_gis_surface",
+        globalName: "PortalCtsGisInspectorRenderer",
+        label: "CTS-GIS interface panel",
+      },
       "network.root": {
         moduleId: "network_workspace",
         globalName: "PortalNetworkInspectorRenderer",

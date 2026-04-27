@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `system-guide`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-25`
+Last reviewed: `2026-04-27`
 
 ## Purpose
 
@@ -63,6 +63,10 @@ Current application: completed `STREAM-CODE-BLOAT-DEEP-AUDIT` seeds active
 `STREAM-CODE-BLOAT-REMEDIATION`, preserving diagnosis/planning history while
 tracking corrective execution tasks with one canonical active plan and one
 canonical active report.
+
+When a follow-on analysis/report is added without replacing the canonical stream
+report, mark the new file as supporting, link it to initiative/task IDs, and
+state explicitly in the body which canonical plan/report remain authoritative.
 
 ## Consolidation Rule
 

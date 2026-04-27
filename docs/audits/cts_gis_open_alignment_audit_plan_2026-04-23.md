@@ -5,7 +5,7 @@ Date: 2026-04-23
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-25`
+Last reviewed: `2026-04-27`
 
 ## Purpose
 
@@ -100,6 +100,13 @@ Follow-on extension for hierarchical navigation + profile correlation:
 
 - `TASK-CTSGIS-RUNTIME-005`: harden deterministic hierarchical dropdown traversal for attention-path selection (`3` -> `3-2` -> `3-2-3` -> `3-2-3-17`) and ensure Garland projection anchors to the selected Ohio context without frontend-synthesized fallback state.
 
+Follow-on extension for deployed portal precinct parity + optimization alignment:
+
+- `TASK-CTSGIS-RUNTIME-006`: unify CTS-GIS Interface Panel tab hosting on the shared presentation-surface base
+- `TASK-CTSGIS-RUNTIME-007`: restore deployed `Load compiled precincts` request parity across shared portal dispatch and CTS-GIS runtime
+- `TASK-CTSGIS-RUNTIME-008`: carry compiled Garland precinct-context summaries so `production_strict` stays lightweight and toggle-ready
+- `TASK-CTSGIS-RUNTIME-009`: translate `docs/personal_notes/code_optimization_report.md` into a bounded deployed-portal execution backlog
+
 Initiative linkage:
 
 - Compatibility initiative: `INIT-CTS-GIS-OPEN-ALIGNMENT`
@@ -110,12 +117,23 @@ Execution status:
 - `TASK-CTSGIS-RUNTIME-005` is completed with evidence in:
   - `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md`
   - `MyCiteV2/tests/unit/test_portal_cts_gis_runtime.py`
+- `TASK-CTSGIS-RUNTIME-006` is completed with evidence in:
+  - `docs/audits/reports/cts_gis_runtime_readiness_report_2026-04-25.md`
+  - `MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js`
+- `TASK-CTSGIS-RUNTIME-007/008/009` are completed follow-on work from
+  `2026-04-27`, closing deployed precinct-toggle parity, compiled Garland
+  summary carry-forward, and bounded optimization backlog translation with
+  evidence in
+  `docs/audits/reports/cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md`.
 
 Lifecycle decision:
 
 - Keep this file as the canonical active plan for `STREAM-CTS-GIS-OPEN`.
 - Keep `cts_gis_sql_authority_assurance_report_2026-04-21.md` as retained completed history.
 - Use `cts_gis_runtime_readiness_report_2026-04-25.md` as the canonical active report for current runtime posture.
+- Keep `cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md`
+  as a supporting follow-on analysis/report; it does not replace the canonical
+  CTS-GIS runtime report unless the manifests are updated in a later change.
 
 ## Exit Criteria
 

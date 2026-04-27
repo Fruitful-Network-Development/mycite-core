@@ -1285,6 +1285,91 @@ def canonical_query_for_runtime_request_payload(
     )
 
 
+def _normalize_runtime_payload_schema(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+) -> dict[str, Any]:
+    normalized_payload = dict(payload or {})
+    if normalized_payload.get("schema") in {None, ""}:
+        normalized_payload = {"schema": expected_schema, **normalized_payload}
+    if _as_text(normalized_payload.get("schema")) != expected_schema:
+        raise ValueError(f"request.schema must be {expected_schema}")
+    return normalized_payload
+
+
+def normalize_runtime_surface_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+    legacy_query_keys: tuple[str, ...] = (),
+) -> tuple[PortalScope, dict[str, Any], dict[str, str]]:
+    normalized_payload = _normalize_runtime_payload_schema(payload, expected_schema=expected_schema)
+    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
+    surface_query = canonical_query_for_runtime_request_payload(
+        normalized_payload,
+        surface_id=surface_id,
+        legacy_query_keys=legacy_query_keys,
+    )
+    return portal_scope, normalized_payload, surface_query
+
+
+def normalize_runtime_surface_action_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+    legacy_query_keys: tuple[str, ...] = (),
+) -> tuple[PortalScope, dict[str, Any], dict[str, str], dict[str, Any] | None, str, dict[str, Any]]:
+    portal_scope, normalized_payload, surface_query = normalize_runtime_surface_request_payload(
+        payload,
+        expected_schema=expected_schema,
+        surface_id=surface_id,
+        legacy_query_keys=legacy_query_keys,
+    )
+    raw_shell_state = normalized_payload.get("shell_state")
+    shell_state = dict(raw_shell_state) if isinstance(raw_shell_state, dict) else None
+    action_kind = _as_text(normalized_payload.get("action_kind"))
+    raw_action_payload = normalized_payload.get("action_payload")
+    action_payload = dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {}
+    return portal_scope, normalized_payload, surface_query, shell_state, action_kind, action_payload
+
+
+def normalize_runtime_shell_surface_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
+    normalized_payload = _normalize_runtime_payload_schema(payload, expected_schema=expected_schema)
+    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
+    shell_state = canonicalize_portal_shell_state(
+        normalized_payload.get("shell_state"),
+        active_surface_id=surface_id,
+        portal_scope=portal_scope,
+        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    )
+    return portal_scope, shell_state, normalized_payload
+
+
+def normalize_runtime_shell_action_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+) -> tuple[PortalScope, PortalShellState, dict[str, Any], str, dict[str, Any]]:
+    portal_scope, shell_state, normalized_payload = normalize_runtime_shell_surface_request_payload(
+        payload,
+        expected_schema=expected_schema,
+        surface_id=surface_id,
+    )
+    action_kind = _as_text(normalized_payload.get("action_kind"))
+    raw_action_payload = normalized_payload.get("action_payload")
+    action_payload = dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {}
+    return portal_scope, shell_state, normalized_payload, action_kind, action_payload
+
+
 def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = None) -> str:
     route = canonical_route_for_surface(surface_id)
     filtered = {key: value for key, value in dict(query or {}).items() if _as_text(value)}
@@ -1611,19 +1696,21 @@ def build_shell_composition_payload(
         workbench_region.get("visible"),
         default=default_workbench_visible_for_surface(active_surface_id),
     )
-    requested_workbench_visible = workbench_region.get("visible") is True
+    force_workbench_visible = workbench_region.get("forced_visible") is True
+    requested_workbench_visible = workbench_region.get("visible") is True or force_workbench_visible
     interface_open = bool(tool_surface)
     if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
     requested_inspector_visible = inspector_region.get("visible") is True
     if tool_surface:
         # First-load tool posture is composition-owned. Runtime payload visibility
-        # hints are treated as content metadata, not posture authority.
+        # hints are treated as content metadata, not posture authority, except for
+        # explicit forced-visible diagnostic workbench flows such as staged preview/apply.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            workbench_visible = default_workbench_visible_for_surface(active_surface_id)
+            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
             inspector_visible = True
         else:
-            workbench_visible = default_workbench_visible_for_surface(active_surface_id)
+            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
             inspector_visible = True
     else:
         inspector_visible = bool(interface_open or requested_inspector_visible)
@@ -1776,6 +1863,10 @@ __all__ = [
     "initial_portal_shell_state",
     "is_tool_surface",
     "map_surface_to_active_service",
+    "normalize_runtime_shell_action_request_payload",
+    "normalize_runtime_shell_surface_request_payload",
+    "normalize_runtime_surface_action_request_payload",
+    "normalize_runtime_surface_request_payload",
     "reduce_portal_shell_state",
     "requires_shell_state_machine",
     "resolve_portal_shell_request",

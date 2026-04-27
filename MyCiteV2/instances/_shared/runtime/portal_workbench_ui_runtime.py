@@ -24,6 +24,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_shell_request_payload,
     canonical_query_for_runtime_request_payload,
     canonical_query_for_surface_query,
+    normalize_runtime_surface_request_payload,
 )
 from MyCiteV2.packages.tools.workbench_ui import WorkbenchUiReadService
 
@@ -56,14 +57,9 @@ def _workbench_sql_runtime_error(*, portal_instance_id: str, authority_db_file: 
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dict[str, str]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": WORKBENCH_UI_TOOL_REQUEST_SCHEMA, **normalized_payload}
-    if _as_text(normalized_payload.get("schema")) != WORKBENCH_UI_TOOL_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {WORKBENCH_UI_TOOL_REQUEST_SCHEMA}")
-    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    surface_query = canonical_query_for_runtime_request_payload(
-        normalized_payload,
+    portal_scope, _, surface_query = normalize_runtime_surface_request_payload(
+        payload,
+        expected_schema=WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
         legacy_query_keys=(
             "document",

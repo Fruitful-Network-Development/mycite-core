@@ -655,9 +655,22 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     "network_workspace",
                     "workbench_renderers",
                     "inspector_renderers",
+                    "cts_gis_surface",
                     "shell_core",
                     "shell_watchdog",
                 ],
+            )
+            self.assertEqual(
+                [entry["module_id"] for entry in shell_modules if entry["load_phase"] == "deferred"],
+                ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"],
+            )
+            self.assertEqual(
+                health_payload["shell_asset_manifest"]["budget_policy"]["deferred_module_ids"],
+                ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"],
+            )
+            self.assertEqual(
+                health_payload["shell_asset_manifest"]["cache_policy"]["invalidation_mode"],
+                "query_versioned_static_assets",
             )
             system_module = next(entry for entry in shell_modules if entry["module_id"] == "system_workspace")
             self.assertEqual(

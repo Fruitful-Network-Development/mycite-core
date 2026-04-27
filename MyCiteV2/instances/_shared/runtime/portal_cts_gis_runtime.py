@@ -31,8 +31,10 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     CtsGisMutationService,
     CtsGisReadOnlyService,
     build_compiled_artifact,
+    build_cts_gis_source_layout_summary,
     compiled_artifact_path,
     read_compiled_artifact,
+    validate_cts_gis_source_layout,
     validate_compiled_artifact,
     write_compiled_artifact,
 )
@@ -61,7 +63,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PortalScope,
     PortalShellState,
     build_portal_shell_request_payload,
-    canonicalize_portal_shell_state,
+    normalize_runtime_shell_action_request_payload,
+    normalize_runtime_shell_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
 from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
@@ -85,6 +88,7 @@ CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.cts_gis.actions"
 _ALLOWED_ACTION_KINDS = frozenset(
     {
         *CTS_GIS_CANONICAL_ACTIONS,
+        "toggle_overlay",
         "stage_insert_yaml",
         "validate_stage",
         "preview_apply",
@@ -707,47 +711,28 @@ def _cts_gis_audit_focus_subject(tool_state: dict[str, Any]) -> str:
 def _normalize_request(
     payload: dict[str, Any] | None,
 ) -> tuple[PortalScope, PortalShellState, dict[str, Any], dict[str, Any]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": CTS_GIS_TOOL_REQUEST_SCHEMA, **normalized_payload}
-    if _as_text(normalized_payload.get("schema")) != CTS_GIS_TOOL_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {CTS_GIS_TOOL_REQUEST_SCHEMA}")
-    _assert_no_legacy_maps_aliases(normalized_payload)
-    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    shell_state = canonicalize_portal_shell_state(
-        normalized_payload.get("shell_state"),
-        active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    portal_scope, shell_state, normalized_payload = normalize_runtime_shell_surface_request_payload(
+        payload,
+        expected_schema=CTS_GIS_TOOL_REQUEST_SCHEMA,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
+    _assert_no_legacy_maps_aliases(normalized_payload)
     return portal_scope, shell_state, normalized_payload, _normalize_tool_state(normalized_payload)
 
 
 def _normalize_action_request(
     payload: dict[str, Any] | None,
 ) -> tuple[PortalScope, PortalShellState, dict[str, Any], dict[str, Any], str, dict[str, Any]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA, **normalized_payload}
-    if _as_text(normalized_payload.get("schema")) != CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA}")
-    _assert_no_legacy_maps_aliases(normalized_payload)
-    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    shell_state = canonicalize_portal_shell_state(
-        normalized_payload.get("shell_state"),
-        active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    portal_scope, shell_state, normalized_payload, action_kind, action_payload = normalize_runtime_shell_action_request_payload(
+        payload,
+        expected_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
+    _assert_no_legacy_maps_aliases(normalized_payload)
     tool_state = _normalize_tool_state({"tool_state": normalized_payload.get("tool_state") or {}})
-    action_kind = cts_gis_runtime_action_kind(normalized_payload.get("action_kind"))
+    action_kind = cts_gis_runtime_action_kind(action_kind)
     if action_kind not in _ALLOWED_ACTION_KINDS:
         raise ValueError(f"action_kind must be one of {sorted(_ALLOWED_ACTION_KINDS)}")
-    action_payload = normalized_payload.get("action_payload")
-    if action_payload is None:
-        action_payload = {}
-    if not isinstance(action_payload, dict):
-        raise ValueError("action_payload must be a dict when provided")
     return portal_scope, shell_state, normalized_payload, tool_state, action_kind, dict(action_payload)
 
 
@@ -928,6 +913,7 @@ def _build_source_evidence(
     data_dir: str | Path | None,
     private_dir: str | Path | None,
     service_surface: dict[str, Any],
+    source_layout: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = _supporting_document_summary(service_surface)
@@ -959,6 +945,7 @@ def _build_source_evidence(
     administrative_payload_cache = _evidence_path_payload(administrative_cache_path)
     if administrative_payload_cache["payload"]:
         administrative_payload_cache["payload_id"] = _as_text(administrative_payload_cache["payload"].get("payload_id"))
+    source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
 
     samras_seed_status = _as_text(selected_document.get("samras_seed_status"))
     readiness_state = "ready"
@@ -966,6 +953,9 @@ def _build_source_evidence(
     if _as_text((service_surface.get("map_projection") or {}).get("projection_state")) == "no_authoritative_cts_gis_documents":
         readiness_state = "no_authoritative_cts_gis_documents"
         readiness_message = "No authoritative CTS-GIS source document is available for the active tenant."
+    elif not source_layout_valid:
+        readiness_state = "source_layout_invalid"
+        readiness_message = "CTS-GIS source layout does not match the required sources/ + sources/precincts/ posture."
     elif not tool_anchor["exists"] or not registrar_payload["exists"] or samras_seed_status not in {"", "ready"}:
         readiness_state = "samras_seed_missing"
         readiness_message = (
@@ -978,11 +968,12 @@ def _build_source_evidence(
         "registrar_payload": registrar_payload,
         "administrative_source": administrative_source,
         "administrative_payload_cache": administrative_payload_cache,
+        "source_layout": dict(source_layout or {}),
         "payload_corpus": {
             "corpus_prefix": corpus_prefix,
             "member_file_count": len(member_files),
         },
-        "warnings": [],
+        "warnings": list(source_layout_issues),
         "readiness": {
             "state": readiness_state,
             "message": readiness_message,
@@ -2688,6 +2679,7 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
     evidence_model = dict(artifact.get("evidence_model") or {})
     profile_summary = dict(projection_model.get("profile_summary") or {})
     selected_feature = dict(projection_model.get("selected_feature") or {})
+    contextual_references = dict(projection_model.get("contextual_references") or {})
     return {
         "document_catalog": [],
         "selected_document": {"document_name": "", "document_id": profile_summary.get("document_id")},
@@ -2735,14 +2727,18 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
             "available_intentions": [],
             "selection_summary": {},
         },
-        "contextual_references": {
-            "district_precincts": {
-                "enabled": False,
-                "overlay_active": False,
-                "collections": [],
-                "collection_count": 0,
+        "contextual_references": (
+            contextual_references
+            if contextual_references
+            else {
+                "district_precincts": {
+                    "enabled": False,
+                    "overlay_active": False,
+                    "collections": [],
+                    "collection_count": 0,
+                }
             }
-        },
+        ),
         "warnings": list(evidence_model.get("warnings") or []),
     }
 
@@ -2964,14 +2960,28 @@ def build_portal_cts_gis_surface_bundle(
     ]
     datum_store = _runtime_datum_store(data_dir=data_dir, authority_db_file=authority_db_file)
     compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
+    source_layout = build_cts_gis_source_layout_summary(data_dir)
+    source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
     compiled_artifact = read_compiled_artifact(compiled_path)
-    compiled_valid, compiled_issues = validate_compiled_artifact(compiled_artifact)
+    compiled_valid, compiled_issues = validate_compiled_artifact(
+        compiled_artifact,
+        expected_portal_scope_id=portal_scope.scope_id,
+        expected_source_layout=source_layout,
+    )
     strict_invalid = runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and not compiled_valid
+    compiled_refresh_requested = bool(normalized_request_payload.get("persist_compiled_artifact")) or force_live_read
+    compiled_refresh_status = {
+        "requested": compiled_refresh_requested,
+        "performed": False,
+        "path": str(compiled_path) if compiled_path is not None else "",
+        "reason": "production_strict_compiled_only" if runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT else "diagnostic_only",
+    }
     tool_shell_request_base = build_portal_shell_request_payload(
         portal_scope=portal_scope,
         shell_state=shell_state,
         requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
+    tool_shell_request_base["runtime_mode"] = runtime_mode
     if (
         not force_live_read
         and runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT
@@ -3021,6 +3031,7 @@ def build_portal_cts_gis_surface_bundle(
             "readiness",
             {"state": "ready", "message": "CTS-GIS loaded compiled artifact successfully."},
         )
+        source_evidence["source_layout"] = dict(compiled_artifact.get("source_layout") or source_layout)
     elif (not force_live_read) and runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and strict_invalid:
         service_surface_started_at = perf_counter()
         service_surface = {
@@ -3052,6 +3063,7 @@ def build_portal_cts_gis_surface_bundle(
                 "message": "Compiled CTS-GIS state invalid. Run the CTS-GIS compile command or switch to audit_forensic mode.",
             },
             "warnings": ["compiled_cts_gis_state_invalid"] + list(compiled_issues),
+            "source_layout": dict(source_layout),
         }
         navigation_canvas = {
             "kind": "diktataograph_navigation_canvas",
@@ -3086,6 +3098,7 @@ def build_portal_cts_gis_surface_bundle(
             data_dir=data_dir,
             private_dir=private_dir,
             service_surface=service_surface,
+            source_layout=source_layout,
         )
         phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
         navigation_started_at = perf_counter()
@@ -3098,15 +3111,30 @@ def build_portal_cts_gis_surface_bundle(
         )
         phase_timings_ms["navigation_canvas"] = round((perf_counter() - navigation_started_at) * 1000.0, 3)
         resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
-        compiled_out = build_compiled_artifact(
-            portal_scope_id=portal_scope.scope_id,
-            source_evidence=source_evidence,
-            service_surface=service_surface,
-            navigation_canvas=navigation_canvas,
-            default_tool_state=resolved_tool_state,
-            build_mode=_CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
-        )
-        write_compiled_artifact(compiled_path, compiled_out)
+        if compiled_refresh_requested and source_layout_valid:
+            compiled_out = build_compiled_artifact(
+                portal_scope_id=portal_scope.scope_id,
+                source_evidence=source_evidence,
+                service_surface=service_surface,
+                navigation_canvas=navigation_canvas,
+                default_tool_state=resolved_tool_state,
+                source_layout=source_layout,
+                build_mode=_CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+            )
+            written_path = write_compiled_artifact(compiled_path, compiled_out)
+            compiled_refresh_status = {
+                "requested": True,
+                "performed": True,
+                "path": str(written_path) if written_path is not None else "",
+                "reason": "force_live_read" if force_live_read else "persist_compiled_artifact",
+            }
+        elif compiled_refresh_requested:
+            compiled_refresh_status = {
+                "requested": True,
+                "performed": False,
+                "path": str(compiled_path) if compiled_path is not None else "",
+                "reason": "source_layout_invalid",
+            }
     datum_summary_started_at = perf_counter()
     datum_summary = _datum_summary_from_service_surface(service_surface)
     if datum_summary is None:
@@ -3243,6 +3271,15 @@ def build_portal_cts_gis_surface_bundle(
         "compiled_artifact_path": str(compiled_path) if compiled_path is not None else "",
         "compiled_artifact_valid": bool(compiled_valid),
         "compiled_artifact_issues": list(compiled_issues),
+        "compiled_refresh": compiled_refresh_status,
+        "source_layout_valid": bool(source_layout_valid),
+        "source_layout_issues": list(source_layout_issues),
+        "source_layout_fingerprint": _as_text(source_layout.get("fingerprint")),
+        "source_layout_counts": {
+            "top_level_file_count": int(source_layout.get("top_level_file_count") or 0),
+            "precinct_file_count": int(source_layout.get("precinct_file_count") or 0),
+            "total_file_count": int(source_layout.get("total_file_count") or 0),
+        },
         "service_document_catalog_count": len(list(service_surface.get("document_catalog") or [])),
         "service_render_feature_count": int((service_surface.get("render_set_summary") or {}).get("render_feature_count") or 0),
         "authority_document_count": int(datum_summary.get("document_count") or 0),
@@ -3274,6 +3311,7 @@ def build_portal_cts_gis_surface_bundle(
         "title": "CTS-GIS Evidence",
         "subtitle": "Raw registrar, source, and cache evidence stays secondary to the Garland projection.",
         "visible": show_workbench,
+        "forced_visible": show_workbench,
         "surface_payload": {
             "kind": "surface_payload",
             "tool_id": tool_entry.tool_id,
@@ -3362,6 +3400,31 @@ def _apply_cts_gis_action(
     force_live_read = False
 
     try:
+        if action_kind == "toggle_overlay":
+            next_tool_state.setdefault("source", {})
+            requested_enabled = action_payload.get("enabled")
+            overlay_enabled = (
+                bool(requested_enabled)
+                if isinstance(requested_enabled, bool)
+                else not bool(next_tool_state.get("source", {}).get("precinct_district_overlay_enabled"))
+            )
+            next_tool_state["source"]["precinct_district_overlay_enabled"] = overlay_enabled
+            next_tool_state["selection"]["selected_row_address"] = ""
+            next_tool_state["selection"]["selected_feature_id"] = ""
+            next_tool_state["selection"]["selected_row_explicit"] = False
+            next_tool_state["selection"]["selected_feature_explicit"] = False
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=(
+                    "CTS-GIS compiled precinct overlay enabled."
+                    if overlay_enabled
+                    else "CTS-GIS compiled precinct overlay disabled."
+                ),
+                details={"precinct_district_overlay_enabled": overlay_enabled},
+            )
+            return next_tool_state, action_result, force_live_read
+
         if action_kind == "stage_insert_yaml":
             stage_document, stage_meta = mutation_service.parse_stage_input(action_payload)
             selected_document_id = _as_text(next_tool_state.get("source", {}).get("attention_document_id"))
@@ -3608,8 +3671,7 @@ def run_portal_cts_gis_action(
     shell_request["cts_gis_entrypoint_id"] = CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID
     shell_request["cts_gis_read_write_posture"] = "write"
     shell_request["force_live_read"] = force_live_read
-    if _as_text(normalized_payload.get("runtime_mode")):
-        shell_request["runtime_mode"] = _as_text(normalized_payload.get("runtime_mode"))
+    shell_request["runtime_mode"] = _as_text(normalized_payload.get("runtime_mode")) or _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC
     from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
     return run_portal_shell_entry(

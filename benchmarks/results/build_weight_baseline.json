@@ -1,71 +1,160 @@
 {
-  "files_analyzed": 11,
-  "generated_at_utc": "2026-04-20T19:04:06.101842Z",
+  "deferred_brotli_bytes": null,
+  "deferred_gzip_bytes": 29293,
+  "deferred_module_ids": [
+    "aws_workspace",
+    "system_workspace",
+    "network_workspace",
+    "cts_gis_surface"
+  ],
+  "deferred_raw_bytes": 150085,
+  "environment": {
+    "platform": "Linux-6.12.63+deb13-cloud-amd64-x86_64-with-glibc2.41",
+    "python_version": "3.13.5"
+  },
+  "files_analyzed": 12,
+  "generated_at_utc": "2026-04-27T10:36:59.676026Z",
+  "git_revision": "cdc974a5e3069ed752032f5158aef04a3e18b944",
+  "initial_load_brotli_bytes": null,
+  "initial_load_gzip_bytes": 35488,
+  "initial_load_raw_bytes": 167500,
   "schema": "mycite.benchmarks.build_weight.v1",
+  "startup_module_ids": [
+    "region_renderers",
+    "tool_surface_adapter",
+    "workbench_renderers",
+    "inspector_renderers",
+    "shell_core",
+    "shell_watchdog"
+  ],
+  "top5_brotli": [],
   "top5_gzip": [
     {
-      "gzip_bytes": 11161,
+      "brotli_bytes": null,
+      "gzip_bytes": 15211,
+      "initial_load": false,
       "name": "v2_portal_inspector_renderers.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js",
-      "raw_bytes": 60004
+      "raw_bytes": 80293
     },
     {
+      "brotli_bytes": null,
+      "gzip_bytes": 7154,
+      "initial_load": false,
+      "name": "v2_portal_aws_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
+      "raw_bytes": 38328
+    },
+    {
+      "brotli_bytes": null,
       "gzip_bytes": 7010,
+      "initial_load": true,
       "name": "portal.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/portal.js",
       "raw_bytes": 36093
     },
     {
-      "gzip_bytes": 5772,
-      "name": "v2_portal_aws_workspace.js",
-      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
-      "raw_bytes": 31017
+      "brotli_bytes": null,
+      "gzip_bytes": 6373,
+      "initial_load": true,
+      "name": "v2_portal_workbench_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js",
+      "raw_bytes": 32893
     },
     {
-      "gzip_bytes": 4728,
-      "name": "v2_portal_system_workspace.js",
-      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_system_workspace.js",
-      "raw_bytes": 22771
-    },
-    {
-      "gzip_bytes": 4439,
+      "brotli_bytes": null,
+      "gzip_bytes": 5471,
+      "initial_load": true,
       "name": "v2_portal_shell_region_renderers.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js",
-      "raw_bytes": 21961
+      "raw_bytes": 26955
+    }
+  ],
+  "top5_initial_gzip": [
+    {
+      "brotli_bytes": null,
+      "gzip_bytes": 7010,
+      "initial_load": true,
+      "name": "portal.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/portal.js",
+      "raw_bytes": 36093
+    },
+    {
+      "brotli_bytes": null,
+      "gzip_bytes": 6373,
+      "initial_load": true,
+      "name": "v2_portal_workbench_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js",
+      "raw_bytes": 32893
+    },
+    {
+      "brotli_bytes": null,
+      "gzip_bytes": 5471,
+      "initial_load": true,
+      "name": "v2_portal_shell_region_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js",
+      "raw_bytes": 26955
+    },
+    {
+      "brotli_bytes": null,
+      "gzip_bytes": 5025,
+      "initial_load": true,
+      "name": "v2_portal_shell_core.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_core.js",
+      "raw_bytes": 22663
+    },
+    {
+      "brotli_bytes": null,
+      "gzip_bytes": 3455,
+      "initial_load": true,
+      "name": "v2_portal_tool_surface_adapter.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js",
+      "raw_bytes": 15587
     }
   ],
   "top5_raw": [
     {
-      "gzip_bytes": 11161,
+      "brotli_bytes": null,
+      "gzip_bytes": 15211,
+      "initial_load": false,
       "name": "v2_portal_inspector_renderers.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js",
-      "raw_bytes": 60004
+      "raw_bytes": 80293
     },
     {
+      "brotli_bytes": null,
+      "gzip_bytes": 7154,
+      "initial_load": false,
+      "name": "v2_portal_aws_workspace.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
+      "raw_bytes": 38328
+    },
+    {
+      "brotli_bytes": null,
       "gzip_bytes": 7010,
+      "initial_load": true,
       "name": "portal.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/portal.js",
       "raw_bytes": 36093
     },
     {
-      "gzip_bytes": 5772,
-      "name": "v2_portal_aws_workspace.js",
-      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_aws_workspace.js",
-      "raw_bytes": 31017
+      "brotli_bytes": null,
+      "gzip_bytes": 6373,
+      "initial_load": true,
+      "name": "v2_portal_workbench_renderers.js",
+      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_workbench_renderers.js",
+      "raw_bytes": 32893
     },
     {
-      "gzip_bytes": 4728,
-      "name": "v2_portal_system_workspace.js",
-      "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_system_workspace.js",
-      "raw_bytes": 22771
-    },
-    {
-      "gzip_bytes": 4439,
+      "brotli_bytes": null,
+      "gzip_bytes": 5471,
+      "initial_load": true,
       "name": "v2_portal_shell_region_renderers.js",
       "path": "/srv/repo/mycite-core/MyCiteV2/instances/_shared/portal_host/static/v2_portal_shell_region_renderers.js",
-      "raw_bytes": 21961
+      "raw_bytes": 26955
     }
   ],
-  "total_gzip_bytes": 45606,
-  "total_raw_bytes": 221798
+  "total_brotli_bytes": null,
+  "total_gzip_bytes": 64781,
+  "total_raw_bytes": 317585
 }

@@ -18,6 +18,7 @@ This directory is the closure-evidence surface for the unified planning/audit sy
 3. Link each report back to initiative/task IDs in body sections.
 4. Mark task status `done` only when acceptance criteria are evidenced by report paths.
 5. Keep one canonical report per active stream in `contextual_system_manifest.yaml`.
+6. Supporting follow-on reports must explicitly say whether they replace or remain subordinate to the canonical active report.
 
 ## Current High-Value Report Anchors
 
@@ -28,11 +29,16 @@ This directory is the closure-evidence surface for the unified planning/audit sy
 - `portal_legacy_boundary_sql_mos_operationalization_report_2026-04-23.md`
 - `code_bloat_diagnosis.md`
 - `code_bloat_findings_execution_report_2026-04-25.md`
+- `code_bloat_frontend_bundle_findings_2026-04-27.md`
+- `code_bloat_normalization_drift_findings_2026-04-27.md`
 - `code_bloat_shell_topology_findings_2026-04-25.md`
 - `code_bloat_legacy_filesystem_snapshot_findings_2026-04-25.md`
 - `code_bloat_python_import_modularity_findings_2026-04-25.md`
+- `code_bloat_test_tooling_overhead_findings_2026-04-27.md`
 - `code_bloat_remediation_execution_report_2026-04-25.md`
 - `cts_gis_runtime_readiness_report_2026-04-25.md`
+- `cts_gis_deployed_portal_precinct_optimization_follow_on_2026-04-27.md`
+- `cts_gis_samras_datum_alignment_matrices_2026-04-27.md`
 - `cts_gis_sql_authority_assurance_report_2026-04-21.md`
 - `performance_weight_speed_report_2026-04-16.md`
 - `desktop_access_historical_drift_report_2026-04-16.md`
