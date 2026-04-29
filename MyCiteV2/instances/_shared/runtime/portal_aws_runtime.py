@@ -23,6 +23,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
+    AWS_CSM_HANDOFF_TEMPLATE_VERSION,
     AwsEc2RoleOnboardingCloudAdapter,
 )
 from MyCiteV2.packages.adapters.filesystem import (
@@ -87,6 +88,8 @@ _ROUTE_SYNC_FALLBACK_SCRIPT = "MyCiteV2/scripts/deploy_aws_csm_pass3_inbound_cap
 _AWS_RUNTIME_REQUIRED_MODULES = ("boto3",)
 _MAILBOX_LOCAL_PART_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9._+-]{0,62}[a-z0-9])?$")
 _ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
+_CURRENT_HANDOFF_TEMPLATE_VERSION = AWS_CSM_HANDOFF_TEMPLATE_VERSION
+_LEGACY_HANDOFF_TEMPLATE_VERSION = "legacy_unversioned"
 _VISIBLE_ACTIVITY_SURFACE_IDS = (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -106,6 +109,8 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "delete_profile",
         "stage_smtp_credentials",
         "send_handoff_email",
+        "send_handoff_correction_email",
+        "send_pending_handoff_corrections",
         "reveal_smtp_password",
         "refresh_provider_status",
         "capture_verification",
@@ -131,6 +136,8 @@ _DEPENDENCY_GUARDED_ACTION_KINDS = frozenset(
         "sync_domain_dns",
         "ensure_domain_receipt_rule",
         "send_handoff_email",
+        "send_handoff_correction_email",
+        "send_pending_handoff_corrections",
         "reveal_smtp_password",
         *_SERVICE_ACTION_KINDS,
     }
@@ -452,12 +459,64 @@ def _tool_files(tool_root: Path | None) -> tuple[str, str]:
     return collection, mediation
 
 
+def _handoff_was_sent(workflow: Mapping[str, Any]) -> bool:
+    return bool(
+        _as_text(workflow.get("handoff_email_sent_at"))
+        or _as_text(workflow.get("handoff_email_sent_to"))
+        or _as_text(workflow.get("handoff_email_message_id"))
+        or _as_text(workflow.get("handoff_status")).lower() == "instruction_sent"
+    )
+
+
+def _handoff_correction_was_sent(workflow: Mapping[str, Any]) -> bool:
+    return bool(
+        _as_text(workflow.get("handoff_correction_sent_at"))
+        or _as_text(workflow.get("handoff_correction_sent_to"))
+        or _as_text(workflow.get("handoff_correction_message_id"))
+    )
+
+
+def _effective_handoff_template_version(workflow: Mapping[str, Any]) -> str:
+    token = _as_text(workflow.get("handoff_template_version"))
+    if token:
+        return token
+    if _handoff_was_sent(workflow):
+        return _LEGACY_HANDOFF_TEMPLATE_VERSION
+    return ""
+
+
+def _handoff_correction_required(payload: Mapping[str, Any]) -> bool:
+    working = _as_dict(payload)
+    workflow = _as_dict(working.get("workflow"))
+    if not _handoff_was_sent(workflow):
+        return False
+    if _handoff_correction_was_sent(workflow):
+        return False
+    explicit_required = workflow.get("handoff_correction_required")
+    version_mismatch = _effective_handoff_template_version(workflow) != _CURRENT_HANDOFF_TEMPLATE_VERSION
+    return _as_bool(explicit_required) or version_mismatch
+
+
+def _handoff_correction_status(payload: Mapping[str, Any]) -> str:
+    working = _as_dict(payload)
+    workflow = _as_dict(working.get("workflow"))
+    if _handoff_correction_required(working):
+        return "required"
+    if _handoff_correction_was_sent(workflow):
+        return "sent"
+    if _handoff_was_sent(workflow):
+        return "not_needed"
+    return "not_applicable"
+
+
 def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]:
     working = _as_dict(payload)
     workflow = _as_dict(working.get("workflow"))
     verification = _as_dict(working.get("verification"))
     provider = _as_dict(working.get("provider"))
     inbound = _as_dict(working.get("inbound"))
+    smtp = _as_dict(working.get("smtp"))
+    correction_required = _handoff_correction_required(working)
 
     handoff_status = _as_text(workflow.get("handoff_status")).lower()
     verification_state = _as_text(verification.get("portal_state") or verification.get("status")).lower()
@@ -472,6 +531,12 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
     handoff_confirmed = handoff_status in {"send_as_confirmed", "send_as_confirmed_attested"}
     receive_operational = _as_bool(inbound.get("receive_verified")) or inbound_state == "receive_operational"
     mailbox_operational = _as_bool(workflow.get("is_mailbox_operational"))
+    smtp_material_staged = bool(
+        _as_bool(smtp.get("handoff_ready"))
+        or _as_text(smtp.get("credentials_secret_state")).lower() == "configured"
+        or _as_text(smtp.get("staging_state")).lower() == "material_ready"
+        or handoff_status.startswith("ready_for_")
+    )
     handoff_forwarded = bool(
         _as_text(workflow.get("handoff_email_sent_at"))
         or _as_text(workflow.get("handoff_email_sent_to"))
@@ -497,11 +562,20 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
     if handoff_forwarded:
         return {
             "state": "forwarded",
-            "summary": "Handoff or confirmation routing is in flight; wait for the verification step to complete.",
+            "summary": (
+                "Handoff instructions were sent on a legacy template; send the one-time correction before waiting on confirmation."
+                if correction_required
+                else "Handoff or confirmation routing is in flight; wait for the verification step to complete."
+            ),
+        }
+    if smtp_material_staged:
+        return {
+            "state": "staged",
+            "summary": "SMTP material is staged and ready for operator handoff.",
         }
     return {
         "state": "pending",
-        "summary": "Mailbox onboarding has not advanced past draft or staging yet.",
+        "summary": "Mailbox onboarding has not advanced past draft yet.",
     }
 
 
@@ -546,6 +620,10 @@ def _mailbox_profile_row(payload: Mapping[str, Any], *, fallback_profile_id: str
         "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
         "onboarding_state": onboarding["state"],
         "onboarding_summary": onboarding["summary"],
+        "handoff_template_version": _effective_handoff_template_version(workflow),
+        "handoff_correction_required": "yes" if _handoff_correction_required(working) else "no",
+        "handoff_correction_status": _handoff_correction_status(working),
+        "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
         "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
         "raw": working,
     }
@@ -699,7 +777,11 @@ def _project_domain_readiness(payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _domain_actions(domain_record: dict[str, Any] | None) -> list[dict[str, Any]]:
+def _domain_actions(
+    domain_record: dict[str, Any] | None,
+    *,
+    pending_correction_count: int = 0,
+) -> list[dict[str, Any]]:
     if not isinstance(domain_record, dict):
         return []
     dns = _as_dict(domain_record.get("dns"))
@@ -746,10 +828,24 @@ def _domain_actions(domain_record: dict[str, Any] | None) -> list[dict[str, Any]
                 else "Finish SES identity creation and MX/DNS synchronization before enabling receipt-rule coverage."
             ),
         },
+        {
+            "kind": "send_pending_handoff_corrections",
+            "label": "Send Pending Handoff Corrections",
+            "enabled": pending_correction_count > 0,
+            "disabled_reason": (
+                ""
+                if pending_correction_count > 0
+                else "No mailbox in this domain currently needs a one-time handoff correction."
+            ),
+        },
     ]
 
 
-def _selected_domain_onboarding(selected_domain_record: dict[str, Any] | None) -> dict[str, Any] | None:
+def _selected_domain_onboarding(
+    selected_domain_record: dict[str, Any] | None,
+    *,
+    mailbox_rows: list[dict[str, Any]] | None = None,
+) -> dict[str, Any] | None:
     if not isinstance(selected_domain_record, dict):
         return None
     raw = _as_dict(selected_domain_record.get("raw"))
@@ -759,6 +855,13 @@ def _selected_domain_onboarding(selected_domain_record: dict[str, Any] | None) -
     receipt = _as_dict(raw.get("receipt"))
     observation = _as_dict(raw.get("observation"))
     readiness = _project_domain_readiness(raw)
+    mailboxes = [dict(row) for row in list(mailbox_rows or []) if isinstance(row, dict)]
+    pending_correction_count = sum(
+        1 for row in mailboxes if _as_text(row.get("handoff_correction_required")).lower() == "yes"
+    )
+    completed_correction_count = sum(
+        1 for row in mailboxes if _as_text(row.get("handoff_correction_status")).lower() == "sent"
+    )
     return {
         "tenant_id": _as_text(identity.get("tenant_id")).lower(),
         "domain": _normalized_domain(identity.get("domain")),
@@ -783,7 +886,11 @@ def _selected_domain_onboarding(selected_domain_record: dict[str, Any] | None) -
         "receipt_rule_recipient": _as_text(receipt.get("expected_recipient") or identity.get("domain")),
         "receipt_rule_bucket": _as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET,
         "receipt_rule_prefix": _as_text(receipt.get("prefix")) or f"inbound/{_normalized_domain(identity.get('domain'))}/",
-        "actions": _domain_actions(raw),
+        "mailbox_count": str(len(mailboxes)),
+        "handoff_correction_required_count": str(pending_correction_count),
+        "handoff_correction_completed_count": str(completed_correction_count),
+        "current_handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+        "actions": _domain_actions(raw, pending_correction_count=pending_correction_count),
     }
 
 
@@ -1025,6 +1132,12 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
     handoff_ready = _as_text(smtp.get("credentials_secret_state")).lower() == "configured" or bool(
         smtp.get("handoff_ready")
     )
+    handoff_already_sent = _handoff_was_sent(workflow)
+    correction_required = _handoff_correction_required(raw)
+    correction_sent = _handoff_correction_was_sent(workflow)
+    correction_status = _handoff_correction_status(raw)
+    handoff_template_version = _effective_handoff_template_version(workflow)
+    forward_target = _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target"))
     onboarding = _profile_onboarding_projection(raw)
     actions = [
         {
@@ -1036,8 +1149,30 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
         {
             "kind": "send_handoff_email",
             "label": "Send Handoff Email",
-            "enabled": handoff_ready and bool(_as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))),
-            "disabled_reason": "" if handoff_ready else "Stage SMTP credentials before sending instructions.",
+            "enabled": handoff_ready and bool(forward_target) and not handoff_already_sent,
+            "disabled_reason": (
+                "Handoff instructions have already been sent for this mailbox."
+                if handoff_already_sent
+                else ("" if handoff_ready else "Stage SMTP credentials before sending instructions.")
+            ),
+        },
+        {
+            "kind": "send_handoff_correction_email",
+            "label": "Send Correction Email",
+            "enabled": handoff_ready and bool(forward_target) and handoff_already_sent and correction_required,
+            "disabled_reason": (
+                "A one-time correction email was already sent for this mailbox."
+                if correction_sent
+                else (
+                    "This mailbox does not currently need a handoff correction."
+                    if not correction_required
+                    else (
+                        "Initial handoff instructions must be sent before a correction can be issued."
+                        if not handoff_already_sent
+                        else ("" if handoff_ready else "Stage SMTP credentials before sending a correction.")
+                    )
+                )
+            ),
         },
         {
             "kind": "reveal_smtp_password",
@@ -1077,6 +1212,12 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
         "handoff_status": _as_text(workflow.get("handoff_status")),
         "onboarding_state": onboarding["state"],
         "onboarding_summary": onboarding["summary"],
+        "handoff_template_version": handoff_template_version,
+        "handoff_correction_required": "yes" if correction_required else "no",
+        "handoff_correction_status": correction_status,
+        "handoff_correction_sent_to": _as_text(workflow.get("handoff_correction_sent_to")),
+        "handoff_correction_message_id": _as_text(workflow.get("handoff_correction_message_id")),
+        "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
         "verification_state": _as_text(verification.get("portal_state") or verification.get("status"))
         or _as_text(selected_profile.get("verification_state")),
         "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
@@ -1097,10 +1238,17 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
             "send_as_email": _as_text(identity.get("send_as_email") or selected_profile.get("send_as_email")),
             "single_user_email": _as_text(identity.get("single_user_email") or selected_profile.get("user_email")),
             "operator_inbox_target": _as_text(identity.get("operator_inbox_target")),
-            "forward_target": _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target")),
+            "forward_target": forward_target,
             "handoff_email_sent_to": _as_text(workflow.get("handoff_email_sent_to")),
             "handoff_email_message_id": _as_text(workflow.get("handoff_email_message_id")),
             "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
+            "handoff_template_version": handoff_template_version,
+            "current_handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+            "handoff_correction_required": "yes" if correction_required else "no",
+            "handoff_correction_status": correction_status,
+            "handoff_correction_sent_to": _as_text(workflow.get("handoff_correction_sent_to")),
+            "handoff_correction_message_id": _as_text(workflow.get("handoff_correction_message_id")),
+            "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
             "handoff_provider": _as_text(
                 provider.get("handoff_provider")
                 or identity.get("handoff_provider")
@@ -1457,7 +1605,8 @@ def build_portal_aws_surface_bundle(
         selected_domain=_as_text(workspace.get("selected_domain")),
     )
     enriched_workspace["selected_domain_onboarding"] = _selected_domain_onboarding(
-        workspace.get("selected_domain_record") if isinstance(workspace.get("selected_domain_record"), dict) else None
+        workspace.get("selected_domain_record") if isinstance(workspace.get("selected_domain_record"), dict) else None,
+        mailbox_rows=workspace.get("mailbox_rows") if isinstance(workspace.get("mailbox_rows"), list) else None,
     )
     enriched_workspace["selected_profile_onboarding"] = _selected_profile_onboarding(
         workspace.get("selected_profile") if isinstance(workspace.get("selected_profile"), dict) else None
@@ -2139,6 +2288,8 @@ def _merge_route_sync_details(details: dict[str, Any], route_sync: dict[str, Any
     details["route_sync_route_count"] = _as_text(payload.get("route_count"))
     details["route_sync_lambda_name"] = _as_text(payload.get("lambda_name"))
     details["route_sync_changed"] = "true" if _as_bool(payload.get("changed")) else "false"
+    details["route_sync_route_changed"] = "true" if _as_bool(payload.get("route_changed")) else "false"
+    details["route_sync_code_changed"] = "true" if _as_bool(payload.get("code_changed")) else "false"
     details["route_sync_tracked_recipients"] = ", ".join(
         _as_text(item) for item in _as_list(payload.get("tracked_recipients")) if _as_text(item)
     )
@@ -2209,6 +2360,7 @@ def _apply_action(
             "ensure_domain_identity",
             "sync_domain_dns",
             "ensure_domain_receipt_rule",
+            "send_pending_handoff_corrections",
         }:
             domain_row = _selected_domain_record(
                 tool_root=tool_root,
@@ -2229,6 +2381,75 @@ def _apply_action(
                 return surface_query, dependency_failure
             raw_domain = _as_dict(domain_row.get("raw"))
             convergence_steps: list[str] = []
+            if action_kind == "send_pending_handoff_corrections":
+                domain = _normalized_domain(_as_dict(raw_domain.get("identity")).get("domain"))
+                correction_rows = [
+                    row
+                    for row in _mailbox_profiles(tool_root)
+                    if _normalized_domain(row.get("domain")) == domain and _handoff_correction_required(_as_dict(row.get("raw")))
+                ]
+                if not correction_rows:
+                    return {"view": "domains", "domain": domain, "section": "onboarding"}, _action_result(
+                        action_kind=action_kind,
+                        status="accepted",
+                        code="handoff_corrections_not_required",
+                        message=f"No mailbox in {domain} currently needs a handoff correction.",
+                        details={
+                            "tenant_id": tenant_id,
+                            "domain": domain,
+                            "correction_count": "0",
+                            "template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+                        },
+                    )
+                corrected_profiles: list[str] = []
+                corrected_recipients: list[str] = []
+                corrected_message_ids: list[str] = []
+                for row in correction_rows:
+                    live_profile_payload = store.load_profile(
+                        tenant_scope_id=_tenant_scope_for_profile(row),
+                        profile_id=_as_text(row.get("profile_id")),
+                    )
+                    if live_profile_payload is None:
+                        continue
+                    dispatch = cloud.send_handoff_correction_email(live_profile_payload)
+                    live_row = dict(row)
+                    live_row["raw"] = live_profile_payload
+                    _record_profile_handoff_event(
+                        store=store,
+                        profile_row=live_row,
+                        status=_as_text(_as_dict(live_profile_payload.get("workflow")).get("handoff_status")) or "instruction_sent",
+                        fields={
+                            "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+                            "handoff_correction_required": False,
+                            "handoff_correction_sent_to": _as_text(dispatch.get("sent_to")),
+                            "handoff_correction_message_id": _as_text(dispatch.get("message_id")),
+                            "handoff_correction_sent_at": _utc_now_iso(),
+                        },
+                    )
+                    corrected_profiles.append(_as_text(dispatch.get("send_as_email")))
+                    corrected_recipients.append(_as_text(dispatch.get("sent_to")))
+                    corrected_message_ids.append(_as_text(dispatch.get("message_id")))
+                details = {
+                    "tenant_id": tenant_id,
+                    "domain": domain,
+                    "correction_count": str(len(corrected_profiles)),
+                    "corrected_profiles": ", ".join(item for item in corrected_profiles if item),
+                    "sent_to": ", ".join(item for item in corrected_recipients if item),
+                    "message_id": ", ".join(item for item in corrected_message_ids if item),
+                    "template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+                }
+                _append_local_audit(
+                    audit_storage_file=audit_storage_file,
+                    private_dir=private_dir,
+                    action_kind=action_kind,
+                    details=details,
+                )
+                return {"view": "domains", "domain": domain, "section": "onboarding"}, _action_result(
+                    action_kind=action_kind,
+                    status="accepted",
+                    message=f"Sent one-time handoff corrections for {len(corrected_profiles)} mailbox(es) in {domain}.",
+                    details=details,
+                )
             if action_kind == "ensure_domain_identity":
                 if not hasattr(cloud, "ensure_domain_identity"):
                     raise ValueError("AWS-backed domain identity creation is not configured in this runtime.")
@@ -2544,6 +2765,34 @@ def _apply_action(
             raise ValueError("AWS-CSM profile could not be reloaded for the requested action.")
 
         if action_kind == "send_handoff_email":
+            existing_handoff = _as_dict(live_profile.get("workflow"))
+            previously_sent_to = _as_text(existing_handoff.get("handoff_email_sent_to"))
+            if (
+                _handoff_was_sent(existing_handoff)
+            ):
+                details = {
+                    "profile_id": _as_text(profile_row.get("profile_id")),
+                    "tenant_scope_id": tenant_scope_id,
+                    "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
+                    "sent_to": previously_sent_to,
+                    "handoff_status": _as_text(existing_handoff.get("handoff_status")),
+                    "template_version": _effective_handoff_template_version(existing_handoff),
+                }
+                _append_local_audit(
+                    audit_storage_file=audit_storage_file,
+                    private_dir=private_dir,
+                    action_kind=action_kind,
+                    details={**details, "skipped": "already_sent"},
+                )
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="accepted",
+                    code="handoff_already_sent",
+                    message=(
+                        "Handoff instructions were already sent for this mailbox; skipping resend."
+                    ),
+                    details=details,
+                )
             dispatch = cloud.send_handoff_email(live_profile)
             _record_profile_handoff_event(
                 store=store,
@@ -2553,6 +2802,8 @@ def _apply_action(
                     "handoff_email_sent_to": _as_text(dispatch.get("sent_to")),
                     "handoff_email_message_id": _as_text(dispatch.get("message_id")),
                     "handoff_email_sent_at": _utc_now_iso(),
+                    "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+                    "handoff_correction_required": False,
                 },
             )
             details = {
@@ -2562,6 +2813,7 @@ def _apply_action(
                 "sent_to": _as_text(dispatch.get("sent_to")),
                 "message_id": _as_text(dispatch.get("message_id")),
                 "handoff_provider": _as_text(dispatch.get("handoff_provider")),
+                "template_version": _as_text(dispatch.get("template_version")),
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -2573,6 +2825,86 @@ def _apply_action(
                 action_kind=action_kind,
                 status="accepted",
                 message=f"Sent send-as handoff instructions to {_as_text(dispatch.get('sent_to'))}.",
+                details=details,
+                handoff_dispatch=dispatch,
+            )
+
+        if action_kind == "send_handoff_correction_email":
+            existing_handoff = _as_dict(live_profile.get("workflow"))
+            if not _handoff_was_sent(existing_handoff):
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="handoff_initial_send_required",
+                    message="Initial handoff instructions must be sent before a correction email can be issued.",
+                    details={
+                        "profile_id": _as_text(profile_row.get("profile_id")),
+                        "tenant_scope_id": tenant_scope_id,
+                        "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
+                    },
+                )
+            correction_sent = _handoff_correction_was_sent(existing_handoff)
+            correction_required = _handoff_correction_required(live_profile)
+            if correction_sent or not correction_required:
+                details = {
+                    "profile_id": _as_text(profile_row.get("profile_id")),
+                    "tenant_scope_id": tenant_scope_id,
+                    "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
+                    "sent_to": _as_text(existing_handoff.get("handoff_correction_sent_to") or existing_handoff.get("handoff_email_sent_to")),
+                    "handoff_status": _as_text(existing_handoff.get("handoff_status")),
+                    "template_version": _effective_handoff_template_version(existing_handoff),
+                }
+                code = "handoff_correction_already_sent" if correction_sent else "handoff_correction_not_required"
+                message = (
+                    "A one-time handoff correction was already sent for this mailbox."
+                    if correction_sent
+                    else "This mailbox does not currently need a handoff correction."
+                )
+                _append_local_audit(
+                    audit_storage_file=audit_storage_file,
+                    private_dir=private_dir,
+                    action_kind=action_kind,
+                    details={**details, "skipped": code},
+                )
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="accepted",
+                    code=code,
+                    message=message,
+                    details=details,
+                )
+            dispatch = cloud.send_handoff_correction_email(live_profile)
+            _record_profile_handoff_event(
+                store=store,
+                profile_row=profile_row,
+                status=_as_text(existing_handoff.get("handoff_status")) or "instruction_sent",
+                fields={
+                    "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
+                    "handoff_correction_required": False,
+                    "handoff_correction_sent_to": _as_text(dispatch.get("sent_to")),
+                    "handoff_correction_message_id": _as_text(dispatch.get("message_id")),
+                    "handoff_correction_sent_at": _utc_now_iso(),
+                },
+            )
+            details = {
+                "profile_id": _as_text(profile_row.get("profile_id")),
+                "tenant_scope_id": tenant_scope_id,
+                "send_as_email": _as_text(dispatch.get("send_as_email")),
+                "sent_to": _as_text(dispatch.get("sent_to")),
+                "message_id": _as_text(dispatch.get("message_id")),
+                "handoff_provider": _as_text(dispatch.get("handoff_provider")),
+                "template_version": _as_text(dispatch.get("template_version")),
+            }
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return surface_query, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Sent one-time handoff correction to {_as_text(dispatch.get('sent_to'))}.",
                 details=details,
                 handoff_dispatch=dispatch,
             )

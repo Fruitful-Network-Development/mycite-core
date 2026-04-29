@@ -31,6 +31,19 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function asDisplayText(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(function (item) {
+          return typeof item === "object" ? "" : asText(item);
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (value && typeof value === "object") return "";
+    return asText(value);
+  }
+
   function prettifyKey(value) {
     return asText(value)
       .replace(/_/g, " ")
@@ -166,14 +179,14 @@
     var seen = {};
     var rows = [];
     (preferredOrder || []).forEach(function (key) {
-      var value = asText(payload[key]);
+      var value = asDisplayText(payload[key]);
       if (!value) return;
       rows.push({ label: prettifyKey(key), value: value });
       seen[key] = true;
     });
     Object.keys(payload).forEach(function (key) {
       if (seen[key]) return;
-      var value = asText(payload[key]);
+      var value = asDisplayText(payload[key]);
       if (!value) return;
       rows.push({ label: prettifyKey(key), value: value });
     });
@@ -253,29 +266,6 @@
     );
   }
 
-  function renderSectionButtons(workspace) {
-    var rows = workspace.section_rows || [];
-    if (!rows.length) return "";
-    return (
-      '<div class="aws-csm-flowForm__actions">' +
-      '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-section-clear>All</button>' +
-      rows
-        .map(function (row) {
-          return (
-            '<button type="button" class="ide-sessionAction ide-sessionAction--button' +
-            (row.active ? " is-active" : "") +
-            '" data-aws-section="' +
-            escapeHtml((row.label || "").toLowerCase()) +
-            '">' +
-            escapeHtml(row.label || "") +
-            "</button>"
-          );
-        })
-        .join("") +
-      "</div>"
-    );
-  }
-
   function renderMailboxGallery(workspace) {
     var rows = workspace.mailbox_rows || [];
     if (!rows.length) {
@@ -304,6 +294,8 @@
             escapeHtml(row.verification_state || "—") +
             "</span><span>provider: " +
             escapeHtml(row.provider_state || "—") +
+            "</span><span>correction: " +
+            escapeHtml(row.handoff_correction_status || "—") +
             "</span><span>inbound: " +
             escapeHtml(row.inbound_state || "—") +
             "</span></span></button>"
@@ -418,6 +410,10 @@
           "region",
           "hosted_zone_id",
           "readiness_state",
+          "mailbox_count",
+          "handoff_correction_required_count",
+          "handoff_correction_completed_count",
+          "current_handoff_template_version",
           "last_checked_at",
           "registrar_nameservers",
           "hosted_zone_nameservers",
@@ -454,7 +450,7 @@
     var handoff = asObject(onboarding && onboarding.handoff);
     if (!asText(handoff.send_as_email)) return "";
     return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Handoff</h3><p>Split-secret Gmail handoff keeps the SMTP password out of stored profile state and instruction emails.</p>' +
+      '<section class="v2-card" style="margin-top:12px"><h3>Handoff</h3><p>Portal handoff sends a minimal SMTP credential set while keeping the password out of stored profile JSON.</p>' +
       renderInfoRows(
         renderKeyValueRows(handoff, [
           "send_as_email",
@@ -464,6 +460,13 @@
           "handoff_email_sent_to",
           "handoff_email_message_id",
           "handoff_email_sent_at",
+          "handoff_template_version",
+          "current_handoff_template_version",
+          "handoff_correction_required",
+          "handoff_correction_status",
+          "handoff_correction_sent_to",
+          "handoff_correction_message_id",
+          "handoff_correction_sent_at",
           "smtp_host",
           "smtp_port",
           "smtp_username",
@@ -555,8 +558,11 @@
       "send_as_email",
       "single_user_email",
       "operator_inbox_target",
+      "corrected_profiles",
+      "correction_count",
       "sent_to",
       "message_id",
+      "template_version",
       "secret_name",
       "state",
     ]);
@@ -567,6 +573,7 @@
       "smtp_host",
       "smtp_port",
       "message_id",
+      "template_version",
       "state",
     ]);
     var secretRows = renderKeyValueRows(result.ephemeral_secret, [
@@ -618,6 +625,10 @@
             "onboarding_summary",
             "workflow_state",
             "handoff_status",
+            "handoff_template_version",
+            "handoff_correction_status",
+            "handoff_correction_required",
+            "handoff_correction_sent_at",
             "verification_state",
             "email_received_at",
             "verified_at",
@@ -650,6 +661,7 @@
             "</span></div>" +
             renderInfoRows([
               { label: "Onboarding", value: row.onboarding_summary || row.onboarding_state || "—" },
+              { label: "Correction", value: row.handoff_correction_status || "—" },
               { label: "Verification", value: row.verification_state || "—" },
               { label: "Provider", value: row.provider_state || "—" },
               { label: "Inbound", value: row.inbound_state || "—" },
@@ -686,21 +698,16 @@
   function renderSelectedDomain(workspace, surfacePayload) {
     var domain = workspace.selected_domain || "";
     if (!domain) return "";
-    var section = (workspace.active_filters && workspace.active_filters.section) || "";
-    var showUsers = !section || section === "users";
-    var showOnboarding = !section || section === "onboarding";
-    var showNewsletter = !section || section === "newsletter";
     return (
       '<section class="v2-card aws-csm-overviewIntro" style="margin-top:12px"><h3>' +
       escapeHtml(domain) +
-      "</h3><p>Unified AWS-CSM domain gallery for mailbox state, onboarding posture, and newsletter readiness.</p>" +
-      renderSectionButtons(workspace) +
+      "</h3><p>Unified AWS-CSM domain gallery for mailbox management and onboarding posture.</p>" +
       '<div class="aws-csm-flowForm__actions"><button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-domain-clear>Back to Domain Gallery</button></div>' +
       "</section>" +
       renderActionResult(surfacePayload) +
-      (showUsers ? renderCreateProfileCard(workspace) + renderMailboxGallery(workspace) : "") +
-      (showOnboarding ? renderOnboardingSection(workspace) : "") +
-      (showNewsletter ? renderNewsletterSection(workspace) : "")
+      renderCreateProfileCard(workspace) +
+      renderMailboxGallery(workspace) +
+      renderOnboardingSection(workspace)
     );
   }
 
@@ -846,7 +853,7 @@
     target.addEventListener("click", function (event) {
       var button = event.target && event.target.closest
         ? event.target.closest(
-            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-section], [data-aws-section-clear], [data-aws-domain-clear], [data-aws-delete-profile]"
+            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-domain-clear], [data-aws-delete-profile]"
           )
         : null;
       var state = target.__awsCsmRenderState || {};
@@ -884,16 +891,6 @@
             section: null,
           })
         );
-        return;
-      }
-      if (button.hasAttribute("data-aws-section")) {
-        var label = (button.getAttribute("data-aws-section") || "").toLowerCase();
-        var section = label === "users" || label === "onboarding" || label === "newsletter" ? label : "";
-        state.ctx.loadShell(buildSurfaceRequest(state.ctx, state.workspace, { section: section }));
-        return;
-      }
-      if (button.hasAttribute("data-aws-section-clear")) {
-        state.ctx.loadShell(buildSurfaceRequest(state.ctx, state.workspace, { section: null }));
         return;
       }
       if (button.hasAttribute("data-aws-domain-clear")) {
@@ -961,11 +958,11 @@
         asText(actionResult.message)
       );
       var tabs = normalizeInspectorTabs(
-        [{ id: "domain", label: "Domain", active: true }, { id: "onboarding", label: "Onboarding" }],
-        [{ id: "domain", label: "Domain", active: true }, { id: "onboarding", label: "Onboarding" }],
-        "domain"
+        [{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }],
+        [{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }],
+        "onboarding"
       );
-      var activeTabId = activeInspectorTabId(tabs, "domain");
+      var activeTabId = activeInspectorTabId(tabs, "onboarding");
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
@@ -981,8 +978,8 @@
         renderToolPostureCard(tool) +
         renderInspectorTabs(tabs) +
         '<div class="aws-csm-interfacePanel__body">' +
-        renderInspectorTabPanel("domain", activeTabId, renderInspectorDomainTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
         renderInspectorTabPanel("onboarding", activeTabId, renderInspectorOnboardingTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("domain", activeTabId, renderInspectorDomainTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
         "</div></div>"
       );
       target.__awsCsmRenderState = {

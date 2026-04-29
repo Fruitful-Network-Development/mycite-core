@@ -499,6 +499,24 @@ class _FakeAwsCsmActionCloud:
             "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
             "smtp_port": smtp.get("port") or "587",
             "state": "configured",
+            "template_version": "smtp_credentials_v2_minimal_5field",
+        }
+        self.sent_messages.append(payload)
+        return payload
+
+    def send_handoff_correction_email(self, profile: dict[str, object]) -> dict[str, object]:
+        identity = dict(profile.get("identity") or {})
+        smtp = dict(profile.get("smtp") or {})
+        payload = {
+            "message_id": "ses-correction-001",
+            "sent_to": smtp.get("forward_to_email") or identity.get("operator_inbox_target") or "",
+            "send_as_email": identity.get("send_as_email") or "",
+            "username": smtp.get("username") or "SMTPUSER",
+            "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
+            "smtp_port": smtp.get("port") or "587",
+            "state": "configured",
+            "template_version": "smtp_credentials_v2_minimal_5field",
+            "correction": "true",
         }
         self.sent_messages.append(payload)
         return payload
@@ -1132,11 +1150,13 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     if action_kind == "send_handoff_email":
                         dispatch = action_payload["surface_payload"]["action_result"]["handoff_dispatch"]
                         self.assertEqual(dispatch["sent_to"], "ops@example.com")
+                        self.assertEqual(dispatch["template_version"], "smtp_credentials_v2_minimal_5field")
                         handoff = action_payload["surface_payload"]["workspace"]["selected_profile_onboarding"]["handoff"]
                         self.assertEqual(handoff["operator_inbox_target"], "ops@example.com")
                         self.assertEqual(handoff["forward_target"], "ops@example.com")
                         self.assertEqual(handoff["handoff_email_sent_to"], "ops@example.com")
                         self.assertEqual(handoff["handoff_email_message_id"], "ses-message-001")
+                        self.assertEqual(handoff["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
                         self.assertTrue(handoff["handoff_email_sent_at"])
                     if action_kind == "reveal_smtp_password":
                         secret = action_payload["surface_payload"]["action_result"]["ephemeral_secret"]
@@ -1150,9 +1170,149 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 self.assertIn(stored_profile["provider"]["gmail_send_as_status"], {"verified", "not_started"})
                 self.assertEqual(stored_profile["workflow"]["handoff_email_sent_to"], "ops@example.com")
                 self.assertEqual(stored_profile["workflow"]["handoff_email_message_id"], "ses-message-001")
+                self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
                 self.assertTrue(stored_profile["workflow"]["handoff_email_sent_at"])
                 self.assertNotIn("SMTPPASS", created_profile_path.read_text(encoding="utf-8"))
                 self.assertNotIn("SMTPPASS", audit_file.read_text(encoding="utf-8"))
+
+    def test_aws_csm_action_route_runs_handoff_correction_inside_onboarding_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            public_dir = root / "public"
+            private_dir = root / "private"
+            data_dir = root / "data"
+            webapps_root = root / "webapps"
+            audit_file = root / "portal_audit.jsonl"
+            for path in (public_dir, private_dir, data_dir, webapps_root):
+                path.mkdir(parents=True, exist_ok=True)
+            audit_file.write_text("", encoding="utf-8")
+            _write_network_chronology_authority(data_dir)
+            _write_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "config.json",
+                {"msn_id": "3-2-3-17-77-1-6-4-1-4", "tool_exposure": {"aws_csm": {"enabled": True}}},
+            )
+
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "region": "us-east-1",
+                        "mailbox_local_part": "alex",
+                        "role": "operator",
+                        "single_user_email": "alex@example.com",
+                        "operator_inbox_target": "ops@example.com",
+                        "handoff_provider": "gmail",
+                        "send_as_email": "alex@cvccboard.org",
+                    },
+                    "smtp": {
+                        "host": "email-smtp.us-east-1.amazonaws.com",
+                        "port": "587",
+                        "username": "SMTPUSER",
+                        "credentials_secret_name": "aws-cms/smtp/fnd.alex",
+                        "credentials_secret_state": "configured",
+                        "send_as_email": "alex@cvccboard.org",
+                        "local_part": "alex",
+                        "handoff_provider": "gmail",
+                        "forward_to_email": "ops@example.com",
+                        "handoff_ready": True,
+                    },
+                    "verification": {"status": "not_started", "portal_state": "not_started"},
+                    "provider": {
+                        "handoff_provider": "gmail",
+                        "send_as_provider_status": "pending",
+                        "gmail_send_as_status": "pending",
+                        "aws_ses_identity_status": "verified",
+                    },
+                    "workflow": {
+                        "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+                        "flow": "mailbox_send_as",
+                        "initiated": True,
+                        "initiated_at": "2026-04-23T22:39:59+00:00",
+                        "lifecycle_state": "draft",
+                        "handoff_provider": "gmail",
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_to": "ops@example.com",
+                        "handoff_email_message_id": "ses-message-legacy",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                        "is_ready_for_user_handoff": True,
+                    },
+                    "inbound": {
+                        "receive_routing_target": "ops@example.com",
+                        "receive_state": "receive_configured",
+                        "receive_verified": False,
+                        "portal_native_display_ready": False,
+                    },
+                },
+            )
+            collection_path = (
+                private_dir / "utilities" / "tools" / "aws-csm" / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            )
+            collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+            if "aws-csm.cvccboard.alex.json" not in collection_payload["member_files"]:
+                collection_payload["member_files"].append("aws-csm.cvccboard.alex.json")
+                collection_path.write_text(json.dumps(collection_payload, indent=2) + "\n", encoding="utf-8")
+
+            config = V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=public_dir,
+                private_dir=private_dir,
+                data_dir=data_dir,
+                portal_domain="fruitfulnetworkdevelopment.com",
+                webapps_root=webapps_root,
+                portal_audit_storage_file=audit_file,
+            )
+            app = create_app(config)
+            client = app.test_client()
+            fake_cloud = _FakeAwsCsmActionCloud()
+
+            def action_request(surface_query: dict[str, object], action_kind: str, action_payload: dict[str, object]) -> dict[str, object]:
+                return {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "surface_query": surface_query,
+                    "action_kind": action_kind,
+                    "action_payload": action_payload,
+                }
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime.AwsEc2RoleOnboardingCloudAdapter",
+                return_value=fake_cloud,
+            ):
+                action_response = client.post(
+                    "/portal/api/v2/system/tools/aws-csm/actions",
+                    json=action_request(
+                        {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex", "section": "onboarding"},
+                        "send_handoff_correction_email",
+                        {"profile_id": "aws-csm.cvccboard.alex"},
+                    ),
+                )
+
+            self.assertEqual(action_response.status_code, 200)
+            action_payload = action_response.get_json()
+            action_result = action_payload["surface_payload"]["action_result"]
+            self.assertEqual(action_result["status"], "accepted")
+            self.assertEqual(action_result["handoff_dispatch"]["message_id"], "ses-correction-001")
+            self.assertEqual(action_result["handoff_dispatch"]["template_version"], "smtp_credentials_v2_minimal_5field")
+            onboarding = action_payload["surface_payload"]["workspace"]["selected_profile_onboarding"]
+            self.assertEqual(onboarding["handoff_correction_required"], "no")
+            self.assertEqual(onboarding["handoff_correction_status"], "sent")
+            self.assertTrue(onboarding["handoff_correction_sent_at"])
+            correction_action = next(
+                action for action in onboarding["actions"] if action["kind"] == "send_handoff_correction_email"
+            )
+            self.assertFalse(correction_action["enabled"])
+
+            stored_profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
+            self.assertEqual(stored_profile["workflow"]["handoff_correction_sent_to"], "ops@example.com")
+            self.assertEqual(stored_profile["workflow"]["handoff_correction_message_id"], "ses-correction-001")
+            self.assertTrue(stored_profile["workflow"]["handoff_correction_sent_at"])
 
     def test_client_boot_prefers_server_shell_posture_on_first_v2_hydration(self) -> None:
         portal_js = (

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from email import policy
 from email.parser import BytesParser
 from email.utils import getaddresses
+import io
 import fcntl
 import hashlib
 import hmac
@@ -14,6 +15,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Iterator
+import zipfile
 
 from MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud import (
     AwsEc2RoleNewsletterCloudAdapter,
@@ -39,6 +41,8 @@ _ROUTE_MAP_ENV_KEY = "VERIFICATION_ROUTE_MAP_JSON"
 _ROUTE_MAP_LAMBDA_ENV_KEY = "AWS_CSM_VERIFICATION_LAMBDA_NAME"
 _ROUTE_MAP_SYNC_TIMEOUT_SECONDS = 90
 _ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
+AWS_CSM_HANDOFF_TEMPLATE_VERSION = "smtp_credentials_v2_minimal_5field"
+_INBOUND_CAPTURE_LAMBDA_SOURCE = Path(__file__).resolve().with_name("aws_csm_inbound_capture_lambda.py")
 
 
 def _as_text(value: object) -> str:
@@ -525,6 +529,20 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         ses.create_receipt_rule(**kwargs)
 
     def send_handoff_email(self, profile: dict[str, Any]) -> dict[str, Any]:
+        return self._send_handoff_dispatch(profile, correction_note="")
+
+    def send_handoff_correction_email(self, profile: dict[str, Any]) -> dict[str, Any]:
+        return self._send_handoff_dispatch(
+            profile,
+            correction_note="Correction: use the SMTP values below for this mailbox.",
+        )
+
+    def _send_handoff_dispatch(
+        self,
+        profile: dict[str, Any],
+        *,
+        correction_note: str,
+    ) -> dict[str, Any]:
         send_as_email = self._send_as_email(profile)
         if not send_as_email:
             raise ValueError("AWS-CSM send-as email is not configured for this profile.")
@@ -533,40 +551,31 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             raise ValueError("AWS-CSM operator inbox target is not configured for this profile.")
         material = self.read_handoff_secret(profile)
         username = _as_text(material.get("username"))
+        password = _as_text(material.get("password"))
         smtp_host = _as_text(material.get("smtp_host"))
         smtp_port = _as_text(material.get("smtp_port"))
         handoff_provider = self._handoff_provider(profile)
         provider_label = _provider_label(handoff_provider)
-        instructions = self._handoff_instruction_lines(
-            handoff_provider=handoff_provider,
-            send_as_email=send_as_email,
-        )
         region = self._region_for_profile(profile)
+        body_lines = [
+            f"Server: {smtp_host}",
+            f"Email: {send_as_email}",
+            f"Port: {smtp_port}",
+            f"Username: {username}",
+            f"Password: {password}",
+        ]
+        if correction_note:
+            body_lines.insert(0, correction_note)
+        subject_prefix = "AWS-CSM send-as correction" if correction_note else f"AWS-CSM {provider_label} send-as handoff"
         response = self._client("sesv2", region=region).send_email(
             FromEmailAddress=send_as_email,
             Destination={"ToAddresses": [destination]},
             Content={
                 "Simple": {
-                    "Subject": {"Data": f"AWS-CSM {provider_label} send-as handoff for {send_as_email}"},
+                    "Subject": {"Data": f"{subject_prefix} for {send_as_email}"},
                     "Body": {
                         "Text": {
-                            "Data": "\n".join(
-                                [
-                                    f"Set up send-as for {send_as_email} using {provider_label}.",
-                                    "",
-                                    f"SMTP host: {smtp_host}",
-                                    f"SMTP port: {smtp_port}",
-                                    f"SMTP username: {username}",
-                                    "",
-                                    "Security posture: reusable SMTP passwords are never sent over handoff email.",
-                                    "Use the AWS-CSM portal action `reveal_smtp_password` for controlled, operator-only retrieval.",
-                                    "If manual disclosure occurred, rotate or revoke credentials immediately:",
-                                    "1) Rotate IAM SMTP material (or stage new credentials) in AWS-CSM.",
-                                    "2) Invalidate old credentials and re-run provider handoff verification.",
-                                    "3) Record incident + rotation timestamp in onboarding workflow notes.",
-                                    *instructions,
-                                ]
-                            )
+                            "Data": "\n".join(body_lines)
                         }
                     },
                 }
@@ -581,6 +590,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "smtp_port": smtp_port,
             "state": _as_text(material.get("state")),
             "handoff_provider": handoff_provider,
+            "template_version": AWS_CSM_HANDOFF_TEMPLATE_VERSION,
+            "correction": "true" if correction_note else "false",
         }
 
     def sync_verification_route_map(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:
@@ -593,6 +604,11 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         region = _DEFAULT_REGION
         client = self._client("lambda", region=region)
         configuration = client.get_function_configuration(FunctionName=lambda_name)
+        code_sync = self._ensure_verification_lambda_code(
+            client=client,
+            function_name=lambda_name,
+            current_configuration=configuration,
+        )
         environment = dict(_as_dict(configuration.get("Environment")).get("Variables") or {})
         existing_raw = _as_text(environment.get(_ROUTE_MAP_ENV_KEY)) or "{}"
         try:
@@ -600,15 +616,22 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         except json.JSONDecodeError:
             existing_routes = {}
         existing_routes = existing_routes if isinstance(existing_routes, dict) else {}
-        if existing_routes == routes:
+        route_changed = existing_routes != routes
+        if not route_changed:
+            message = "Verification-forward Lambda code and route map are already up to date."
+            if _as_bool(code_sync.get("changed")):
+                message = "Verification-forward Lambda code refreshed; route map already up to date."
             return {
                 "status": "success",
-                "message": "Verification-forward route map already up to date.",
+                "message": message,
                 "route_count": len(routes),
                 "tracked_recipients": sorted(routes),
                 "lambda_name": lambda_name,
                 "region": region,
-                "changed": False,
+                "changed": _as_bool(code_sync.get("changed")),
+                "route_changed": False,
+                "code_changed": _as_bool(code_sync.get("changed")),
+                "code_sha256": _as_text(code_sync.get("code_sha256")),
             }
         environment[_ROUTE_MAP_ENV_KEY] = json.dumps(routes, separators=(",", ":"), sort_keys=True)
         client.update_function_configuration(
@@ -616,14 +639,20 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             Environment={"Variables": environment},
         )
         self._wait_for_lambda_update(client=client, function_name=lambda_name)
+        message = "Verification-forward route map synced to Lambda environment."
+        if _as_bool(code_sync.get("changed")):
+            message = "Verification-forward Lambda code and route map synced."
         return {
             "status": "success",
-            "message": "Verification-forward route map synced to Lambda environment.",
+            "message": message,
             "route_count": len(routes),
             "tracked_recipients": sorted(routes),
             "lambda_name": lambda_name,
             "region": region,
             "changed": True,
+            "route_changed": True,
+            "code_changed": _as_bool(code_sync.get("changed")),
+            "code_sha256": _as_text(code_sync.get("code_sha256")),
         }
 
     def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -1512,6 +1541,48 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             if lambda_name:
                 return lambda_name
         return _DEFAULT_INBOUND_LAMBDA
+
+    def _verification_lambda_zip_payload(self) -> tuple[bytes, str]:
+        if not _INBOUND_CAPTURE_LAMBDA_SOURCE.exists():
+            raise FileNotFoundError(f"inbound capture Lambda source not found: {_INBOUND_CAPTURE_LAMBDA_SOURCE}")
+        source_bytes = _INBOUND_CAPTURE_LAMBDA_SOURCE.read_bytes()
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            info = zipfile.ZipInfo("lambda_function.py")
+            info.date_time = (1980, 1, 1, 0, 0, 0)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            archive.writestr(info, source_bytes)
+        zip_bytes = buffer.getvalue()
+        code_sha256 = base64.b64encode(hashlib.sha256(zip_bytes).digest()).decode("ascii")
+        return zip_bytes, code_sha256
+
+    def _ensure_verification_lambda_code(
+        self,
+        *,
+        client: Any,
+        function_name: str,
+        current_configuration: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        configuration = current_configuration if isinstance(current_configuration, dict) else client.get_function_configuration(
+            FunctionName=function_name
+        )
+        current_code_sha256 = _as_text(configuration.get("CodeSha256"))
+        zip_bytes, desired_code_sha256 = self._verification_lambda_zip_payload()
+        if current_code_sha256 == desired_code_sha256:
+            return {
+                "changed": False,
+                "code_sha256": desired_code_sha256,
+            }
+        client.update_function_code(
+            FunctionName=function_name,
+            ZipFile=zip_bytes,
+        )
+        self._wait_for_lambda_update(client=client, function_name=function_name)
+        return {
+            "changed": True,
+            "code_sha256": desired_code_sha256,
+        }
 
     def _wait_for_lambda_update(self, *, client: Any, function_name: str) -> None:
         deadline = time.time() + _ROUTE_MAP_SYNC_TIMEOUT_SECONDS

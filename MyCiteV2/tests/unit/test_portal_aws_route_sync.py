@@ -130,25 +130,41 @@ def _onboarding_payload(
     verification_state: str = "not_started",
     provider_state: str = "not_started",
     inbound_state: str = "receive_unconfigured",
+    secret_state: str = "missing",
+    handoff_ready: bool = False,
+    staging_state: str = "",
     handoff_sent_at: str = "",
+    handoff_template_version: str = "",
+    handoff_correction_sent_at: str = "",
+    handoff_correction_required: bool | None = None,
     email_received_at: str = "",
     ready_for_user_handoff: bool = False,
     receive_verified: bool = False,
     mailbox_operational: bool = False,
 ) -> dict[str, object]:
+    workflow: dict[str, object] = {
+        "handoff_status": handoff_status,
+        "handoff_email_sent_at": handoff_sent_at,
+        "handoff_template_version": handoff_template_version,
+        "handoff_correction_sent_at": handoff_correction_sent_at,
+        "is_ready_for_user_handoff": ready_for_user_handoff,
+        "is_mailbox_operational": mailbox_operational,
+    }
+    if handoff_correction_required is not None:
+        workflow["handoff_correction_required"] = handoff_correction_required
     return {
-        "workflow": {
-            "handoff_status": handoff_status,
-            "handoff_email_sent_at": handoff_sent_at,
-            "is_ready_for_user_handoff": ready_for_user_handoff,
-            "is_mailbox_operational": mailbox_operational,
-        },
+        "workflow": workflow,
         "verification": {
             "portal_state": verification_state,
             "status": verification_state,
             "email_received_at": email_received_at,
         },
         "provider": {"send_as_provider_status": provider_state},
+        "smtp": {
+            "credentials_secret_state": secret_state,
+            "handoff_ready": handoff_ready,
+            "staging_state": staging_state,
+        },
         "inbound": {
             "receive_state": inbound_state,
             "receive_verified": receive_verified,
@@ -246,8 +262,21 @@ class _FakeNewsletterState:
 
 
 class PortalAwsRouteSyncTests(unittest.TestCase):
-    def test_profile_onboarding_projection_exposes_pending_forwarded_confirmed_and_onboard(self) -> None:
+    def test_profile_onboarding_projection_exposes_pending_staged_forwarded_confirmed_and_onboard(self) -> None:
         self.assertEqual(_profile_onboarding_projection(_onboarding_payload())["state"], "pending")
+        self.assertEqual(
+            _profile_onboarding_projection(
+                _onboarding_payload(
+                    handoff_status="ready_for_gmail_handoff",
+                    provider_state="not_started",
+                    verification_state="not_started",
+                    secret_state="configured",
+                    handoff_ready=True,
+                    staging_state="material_ready",
+                )
+            )["state"],
+            "staged",
+        )
         self.assertEqual(
             _profile_onboarding_projection(
                 _onboarding_payload(
@@ -685,6 +714,53 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
                     },
                     "workflow": {
                         "lifecycle_state": "draft",
+                        "handoff_status": "ready_for_gmail_handoff",
+                        "is_ready_for_user_handoff": True,
+                    },
+                    "verification": {
+                        "portal_state": "not_started",
+                        "status": "not_started",
+                    },
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "staging_state": "material_ready",
+                        "forward_to_email": "ops@example.com",
+                    },
+                },
+            )
+
+            staged_bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                },
+                private_dir=private_dir,
+            )
+
+            staged_workspace = staged_bundle["surface_payload"]["workspace"]
+            self.assertEqual(staged_workspace["mailbox_rows"][0]["onboarding_state"], "staged")
+            self.assertEqual(
+                staged_workspace["selected_profile_onboarding"]["onboarding_state"],
+                "staged",
+            )
+
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "lifecycle_state": "draft",
                         "handoff_status": "instruction_sent",
                         "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
                     },
@@ -755,6 +831,462 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertEqual(
             onboard_workspace["selected_profile_onboarding"]["onboarding_state"],
             "onboard",
+        )
+
+    def test_runtime_surface_projects_explicit_cuyahoga_domain_record(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection_payload = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection_payload["member_files"].append("aws-csm-domain.cvcc.json")
+            _write_json(collection_path, collection_payload)
+            _write_json(
+                tool_root / "aws-csm-domain.cvcc.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.domain.v1",
+                    "identity": {
+                        "tenant_id": "cvcc",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                        "region": "us-east-1",
+                        "hosted_zone_id": "Z09517872ZM94H1UQZ0MD",
+                    },
+                    "dns": {
+                        "hosted_zone_present": True,
+                        "nameserver_match": True,
+                        "mx_record_present": True,
+                        "mx_record_values": ["10 inbound-smtp.us-east-1.amazonaws.com"],
+                        "dkim_records_present": True,
+                        "dkim_record_values": [
+                            "token-a.dkim.amazonses.com",
+                            "token-b.dkim.amazonses.com",
+                            "token-c.dkim.amazonses.com",
+                        ],
+                        "registrar_nameservers": [],
+                        "hosted_zone_nameservers": [],
+                    },
+                    "ses": {
+                        "identity_exists": True,
+                        "identity_status": "verified",
+                        "verified_for_sending_status": True,
+                        "dkim_status": "success",
+                        "dkim_tokens": ["token-a", "token-b", "token-c"],
+                    },
+                    "receipt": {
+                        "status": "ok",
+                        "rule_name": "portal-capture-cuyahogavalleycountrysideconservancy-org",
+                        "expected_recipient": "cuyahogavalleycountrysideconservancy.org",
+                        "expected_lambda_name": "newsletter-inbound-capture",
+                        "bucket": "ses-inbound-fnd-mail",
+                        "prefix": "inbound/cuyahogavalleycountrysideconservancy.org/",
+                    },
+                    "observation": {"last_checked_at": "2026-04-29T00:00:00+00:00"},
+                    "readiness": {
+                        "schema": "mycite.service_tool.aws_csm.domain_readiness.v1",
+                        "state": "ready_for_mailboxes",
+                        "summary": "Domain onboarding is ready for mailbox creation.",
+                        "blockers": [],
+                        "last_checked_at": "2026-04-29T00:00:00+00:00",
+                        "domain": "cuyahogavalleycountrysideconservancy.org",
+                    },
+                },
+            )
+
+            bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cuyahogavalleycountrysideconservancy.org"},
+                },
+                private_dir=private_dir,
+            )
+
+        workspace = bundle["surface_payload"]["workspace"]
+        domain_row = next(row for row in workspace["domain_rows"] if row["domain"] == "cuyahogavalleycountrysideconservancy.org")
+        self.assertEqual(domain_row["onboarding_state"], "ready_for_mailboxes")
+        self.assertNotEqual(domain_row["onboarding_state"], "legacy_inferred")
+        self.assertEqual(
+            workspace["selected_domain_onboarding"]["readiness_state"],
+            "ready_for_mailboxes",
+        )
+
+    def test_runtime_surface_projects_handoff_correction_posture_for_legacy_mailbox(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                        "operator_inbox_target": "alex@example.com",
+                    },
+                    "workflow": {
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                        "handoff_email_sent_to": "alex@example.com",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "pending"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "alex@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_configured"},
+                },
+            )
+
+            bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                },
+                private_dir=private_dir,
+            )
+
+        workspace = bundle["surface_payload"]["workspace"]
+        onboarding = workspace["selected_profile_onboarding"]
+        self.assertEqual(onboarding["handoff_template_version"], "legacy_unversioned")
+        self.assertEqual(onboarding["handoff_correction_required"], "yes")
+        self.assertEqual(onboarding["handoff_correction_status"], "required")
+        correction_action = next(
+            action for action in onboarding["actions"] if action["kind"] == "send_handoff_correction_email"
+        )
+        self.assertTrue(correction_action["enabled"])
+        self.assertEqual(
+            workspace["selected_domain_onboarding"]["handoff_correction_required_count"],
+            "1",
+        )
+
+    def test_send_handoff_email_records_template_version_on_initial_send(self) -> None:
+        class _InitialSendCloud:
+            def send_handoff_email(self, profile: dict[str, object]) -> dict[str, object]:
+                identity = dict(profile.get("identity") or {})
+                return {
+                    "message_id": "ses-message-001",
+                    "sent_to": "alex@example.com",
+                    "send_as_email": identity.get("send_as_email") or "",
+                    "handoff_provider": "gmail",
+                    "template_version": "smtp_credentials_v2_minimal_5field",
+                }
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {"handoff_status": "ready_for_gmail_handoff"},
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "alex@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                },
+            )
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=_InitialSendCloud(),
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                    action_kind="send_handoff_email",
+                    action_payload={"profile_id": "aws-csm.cvccboard.alex"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+            stored = json.loads(
+                (
+                    private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+                ).read_text(encoding="utf-8")
+            )
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["template_version"], "smtp_credentials_v2_minimal_5field")
+        self.assertEqual(
+            stored["workflow"]["handoff_template_version"],
+            "smtp_credentials_v2_minimal_5field",
+        )
+        self.assertFalse(stored["workflow"]["handoff_correction_required"])
+
+    def test_send_handoff_correction_email_updates_correction_metadata(self) -> None:
+        class _CorrectionCloud:
+            def __init__(self) -> None:
+                self.called = 0
+
+            def send_handoff_correction_email(self, profile: dict[str, object]) -> dict[str, object]:
+                self.called += 1
+                identity = dict(profile.get("identity") or {})
+                return {
+                    "message_id": "ses-correction-001",
+                    "sent_to": "alex@example.com",
+                    "send_as_email": identity.get("send_as_email") or "",
+                    "handoff_provider": "gmail",
+                    "template_version": "smtp_credentials_v2_minimal_5field",
+                }
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_to": "alex@example.com",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "alex@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_configured"},
+                },
+            )
+            cloud = _CorrectionCloud()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=cloud,
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                    action_kind="send_handoff_correction_email",
+                    action_payload={"profile_id": "aws-csm.cvccboard.alex"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+            stored = json.loads(profile_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["template_version"], "smtp_credentials_v2_minimal_5field")
+        self.assertEqual(cloud.called, 1)
+        self.assertEqual(
+            stored["workflow"]["handoff_template_version"],
+            "smtp_credentials_v2_minimal_5field",
+        )
+        self.assertFalse(stored["workflow"]["handoff_correction_required"])
+        self.assertEqual(stored["workflow"]["handoff_correction_sent_to"], "alex@example.com")
+        self.assertEqual(stored["workflow"]["handoff_correction_message_id"], "ses-correction-001")
+        self.assertTrue(stored["workflow"]["handoff_correction_sent_at"])
+        self.assertEqual(stored["workflow"]["handoff_email_sent_to"], "alex@example.com")
+
+    def test_send_pending_handoff_corrections_runs_domain_bulk_flow(self) -> None:
+        class _BulkCorrectionCloud:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def send_handoff_correction_email(self, profile: dict[str, object]) -> dict[str, object]:
+                identity = dict(profile.get("identity") or {})
+                email = str(identity.get("send_as_email") or "")
+                self.calls.append(email)
+                return {
+                    "message_id": "bulk-" + email,
+                    "sent_to": str((dict(profile.get("smtp") or {})).get("forward_to_email") or ""),
+                    "send_as_email": email,
+                    "handoff_provider": "gmail",
+                    "template_version": "smtp_credentials_v2_minimal_5field",
+                }
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].extend(["aws-csm.cvccboard.alex.json", "aws-csm.cvccboard.jordan.json"])
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            _write_json(
+                tool_root / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                    },
+                    "workflow": {
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_to": "alex@example.com",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "alex@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_configured"},
+                },
+            )
+            _write_json(
+                tool_root / "aws-csm.cvccboard.jordan.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.jordan",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "jordan@cvccboard.org",
+                    },
+                    "workflow": {
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_to": "jordan@example.com",
+                        "handoff_email_sent_at": "2026-04-24T00:00:00+00:00",
+                        "handoff_template_version": "smtp_credentials_v2_minimal_5field",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "jordan@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_configured"},
+                },
+            )
+            cloud = _BulkCorrectionCloud()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime.importlib.util.find_spec",
+                return_value=object(),
+            ), patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=cloud,
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "section": "onboarding"},
+                    action_kind="send_pending_handoff_corrections",
+                    action_payload={"domain": "cvccboard.org"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+            corrected = json.loads((tool_root / "aws-csm.cvccboard.alex.json").read_text(encoding="utf-8"))
+            untouched = json.loads((tool_root / "aws-csm.cvccboard.jordan.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["correction_count"], "1")
+        self.assertEqual(cloud.calls, ["alex@cvccboard.org"])
+        self.assertTrue(corrected["workflow"]["handoff_correction_sent_at"])
+        self.assertFalse(corrected["workflow"]["handoff_correction_required"])
+        self.assertNotIn("handoff_correction_sent_at", untouched["workflow"])
+
+    def test_send_handoff_email_skips_resend_when_handoff_was_already_recorded(self) -> None:
+        class _CloudGuard:
+            def __init__(self) -> None:
+                self.called = False
+
+            def send_handoff_email(self, profile: dict[str, object]) -> dict[str, object]:
+                _ = profile
+                self.called = True
+                raise AssertionError("send_handoff_email should be skipped when handoff is already recorded")
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            _write_json(
+                private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "handoff_status": "instruction_sent",
+                        "handoff_email_sent_to": "alex@example.com",
+                        "handoff_email_sent_at": "2026-04-29T00:00:00+00:00",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {
+                        "credentials_secret_state": "configured",
+                        "handoff_ready": True,
+                        "forward_to_email": "alex@example.com",
+                    },
+                    "inbound": {"receive_state": "receive_configured"},
+                },
+            )
+            cloud = _CloudGuard()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=cloud,
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                    action_kind="send_handoff_email",
+                    action_payload={"profile_id": "aws-csm.cvccboard.alex"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["code"], "handoff_already_sent")
+        self.assertEqual(action_result["details"]["sent_to"], "alex@example.com")
+        self.assertFalse(cloud.called)
+
+    def test_workspace_renderer_source_defaults_to_onboarding_tabs_without_legacy_section_filters(self) -> None:
+        source = (
+            REPO_ROOT
+            / "MyCiteV2"
+            / "instances"
+            / "_shared"
+            / "portal_host"
+            / "static"
+            / "v2_portal_aws_workspace.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }', source)
+        self.assertIn('activeInspectorTabId(tabs, "onboarding")', source)
+        self.assertNotIn("data-aws-section", source)
+        self.assertNotIn("data-aws-section-clear", source)
+        self.assertIn("handoff_correction_status", source)
+        self.assertIn("data-aws-domain-action-kind", source)
+        self.assertLess(
+            source.index('renderInspectorTabPanel("onboarding"'),
+            source.index('renderInspectorTabPanel("domain"'),
         )
 
     def test_runtime_surface_reads_newsletter_metadata_through_adapter_helper(self) -> None:

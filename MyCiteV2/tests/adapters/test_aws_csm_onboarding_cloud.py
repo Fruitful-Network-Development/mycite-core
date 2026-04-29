@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import sys
 import unittest
@@ -12,6 +14,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
+    AWS_CSM_HANDOFF_TEMPLATE_VERSION,
     AwsEc2RoleOnboardingCloudAdapter,
 )
 
@@ -215,9 +218,11 @@ class _FakeSesReceiptClient:
 
 
 class _FakeLambdaClient:
-    def __init__(self, *, environment: dict[str, str] | None = None) -> None:
+    def __init__(self, *, environment: dict[str, str] | None = None, code_sha256: str = "") -> None:
         self.environment = dict(environment or {})
+        self.code_sha256 = str(code_sha256 or "")
         self.update_calls: list[dict[str, object]] = []
+        self.code_update_calls: list[dict[str, object]] = []
 
     def get_function_configuration(self, *, FunctionName: str) -> dict[str, object]:
         _ = FunctionName
@@ -225,8 +230,20 @@ class _FakeLambdaClient:
             "FunctionName": "newsletter-inbound-capture",
             "State": "Active",
             "LastUpdateStatus": "Successful",
+            "CodeSha256": self.code_sha256,
             "Environment": {"Variables": dict(self.environment)},
         }
+
+    def update_function_code(
+        self,
+        *,
+        FunctionName: str,
+        ZipFile: bytes,
+    ) -> dict[str, object]:
+        _ = FunctionName
+        self.code_update_calls.append({"zip_size": len(ZipFile)})
+        self.code_sha256 = base64.b64encode(hashlib.sha256(ZipFile).digest()).decode("ascii")
+        return {"LastUpdateStatus": "InProgress"}
 
     def update_function_configuration(
         self,
@@ -420,7 +437,9 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
 
         self.assertEqual(summary["status"], "success")
         self.assertTrue(summary["changed"])
+        self.assertTrue(summary["code_changed"])
         self.assertEqual(summary["route_count"], 2)
+        self.assertEqual(len(lambda_client.code_update_calls), 1)
         self.assertEqual(len(lambda_client.update_calls), 1)
         route_map = json.loads(lambda_client.environment["VERIFICATION_ROUTE_MAP_JSON"])
         self.assertEqual(_route_destination(route_map["mark@trappfamilyfarm.com"]), "mark@trappfamilyfarm.com")
@@ -428,6 +447,34 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
             _route_destination(route_map["technicalcontact@cuyahogavalleycountrysideconservancy.org"]),
             "ops@example.com",
         )
+
+    def test_sync_verification_route_map_refreshes_lambda_code_even_when_routes_match(self) -> None:
+        adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvcc")
+        profiles = [_profile()]
+        expected_routes = adapter._verification_route_map_from_profiles(profiles=profiles)
+        lambda_client = _FakeLambdaClient(
+            environment={
+                "VERIFICATION_ROUTE_MAP_JSON": json.dumps(expected_routes, separators=(",", ":"), sort_keys=True),
+            },
+            code_sha256="stale-code",
+        )
+
+        def fake_client(service_name: str, *, region: str | None = None) -> object:
+            _ = region
+            if service_name == "lambda":
+                return lambda_client
+            raise AssertionError(f"unexpected service {service_name}")
+
+        with patch.object(adapter, "_client", side_effect=fake_client):
+            summary = adapter.sync_verification_route_map(profiles=profiles)
+
+        self.assertEqual(summary["status"], "success")
+        self.assertTrue(summary["changed"])
+        self.assertFalse(summary["route_changed"])
+        self.assertTrue(summary["code_changed"])
+        self.assertEqual(len(lambda_client.code_update_calls), 1)
+        self.assertEqual(len(lambda_client.update_calls), 0)
+        self.assertIn("code refreshed", summary["message"].lower())
 
     def test_sync_verification_route_map_resolves_alias_chain_targets(self) -> None:
         adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvcc")
@@ -679,7 +726,7 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
         self.assertTrue(capture["has_verification_link"])
         self.assertIn("https://mail.google.com/mail/u/0/?ui=2&ik=verify", capture["link"])
 
-    def test_send_handoff_email_does_not_include_password_in_message_body(self) -> None:
+    def test_send_handoff_email_includes_minimal_five_field_credential_body(self) -> None:
         with TemporaryDirectory() as temp_dir:
             sesv2 = _FakeSesV2Client()
             adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="tff")
@@ -708,11 +755,66 @@ class AwsCsmOnboardingCloudAdapterTests(unittest.TestCase):
 
         self.assertEqual(result["sent_to"], "mark@trappfamilyfarm.com")
         self.assertEqual(result["message_id"], "ses-message-001")
+        self.assertEqual(result["template_version"], AWS_CSM_HANDOFF_TEMPLATE_VERSION)
         body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
-        self.assertIn("SMTP username: SMTPUSER", body)
-        self.assertNotIn("SMTP password:", body)
-        self.assertIn("reveal_smtp_password", body)
-        self.assertIn("Rotate IAM SMTP material", body)
+        self.assertEqual(
+            body,
+            "\n".join(
+                [
+                    "Server: email-smtp.us-east-1.amazonaws.com",
+                    "Email: mark@trappfamilyfarm.com",
+                    "Port: 587",
+                    "Username: SMTPUSER",
+                    "Password: SMTPPASS",
+                ]
+            ),
+        )
+
+    def test_send_handoff_correction_email_uses_correction_subject_and_same_five_fields(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            sesv2 = _FakeSesV2Client()
+            adapter = AwsEc2RoleOnboardingCloudAdapter(private_dir=temp_dir, tenant_id="tff")
+
+            def fake_client(service_name: str, *, region: str | None = None) -> object:
+                _ = region
+                if service_name == "sesv2":
+                    return sesv2
+                raise AssertionError(f"unexpected service {service_name}")
+
+            with patch.object(
+                adapter,
+                "_smtp_secret_material",
+                return_value={
+                    "state": "configured",
+                    "secret_name": "aws-cms/smtp/tff.mark",
+                    "username": "SMTPUSER",
+                    "persisted_username": "SMTPUSER",
+                    "password": "SMTPPASS",
+                    "smtp_host": "email-smtp.us-east-1.amazonaws.com",
+                    "smtp_port": "587",
+                    "message": "",
+                },
+            ), patch.object(adapter, "_client", side_effect=fake_client):
+                result = adapter.send_handoff_correction_email(_profile())
+
+        subject = sesv2.sent_messages[0]["content"]["Simple"]["Subject"]["Data"]
+        body = sesv2.sent_messages[0]["content"]["Simple"]["Body"]["Text"]["Data"]
+        self.assertEqual(subject, "AWS-CSM send-as correction for mark@trappfamilyfarm.com")
+        self.assertEqual(result["template_version"], AWS_CSM_HANDOFF_TEMPLATE_VERSION)
+        self.assertEqual(result["correction"], "true")
+        self.assertEqual(
+            body,
+            "\n".join(
+                [
+                    "Correction: use the SMTP values below for this mailbox.",
+                    "Server: email-smtp.us-east-1.amazonaws.com",
+                    "Email: mark@trappfamilyfarm.com",
+                    "Port: 587",
+                    "Username: SMTPUSER",
+                    "Password: SMTPPASS",
+                ]
+            ),
+        )
 
     def test_sync_domain_dns_refuses_when_nameservers_do_not_match(self) -> None:
         adapter = AwsEc2RoleOnboardingCloudAdapter(tenant_id="cvccboard")
