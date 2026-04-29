@@ -188,7 +188,7 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         "exports": (
             {
                 "global": "PortalCtsGisInspectorRenderer",
-                "callable": "render",
+                "required_callables": ("render",),
             },
         ),
     },
