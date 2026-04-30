@@ -1360,7 +1360,15 @@
         var index = Number(node.getAttribute("data-cts-gis-entry-index"));
         var entries = entriesByKind[kind] || [];
         var entry = entries[index] || {};
-        loadCtsGisEntry(ctx, entry);
+        if (
+          kind === "district_toggle" &&
+          entry.action &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(entry.action);
+        } else {
+          loadCtsGisEntry(ctx, entry);
+        }
       });
     });
   }
