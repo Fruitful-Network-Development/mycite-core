@@ -1618,7 +1618,9 @@
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
-    var districtCollections = profileProjection.district_precinct_collections || [];
+    var districtCollections = profileProjection.has_real_projection
+      ? (profileProjection.district_precinct_collections || [])
+      : [];
     var hasDistrictToggleRequest = !!(
       (districtToggle.shell_request && districtToggle.shell_request.tool_state) ||
       districtToggle.action
