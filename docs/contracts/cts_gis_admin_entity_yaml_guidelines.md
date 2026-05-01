@@ -1,8 +1,12 @@
 # CTS-GIS Administrative Entity YAML Guidelines
 
-This contract defines the canonical staged-insert format for CTS-GIS administrative datum inserts.
+This contract defines the canonical staged-insert format for CTS-GIS label-overlay datum inserts.
 
-Use this format to prepare batches for upload into the CTS-GIS tool. Do not edit the database-backed administrative file through ad-hoc UI changes, and do not write the entries directly from an agent session.
+Use this format to prepare batches for upload into the CTS-GIS tool. It is used for
+administrative street overlays and for other CTS-GIS title-overlay documents that share the same
+`rf.3-1-2` / `rf.3-1-3` row shape, including `msn-address_nodes`. Do not edit the
+database-backed documents through ad-hoc UI changes, and do not write the entries directly from an
+agent session.
 
 ## Canonical staged payload
 
@@ -30,10 +34,12 @@ JSON-equivalent support is allowed for the same structure, but YAML is the canon
 ## Ordering and MOS rules
 
 - Every persisted datum address still uses `<layer>-<value_group>-<iteration>`.
-- New street/admin-entity datums must use `valueGroup: 2`.
+- New street/admin-entity and address-node title-overlay datums must use `valueGroup: 2`.
 - Runtime computes final `iteration` values; operators do not stage final addresses directly.
-- Same-city inserts must end with contiguous city-local `iteration` values. Do not leave gaps.
-- Prepare and upload new entries grouped by city.
+- Stage new entries grouped by their immediate target-node family.
+- Runtime appends at the next available iterations for that group. Historical documents may already
+  contain interleaved or duplicate node bindings; those remain diagnostics rather than hard stage
+  blockers.
 - Within the same immediate family, order entries by the magnitude of the first `msn-SAMRAS` reference before final iteration assignment.
 - Reference order is canonicalized to:
   - `type: msn-samras`

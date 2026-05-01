@@ -79,6 +79,10 @@ def _ascii_bits(value: object, *, target_length: int) -> str:
     return bitstream
 
 
+def _ascii_bit_length(value: object) -> int:
+    return len(_ascii_normalize(value)) * 8
+
+
 def _samras_key(value: object) -> tuple[int, ...]:
     token = _as_text(value)
     if not token:
@@ -465,8 +469,10 @@ class CtsGisMutationService:
         *,
         document: AuthoritativeDatumDocument,
         target_node_address: str,
+        title: str,
     ) -> AuthoritativeDatumDocumentRow:
         candidates: list[tuple[tuple[int, int, int, tuple[int, int, int]], AuthoritativeDatumDocumentRow]] = []
+        required_title_bits = _ascii_bit_length(title)
         for row in document.rows:
             layer, value_group, _ = parse_datum_address(row.datum_address)
             if value_group != 2:
@@ -476,11 +482,14 @@ class CtsGisMutationService:
             if not title_bits or not node_address:
                 continue
             prefix_depth = _longest_shared_prefix_depth(node_address, target_node_address)
+            bit_capacity = len(title_bits)
             candidates.append(
                 (
                     (
-                        0 if len(title_bits) % 8 == 0 else 1,
+                        0 if bit_capacity % 8 == 0 else 1,
+                        0 if bit_capacity >= required_title_bits else 1,
                         -prefix_depth,
+                        abs(bit_capacity - required_title_bits),
                         layer,
                         datum_address_sort_key(row.datum_address),
                     ),
@@ -566,17 +575,6 @@ class CtsGisMutationService:
             target = _as_text(row.get("target_node_address"))
             if target:
                 grouped.setdefault(target, []).append(int(row.get("iteration") or 0))
-        for target_node_address, iterations in grouped.items():
-            ordered = sorted(iterations)
-            expected = ordered[0]
-            for value in ordered:
-                if value != expected:
-                    raise CtsGisMutationError(
-                        "non_contiguous_iteration_plan",
-                        "CTS-GIS administrative rows must stay contiguous within each target node group.",
-                        details={"targetNodeAddress": target_node_address, "iterations": ordered},
-                    )
-                expected += 1
         max_iteration = max((row["iteration"] for row in rows), default=0)
         return family_layer, grouped, max_iteration
 
@@ -729,7 +727,11 @@ class CtsGisMutationService:
                 current_iterations = sorted(int(value) for value in grouped_iterations.get(target_node_address, []))
                 next_iteration = current_iterations[-1] + 1 if current_iterations else max_iteration + 1
                 target_address = format_datum_address(family_layer, 2, next_iteration)
-                template_row = self._template_row(document=current_document, target_node_address=target_node_address)
+                template_row = self._template_row(
+                    document=current_document,
+                    target_node_address=target_node_address,
+                    title=_as_text(datum.get("title")),
+                )
                 raw = self._compile_insert_raw(
                     template_row=template_row,
                     target_node_address=target_node_address,
