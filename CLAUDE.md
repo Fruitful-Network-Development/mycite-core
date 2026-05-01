@@ -1,1 +1,0 @@
-/srv/agentic/adapters/claude/CLAUDE.md
