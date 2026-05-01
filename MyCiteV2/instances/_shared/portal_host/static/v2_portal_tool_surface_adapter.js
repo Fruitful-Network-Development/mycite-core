@@ -170,6 +170,9 @@
         globalName: "PortalAwsCsmInspectorRenderer",
         label: "AWS-CSM interface panel",
       },
+      // "system.tools.fnd_ebi": deferred — no dedicated renderer module yet.
+      // FND-EBI uses generic inspector path until a dedicated renderer is built.
+      // When added: update surface_catalog.md posture and the drift-test allowlist.
     };
 
     return moduleSpecs[surfaceId] || {};
