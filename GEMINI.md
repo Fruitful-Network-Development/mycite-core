@@ -1,1 +1,0 @@
-/srv/agentic/adapters/gemini/GEMINI.md

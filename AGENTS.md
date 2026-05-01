@@ -1,1 +1,0 @@
-/srv/agentic/adapters/codex/AGENTS.md
