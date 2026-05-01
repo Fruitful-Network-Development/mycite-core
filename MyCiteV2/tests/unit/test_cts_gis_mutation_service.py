@@ -29,11 +29,11 @@ def _ascii_bits(value: str, *, width: int = 256) -> str:
     return bitstream.ljust(width, "0")
 
 
-def _row(datum_address: str, node_address: str, title: str) -> AuthoritativeDatumDocumentRow:
+def _row(datum_address: str, node_address: str, title: str, *, width: int = 256) -> AuthoritativeDatumDocumentRow:
     return AuthoritativeDatumDocumentRow(
         datum_address=datum_address,
         raw=[
-            [datum_address, "rf.3-1-2", node_address, "rf.3-1-3", _ascii_bits(title)],
+            [datum_address, "rf.3-1-2", node_address, "rf.3-1-3", _ascii_bits(title, width=width)],
             [title.replace(" ", "_")],
         ],
     )
@@ -208,7 +208,7 @@ class CtsGisMutationServiceTests(unittest.TestCase):
         self.assertEqual(stage_state["normalized_payload"]["datums"][0]["title"], "UNLABELED")
         self.assertIn("placeholder_title:3-2-3-17-77-1", warnings)
 
-    def test_rejects_non_contiguous_iteration_groups(self) -> None:
+    def test_allows_non_contiguous_iteration_groups_when_planning_new_insertions(self) -> None:
         store = _FakeMutationStore(
             _document(
                 _row("4-2-1", "3-2-3-17-77-1", "ALPHA STREET"),
@@ -219,10 +219,55 @@ class CtsGisMutationServiceTests(unittest.TestCase):
         service = CtsGisMutationService(store)
         tool_state = self._tool_state(service)
 
-        with self.assertRaises(CtsGisMutationError) as context:
-            service.validate_stage(tenant_id="fnd", tool_state=tool_state)
+        validation = service.validate_stage(tenant_id="fnd", tool_state=tool_state)
+        self.assertEqual(validation["insertion_plan"]["groups"][0]["current_iterations"], [1, 3])
+        self.assertEqual(validation["insertion_plan"]["groups"][0]["planned_assignments"][0]["iteration"], 4)
 
-        self.assertEqual(context.exception.code, "non_contiguous_iteration_plan")
+        preview = service.preview_stage(tenant_id="fnd", tool_state=tool_state)
+        self.assertEqual([row["datum_address"] for row in preview["proposed_inserted_rows"]], ["4-2-4", "4-2-5"])
+
+    def test_preview_chooses_template_row_with_sufficient_title_capacity(self) -> None:
+        store = _FakeMutationStore(
+            _document(
+                _row("4-2-1", "3-2-3-17-77-1-6", "SHORT ROAD", width=88),
+                _row("4-2-2", "3-2-3-17-77-1-2", "WIDE TEMPLATE STREET", width=256),
+            )
+        )
+        service = CtsGisMutationService(store)
+        stage_state, _ = service.build_stage_state(
+            stage_document={
+                "schema": CTS_GIS_STAGE_INSERT_SCHEMA,
+                "document_id": "sandbox:cts_gis:sc.example.json",
+                "document_name": "sc.example.json",
+                "operation": "insert_datums",
+                "datums": [
+                    {
+                        "family": "administrative_street",
+                        "valueGroup": 2,
+                        "targetNodeAddress": "3-2-3-17-77-1-6-999",
+                        "title": "EAST BOSTON MILLS ROAD",
+                        "references": [
+                            {"type": "title", "text": "EAST BOSTON MILLS ROAD"},
+                            {"type": "msn-samras", "nodeAddress": "3-2-3-17-77-1-6-999"},
+                        ],
+                    }
+                ],
+            },
+            draft_text="stage",
+            draft_format="yaml",
+            placeholder_title_requested=False,
+        )
+        tool_state = {
+            "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
+            "selected_node_id": "3-2-3-17-77-1-6-999",
+            "staged_insert": stage_state,
+        }
+
+        preview = service.preview_stage(tenant_id="fnd", tool_state=tool_state)
+
+        inserted = preview["proposed_inserted_rows"][0]
+        self.assertEqual(inserted["datum_address"], "4-2-3")
+        self.assertEqual(len(inserted["raw"][0][4]), 256)
 
     def test_rejects_contract_denied_validation(self) -> None:
         store = self._store()

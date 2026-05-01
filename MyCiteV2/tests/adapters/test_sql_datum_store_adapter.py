@@ -212,6 +212,54 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             self.assertEqual(updated_rows[4]["raw"][0][2], "1-0-3")
             self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
 
+    def test_apply_document_insert_remaps_hyphen_qualified_refs(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("4-2-1", [["4-2-1", "rf.3-1-2", "3-2-3-17-18-1-1-1-1", "rf.3-1-3", "BITS"], ["first"]]),
+                    ("4-2-2", [["4-2-2", "rf.3-1-2", "3-2-3-17-18-1-1-2-1", "rf.3-1-3", "BITS", "3-2-3-17-28-3-4-2-1"], ["qualified_ref"]]),
+                ),
+            )
+
+            result = adapter.apply_document_insert(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                target_address="4-2-1",
+                raw=[["4-2-1", "rf.3-1-2", "3-2-3-17-77-1-6-999-2", "rf.3-1-3", "BITS"], ["inserted"]],
+            )
+
+            updated_rows = result["updated_document"]["rows"]
+            qualified_row = next(row for row in updated_rows if row["datum_address"] == "4-2-3")
+            self.assertIn("3-2-3-17-28-3-4-2-2", qualified_row["raw"][0])
+            self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
+
+    def test_apply_document_insert_allows_append_on_sparse_family(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            self._seed_catalog(
+                adapter,
+                rows=(
+                    ("1-0-1", [["1-0-1", "~", "ROOT"], ["first"]]),
+                    ("1-0-3", [["1-0-3", "~", "1-0-1"], ["third"]]),
+                    ("1-0-5", [["1-0-5", "~", "1-0-3"], ["fifth"]]),
+                ),
+            )
+
+            result = adapter.apply_document_insert(
+                tenant_id="fnd",
+                document_id="system:anthology",
+                target_address="1-0-6",
+                raw=[["1-0-6", "~", "1-0-5"], ["sixth"]],
+            )
+
+            updated_rows = result["updated_document"]["rows"]
+            addresses = [row["datum_address"] for row in updated_rows]
+            self.assertEqual(addresses, ["1-0-1", "1-0-3", "1-0-5", "1-0-6"])
+            self.assertEqual(updated_rows[-1]["raw"][0][2], "1-0-5")
+            self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
+
     def test_apply_document_delete_rejects_live_references(self) -> None:
         with TemporaryDirectory() as temp_dir:
             adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")

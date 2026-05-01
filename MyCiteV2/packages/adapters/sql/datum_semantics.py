@@ -348,7 +348,7 @@ def _normalize_mutation_token(
             suffix = "-".join(parts[-3:])
             prefix = "-".join(parts[:-3])
             if prefix and suffix in address_map:
-                raise ValueError("mutation_ineligible_hyphen_qualified_ref")
+                return f"{prefix}-{address_map[suffix]}"
     return token
 
 
@@ -384,8 +384,8 @@ def _remap_row_raw(
     return raw
 
 
-def _family_bounds(rows: tuple[AuthoritativeDatumDocumentRow, ...]) -> dict[tuple[int, int], tuple[int, int]]:
-    bounds: dict[tuple[int, int], tuple[int, int]] = {}
+def _family_stats(rows: tuple[AuthoritativeDatumDocumentRow, ...]) -> dict[tuple[int, int], tuple[int, int, bool]]:
+    stats: dict[tuple[int, int], tuple[int, int, bool]] = {}
     grouped: dict[tuple[int, int], list[int]] = {}
     for row in rows:
         layer, value_group, iteration = parse_datum_address(row.datum_address)
@@ -395,10 +395,21 @@ def _family_bounds(rows: tuple[AuthoritativeDatumDocumentRow, ...]) -> dict[tupl
         lower = ordered[0]
         upper = ordered[-1]
         expected = lower
+        canonical = True
         for value in ordered:
             if value != expected:
-                raise ValueError("document_rows_not_canonical")
+                canonical = False
+                break
             expected += 1
+        stats[family] = (lower, upper, canonical)
+    return stats
+
+
+def _family_bounds(rows: tuple[AuthoritativeDatumDocumentRow, ...]) -> dict[tuple[int, int], tuple[int, int]]:
+    bounds: dict[tuple[int, int], tuple[int, int]] = {}
+    for family, (lower, upper, canonical) in _family_stats(rows).items():
+        if not canonical:
+            raise ValueError("document_rows_not_canonical")
         bounds[family] = (lower, upper)
     return bounds
 
@@ -417,15 +428,16 @@ def _validate_insert_target(
 ) -> None:
     family = parse_datum_address(target_address)[:2]
     target_iteration = parse_datum_address(target_address)[2]
-    bounds = _family_bounds(rows)
-    current = bounds.get(family)
+    current = _family_stats(rows).get(family)
     if current is None:
         if target_iteration != 1:
             raise ValueError("empty_family_insert_must_start_at_iteration_1")
         return
-    lower, upper = current
+    lower, upper, canonical = current
     if target_iteration < lower or target_iteration > upper + 1:
         raise ValueError("insert_target_iteration_out_of_range")
+    if not canonical and target_iteration <= upper:
+        raise ValueError("document_rows_not_canonical")
 
 
 def _validate_move_target(
