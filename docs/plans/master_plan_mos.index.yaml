@@ -1,0 +1,327 @@
+schema_version: "1.0"
+kind: "mos_program_index"
+lifecycle: "historical-superseded"
+canonical_successor: "docs/plans/contextual_system_manifest.yaml"
+archive_note: "Retained as historical MOS closure index; active cross-directory planning control moved to contextual_system_manifest/contextual_system_task_board."
+
+authority:
+  markdown_path: "docs/plans/master_plan_mos.md"
+  markdown_wins_on_conflict: true
+
+program:
+  id: "MOS-MASTER-001"
+  title: "MOS SQL Core Master Plan and Cutover Program"
+  status: "completed"
+  last_reviewed: "2026-04-21"
+  defaults:
+    database_posture: "PostgreSQL-class relational authority, kept adapter- and contract-oriented rather than vendor-specific."
+    declaration_posture: "If semantic gaps remain open, the release is named an operational SQL-backed core rather than a fully closed MOS standard."
+    directive_posture: "NIMM/AITAS remains a parallel design/spec track and is not a v1 blocker."
+
+entries:
+  - id: "MOS-A0"
+    track: "Track A"
+    phase: "Phase 0"
+    status: "completed"
+    dependencies: []
+    gates:
+      - "authority_mapping_completeness"
+      - "cutover_scope_completeness"
+    evidence_refs:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+      - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md"
+      - "docs/personal_notes/MOS/mycelial_ontological_schema.md"
+      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
+    notes: "Authority matrix, semantic gap register, cutover scope table, and execution report are published."
+    rationale: "The program cannot cut over safely until every major MOS claim is classified."
+
+  - id: "MOS-A1"
+    track: "Track A"
+    phase: "Phase 1"
+    status: "completed"
+    dependencies:
+      - "MOS-A0"
+    gates:
+      - "cutover_scope_completeness"
+      - "semantic_discipline"
+    evidence_refs:
+      - "MyCiteV2/packages/ports/datum_store/contracts.py"
+      - "MyCiteV2/packages/ports/audit_log/contracts.py"
+      - "MyCiteV2/packages/ports/portal_authority/contracts.py"
+      - "MyCiteV2/instances/_shared/runtime/README.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Approved first-cut SQL authority surfaces are defined and bounded; the active append path promoted in this pass is audit-log, while `packages/ports/event_log/` remains a placeholder seam."
+    rationale: "The first implementation target is adapter replacement, not contract redesign."
+
+  - id: "MOS-A2"
+    track: "Track A"
+    phase: "Phase 2"
+    status: "completed"
+    dependencies:
+      - "MOS-A1"
+    gates:
+      - "shadow_parity"
+      - "yaml_integrity"
+    evidence_refs:
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/packages/adapters/sql/audit_log.py"
+      - "MyCiteV2/packages/adapters/sql/portal_authority.py"
+      - "MyCiteV2/packages/ports/portal_authority/contracts.py"
+      - "docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Phase 2 closed with shadow-mode SQL adapters and the combined portal-authority seam implemented; retained filesystem projections are historical bootstrap, parity, or fixture helpers only."
+    open_questions:
+      - "Whether grants, ownership posture, and tool exposure can share one reusable boundary without widening public contracts."
+
+  - id: "MOS-A3"
+    track: "Track A"
+    phase: "Phase 3"
+    status: "completed"
+    dependencies:
+      - "MOS-A2"
+    gates:
+      - "shadow_parity"
+      - "semantic_discipline"
+    evidence_refs:
+      - "docs/audits/cts_gis_datum_handling_alignment_audit_plan_2026-04-20.md"
+      - "docs/audits/reports/core_portal_datum_mss_protocol_report_2026-04-16.md"
+      - "MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py"
+      - "MyCiteV2/packages/adapters/filesystem/audit_log.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+      - "MyCiteV2/tests/adapters/test_sql_audit_log_adapter.py"
+      - "MyCiteV2/tests/adapters/test_sql_portal_authority_adapter.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+      - "docs/audits/reports/mos_sql_cutover_execution_report_2026-04-21.md"
+    notes: "Representative SQL-versus-legacy parity coverage is in place, and any retained filesystem projections are explicitly non-authoritative parity evidence only."
+
+  - id: "MOS-A4"
+    track: "Track A"
+    phase: "Phase 4"
+    status: "completed"
+    dependencies:
+      - "MOS-A3"
+    gates:
+      - "shadow_parity"
+      - "semantic_discipline"
+    evidence_refs:
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "MyCiteV2/instances/_shared/runtime/README.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+    notes: "Phase 4 closed with SQL-primary runtime composition established for the approved Track A surfaces through the `authority_mode=sql_primary` path."
+
+  - id: "MOS-A5"
+    track: "Track A"
+    phase: "Phase 5"
+    status: "completed"
+    dependencies:
+      - "MOS-A4"
+    gates:
+      - "shadow_parity"
+      - "semantic_discipline"
+    evidence_refs:
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "MyCiteV2/packages/adapters/sql/portal_authority.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+    notes: "The SQL-primary cutover path established DB-backed portal grants and tool exposure. Final SQL-only activation and shared-runtime legacy retirement are recorded in `MOS-A7`."
+
+  - id: "MOS-SG1"
+    track: "Track B"
+    phase: "SG-1"
+    status: "completed"
+    dependencies: []
+    gates:
+      - "native_closure"
+      - "semantic_discipline"
+    evidence_refs:
+      - "docs/plans/mos_sg1_version_identity_policy_2026-04-21.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Version identity is now storage-derived through `mos.mss_sha256_v1`, with SQL-backed persistence of the canonical hash input."
+    rationale: "Track B closure required a deterministic repo-native version identity that did not pretend to inherit a historical bitstream implementation absent from the current code."
+
+  - id: "MOS-SG2"
+    track: "Track B"
+    phase: "SG-2"
+    status: "completed"
+    dependencies:
+      - "MOS-SG1"
+    gates:
+      - "native_closure"
+      - "semantic_discipline"
+    evidence_refs:
+      - "docs/plans/mos_sg2_hyphae_derivation_policy_2026-04-21.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Hyphae derivation is now defined by anchor-context hashing, local dependency closure, and the required `0-0-*` rudi prefix."
+
+  - id: "MOS-SG3"
+    track: "Track B"
+    phase: "SG-3"
+    status: "completed"
+    dependencies:
+      - "MOS-SG2"
+    gates:
+      - "native_closure"
+      - "semantic_discipline"
+    evidence_refs:
+      - "docs/plans/mos_sg3_edit_remap_policy_2026-04-21.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
+      - "MyCiteV2/packages/adapters/sql/datum_semantics.py"
+      - "MyCiteV2/packages/adapters/sql/datum_store.py"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Deterministic insert/delete/move preview/apply behavior now exists behind the SQL datum-store adapter, with explicit compatibility limits for mutation surfaces."
+    rationale: "Generalized mutation authority only becomes acceptable once remap behavior is deterministic and unsafe deletes are refused."
+
+  - id: "MOS-SG4"
+    track: "Track B"
+    phase: "SG-4"
+    status: "completed"
+    dependencies:
+      - "MOS-SG1"
+      - "MOS-SG2"
+      - "MOS-SG3"
+    gates:
+      - "native_closure"
+    evidence_refs:
+      - "docs/plans/mos_sg4_standard_closure_policy_2026-04-21.md"
+      - "docs/plans/mos_semantic_gate_register_2026-04-21.md"
+      - "docs/plans/master_plan_mos.md"
+      - "MyCiteV2/tests/adapters/test_sql_datum_store_adapter.py"
+    notes: "Native MOS closure criteria and staged compatibility retirement rules are now explicit."
+
+  - id: "MOS-C1"
+    track: "Track C"
+    phase: "Directive Design Track"
+    status: "completed"
+    dependencies:
+      - "MOS-A1"
+    gates:
+      - "yaml_integrity"
+    evidence_refs:
+      - "docs/personal_notes/v2.5portal_work_writtings.md"
+      - "docs/personal_notes/MOS/mos_sql_backed_core_declaration_draft.md"
+      - "docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md"
+      - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
+      - "docs/plans/master_plan_mos.md"
+    notes: "Track C now defines directive-context scope, schema candidates, update policy, and SQL-core binding points without blocking the cutover or Track B closure. The additive SQL overlay implementation pass is tracked in `MOS-C2`."
+    rationale: "Directive-context work should inform future architecture without blocking the v1 SQL cutover."
+
+  - id: "MOS-C2"
+    track: "Track C"
+    phase: "Directive Overlay Implementation Pass"
+    status: "completed"
+    dependencies:
+      - "MOS-C1"
+      - "MOS-SG1"
+      - "MOS-SG2"
+      - "MOS-A4"
+    gates:
+      - "directive_overlay_non_mutation"
+      - "shadow_parity"
+      - "yaml_integrity"
+    evidence_refs:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/plans/mos_directive_context_design_track_2026-04-21.md"
+      - "docs/plans/archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md"
+      - "MyCiteV2/packages/ports/directive_context/contracts.py"
+      - "MyCiteV2/packages/ports/directive_context/README.md"
+      - "MyCiteV2/packages/adapters/sql/_sqlite.py"
+      - "MyCiteV2/packages/adapters/sql/directive_context.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "MyCiteV2/tests/contracts/test_directive_context_contracts.py"
+      - "MyCiteV2/tests/architecture/test_directive_context_port_boundaries.py"
+      - "MyCiteV2/tests/adapters/test_sql_directive_context_adapter.py"
+      - "MyCiteV2/tests/unit/test_portal_system_workspace_directive_context.py"
+    notes: "Track C now has additive SQL tables, append/read adapters, and an approved system-workspace runtime seam for normalized directive overlays keyed by `version_hash` and optional `hyphae_hash`. The overlay path is read-only with respect to authoritative datum rows and remains a non-blocking parallel track."
+    rationale: "Directive context can be projected into the SQL-backed core once Track B semantic identities exist, but it must remain additive and must not widen datum mutation authority."
+
+  - id: "MOS-A6"
+    track: "Track A"
+    phase: "Phase 6"
+    status: "completed"
+    dependencies:
+      - "MOS-A5"
+      - "MOS-SG1"
+      - "MOS-SG2"
+      - "MOS-C2"
+    gates:
+      - "sql_authority_ingestion_coverage"
+      - "directive_overlay_non_inference"
+      - "yaml_integrity"
+    evidence_refs:
+      - "MyCiteV2/scripts/migrate_fnd_repo_to_mos_sql.py"
+      - "docs/audits/reports/mos_fnd_sql_ingestion_dry_run_2026-04-21.md"
+      - "docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md"
+      - "MyCiteV2/tests/unit/test_migrate_fnd_repo_to_mos_sql.py"
+    notes: "The FND repo copy was inventoried and migrated into the MOS SQL authority database with 409 authoritative documents, 3,133 authoritative datum rows, 25,215 anchor rows, and a passed coverage gate. No shared directive overlays were imported because no explicit directive-context manifest was supplied."
+    rationale: "The cut-over cannot close until every authoritative datum row is present in SQL semantics or explicitly exception-listed."
+
+  - id: "MOS-A7"
+    track: "Track A"
+    phase: "Phase 7"
+    status: "completed"
+    dependencies:
+      - "MOS-A6"
+    gates:
+      - "sql_only_authority_activation"
+      - "documentation_alignment"
+      - "yaml_integrity"
+    evidence_refs:
+      - "MyCiteV2/instances/_shared/portal_host/app.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py"
+      - "MyCiteV2/instances/_shared/runtime/portal_system_workspace_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_shell_sql_authority.py"
+      - "MyCiteV2/tests/unit/test_portal_workspace_runtime_behavior.py"
+      - "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
+      - "docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md"
+    notes: "Shared runtime now requires an initialized SQL authority database for migrated SYSTEM surfaces, no longer advertises public filesystem/shadow authority modes there, and retains filesystem datum/audit code only as non-authoritative migration or fixture support."
+    rationale: "Final cut-over requires fail-closed SQL authority rather than a silent mixed-authority runtime."
+
+  - id: "MOS-A8"
+    track: "Track A"
+    phase: "Phase 8"
+    status: "completed"
+    dependencies:
+      - "MOS-A6"
+      - "MOS-C2"
+    gates:
+      - "directive_overlay_non_mutation"
+      - "directive_overlay_non_inference"
+      - "sql_only_authority_activation"
+    evidence_refs:
+      - "MyCiteV2/packages/tools/workbench_ui/service.py"
+      - "MyCiteV2/packages/tools/workbench_ui/README.md"
+      - "MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py"
+      - "MyCiteV2/tests/unit/test_workbench_ui_runtime.py"
+      - "docs/contracts/route_model.md"
+      - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
+    notes: "Phase 8 closed with the SQL-backed `workbench_ui` tool surface exposing a read-only, two-pane spreadsheet with query-driven grouping/lens/source controls, short identity badges, keyboard-safe document/row selection, and additive directive overlay summaries."
+    rationale: "The final cut-over needs a sturdy utilitarian inspection surface that reflects SQL-backed authority without widening datum mutation."
+
+  - id: "MOS-Z1"
+    track: "Program Closure"
+    phase: "Closure"
+    status: "completed"
+    dependencies:
+      - "MOS-A8"
+      - "MOS-SG4"
+      - "MOS-C2"
+    gates:
+      - "documentation_alignment"
+      - "sql_only_authority_activation"
+      - "native_closure"
+    evidence_refs:
+      - "docs/plans/master_plan_mos.md"
+      - "docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md"
+      - "docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md"
+      - "docs/audits/reports/mos_program_closure_report_2026-04-21.md"
+    notes: "The MOS cut-over program is complete for the current repo scope: migrated SYSTEM surfaces are SQL-authoritative, authority-only legacy cleanup is complete, Track B semantic closure is complete, Track C remains additive-only, and retained non-blocking exception scope is explicit."
+    rationale: "Closure requires one final authoritative statement of what is now SQL-owned, what was retired, and what remains intentionally outside the cut-over."
