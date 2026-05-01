@@ -2571,6 +2571,16 @@ def _build_cts_gis_structured_interface_body(
             or int(map_projection.get("feature_count") or 0) > 0
         )
     )
+    # True when decode ran but found zero HOPS bindings and no reference fallback.
+    # Distinct from awaiting_real_projection (decode not yet run / source not loaded).
+    _geometry_not_available = (
+        not has_real_profile
+        and decode_ready
+        and bool(selected_node_id)
+        and attention_matches_selection
+        and int(decode_summary.get("reference_binding_count") or 0) == 0
+        and int(map_projection.get("feature_count") or 0) == 0
+    )
     if decode_ready and selected_node_id and attention_matches_selection and garland_swapped:
         geospatial_projection = {
             **real_geospatial_projection,
@@ -2580,8 +2590,12 @@ def _build_cts_gis_structured_interface_body(
         geospatial_projection = {
             **geospatial_projection,
             "lens_state": lens_state,
-            "projection_state": "awaiting_real_projection",
-            "empty_message": "The selected node resolves structurally, but no HOPS projection is available for it yet.",
+            "projection_state": "geometry_not_available" if _geometry_not_available else "awaiting_real_projection",
+            "empty_message": (
+                "No geometry is registered for this node. Add geometry via the reference-promotion pipeline."
+                if _geometry_not_available
+                else "The selected node resolves structurally, but no HOPS projection is available for it yet."
+            ),
         }
 
     if has_real_profile:
@@ -2611,6 +2625,12 @@ def _build_cts_gis_structured_interface_body(
             "lens_state": lens_state,
         }
     elif decode_ready and selected_node_id:
+        _profile_state_value = "geometry_not_available" if _geometry_not_available else "awaiting_real_projection"
+        _profile_empty_message = (
+            "No geometry is registered for this node. Add geometry via the reference-promotion pipeline."
+            if _geometry_not_available
+            else "The selected node resolves structurally, but no profile projection is available for it yet."
+        )
         profile_projection = {
             **profile_projection,
             "active_profile": {
@@ -2621,16 +2641,15 @@ def _build_cts_gis_structured_interface_body(
                 "document_id": "",
             },
             "hierarchy": active_path_entries,
-            "district_precinct_collections": district_precinct_collections,
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": "—"},
                 {"label": "Projection source", "value": _as_text(map_projection.get("projection_source")) or "none"},
-                {"label": "Projection state", "value": "awaiting_real_projection"},
+                {"label": "Projection state", "value": _profile_state_value},
                 {"label": "Decode summary", "value": decode_summary_text},
             ],
             "district_overlay_toggle": district_overlay_toggle,
-            "empty_message": "The selected node resolves structurally, but no profile projection is available for it yet.",
+            "empty_message": _profile_empty_message,
             "has_profile_state": True,
             "lens_state": lens_state,
         }
@@ -2708,7 +2727,7 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
             "fallback_reason_codes": list(projection_model.get("fallback_reason_codes") or []),
             "focus_bounds": projection_model.get("focus_bounds"),
             "selected_feature": selected_feature if selected_feature else None,
-            "decode_summary": {"reference_binding_count": 0, "decoded_coordinate_count": 0, "failed_token_count": 0},
+            "decode_summary": dict(projection_model.get("decode_summary") or {}),
             "feature_count": len(list((projection_model.get("feature_collection") or {}).get("features") or [])),
             "feature_collection": {
                 "type": "FeatureCollection",
