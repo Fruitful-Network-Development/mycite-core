@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hover Expand Log Navigation</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: #efefef;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    .frame {
+      width: 390px;
+      height: 780px;
+      border: 1px solid #333;
+      background: #ececec;
+      padding: 18px 12px;
+    }
+
+    .layout {
+      height: 100%;
+      display: flex;
+      gap: 14px;
+    }
+
+    .rail {
+      width: 145px;
+      height: 100%;
+      border: 1px solid #333;
+      background: #f4f4f4;
+      overflow: hidden;
+      position: relative;
+      user-select: none;
+      cursor: default;
+    }
+
+    .item {
+      position: absolute;
+      left: 0;
+      width: 100%;
+      border-top: 1px solid #333;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #444;
+      background: #f4f4f4;
+      overflow: hidden;
+      white-space: nowrap;
+      transition:
+        top 70ms linear,
+        height 70ms linear,
+        font-size 70ms linear,
+        background-color 70ms linear,
+        color 70ms linear,
+        opacity 70ms linear;
+    }
+
+    .item:first-child { border-top: 0; }
+
+    .content {
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="layout">
+      <div class="rail" id="rail"></div>
+      <div class="content"></div>
+    </div>
+  </div>
+
+  <script>
+    const rail = document.getElementById('rail');
+
+    // A1 .. Z9 = 26 * 9 = 234 items
+    const items = [];
+    for (let letterCode = 65; letterCode <= 90; letterCode++) {
+      const letter = String.fromCharCode(letterCode);
+      for (let n = 1; n <= 9; n++) items.push(`${letter}${n}`);
+    }
+
+    rail.innerHTML = items.map(label => `<div class="item">${label}</div>`).join('');
+    const nodes = [...rail.children];
+
+    let focusIndex = (items.length - 1) / 2;
+    let targetFocusIndex = focusIndex;
+    let lastY = rail.clientHeight / 2;
+    let lastMoveTime = performance.now();
+    let speedBoost = 0;
+    let hovering = false;
+
+    const MIN_H = 2;
+    const MAX_H = 64;
+    const BASE_SPREAD = 3.2;
+    const EXTRA_SPREAD = 22;
+    const SPEED_SMOOTHING = 0.16;
+    const FOCUS_SMOOTHING = 0.2;
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(max, value));
+    }
+
+    function layout() {
+      const total = items.length;
+      const H = rail.clientHeight;
+
+      focusIndex += (targetFocusIndex - focusIndex) * FOCUS_SMOOTHING;
+      speedBoost += (0 - speedBoost) * SPEED_SMOOTHING;
+
+      const spread = BASE_SPREAD + speedBoost * EXTRA_SPREAD;
+      const heights = new Array(total);
+      let sum = 0;
+
+      for (let i = 0; i < total; i++) {
+        const d = Math.abs(i - focusIndex);
+        // Log-shaped falloff: broad near focus, compressed far away.
+        const weight = 1 / (1 + Math.log1p(d) / spread);
+        const h = MIN_H + (MAX_H - MIN_H) * Math.pow(weight, 3.2);
+        heights[i] = h;
+        sum += h;
+      }
+
+      const scale = H / sum;
+      let top = 0;
+
+      for (let i = 0; i < total; i++) {
+        const el = nodes[i];
+        const h = heights[i] * scale;
+        const dist = Math.abs(i - focusIndex);
+        const emphasis = Math.max(0, 1 - dist / (spread * 1.35 + 2));
+
+        el.style.top = `${top}px`;
+        el.style.height = `${h}px`;
+        el.style.fontSize = `${8 + emphasis * 20}px`;
+        el.style.backgroundColor = emphasis > 0.42 ? '#e7e7e7' : '#f4f4f4';
+        el.style.color = emphasis > 0.18 ? '#333' : '#777';
+        el.style.opacity = h < 5 ? '0.65' : '1';
+        el.textContent = h < 9 ? '' : items[i];
+
+        top += h;
+      }
+
+      requestAnimationFrame(layout);
+    }
+
+    rail.addEventListener('mousemove', (e) => {
+      hovering = true;
+      const rect = rail.getBoundingClientRect();
+      const y = clamp(e.clientY - rect.top, 0, rect.height);
+      const now = performance.now();
+      const dt = Math.max(8, now - lastMoveTime);
+      const dy = Math.abs(y - lastY);
+      const pxPerMs = dy / dt;
+
+      targetFocusIndex = (y / rect.height) * (items.length - 1);
+      speedBoost = clamp(pxPerMs * 2.6, 0, 1);
+
+      lastY = y;
+      lastMoveTime = now;
+    });
+
+    rail.addEventListener('mouseenter', (e) => {
+      const rect = rail.getBoundingClientRect();
+      const y = clamp(e.clientY - rect.top, 0, rect.height);
+      targetFocusIndex = (y / rect.height) * (items.length - 1);
+      lastY = y;
+      lastMoveTime = performance.now();
+      hovering = true;
+    });
+
+    rail.addEventListener('mouseleave', () => {
+      hovering = false;
+      targetFocusIndex = focusIndex;
+      speedBoost = 0;
+    });
+
+    layout();
+  </script>
+</body>
+</html>

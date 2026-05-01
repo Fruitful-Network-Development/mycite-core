@@ -1,0 +1,35 @@
+# MOS Operating SQL-Backed Core
+
+I want to proceed with a v1 MOS-backed SQL schema implementation.
+
+Since the purpose of the portal application is have core that can just as easily exist as a desktop application, I think the direction I want to head in is one that defines a single database, where portals hold a defined database peripheral package that allows for the portal to adjust modular by using database access as a peripheral access. 
+
+Then I can support the access by only allowing portals to access the files that they own (except for the FND portal that has a special admin peripheral package for access to any files. Similar to the AWS-CSM tool, since it uses the same universal tool interface surface as any other tool or portal, except the since the tool asserts it needs access to the AWS IAM peripheral communication package, and also only because the FND portal has permission via its keyPass contents, the tool is granted the ability to. This way a desktop application can just as easily employ a local database in the same way.)
+
+There is enough information for a legitimate operating SQL-backed core. Because several important parts are already concrete. The repo and findings support: a canonical datum row model with ordered `layer-value_group-iteration` addresses; file/sandbox/version concepts; engine-owned contracts and templates; deterministic preview/apply behavior; `canonical_v2` MSS compile/decode; and the crucial distinction between compact storage address and stable semantic identity. There is not enough for a full native MOS standard because the missing pieces are not peripheral. They are core identity and mutation semantics. Your own investigation explicitly concludes that no MSS hashing algorithm for `version_hash` was found, no concrete hyphae chain derivation is implemented, and no complete generalized editing algorithm exists for insertion/deletion remapping. [`repo/mycite-core/docs/personal_notes/archive/MOS/datum_logic_area_investigation_clarity.md`] The repo’s own new MSS reference file also states that it is a sound reference model with explicit assumptions, not a guarantee that every bit matches the runtime writer byte-for-byte. [`https://github.com/Fruitful-Network-Development/mycite-core/commit/ef52266820c9c5f22dde16d32fe91c2c34696f3e`] That means the core is operationally useful, but not yet fully closed as a formal standard.
+
+1.) The canonical authority principal is a portal instance, defined by their portal's operating msn_id
+
+2.) Owned unit are the first class 'files'. This is defined by the msn_id of the files name, even if a source is "held" by a contract and "stored separately" by two different portals like the author and the consumer, they are both from the same universal collection. Cache's too, only local sandbox source file copies are truly unique 'files'.
+
+3.) The minimum authoritative SQL surface for v1:
+Do not move everything at once. The repo already has stable ports around the datum store and publication summary/write surfaces【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/packages/ports/datum_store/contracts.py】, and the shell/runtime already consumes adapters behind those ports for core system reads【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py】. That means the best first DB authority surface is:
+ - authoritative anthology/document reads,
+ - contract and reference resolution metadata,
+ - audit/event append store,
+ - portal capability/peripheral grants,
+ - tool exposure/config metadata.
+All none datum files can be kept inside of the portal instances utilities tool respective directory as is. Like that of AWS-CSM profile store, hosted manifests, and vault/keypass inventory are still deeply tied to private filesystem layout in runtime code and should stay that way【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py】【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/instances/_shared/portal_host/app.py】.
+
+4.) “files” real first-class database objects, not just compatibility views over normalized tables. The portal shell contract and system workspace remain explicitly file/workbench oriented【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/docs/contracts/portal_shell_contract.md】. The filesystem datum adapter also still reads from canonical file-like surfaces such as `system/anthology.json`, `system/sources`, `payloads/cache`, and `sandbox/*/sources`【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py】. For a smooth cut-over, files need to remain first-class in the API.
+
+5.) Peripheral grants exist as a 'contract' between the host computer and the portal. So it uses the portals secret key to create a symmetricly signed key and that acts as the operating contract. Similar to how portals communicate with one another. Apply where applicable but unification of operation functionality is the goal.
+
+6.) Only package employment and runtime environment remains host-agnostic for desktop and web. The repo is already moving in the right direction here. The desktop drift report shows that the critical filesystem portability issue was addressed by adding path-capability overrides to the filesystem datum adapter, and audit append concurrency was hardened too【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/docs/audits/reports/desktop_access_historical_drift_report_2026-04-16.md】. The datum adapter now has `with_path_capabilities(...)` for remapped layouts【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/MyCiteV2/packages/adapters/filesystem/live_system_datum_store.py】. That means the host form factor should not decide storage semantics. A local desktop database should simply be another adapter/peripheral package source, not a different application model.
+
+7.) The cut-over shape reflects the repo’s architecture that already favors an adapter swap, not a rewrite. The modularization audit shows cross-domain code is already mostly port-driven and adapter-separated【https://github.com/Fruitful-Network-Development/mycite-core/blob/main/docs/audits/reports/peripheral_packages_modularization_report_2026-04-16.md】. So the clean cut-over plan is:
+    1. Add a SQL-backed portal authority adapter for portal grants, tool exposure, ownership, and utility metadata.
+    2. Add a SQL-backed datum store adapter implementing the current datum-store ports.
+    3. Keep file-shaped runtime contracts and shell behavior unchanged.
+    4. Keep filesystem adapters as compatibility projections during migration.
+    5. Remove hard-coded FND capability defaults only after DB grants can produce the same effective posture.

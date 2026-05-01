@@ -1,0 +1,55 @@
+schema_version: "1.0"
+kind: "refinement_phase_task_board"
+board:
+  id: "REFINEMENT-PHASE1-TASK-BOARD-2026-04-23"
+  title: "Refinement phase 1 audit and documentation"
+  lifecycle: "active"
+  phase: "phase_1_audit_and_documentation"
+  last_reviewed: "2026-04-23"
+  canonical_plan: "docs/plans/refinement.md"
+
+tasks:
+  - id: "TASK-REFINE-P1-001"
+    title: "Audit shell, runtime, and UI authority boundaries"
+    status: "done"
+    priority: "p1"
+    owner_role: "architecture-auditor"
+    acceptance:
+      - "Shell ownership, runtime ownership, and UI constraints are verified against canonical contracts."
+      - "Any drift or ambiguity between articulation and implementation is documented with repo evidence."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-002"
+    title: "Inspect NIMM implementation and deferred verb posture"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-auditor"
+    acceptance:
+      - "Current NIMM grammar and supported verbs are documented."
+      - "Locations of deferred investigate/mediate/manipulate semantics are cataloged."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-003"
+    title: "Survey CTS-GIS tool-local NIMM/AITAS and SAMRAS staging flow"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-auditor"
+    acceptance:
+      - "Tool-local state keys and action routes are documented."
+      - "Mutation path ownership is traced through runtime/service and not renderer writes."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"
+
+  - id: "TASK-REFINE-P1-004"
+    title: "Publish phase 1 glossary and terminology mismatch log"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Canonical terms for shell, directive script, lens, and stage/apply flow are defined."
+      - "Current-term mismatches and normalization targets are listed."
+    evidence_targets:
+      - "docs/plans/refinement_phase1_glossary_2026-04-23.md"
+      - "docs/audits/reports/refinement_phase1_audit_report_2026-04-23.md"

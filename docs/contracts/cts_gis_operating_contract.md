@@ -1,0 +1,86 @@
+# CTS-GIS Operating Contract
+
+CTS-GIS now operates in two explicit runtime modes:
+
+- `production_strict`
+- `audit_forensic`
+
+## Production Strict
+
+`production_strict` is the default runtime expectation for stable tool operation.
+
+- Runtime requires a valid compiled artifact as the strict navigation/evidence baseline.
+- Runtime does not run raw authority reconstruction or fallback repair.
+- Runtime fails fast when compiled state is missing, invalid, or stale against
+  the validated live source-layout fingerprint.
+- Runtime may hydrate request-time Garland projection state from authoritative
+  CTS-GIS projection documents when the active node/time/overlay context diverges
+  from the compiled artifact's default projection snapshot.
+- Hot-path payload emphasizes:
+  - `navigation_model`
+  - `projection_model`
+  - `evidence_model` (lazy/minimal unless explicitly requested)
+
+Fail-fast state is projected as `compiled_cts_gis_state_invalid` and requires a compile step before standard interaction can continue.
+
+## Audit Forensic
+
+`audit_forensic` is the diagnostic pathway.
+
+- Runtime may inspect raw sources and build reconstruction diagnostics.
+- Runtime may rebuild compiled state only when explicitly invoked through
+  diagnostic posture, never as silent production fallback.
+- Runtime may emit expanded evidence payloads.
+- Runtime may emit compatibility details to support migration and validation.
+
+Audit mode should be used for corpus maintenance, not as the default production UI path.
+
+## Compiled Artifact Authority
+
+Compiled authority schema:
+
+- `mycite.v2.portal.system.tools.cts_gis.compiled.v1`
+
+Canonical artifact location:
+
+- `data/payloads/compiled/cts_gis.<scope_id>.compiled.json`
+
+The artifact records:
+
+- canonical navigation model
+- canonical projection model
+- default tool state seed
+- evidence snapshot
+- invariant validity (`invariants.valid`)
+- strict invariant validity (`strict_invariants.valid`) with one-authority and one-namespace checks
+- validated `source_layout` fingerprint for freshness enforcement
+
+## Compile-Before-Deploy Posture
+
+Canonical validator:
+
+- `MyCiteV2/scripts/validate_cts_gis_sources.py`
+
+Canonical compiler:
+
+- `MyCiteV2/scripts/compile_cts_gis_artifact.py`
+
+FND deployment posture:
+
+- `MyCiteV2/scripts/deploy_portal_update.sh` now validates or regenerates the
+  compiled artifact before portal restart unless the operator explicitly opts
+  out for a diagnostic-only path.
+
+## Semantic Action Surface
+
+CTS-GIS entries may include semantic actions in addition to compatibility `shell_request` payloads.
+
+Canonical actions:
+
+- `select_node`
+- `set_intention`
+- `set_time`
+- `select_feature`
+- `toggle_overlay`
+
+The universal shell adapter may dispatch these actions directly while compatibility clients continue using `shell_request`.

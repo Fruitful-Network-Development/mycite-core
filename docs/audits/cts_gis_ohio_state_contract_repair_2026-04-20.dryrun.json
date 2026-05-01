@@ -1,0 +1,24 @@
+{
+  "report_type": "cts_gis_reference_geojson_repair",
+  "generated_at_utc": "2026-04-20T17:45:52Z",
+  "dry_run": true,
+  "node_filters": [
+    "3-2-3-17"
+  ],
+  "repaired_count": 0,
+  "documents": [
+    {
+      "source_profile": "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json",
+      "node_id": "3-2-3-17",
+      "status": "dry_run_candidate",
+      "before_issue_types": [
+        "contract_violation",
+        "polygon_count_mismatch"
+      ],
+      "after_issue_types": [
+        "contract_violation",
+        "polygon_count_mismatch"
+      ]
+    }
+  ]
+}
