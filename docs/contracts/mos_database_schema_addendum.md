@@ -101,7 +101,9 @@ the chain is `[0-0-1, 0-0-2, ..., 0-0-K]` regardless of which intermediate rudi 
 D directly references. Every preceding rudi datum must be present in the chain even if
 not used.
 
-Note: the chain derivation algorithm is planned (TASK-MOS-MSS-HYPHAE-CORE-2026-05-03).
+Note: the chain derivation algorithm is implemented at
+`MyCiteV2/packages/core/mss/datum_identity.py::derive_hyphae_chain`
+(TASK-MOS-MSS-HYPHAE-CORE-2026-05-03).
 This table supersedes the `datum_hyphae_chain` join table from `mycelial_ontological_schema.md`
 with explicit positional ordering and document-scoped addressing.
 
