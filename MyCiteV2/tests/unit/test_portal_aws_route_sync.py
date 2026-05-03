@@ -309,6 +309,17 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
             "onboard",
         )
 
+    def test_profile_onboarding_projection_marks_initiated_draft_as_pending_with_initiated_summary(self) -> None:
+        payload = _onboarding_payload()
+        payload["workflow"]["initiated"] = True
+        payload["workflow"]["initiated_at"] = "2026-05-02T00:00:00+00:00"
+        projected = _profile_onboarding_projection(payload)
+        self.assertEqual(projected["state"], "pending")
+        self.assertEqual(
+            projected["summary"],
+            "Mailbox onboarding is initiated; stage SMTP material to continue operator handoff.",
+        )
+
     def test_actions_fail_closed_when_runtime_dependency_is_missing(self) -> None:
         with TemporaryDirectory() as temp_dir:
             private_dir = Path(temp_dir)
@@ -831,6 +842,118 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertEqual(
             onboard_workspace["selected_profile_onboarding"]["onboarding_state"],
             "onboard",
+        )
+
+    def test_runtime_surface_exposes_begin_onboarding_for_uninitiated_mailbox(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "initiated": False,
+                        "initiated_at": "",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {"forward_to_email": "alex@example.com"},
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                },
+            )
+
+            bundle = run_portal_aws_csm(
+                {
+                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "portal_scope": {"scope_id": "fnd"},
+                    "surface_query": {"view": "domains", "domain": "cvccboard.org", "profile": "aws-csm.cvccboard.alex"},
+                },
+                private_dir=private_dir,
+            )
+
+        actions = bundle["surface_payload"]["workspace"]["selected_profile_onboarding"]["actions"]
+        begin_action = next(action for action in actions if action["kind"] == "begin_onboarding")
+        self.assertTrue(begin_action["enabled"])
+        self.assertEqual(begin_action["disabled_reason"], "")
+
+    def test_run_portal_aws_csm_action_accepts_begin_onboarding_and_records_initiated_state(self) -> None:
+        class _LocalOnboardingCloud:
+            def supplemental_profile_patch(self, action: str, profile: dict[str, object]) -> dict[str, object]:
+                _ = action, profile
+                return {}
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            profile_path = private_dir / "utilities" / "tools" / "aws-csm" / "aws-csm.cvccboard.alex.json"
+            _write_json(
+                profile_path,
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "initiated": False,
+                        "initiated_at": "",
+                    },
+                    "verification": {"portal_state": "not_started", "status": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {"forward_to_email": "alex@example.com"},
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                },
+            )
+
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._onboarding_cloud",
+                return_value=_LocalOnboardingCloud(),
+            ):
+                response = run_portal_aws_csm_action(
+                    {
+                        "schema": "mycite.v2.portal.system.tools.aws_csm.action.request.v1",
+                        "portal_scope": {"scope_id": "fnd"},
+                        "surface_query": {
+                            "view": "domains",
+                            "domain": "cvccboard.org",
+                            "profile": "aws-csm.cvccboard.alex",
+                            "section": "onboarding",
+                        },
+                        "action_kind": "begin_onboarding",
+                        "action_payload": {"profile_id": "aws-csm.cvccboard.alex"},
+                    },
+                    private_dir=private_dir,
+                )
+            stored = json.loads(profile_path.read_text(encoding="utf-8"))
+
+        action_result = response["surface_payload"]["action_result"]
+        onboarding = response["surface_payload"]["workspace"]["selected_profile_onboarding"]
+        begin_action = next(action for action in onboarding["actions"] if action["kind"] == "begin_onboarding")
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["updated_sections"], ["workflow"])
+        self.assertEqual(stored["workflow"]["initiated"], True)
+        self.assertTrue(stored["workflow"]["initiated_at"])
+        self.assertEqual(onboarding["onboarding_state"], "pending")
+        self.assertEqual(
+            onboarding["onboarding_summary"],
+            "Mailbox onboarding is initiated; stage SMTP material to continue operator handoff.",
+        )
+        self.assertFalse(begin_action["enabled"])
+        self.assertEqual(
+            begin_action["disabled_reason"],
+            "Onboarding was already initiated for this mailbox.",
         )
 
     def test_runtime_surface_projects_explicit_cuyahoga_domain_record(self) -> None:
