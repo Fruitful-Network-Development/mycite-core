@@ -91,3 +91,34 @@ Simultaneous selection carries of multiple selections of datums at the same time
 ---
 
 
+## PROMPT 4
+
+Deep dive audit investigation into current datum logic for the MOS database, with
+specific focus on the CTS-GIS portal failure chain (Ohio geometry and precinct
+collections not loading), the datum document naming taxonomy, ruigi-SAMRAS definition,
+and what the MOS database needs to properly represent the datum environment.
+
+---
+
+
+## OUTPUT 4
+
+`datum_mos_database_precision_audit_2026-05-03.md`
+(at /srv/agentic/knowledge/legacy/mycite-core/audits/reports/)
+
+Key findings:
+- Portal failure chain has 3 blockers: SAMRAS magnitude (resolved 2026-05-01),
+  Ohio geometry not compiled into artifact (resolved 2026-05-03 by recompile),
+  precinct time-window list absent (open — TASK-MOS-RUIGI-SAMRAS-2026-05-03)
+- Datum naming taxonomy (lv./stl./cptr.) is designed but 0 live docs use it
+- ruigi-SAMRAS (247-* precinct address space) is undefined as a SAMRAS structure;
+  runtime uses string pattern matching as placeholder
+- State profile documents need a precinct_time_windows section (new schema)
+- 5 new database tables identified: documents, samras_namespaces,
+  precinct_time_windows, datum_hyphae_chains, document_staging_map
+
+New contracts produced:
+- `docs/contracts/datum_document_naming_taxonomy.md`
+- `docs/contracts/mos_database_schema_addendum.md`
+
+---
