@@ -107,6 +107,7 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "create_profile",
         "update_profile",
         "delete_profile",
+        "begin_onboarding",
         "stage_smtp_credentials",
         "send_handoff_email",
         "send_handoff_correction_email",
@@ -120,6 +121,7 @@ _ALLOWED_ACTION_KINDS = frozenset(
 )
 _SERVICE_ACTION_KINDS = frozenset(
     {
+        "begin_onboarding",
         "stage_smtp_credentials",
         "refresh_provider_status",
         "capture_verification",
@@ -531,6 +533,7 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
     handoff_confirmed = handoff_status in {"send_as_confirmed", "send_as_confirmed_attested"}
     receive_operational = _as_bool(inbound.get("receive_verified")) or inbound_state == "receive_operational"
     mailbox_operational = _as_bool(workflow.get("is_mailbox_operational"))
+    initiated = _as_bool(workflow.get("initiated"))
     smtp_material_staged = bool(
         _as_bool(smtp.get("handoff_ready"))
         or _as_text(smtp.get("credentials_secret_state")).lower() == "configured"
@@ -572,6 +575,11 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
         return {
             "state": "staged",
             "summary": "SMTP material is staged and ready for operator handoff.",
+        }
+    if initiated:
+        return {
+            "state": "pending",
+            "summary": "Mailbox onboarding is initiated; stage SMTP material to continue operator handoff.",
         }
     return {
         "state": "pending",
@@ -1138,8 +1146,15 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
     correction_status = _handoff_correction_status(raw)
     handoff_template_version = _effective_handoff_template_version(workflow)
     forward_target = _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target"))
+    initiated = _as_bool(workflow.get("initiated"))
     onboarding = _profile_onboarding_projection(raw)
     actions = [
+        {
+            "kind": "begin_onboarding",
+            "label": "Initiate Onboarding",
+            "enabled": not initiated,
+            "disabled_reason": "" if not initiated else "Onboarding was already initiated for this mailbox.",
+        },
         {
             "kind": "stage_smtp_credentials",
             "label": "Stage SMTP Credentials",

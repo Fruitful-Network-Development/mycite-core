@@ -747,6 +747,7 @@
 
   function renderInspectorDomainTab(workspace, surfacePayload) {
     var profile = workspace.selected_profile || null;
+    var onboarding = asObject(workspace.selected_profile_onboarding);
     var domainOnboarding = asObject(workspace.selected_domain_onboarding);
     var selectedDomain = asText(workspace.selected_domain);
     if (!selectedDomain) {
@@ -772,6 +773,22 @@
       (profile
         ? '<section class="v2-card" style="margin-top:12px"><h3>Selected User Email</h3>' +
           renderInfoRows(profileFactRows(profile)) +
+          (Object.keys(onboarding).length
+            ? '<div style="margin-top:12px"><h4>Onboarding Stage</h4>' +
+              renderInfoRows(
+                renderKeyValueRows(onboarding, [
+                  "onboarding_state",
+                  "onboarding_summary",
+                  "handoff_status",
+                  "verification_state",
+                  "provider_state",
+                  "inbound_state",
+                  "email_received_at",
+                  "verified_at",
+                ])
+              ) +
+              "</div>"
+            : "") +
           "</section>" +
           renderProfileEditorCard(profile)
         : '<section class="v2-card" style="margin-top:12px"><h3>User Management</h3><p>Select a user email from the gallery to edit or delete that staged mailbox.</p></section>') +

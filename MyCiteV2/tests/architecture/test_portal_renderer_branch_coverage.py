@@ -65,6 +65,18 @@ class RendererBranchCoverageTests(unittest.TestCase):
         self.assertIn("toolSurfaceAdapter().buildDirectSurfaceRequest", AWS_SOURCE,
                       "AWS workspace must use buildDirectSurfaceRequest from PortalToolSurfaceAdapter")
 
+    def test_aws_domain_tab_surfaces_selected_mailbox_onboarding_stage(self) -> None:
+        start = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload) {")
+        end = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload) {")
+        domain_tab_source = AWS_SOURCE[start:end]
+
+        self.assertIn("selected_profile_onboarding", domain_tab_source,
+                      "AWS domain tab must read selected_profile_onboarding for the selected mailbox")
+        self.assertIn('"onboarding_state"', domain_tab_source,
+                      "AWS domain tab must surface onboarding_state for the selected mailbox")
+        self.assertIn('"handoff_status"', domain_tab_source,
+                      "AWS domain tab must surface handoff_status for the selected mailbox")
+
 
 class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):
     """Verify that the CTS-GIS workbench secondary evidence block and the inspector
