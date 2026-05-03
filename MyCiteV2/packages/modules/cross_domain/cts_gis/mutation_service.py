@@ -27,6 +27,7 @@ from MyCiteV2.packages.ports.datum_store import (
 
 CTS_GIS_STAGE_INSERT_SCHEMA = "mycite.v2.cts_gis.stage_insert.v1"
 CTS_GIS_STAGED_INSERT_STATE_SCHEMA = "mycite.v2.cts_gis.staged_insert.state.v1"
+CTS_GIS_MANIPULATION_STAGE_SCHEMA = "mycite.v2.cts_gis.manipulation_stage.v1"
 
 _SUPPORTED_OPERATION = "insert_datums"
 _SUPPORTED_FAMILY = "administrative_street"
@@ -34,6 +35,14 @@ _SUPPORTED_REFERENCE_TYPES = ("msn-samras", "title")
 _ALLOWED_STAGE_ROOT_KEYS = {"schema", "document_id", "document_name", "operation", "datums"}
 _ALLOWED_DATUM_KEYS = {"family", "valueGroup", "targetNodeAddress", "title", "references"}
 _ALLOWED_REFERENCE_KEYS = {"type", "nodeAddress", "text"}
+_ALLOWED_PROPOSED_OPERATIONS = frozenset({"insert_datum", "reorder_datum", "expand_structure"})
+_ALLOWED_TARGET_DOCUMENTS = frozenset({"msn-administrative", "msn-address_nodes"})
+_REQUIRED_MANIPULATION_STAGE_KEYS = frozenset({
+    "schema", "sandbox", "file", "datum_address",
+    "attention", "intention", "archetype", "space",
+    "proposed_operation", "target_document", "target_position",
+    "structure_valid", "structure_decode_confirmed",
+})
 
 
 def _as_text(value: object) -> str:
@@ -549,6 +558,66 @@ class CtsGisMutationService:
             raw[1] = [_label_token(title)]
         return raw
 
+    def validate_manipulation_stage(self, stage_text: str) -> tuple[dict[str, Any], list[str]]:
+        stage_mapping, _ = self._parse_stage_text(stage_text)
+        schema = _as_text(stage_mapping.get("schema"))
+        if schema != CTS_GIS_MANIPULATION_STAGE_SCHEMA:
+            raise CtsGisMutationError(
+                "manipulation_stage_schema_invalid",
+                f"schema must be {CTS_GIS_MANIPULATION_STAGE_SCHEMA}.",
+                details={"schema": schema},
+            )
+        missing_keys = sorted(_REQUIRED_MANIPULATION_STAGE_KEYS - set(stage_mapping.keys()))
+        if missing_keys:
+            raise CtsGisMutationError(
+                "manipulation_stage_fields_missing",
+                "Required manipulation stage fields are absent.",
+                details={"missing": missing_keys},
+            )
+        if not stage_mapping.get("structure_valid"):
+            raise CtsGisMutationError(
+                "structure_not_valid",
+                "structure_valid must be true before a manipulation stage can proceed.",
+            )
+        if not stage_mapping.get("structure_decode_confirmed"):
+            raise CtsGisMutationError(
+                "structure_decode_not_confirmed",
+                "structure_decode_confirmed must be true before a manipulation stage can proceed.",
+            )
+        proposed_operation = _as_text(stage_mapping.get("proposed_operation"))
+        if proposed_operation not in _ALLOWED_PROPOSED_OPERATIONS:
+            raise CtsGisMutationError(
+                "manipulation_stage_operation_invalid",
+                f"proposed_operation must be one of {sorted(_ALLOWED_PROPOSED_OPERATIONS)}.",
+                details={"proposed_operation": proposed_operation},
+            )
+        target_document = _as_text(stage_mapping.get("target_document"))
+        if target_document not in _ALLOWED_TARGET_DOCUMENTS:
+            raise CtsGisMutationError(
+                "manipulation_stage_target_document_invalid",
+                f"target_document must be one of {sorted(_ALLOWED_TARGET_DOCUMENTS)}.",
+                details={"target_document": target_document},
+            )
+        if _as_text(stage_mapping.get("archetype")) != "SAMRAS_family":
+            raise CtsGisMutationError(
+                "manipulation_stage_archetype_invalid",
+                "archetype must be SAMRAS_family.",
+                details={"archetype": _as_text(stage_mapping.get("archetype"))},
+            )
+        if _as_text(stage_mapping.get("space")) != "msn":
+            raise CtsGisMutationError(
+                "manipulation_stage_space_invalid",
+                "space must be msn.",
+                details={"space": _as_text(stage_mapping.get("space"))},
+            )
+        warnings: list[str] = []
+        target_position = stage_mapping.get("target_position")
+        if target_position is None or _as_text(target_position) == "":
+            warnings.append("target_position_unset")
+        if not _as_text(stage_mapping.get("attention")):
+            warnings.append("attention_unset")
+        return dict(stage_mapping), warnings
+
     def _administrative_rows(self, document: AuthoritativeDatumDocument) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for row in sorted(document.rows, key=lambda item: datum_address_sort_key(item.datum_address)):
@@ -867,6 +936,7 @@ class CtsGisMutationService:
 
 
 __all__ = [
+    "CTS_GIS_MANIPULATION_STAGE_SCHEMA",
     "CTS_GIS_STAGE_INSERT_SCHEMA",
     "CTS_GIS_STAGED_INSERT_STATE_SCHEMA",
     "CtsGisMutationError",

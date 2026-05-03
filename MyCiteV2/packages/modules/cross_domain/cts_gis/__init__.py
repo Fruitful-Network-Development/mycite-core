@@ -11,6 +11,7 @@ from .compiled_artifact import (
     write_compiled_artifact,
 )
 from .mutation_service import (
+    CTS_GIS_MANIPULATION_STAGE_SCHEMA,
     CTS_GIS_STAGE_INSERT_SCHEMA,
     CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
     CtsGisMutationError,
@@ -19,6 +20,7 @@ from .mutation_service import (
 from .service import CtsGisReadOnlyService
 
 __all__ = [
+    "CTS_GIS_MANIPULATION_STAGE_SCHEMA",
     "CTS_GIS_STAGE_INSERT_SCHEMA",
     "CTS_GIS_STAGED_INSERT_STATE_SCHEMA",
     "CtsGisMutationError",

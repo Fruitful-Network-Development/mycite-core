@@ -25,6 +25,7 @@ from MyCiteV2.packages.core.structures.samras import (
     select_preferred_structure_authority,
 )
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
+    CTS_GIS_MANIPULATION_STAGE_SCHEMA,
     CTS_GIS_STAGE_INSERT_SCHEMA,
     CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
     CtsGisMutationError,
@@ -94,6 +95,10 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "preview_apply",
         "apply_stage",
         "discard_stage",
+        "expand_structure",
+        "insert_datum",
+        "reorder_datum",
+        "validate_manipulation_stage",
     }
 )
 
@@ -1496,6 +1501,10 @@ def _cts_gis_control_panel(
     time_tokens = [_DEFAULT_TIME_DIRECTIVE]
     if current_time_directive and current_time_directive not in time_tokens:
         time_tokens.insert(0, current_time_directive)
+    _district_precincts_ref = (service_surface.get("contextual_references") or {}).get("district_precincts") or {}
+    for _tf_token in list(_district_precincts_ref.get("timeframe_tokens") or []):
+        if _as_text(_tf_token) and _as_text(_tf_token) not in time_tokens:
+            time_tokens.append(_as_text(_tf_token))
     time_entries = [
         {
             "label": f"Time · {token}",
@@ -3555,6 +3564,7 @@ def _apply_cts_gis_action(
                 warnings=list(public_preview.get("warnings") or []),
             )
             force_live_read = True
+            CtsGisReadOnlyService.evict_document_projection_cache()
             _append_sql_audit(
                 authority_db_file=authority_db_file,
                 event_type="portal.cts_gis.apply_stage.accepted",
@@ -3585,6 +3595,106 @@ def _apply_cts_gis_action(
                 details=dict(action_result.get("details") or {}),
             )
             return next_tool_state, action_result, force_live_read
+
+        if action_kind == "expand_structure":
+            structure_operation = dict(action_payload.get("structure_operation") or {})
+            if not structure_operation:
+                raise CtsGisMutationError(
+                    "structure_operation_required",
+                    "expand_structure requires action_payload.structure_operation with the expansion parameters.",
+                )
+            next_tool_state["staged_insert"]["structure_operation"] = structure_operation
+            next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS structure expansion operation staged in compound directive.",
+                details={
+                    "structure_operation": structure_operation,
+                    "compiled_nimm": bool(next_tool_state["staged_insert"].get("compiled_nimm_envelope")),
+                },
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind in ("insert_datum", "reorder_datum"):
+            stage_document, stage_meta = mutation_service.parse_stage_input(action_payload)
+            selected_document_id = _as_text(next_tool_state.get("source", {}).get("attention_document_id"))
+            selected_document_name = _document_name_for_id(
+                datum_store=sql_store,
+                tenant_id=tenant_id,
+                document_id=selected_document_id,
+            )
+            stage_state, warnings = mutation_service.build_stage_state(
+                stage_document=stage_document,
+                draft_text=_as_text(stage_meta.get("draft_text")),
+                draft_format=_as_text(stage_meta.get("draft_format")) or "json",
+                placeholder_title_requested=bool(stage_meta.get("placeholder_title_requested")),
+                selected_document_id=selected_document_id,
+                selected_document_name=selected_document_name,
+            )
+            next_tool_state["staged_insert"] = stage_state
+            if action_kind == "reorder_datum":
+                next_tool_state["staged_insert"]["structure_operation"] = {
+                    "kind": "reorder_datum",
+                    **(dict(action_payload.get("structure_operation") or {})),
+                }
+            elif isinstance(action_payload.get("structure_operation"), dict):
+                next_tool_state["staged_insert"]["structure_operation"] = dict(action_payload["structure_operation"])
+            next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
+            if action_payload.get("auto_validate"):
+                try:
+                    validation = mutation_service.validate_stage(
+                        tenant_id=tenant_id,
+                        tool_state=next_tool_state,
+                        contract_state=contract_state,
+                    )
+                    next_tool_state["staged_insert"]["last_validation"] = _public_stage_validation(validation)
+                    next_tool_state["staged_insert"]["compiled_nimm_envelope"] = _compile_staged_nimm_envelope(next_tool_state)
+                    warnings = list({*warnings, *list(next_tool_state["staged_insert"]["last_validation"].get("warnings") or [])})
+                except CtsGisMutationError:
+                    pass
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"CTS-GIS {action_kind} directive staged.",
+                details={
+                    "schema": CTS_GIS_STAGE_INSERT_SCHEMA,
+                    "document_id": _as_text(stage_state.get("normalized_payload", {}).get("document_id")),
+                    "document_name": _as_text(stage_state.get("normalized_payload", {}).get("document_name")),
+                    "datum_count": len(list(stage_state.get("normalized_payload", {}).get("datums") or [])),
+                    "compiled_nimm": bool(next_tool_state["staged_insert"].get("compiled_nimm_envelope")),
+                },
+                warnings=warnings,
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "validate_manipulation_stage":
+            stage_text = _as_text(action_payload.get("stage_text"))
+            if not stage_text and isinstance(action_payload.get("stage_document"), dict):
+                import json as _json
+                stage_text = _json.dumps(action_payload["stage_document"])
+            if not stage_text:
+                raise CtsGisMutationError(
+                    "stage_text_required",
+                    "validate_manipulation_stage requires action_payload.stage_text or action_payload.stage_document.",
+                )
+            validated_stage, warnings = mutation_service.validate_manipulation_stage(stage_text)
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message="CTS-GIS manipulation stage validated against contract schema.",
+                details={
+                    "schema": CTS_GIS_MANIPULATION_STAGE_SCHEMA,
+                    "proposed_operation": _as_text(validated_stage.get("proposed_operation")),
+                    "target_document": _as_text(validated_stage.get("target_document")),
+                    "attention": _as_text(validated_stage.get("attention")),
+                    "structure_valid": bool(validated_stage.get("structure_valid")),
+                    "structure_decode_confirmed": bool(validated_stage.get("structure_decode_confirmed")),
+                },
+                warnings=warnings,
+            )
+            return next_tool_state, action_result, force_live_read
+
     except CtsGisMutationError as exc:
         return (
             next_tool_state,
