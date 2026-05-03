@@ -32,6 +32,7 @@ AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_DCM_TOOL_SURFACE_ID = "system.tools.fnd_dcm"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
+PAYPAL_CSM_TOOL_SURFACE_ID = "system.tools.paypal_csm"
 WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
@@ -39,6 +40,7 @@ AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_DCM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_dcm"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
+PAYPAL_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.paypal_csm"
 WORKBENCH_UI_TOOL_ENTRYPOINT_ID = "portal.system.tools.workbench_ui"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
@@ -51,6 +53,7 @@ AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_DCM_TOOL_ROUTE = "/portal/system/tools/fnd-dcm"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
+PAYPAL_CSM_TOOL_ROUTE = "/portal/system/tools/paypal-csm"
 WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
@@ -121,6 +124,7 @@ TOOL_SURFACE_IDS = frozenset(
         CTS_GIS_TOOL_SURFACE_ID,
         FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
+        PAYPAL_CSM_TOOL_SURFACE_ID,
         WORKBENCH_UI_TOOL_SURFACE_ID,
     }
 )
@@ -736,6 +740,15 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             tool_id="fnd_ebi",
         ),
         PortalSurfaceCatalogEntry(
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            label="PayPal-CSM",
+            route=PAYPAL_CSM_TOOL_ROUTE,
+            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_kind="tool_surface",
+            page_owner="system",
+            tool_id="paypal_csm",
+        ),
+        PortalSurfaceCatalogEntry(
             surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             label="Workbench UI",
             route=WORKBENCH_UI_TOOL_ROUTE,
@@ -796,6 +809,18 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             read_write_posture="read-only",
             required_capabilities=("hosted_site_visibility", "fnd_peripheral_routing"),
             summary="Hosted site operational visibility.",
+        ),
+        PortalToolRegistryEntry(
+            tool_id="paypal_csm",
+            label="PayPal-CSM",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            entrypoint_id=PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+            route=PAYPAL_CSM_TOOL_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+            read_write_posture="write",
+            required_capabilities=("fnd_peripheral_routing",),
+            summary="PayPal order mediation and donation profile management.",
         ),
         PortalToolRegistryEntry(
             tool_id="workbench_ui",
@@ -1588,6 +1613,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "fnd_dcm"
     if normalized_surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd_ebi"
+    if normalized_surface_id == PAYPAL_CSM_TOOL_SURFACE_ID:
+        return "paypal_csm"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         return "workbench_ui"
     return "generic"
@@ -1781,6 +1808,9 @@ __all__ = [
     "FND_EBI_TOOL_ENTRYPOINT_ID",
     "FND_EBI_TOOL_ROUTE",
     "FND_EBI_TOOL_SURFACE_ID",
+    "PAYPAL_CSM_TOOL_ENTRYPOINT_ID",
+    "PAYPAL_CSM_TOOL_ROUTE",
+    "PAYPAL_CSM_TOOL_SURFACE_ID",
     "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
     "WORKBENCH_UI_TOOL_ROUTE",
     "WORKBENCH_UI_TOOL_SURFACE_ID",

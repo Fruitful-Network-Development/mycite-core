@@ -65,17 +65,80 @@ class RendererBranchCoverageTests(unittest.TestCase):
         self.assertIn("toolSurfaceAdapter().buildDirectSurfaceRequest", AWS_SOURCE,
                       "AWS workspace must use buildDirectSurfaceRequest from PortalToolSurfaceAdapter")
 
-    def test_aws_domain_tab_surfaces_selected_mailbox_onboarding_stage(self) -> None:
-        start = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload) {")
-        end = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload) {")
-        domain_tab_source = AWS_SOURCE[start:end]
+    def test_aws_users_tab_function_exists_and_contains_gallery_and_editor(self) -> None:
+        self.assertIn("function renderInspectorUsersTab(workspace, surfacePayload)", AWS_SOURCE,
+                      "renderInspectorUsersTab must be defined")
+        start = AWS_SOURCE.index("function renderInspectorUsersTab(workspace, surfacePayload)")
+        end = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload)")
+        users_tab_source = AWS_SOURCE[start:end]
+        self.assertIn("renderMailboxGallery", users_tab_source,
+                      "Users tab must render the mailbox gallery")
+        self.assertIn("renderCreateProfileCard", users_tab_source,
+                      "Users tab must render the create profile (Add User) form")
+        self.assertIn("renderProfileEditorCard", users_tab_source,
+                      "Users tab must render the profile editor when a profile is selected")
 
-        self.assertIn("selected_profile_onboarding", domain_tab_source,
-                      "AWS domain tab must read selected_profile_onboarding for the selected mailbox")
-        self.assertIn('"onboarding_state"', domain_tab_source,
-                      "AWS domain tab must surface onboarding_state for the selected mailbox")
-        self.assertIn('"handoff_status"', domain_tab_source,
-                      "AWS domain tab must surface handoff_status for the selected mailbox")
+    def test_aws_newsletter_tab_function_exists_and_gates_dispatch_on_sender_confirmed(self) -> None:
+        self.assertIn("function renderInspectorNewsletterTab(workspace, surfacePayload)", AWS_SOURCE,
+                      "renderInspectorNewsletterTab must be defined")
+        start = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
+        end = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload)")
+        newsletter_tab_source = AWS_SOURCE[start:end]
+        self.assertIn("selected_newsletter", newsletter_tab_source,
+                      "Newsletter tab must check workspace.selected_newsletter")
+        self.assertIn("senderConfirmed", newsletter_tab_source,
+                      "Newsletter tab must compute senderConfirmed from mailbox_rows")
+        self.assertIn("dispatch_newsletter", newsletter_tab_source,
+                      "Newsletter tab must include dispatch_newsletter action button")
+        self.assertIn("data-aws-assign-newsletter-sender-form", newsletter_tab_source,
+                      "Newsletter tab must include sender assignment form")
+        self.assertIn("subscribedCount", newsletter_tab_source,
+                      "Newsletter tab must surface subscribedCount for the dispatch gate")
+        # Dispatch button must be disabled when sender not confirmed
+        self.assertIn('disabled="disabled"', newsletter_tab_source,
+                      "Newsletter tab must disable dispatch button when gate conditions are not met")
+
+    def test_aws_newsletter_tab_conditional_renders_absent_message_when_no_newsletter(self) -> None:
+        start = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
+        end = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload)")
+        newsletter_tab_source = AWS_SOURCE[start:end]
+        self.assertIn("No newsletter profile is configured for this domain.", newsletter_tab_source,
+                      "Newsletter tab must render an absent-state message when selected_newsletter is null")
+
+    def test_aws_domain_infra_tab_contains_ses_and_receipt_fields_only(self) -> None:
+        self.assertIn("function renderInspectorDomainInfraTab(workspace, surfacePayload)", AWS_SOURCE,
+                      "renderInspectorDomainInfraTab must be defined")
+        start = AWS_SOURCE.index("function renderInspectorDomainInfraTab(workspace, surfacePayload)")
+        end = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
+        domain_infra_source = AWS_SOURCE[start:end]
+        self.assertIn('"ses_identity_status"', domain_infra_source,
+                      "Domain infra tab must surface ses_identity_status")
+        self.assertIn('"receipt_rule_status"', domain_infra_source,
+                      "Domain infra tab must surface receipt_rule_status")
+        self.assertNotIn("renderMailboxGallery", domain_infra_source,
+                         "Domain infra tab must NOT include the mailbox gallery (belongs to Users tab)")
+        self.assertNotIn("renderProfileEditorCard", domain_infra_source,
+                         "Domain infra tab must NOT include the profile editor (belongs to Users tab)")
+
+    def test_aws_inspector_tab_registration_uses_four_tab_structure(self) -> None:
+        self.assertIn('{ id: "users", label: "Users", active: true }', AWS_SOURCE,
+                      "Inspector must register a Users tab")
+        self.assertIn('{ id: "newsletter", label: "Newsletter", active: hasNewsletter }', AWS_SOURCE,
+                      "Inspector must register a conditional Newsletter tab")
+        self.assertIn('activeInspectorTabId(tabs, "users")', AWS_SOURCE,
+                      "Inspector must default to the users tab")
+        self.assertIn('renderInspectorTabPanel("newsletter"', AWS_SOURCE,
+                      "Inspector must render the newsletter tab panel")
+
+    def test_aws_domain_tab_surfaces_selected_mailbox_onboarding_stage(self) -> None:
+        start = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload)")
+        end = AWS_SOURCE.index("function renderInspectorDomainInfraTab(workspace, surfacePayload)")
+        onboarding_tab_source = AWS_SOURCE[start:end]
+
+        self.assertIn("renderOnboardingSection", onboarding_tab_source,
+                      "AWS onboarding tab must call renderOnboardingSection")
+        self.assertIn("renderDomainOnboardingCard", onboarding_tab_source,
+                      "AWS onboarding tab must include domain onboarding card when no profile selected")
 
 
 class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):

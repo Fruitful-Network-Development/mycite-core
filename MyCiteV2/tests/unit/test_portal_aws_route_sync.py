@@ -1390,7 +1390,7 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertEqual(action_result["details"]["sent_to"], "alex@example.com")
         self.assertFalse(cloud.called)
 
-    def test_workspace_renderer_source_defaults_to_onboarding_tabs_without_legacy_section_filters(self) -> None:
+    def test_workspace_renderer_source_exposes_four_tab_structure_with_users_first(self) -> None:
         source = (
             REPO_ROOT
             / "MyCiteV2"
@@ -1401,16 +1401,31 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
             / "v2_portal_aws_workspace.js"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }', source)
-        self.assertIn('activeInspectorTabId(tabs, "onboarding")', source)
-        self.assertNotIn("data-aws-section", source)
-        self.assertNotIn("data-aws-section-clear", source)
+        # Four-tab structure: users, onboarding, domain, newsletter
+        self.assertIn('{ id: "users", label: "Users", active: true }', source)
+        self.assertIn('{ id: "onboarding", label: "Onboarding", active: true }', source)
+        self.assertIn('{ id: "domain", label: "Domain", active: true }', source)
+        self.assertIn('{ id: "newsletter", label: "Newsletter", active: hasNewsletter }', source)
+        self.assertIn('activeInspectorTabId(tabs, "users")', source)
+        # Tab panels are rendered in order
+        self.assertLess(source.index('renderInspectorTabPanel("users"'), source.index('renderInspectorTabPanel("onboarding"'))
+        self.assertLess(source.index('renderInspectorTabPanel("onboarding"'), source.index('renderInspectorTabPanel("domain"'))
+        self.assertLess(source.index('renderInspectorTabPanel("domain"'), source.index('renderInspectorTabPanel("newsletter"'))
+        # Section bar and data-aws-section event binding present
+        self.assertIn("data-aws-section", source)
+        self.assertIn("renderSectionBar", source)
+        # Newsletter sender form and dispatch gate present
+        self.assertIn("data-aws-assign-newsletter-sender-form", source)
+        self.assertIn("dispatch_newsletter", source)
+        # Domain infra tab function present
+        self.assertIn("renderInspectorDomainInfraTab", source)
+        # Users tab function present
+        self.assertIn("renderInspectorUsersTab", source)
+        # Newsletter tab function present
+        self.assertIn("renderInspectorNewsletterTab", source)
+        # Core helpers preserved
         self.assertIn("handoff_correction_status", source)
         self.assertIn("data-aws-domain-action-kind", source)
-        self.assertLess(
-            source.index('renderInspectorTabPanel("onboarding"'),
-            source.index('renderInspectorTabPanel("domain"'),
-        )
 
     def test_runtime_surface_reads_newsletter_metadata_through_adapter_helper(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -1439,6 +1454,360 @@ class PortalAwsRouteSyncTests(unittest.TestCase):
         self.assertIn(("list_newsletter_domains", ""), fake_state.calls)
         self.assertIn(("load_profile", "cvccboard.org"), fake_state.calls)
         self.assertIn(("load_contact_log", "cvccboard.org"), fake_state.calls)
+
+    def test_assign_newsletter_sender_writes_sender_to_newsletter_profile(self) -> None:
+        class _WritableNewsletterState:
+            def __init__(self) -> None:
+                self.saved: dict[str, object] = {}
+                self._profile = {
+                    "schema": "mycite.service_tool.aws_csm.newsletter_profile.v1",
+                    "domain": "cvccboard.org",
+                    "list_address": "news@cvccboard.org",
+                    "delivery_mode": "inbound-mail-workflow",
+                    "selected_sender_profile_id": "",
+                    "selected_sender_address": "",
+                    "selected_author_profile_id": "aws-csm.cvccboard.alex",
+                    "selected_author_address": "alex@cvccboard.org",
+                }
+
+            def list_newsletter_domains(self) -> list[str]:
+                return ["cvccboard.org"]
+
+            def load_profile(self, *, domain: str) -> dict[str, object]:
+                return dict(self._profile)
+
+            def load_contact_log(self, *, domain: str) -> dict[str, object]:
+                return {"contacts": [], "dispatches": []}
+
+            def save_profile(self, *, domain: str, payload: dict[str, object]) -> dict[str, object]:
+                self.saved = dict(payload)
+                return self.saved
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            # Write a send_as_confirmed profile
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.alex.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            _write_json(
+                tool_root / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {
+                        "lifecycle_state": "draft",
+                        "handoff_status": "send_as_confirmed",
+                        "is_ready_for_user_handoff": True,
+                    },
+                    "verification": {"portal_state": "verified", "status": "verified"},
+                    "provider": {"send_as_provider_status": "verified"},
+                    "smtp": {"forward_to_email": "alex@example.com"},
+                    "inbound": {"receive_state": "receive_pending"},
+                },
+            )
+            nl_state = _WritableNewsletterState()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._newsletter_state",
+                return_value=nl_state,
+            ):
+                next_query, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "section": "newsletter"},
+                    action_kind="assign_newsletter_sender",
+                    action_payload={
+                        "domain": "cvccboard.org",
+                        "sender_profile_id": "aws-csm.cvccboard.alex",
+                    },
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["sender_profile_id"], "aws-csm.cvccboard.alex")
+        self.assertEqual(action_result["details"]["sender_address"], "alex@cvccboard.org")
+        self.assertEqual(nl_state.saved["selected_sender_profile_id"], "aws-csm.cvccboard.alex")
+        self.assertEqual(nl_state.saved["selected_sender_address"], "alex@cvccboard.org")
+        self.assertEqual(next_query["section"], "newsletter")
+
+    def test_assign_newsletter_sender_blocked_when_sender_not_confirmed(self) -> None:
+        class _UnconfirmedNewsletterState:
+            def list_newsletter_domains(self) -> list[str]:
+                return ["cvccboard.org"]
+
+            def load_profile(self, *, domain: str) -> dict[str, object]:
+                return {
+                    "domain": domain,
+                    "list_address": f"news@{domain}",
+                    "selected_sender_profile_id": "",
+                }
+
+            def load_contact_log(self, *, domain: str) -> dict[str, object]:
+                return {"contacts": [], "dispatches": []}
+
+            def save_profile(self, *, domain: str, payload: dict[str, object]) -> dict[str, object]:
+                raise AssertionError("save_profile must not be called when sender is not confirmed")
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.pending.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            _write_json(
+                tool_root / "aws-csm.cvccboard.pending.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.pending",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "pending@cvccboard.org",
+                        "single_user_email": "pending@example.com",
+                    },
+                    "workflow": {"handoff_status": "not_started"},
+                    "verification": {"portal_state": "not_started"},
+                    "provider": {"send_as_provider_status": "not_started"},
+                    "smtp": {"forward_to_email": "pending@example.com"},
+                    "inbound": {"receive_state": "receive_unconfigured"},
+                },
+            )
+            nl_state = _UnconfirmedNewsletterState()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._newsletter_state",
+                return_value=nl_state,
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "section": "newsletter"},
+                    action_kind="assign_newsletter_sender",
+                    action_payload={
+                        "domain": "cvccboard.org",
+                        "sender_profile_id": "aws-csm.cvccboard.pending",
+                    },
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+        self.assertEqual(action_result["status"], "error")
+        self.assertEqual(action_result["code"], "sender_not_confirmed")
+        self.assertIn("send_as_confirmed", action_result["message"].lower())
+
+    def test_dispatch_newsletter_blocked_by_dependency_guard_when_boto3_missing(self) -> None:
+        class _DispatchNewsletterState:
+            def list_newsletter_domains(self) -> list[str]:
+                return ["cvccboard.org"]
+
+            def load_profile(self, *, domain: str) -> dict[str, object]:
+                return {
+                    "domain": domain,
+                    "list_address": f"news@{domain}",
+                    "selected_sender_profile_id": "aws-csm.cvccboard.alex",
+                    "selected_sender_address": "alex@cvccboard.org",
+                    "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/123456789012/newsletter-dispatch",
+                    "dispatcher_callback_url": "https://cvccboard.org/__fnd/newsletter/dispatch-result",
+                }
+
+            def load_contact_log(self, *, domain: str) -> dict[str, object]:
+                return {
+                    "contacts": [{"email": "reader@example.com", "subscribed": True}],
+                    "dispatches": [],
+                }
+
+            def save_profile(self, *, domain: str, payload: dict[str, object]) -> dict[str, object]:
+                return dict(payload)
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.alex.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            _write_json(
+                tool_root / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {"handoff_status": "send_as_confirmed", "is_ready_for_user_handoff": True},
+                    "verification": {"portal_state": "verified", "status": "verified"},
+                    "provider": {"send_as_provider_status": "verified"},
+                    "smtp": {"forward_to_email": "alex@example.com"},
+                    "inbound": {"receive_state": "receive_pending"},
+                },
+            )
+            nl_state = _DispatchNewsletterState()
+            with patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime._newsletter_state",
+                return_value=nl_state,
+            ), patch(
+                "MyCiteV2.instances._shared.runtime.portal_aws_runtime.importlib.util.find_spec",
+                return_value=None,
+            ):
+                _, action_result = _apply_action(
+                    portal_scope=PortalScope(scope_id="fnd"),
+                    surface_query={"view": "domains", "domain": "cvccboard.org", "section": "newsletter"},
+                    action_kind="dispatch_newsletter",
+                    action_payload={"domain": "cvccboard.org"},
+                    private_dir=private_dir,
+                    audit_storage_file=None,
+                )
+
+        self.assertEqual(action_result["status"], "error")
+        self.assertEqual(action_result["code"], "runtime_dependency_missing")
+
+    def test_dispatch_newsletter_builds_subscriber_list_with_unsubscribe_tokens(self) -> None:
+        import hashlib as _hashlib
+        import hmac as _hmac
+        import base64 as _base64
+
+        class _SQSClient:
+            def __init__(self) -> None:
+                self.sent: list[dict[str, object]] = []
+
+            def send_message(self, **kwargs: object) -> dict[str, object]:
+                self.sent.append(dict(kwargs))
+                return {"MessageId": "test-message-id"}
+
+        class _BotoModule:
+            def __init__(self, sqs_client: _SQSClient) -> None:
+                self._sqs = sqs_client
+
+            def client(self, service_name: str) -> _SQSClient:
+                return self._sqs
+
+        class _DispatchNewsletterState:
+            def __init__(self) -> None:
+                self.saved: dict[str, object] = {}
+
+            def list_newsletter_domains(self) -> list[str]:
+                return ["cvccboard.org"]
+
+            def load_profile(self, *, domain: str) -> dict[str, object]:
+                return {
+                    "domain": domain,
+                    "list_address": "news@cvccboard.org",
+                    "selected_sender_profile_id": "aws-csm.cvccboard.alex",
+                    "selected_sender_address": "alex@cvccboard.org",
+                    "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/123456789012/newsletter-dispatch",
+                    "dispatcher_callback_url": "https://cvccboard.org/__fnd/newsletter/dispatch-result",
+                }
+
+            def load_contact_log(self, *, domain: str) -> dict[str, object]:
+                return {
+                    "contacts": [
+                        {"email": "reader1@example.com", "subscribed": True},
+                        {"email": "reader2@example.com", "subscribed": False},
+                        {"email": "reader3@example.com", "subscribed": True},
+                    ],
+                    "dispatches": [],
+                }
+
+            def save_profile(self, *, domain: str, payload: dict[str, object]) -> dict[str, object]:
+                self.saved = dict(payload)
+                return self.saved
+
+        with TemporaryDirectory() as temp_dir:
+            private_dir = Path(temp_dir)
+            _write_minimal_aws_csm_state(private_dir)
+            tool_root = private_dir / "utilities" / "tools" / "aws-csm"
+            collection_path = tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json"
+            collection = json.loads(collection_path.read_text(encoding="utf-8"))
+            collection["member_files"].append("aws-csm.cvccboard.alex.json")
+            collection_path.write_text(json.dumps(collection, indent=2) + "\n", encoding="utf-8")
+            _write_json(
+                tool_root / "aws-csm.cvccboard.alex.json",
+                {
+                    "schema": "mycite.service_tool.aws_csm.profile.v1",
+                    "identity": {
+                        "profile_id": "aws-csm.cvccboard.alex",
+                        "tenant_id": "cvccboard",
+                        "domain": "cvccboard.org",
+                        "send_as_email": "alex@cvccboard.org",
+                        "single_user_email": "alex@example.com",
+                    },
+                    "workflow": {"handoff_status": "send_as_confirmed", "is_ready_for_user_handoff": True},
+                    "verification": {"portal_state": "verified", "status": "verified"},
+                    "provider": {"send_as_provider_status": "verified"},
+                    "smtp": {"forward_to_email": "alex@example.com"},
+                    "inbound": {"receive_state": "receive_pending"},
+                },
+            )
+            nl_state = _DispatchNewsletterState()
+            sqs_client = _SQSClient()
+            boto_module = _BotoModule(sqs_client)
+            import sys
+            sys.modules["boto3"] = boto_module  # type: ignore[assignment]
+            try:
+                with patch(
+                    "MyCiteV2.instances._shared.runtime.portal_aws_runtime._newsletter_state",
+                    return_value=nl_state,
+                ), patch(
+                    "MyCiteV2.instances._shared.runtime.portal_aws_runtime.importlib.util.find_spec",
+                    return_value=object(),
+                ):
+                    next_query, action_result = _apply_action(
+                        portal_scope=PortalScope(scope_id="fnd"),
+                        surface_query={"view": "domains", "domain": "cvccboard.org", "section": "newsletter"},
+                        action_kind="dispatch_newsletter",
+                        action_payload={"domain": "cvccboard.org"},
+                        private_dir=private_dir,
+                        audit_storage_file=None,
+                    )
+            finally:
+                sys.modules.pop("boto3", None)
+
+        self.assertEqual(action_result["status"], "accepted")
+        self.assertEqual(action_result["details"]["subscriber_count"], "2")
+        self.assertEqual(next_query["section"], "newsletter")
+        # SQS was called once
+        self.assertEqual(len(sqs_client.sent), 1)
+        sqs_message = json.loads(sqs_client.sent[0]["MessageBody"])
+        self.assertEqual(len(sqs_message["subscriber_list"]), 2)
+        # Unsubscribed contact excluded
+        subscriber_emails = {s["email"] for s in sqs_message["subscriber_list"]}
+        self.assertIn("reader1@example.com", subscriber_emails)
+        self.assertNotIn("reader2@example.com", subscriber_emails)
+        self.assertIn("reader3@example.com", subscriber_emails)
+        # Each token is present and non-empty
+        for entry in sqs_message["subscriber_list"]:
+            self.assertTrue(entry["unsubscribe_token"])
+        # dispatch_id was saved to newsletter profile
+        self.assertEqual(nl_state.saved["last_dispatch_id"], sqs_message["dispatch_id"])
+
+    def test_generate_unsubscribe_token_is_deterministic_and_domain_scoped(self) -> None:
+        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import _generate_unsubscribe_token
+        secret = b"test-secret-key"
+        token1 = _generate_unsubscribe_token("reader@example.com", "cvccboard.org", "dispatch-abc", secret)
+        token2 = _generate_unsubscribe_token("reader@example.com", "cvccboard.org", "dispatch-abc", secret)
+        token3 = _generate_unsubscribe_token("reader@example.com", "other-domain.org", "dispatch-abc", secret)
+        token4 = _generate_unsubscribe_token("reader@example.com", "cvccboard.org", "dispatch-xyz", secret)
+        # Deterministic
+        self.assertEqual(token1, token2)
+        # Domain-scoped
+        self.assertNotEqual(token1, token3)
+        # Dispatch-id-scoped
+        self.assertNotEqual(token1, token4)
+        # Token is non-empty base64url
+        self.assertTrue(token1)
+        self.assertTrue(all(c in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_" for c in token1))
 
     def test_deployed_fnd_private_state_projects_current_aws_csm_surface_contract(self) -> None:
         deployed_private_dir = REPO_ROOT / "deployed" / "fnd" / "private"

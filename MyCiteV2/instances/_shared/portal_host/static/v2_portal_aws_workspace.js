@@ -695,6 +695,28 @@
     );
   }
 
+  function renderSectionBar(workspace) {
+    var sectionRows = asList(workspace.section_rows);
+    if (!sectionRows.length) return "";
+    return (
+      '<nav class="aws-csm-sectionBar" style="margin-top:12px">' +
+      sectionRows.map(function (row) {
+        return (
+          '<button type="button" class="aws-csm-sectionBar__tab' +
+          (row.active ? " is-active" : "") +
+          '" data-aws-section="' +
+          escapeHtml(row.label || "") +
+          '" data-aws-section-request=\'' +
+          escapeHtml(JSON.stringify(row.shell_request || {})) +
+          "'>" +
+          escapeHtml(row.label || "") +
+          "</button>"
+        );
+      }).join("") +
+      "</nav>"
+    );
+  }
+
   function renderSelectedDomain(workspace, surfacePayload) {
     var domain = workspace.selected_domain || "";
     if (!domain) return "";
@@ -704,6 +726,7 @@
       "</h3><p>Unified AWS-CSM domain gallery for mailbox management and onboarding posture.</p>" +
       '<div class="aws-csm-flowForm__actions"><button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-domain-clear>Back to Domain Gallery</button></div>' +
       "</section>" +
+      renderSectionBar(workspace) +
       renderActionResult(surfacePayload) +
       renderCreateProfileCard(workspace) +
       renderMailboxGallery(workspace) +
@@ -745,58 +768,8 @@
     );
   }
 
-  function renderInspectorDomainTab(workspace, surfacePayload) {
+  function renderInspectorUsersTab(workspace, surfacePayload) {
     var profile = workspace.selected_profile || null;
-    var onboarding = asObject(workspace.selected_profile_onboarding);
-    var domainOnboarding = asObject(workspace.selected_domain_onboarding);
-    var selectedDomain = asText(workspace.selected_domain);
-    if (!selectedDomain) {
-      return renderInspectorSelectionCard(workspace);
-    }
-    return (
-      renderActionResult(surfacePayload) +
-      '<section class="v2-card" style="margin-top:12px"><h3>Selected Domain</h3>' +
-      renderInfoRows(
-        renderKeyValueRows(domainOnboarding, [
-          "tenant_id",
-          "domain",
-          "region",
-          "hosted_zone_id",
-          "readiness_state",
-          "ses_identity_status",
-          "dkim_status",
-          "receipt_rule_status",
-        ])
-      ) +
-      "</section>" +
-      renderMailboxGallery(workspace) +
-      (profile
-        ? '<section class="v2-card" style="margin-top:12px"><h3>Selected User Email</h3>' +
-          renderInfoRows(profileFactRows(profile)) +
-          (Object.keys(onboarding).length
-            ? '<div style="margin-top:12px"><h4>Onboarding Stage</h4>' +
-              renderInfoRows(
-                renderKeyValueRows(onboarding, [
-                  "onboarding_state",
-                  "onboarding_summary",
-                  "handoff_status",
-                  "verification_state",
-                  "provider_state",
-                  "inbound_state",
-                  "email_received_at",
-                  "verified_at",
-                ])
-              ) +
-              "</div>"
-            : "") +
-          "</section>" +
-          renderProfileEditorCard(profile)
-        : '<section class="v2-card" style="margin-top:12px"><h3>User Management</h3><p>Select a user email from the gallery to edit or delete that staged mailbox.</p></section>') +
-      renderRawPayloadCard(workspace)
-    );
-  }
-
-  function renderInspectorOnboardingTab(workspace, surfacePayload) {
     var selectedDomain = asText(workspace.selected_domain);
     if (!selectedDomain) {
       return renderInspectorSelectionCard(workspace);
@@ -804,8 +777,144 @@
     return (
       renderActionResult(surfacePayload) +
       renderCreateProfileCard(workspace) +
+      renderMailboxGallery(workspace) +
+      (profile
+        ? renderProfileEditorCard(profile) +
+          renderRawPayloadCard(workspace)
+        : '<section class="v2-card" style="margin-top:12px"><h3>User Management</h3><p>Select a user email from the gallery to edit or delete that staged mailbox.</p></section>')
+    );
+  }
+
+  function renderInspectorOnboardingTab(workspace, surfacePayload) {
+    var profile = workspace.selected_profile || null;
+    var selectedDomain = asText(workspace.selected_domain);
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    return (
+      renderActionResult(surfacePayload) +
+      (!profile ? renderDomainOnboardingCard(workspace) : "") +
       renderOnboardingSection(workspace)
     );
+  }
+
+  function renderInspectorDomainInfraTab(workspace, surfacePayload) {
+    var domainOnboarding = asObject(workspace.selected_domain_onboarding);
+    var selectedDomain = asText(workspace.selected_domain);
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    return (
+      renderActionResult(surfacePayload) +
+      '<section class="v2-card" style="margin-top:12px"><h3>Domain Infrastructure</h3>' +
+      renderInfoRows(
+        renderKeyValueRows(domainOnboarding, [
+          "tenant_id",
+          "domain",
+          "region",
+          "hosted_zone_id",
+          "readiness_state",
+          "readiness_summary",
+          "ses_identity_exists",
+          "ses_identity_status",
+          "dkim_status",
+          "dkim_token_count",
+          "dkim_records_present",
+          "mx_record_present",
+          "mx_record_values",
+          "receipt_rule_status",
+          "receipt_rule_name",
+          "receipt_rule_recipient",
+          "receipt_rule_bucket",
+          "nameserver_match",
+          "last_checked_at",
+        ])
+      ) +
+      renderDomainActions(domainOnboarding) +
+      "</section>"
+    );
+  }
+
+  function renderInspectorNewsletterTab(workspace, surfacePayload) {
+    var selectedDomain = asText(workspace.selected_domain);
+    var newsletter = workspace.selected_newsletter || null;
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    if (!newsletter) {
+      return (
+        renderActionResult(surfacePayload) +
+        '<section class="v2-card" style="margin-top:12px"><h3>Newsletter</h3><p>No newsletter profile is configured for this domain.</p></section>'
+      );
+    }
+    var mailboxRows = asList(workspace.mailbox_rows);
+    var senderProfileId = asText(newsletter.sender_profile_id) || asText(newsletter.author_profile_id) || "";
+    var senderRow = null;
+    for (var i = 0; i < mailboxRows.length; i++) {
+      if (mailboxRows[i].profile_id === senderProfileId) {
+        senderRow = mailboxRows[i];
+        break;
+      }
+    }
+    var senderConfirmed = senderRow && (
+      senderRow.onboarding_state === "send_as_confirmed" ||
+      senderRow.onboarding_state === "onboard"
+    );
+    var subscribedCount = typeof newsletter.subscribed_count === "number"
+      ? newsletter.subscribed_count
+      : parseInt(newsletter.subscribed_count, 10) || 0;
+
+    var confirmableMailboxes = mailboxRows.filter(function (r) {
+      return r.onboarding_state === "send_as_confirmed" || r.onboarding_state === "onboard";
+    });
+
+    var senderAssignmentCard = (
+      '<section class="v2-card" style="margin-top:12px"><h3>Newsletter Sender</h3>' +
+      '<p>Current sender: <strong>' + escapeHtml(asText(newsletter.sender_address) || asText(newsletter.author_address) || "—") + "</strong>" +
+      (senderRow ? ' <span class="aws-csm-badge">' + escapeHtml(senderRow.onboarding_state || "unknown") + "</span>" : "") +
+      "</p>" +
+      (confirmableMailboxes.length > 0
+        ? '<form data-aws-assign-newsletter-sender-form style="margin-top:12px">' +
+          '<input type="hidden" name="domain" value="' + escapeHtml(selectedDomain) + '" />' +
+          '<label class="v2-formField"><span>Assign Sender</span><select name="sender_profile_id">' +
+          confirmableMailboxes.map(function (r) {
+            return (
+              '<option value="' + escapeHtml(r.profile_id || "") + '"' +
+              (r.profile_id === senderProfileId ? ' selected="selected"' : "") +
+              ">" + escapeHtml((r.send_as_email || r.profile_id || "") + " (" + (r.onboarding_state || "unknown") + ")") + "</option>"
+            );
+          }).join("") +
+          "</select></label>" +
+          '<div style="margin-top:12px"><button type="submit" class="ide-sessionAction ide-sessionAction--button">Assign Sender</button></div>' +
+          "</form>"
+        : '<p class="ide-controlpanel__empty">No mailbox in this domain has completed send-as confirmation.</p>') +
+      "</section>"
+    );
+
+    var dispatchGateCard = (
+      '<section class="v2-card" style="margin-top:12px"><h3>Send Newsletter</h3>' +
+      (senderConfirmed && subscribedCount > 0
+        ? '<p>Ready to dispatch to <strong>' + escapeHtml(String(subscribedCount)) + '</strong> subscriber(s).</p>' +
+          '<p><em>Each subscriber will receive a personalized message with an unsubscribe link.</em></p>' +
+          '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-action-kind="dispatch_newsletter" data-aws-action-payload=\'' +
+          escapeHtml(JSON.stringify({ domain: selectedDomain })) +
+          "'>Send Newsletter to " + escapeHtml(String(subscribedCount)) + " subscriber(s)</button>"
+        : (!senderConfirmed
+          ? '<button type="button" class="ide-sessionAction ide-sessionAction--button" disabled="disabled" title="Sender must complete send-as confirmation before dispatching.">Send Newsletter</button>'
+          : '<button type="button" class="ide-sessionAction ide-sessionAction--button" disabled="disabled" title="No active subscribers.">Send Newsletter</button>')) +
+      "</section>"
+    );
+
+    return (
+      renderActionResult(surfacePayload) +
+      renderNewsletterSection(workspace) +
+      senderAssignmentCard +
+      dispatchGateCard
+    );
+  }
+
+  function renderInspectorDomainTab(workspace, surfacePayload) {
+    return renderInspectorDomainInfraTab(workspace, surfacePayload);
   }
 
   function hasWorkspaceContent(workspace, surfacePayload) {
@@ -832,7 +941,7 @@
     target.__awsCsmDelegatedBindings = true;
     target.addEventListener("submit", function (event) {
       var form = event.target && event.target.closest
-        ? event.target.closest("[data-aws-create-profile-form], [data-aws-create-domain-form], [data-aws-update-profile-form]")
+        ? event.target.closest("[data-aws-create-profile-form], [data-aws-create-domain-form], [data-aws-update-profile-form], [data-aws-assign-newsletter-sender-form]")
         : null;
       var state = target.__awsCsmRenderState || {};
       if (!form || !target.contains(form) || !state.ctx) return;
@@ -865,20 +974,43 @@
           "create_domain",
           collectFormPayload(form)
         );
+        return;
+      }
+      if (form.hasAttribute("data-aws-assign-newsletter-sender-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "assign_newsletter_sender",
+          collectFormPayload(form)
+        );
       }
     });
     target.addEventListener("click", function (event) {
       var button = event.target && event.target.closest
         ? event.target.closest(
-            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-domain-clear], [data-aws-delete-profile]"
+            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-domain-clear], [data-aws-delete-profile], [data-aws-section]"
           )
         : null;
       var state = target.__awsCsmRenderState || {};
       if (!button || !target.contains(button) || !state.ctx || button.disabled) return;
       if (button.hasAttribute("data-aws-action-kind")) {
-        submitAction(state.ctx, state.workspace, state.surfacePayload, button.getAttribute("data-aws-action-kind") || "", {
-          profile_id: asObject(state.workspace.selected_profile).profile_id || "",
-        });
+        var explicitPayload = null;
+        try {
+          var rawPayload = button.getAttribute("data-aws-action-payload");
+          if (rawPayload) {
+            explicitPayload = JSON.parse(rawPayload);
+          }
+        } catch (_) {
+          explicitPayload = null;
+        }
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          button.getAttribute("data-aws-action-kind") || "",
+          explicitPayload || { profile_id: asObject(state.workspace.selected_profile).profile_id || "" }
+        );
         return;
       }
       if (button.hasAttribute("data-aws-domain-action-kind")) {
@@ -924,6 +1056,19 @@
           "delete_profile",
           { profile_id: asObject(state.workspace.selected_profile).profile_id || "" }
         );
+        return;
+      }
+      if (button.hasAttribute("data-aws-section")) {
+        var sectionRequestRaw = button.getAttribute("data-aws-section-request");
+        var sectionRequest = null;
+        try {
+          sectionRequest = sectionRequestRaw ? JSON.parse(sectionRequestRaw) : null;
+        } catch (_) {
+          sectionRequest = null;
+        }
+        if (sectionRequest && state.ctx && state.ctx.loadShell) {
+          state.ctx.loadShell(sectionRequest);
+        }
       }
     });
   }
@@ -974,12 +1119,15 @@
         workspace.selected_newsletter ||
         asText(actionResult.message)
       );
-      var tabs = normalizeInspectorTabs(
-        [{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }],
-        [{ id: "onboarding", label: "Onboarding", active: true }, { id: "domain", label: "Domain", active: true }],
-        "onboarding"
-      );
-      var activeTabId = activeInspectorTabId(tabs, "onboarding");
+      var hasNewsletter = !!(workspace.selected_newsletter);
+      var allTabs = [
+        { id: "users", label: "Users", active: true },
+        { id: "onboarding", label: "Onboarding", active: true },
+        { id: "domain", label: "Domain", active: true },
+        { id: "newsletter", label: "Newsletter", active: hasNewsletter },
+      ];
+      var tabs = normalizeInspectorTabs(allTabs, allTabs, "users");
+      var activeTabId = activeInspectorTabId(tabs, "users");
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
@@ -995,8 +1143,10 @@
         renderToolPostureCard(tool) +
         renderInspectorTabs(tabs) +
         '<div class="aws-csm-interfacePanel__body">' +
+        renderInspectorTabPanel("users", activeTabId, renderInspectorUsersTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
         renderInspectorTabPanel("onboarding", activeTabId, renderInspectorOnboardingTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
-        renderInspectorTabPanel("domain", activeTabId, renderInspectorDomainTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("domain", activeTabId, renderInspectorDomainInfraTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("newsletter", activeTabId, renderInspectorNewsletterTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
         "</div></div>"
       );
       target.__awsCsmRenderState = {
