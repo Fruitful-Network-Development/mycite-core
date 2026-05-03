@@ -130,6 +130,11 @@
         globalName: "PortalAwsCsmWorkspaceRenderer",
         label: "AWS-CSM workspace",
       },
+      "system.tools.paypal_csm": {
+        moduleId: "paypal_workspace",
+        globalName: "PortalPaypalCsmWorkspaceRenderer",
+        label: "PayPal-CSM workspace",
+      },
     };
 
     return moduleSpecs[surfaceId] || {};
@@ -170,9 +175,12 @@
         globalName: "PortalAwsCsmInspectorRenderer",
         label: "AWS-CSM interface panel",
       },
-      // "system.tools.fnd_ebi": deferred — no dedicated renderer module yet.
-      // FND-EBI uses generic inspector path until a dedicated renderer is built.
-      // When added: update surface_catalog.md posture and the drift-test allowlist.
+      // "system.tools.fnd_ebi": deferred — renderer module v2_portal_fnd_ebi_workspace.js not yet created
+      "system.tools.paypal_csm": {
+        moduleId: "paypal_workspace",
+        globalName: "PortalPaypalCsmInspectorRenderer",
+        label: "PayPal-CSM interface panel",
+      },
     };
 
     return moduleSpecs[surfaceId] || {};

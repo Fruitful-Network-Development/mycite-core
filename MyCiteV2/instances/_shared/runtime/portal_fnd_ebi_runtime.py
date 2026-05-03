@@ -25,6 +25,12 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     normalize_runtime_shell_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
+from MyCiteV2.packages.adapters.filesystem import (
+    FilesystemFndEbiReadOnlyAdapter,
+    FilesystemFndEbiDonationsReadOnlyAdapter,
+)
+from MyCiteV2.packages.modules.cross_domain.fnd_ebi.service import FndEbiReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.fnd_ebi_donations.service import FndEbiDonationsReadOnlyService
 
 
 def _as_text(value: object) -> str:
@@ -106,6 +112,60 @@ def build_portal_fnd_ebi_surface_bundle(
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
         },
     }
+    # --- Analytics surface ---
+    selected_domain = _as_text(dict(shell_state.focus_subject or {}).get("domain"))
+    analytics_surface: dict[str, Any] = {}
+    if private_dir is not None:
+        try:
+            analytics_service = FndEbiReadOnlyService(
+                FilesystemFndEbiReadOnlyAdapter(
+                    private_dir,
+                    webapps_root=webapps_root or "/srv/webapps",
+                )
+            )
+            analytics_surface = analytics_service.read_surface(
+                portal_tenant_id=portal_scope.scope_id or "fnd",
+                selected_domain=selected_domain,
+            )
+        except Exception:
+            analytics_surface = {}
+
+    # --- Donations surface ---
+    donations_surface: dict[str, Any] = {}
+    if private_dir is not None:
+        try:
+            donations_service = FndEbiDonationsReadOnlyService(
+                FilesystemFndEbiDonationsReadOnlyAdapter(
+                    private_dir,
+                    webapps_root=webapps_root or "/srv/webapps",
+                )
+            )
+            donations_surface = donations_service.read_donations_surface(
+                portal_tenant_id=portal_scope.scope_id or "fnd",
+                selected_domain=selected_domain,
+            )
+        except Exception:
+            donations_surface = {}
+
+    # --- Workbench visibility gate ---
+    # Visible when at least one data section (analytics or donations) has state == "ready".
+    analytics_access_state = _as_text(
+        dict(analytics_surface.get("files") or {})
+        .get("access_log", {})
+        .get("state")
+    )
+    donations_log_state = _as_text(
+        dict(donations_surface.get("donations_log") or {}).get("state")
+    )
+    workbench_visible = analytics_access_state == "ready" or donations_log_state == "ready"
+
+    donations_payload = {
+        "enabled": bool(donations_surface.get("donations_enabled", False)),
+        "log": dict(donations_surface.get("donations_log") or {}),
+        "summary": dict(donations_surface.get("donations_summary") or {}),
+        "warnings": list(donations_surface.get("warnings") or []),
+    }
+
     control_panel = build_tool_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -125,11 +185,17 @@ def build_portal_fnd_ebi_surface_bundle(
         "kind": "surface_payload",
         "title": "FND-EBI Evidence",
         "subtitle": "Workbench remains hidden until the runtime requests supporting evidence.",
-        "visible": False,
+        "visible": workbench_visible,
         "surface_payload": {
             "kind": "surface_payload",
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
             "webapps_summary": webapps_summary,
+            "overview": dict(analytics_surface.get("overview") or {}),
+            "traffic": dict(analytics_surface.get("traffic") or {}),
+            "events_summary": dict(analytics_surface.get("events_summary") or {}),
+            "errors_noise": dict(analytics_surface.get("errors_noise") or {}),
+            "files": dict(analytics_surface.get("files") or {}),
+            "donations": donations_payload,
         },
         },
         family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,

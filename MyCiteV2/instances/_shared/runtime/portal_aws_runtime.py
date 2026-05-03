@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import base64
 from copy import deepcopy
 from functools import lru_cache
 import hashlib
+import hmac
 import importlib.util
 import json
 import os
 from pathlib import Path
 import re
+import uuid
 from typing import Any, Mapping
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -117,6 +120,8 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "capture_verification",
         "confirm_verified",
         "confirm_verified_attested",
+        "assign_newsletter_sender",
+        "dispatch_newsletter",
     }
 )
 _SERVICE_ACTION_KINDS = frozenset(
@@ -141,6 +146,7 @@ _DEPENDENCY_GUARDED_ACTION_KINDS = frozenset(
         "send_handoff_correction_email",
         "send_pending_handoff_corrections",
         "reveal_smtp_password",
+        "dispatch_newsletter",
         *_SERVICE_ACTION_KINDS,
     }
 )
@@ -299,6 +305,30 @@ def _redact_secret_payload_values(value: Any) -> Any:
     if isinstance(value, list):
         return [_redact_secret_payload_values(item) for item in value]
     return value
+
+
+def _generate_unsubscribe_token(email: str, domain: str, dispatch_id: str, secret: bytes) -> str:
+    payload = f"{domain}:{dispatch_id}:{email}".encode()
+    sig = hmac.new(secret, payload, hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
+
+
+def _read_newsletter_unsubscribe_secret(private_dir: str | Path | None, domain: str) -> bytes:
+    """Read the per-domain HMAC secret for unsubscribe token generation.
+
+    Looks for a file at private/newsletter-unsubscribe-secret.<domain>.key.
+    Falls back to a deterministic domain-scoped seed if no file exists.
+    """
+    domain_token = _normalized_domain(domain)
+    if private_dir is not None:
+        secret_path = Path(private_dir) / f"newsletter-unsubscribe-secret.{domain_token}.key"
+        if secret_path.exists() and secret_path.is_file():
+            raw = secret_path.read_bytes().strip()
+            if raw:
+                return raw
+    # Deterministic fallback — not cryptographically isolated; operators should
+    # provision a real key file for production use.
+    return hashlib.sha256(f"newsletter-unsubscribe-fallback:{domain_token}".encode()).digest()
 
 
 def _aws_csm_lens_entries(action_payload: Mapping[str, Any]) -> list[dict[str, str]]:
@@ -669,7 +699,8 @@ def _newsletter_domains(private_dir: str | Path | None) -> list[dict[str, Any]]:
             {
                 "domain": domain,
                 "list_address": _as_text(profile.get("list_address")).lower(),
-                "sender_address": _as_text(profile.get("sender_address")).lower(),
+                "sender_address": _as_text(profile.get("selected_sender_address") or profile.get("sender_address")).lower(),
+                "sender_profile_id": _as_text(profile.get("selected_sender_profile_id")),
                 "author_profile_id": _as_text(profile.get("selected_author_profile_id")),
                 "author_address": _as_text(profile.get("selected_author_address")).lower(),
                 "delivery_mode": _as_text(profile.get("delivery_mode")) or "unknown",
@@ -2544,6 +2575,208 @@ def _apply_action(
                 message=message,
                 details=details,
                 created_profile=details,
+            )
+
+        if action_kind == "assign_newsletter_sender":
+            # Newsletter-filesystem-only write — not dependency guarded.
+            domain = _normalized_domain(action_payload.get("domain") or surface_query.get("domain"))
+            if not domain:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="domain_required",
+                    message="Select an AWS-CSM domain before assigning a newsletter sender.",
+                )
+            newsletter_adapter = _newsletter_state(private_dir)
+            if newsletter_adapter is None:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="newsletter_state_unavailable",
+                    message="Newsletter state adapter is not available in this portal runtime.",
+                )
+            newsletter_profile = _as_dict(newsletter_adapter.load_profile(domain=domain))
+            if not newsletter_profile:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="newsletter_profile_missing",
+                    message=f"No newsletter-admin profile exists for domain {domain}.",
+                )
+            sender_profile_id = _as_text(action_payload.get("sender_profile_id"))
+            if not sender_profile_id:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="sender_profile_id_required",
+                    message="sender_profile_id is required to assign a newsletter sender.",
+                )
+            # Validate sender onboarding state
+            sender_row = None
+            for row in _mailbox_profiles(tool_root):
+                if _as_text(row.get("profile_id")) == sender_profile_id and _normalized_domain(row.get("domain")) == domain:
+                    sender_row = row
+                    break
+            if sender_row is None:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="sender_profile_not_found",
+                    message=f"Profile {sender_profile_id} was not found in domain {domain}.",
+                )
+            sender_onboarding_state = _as_text(sender_row.get("onboarding_state")).lower()
+            if sender_onboarding_state not in {"send_as_confirmed", "onboard"}:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="sender_not_confirmed",
+                    message="Sender must have completed send-as confirmation (onboarding_state must be send_as_confirmed or onboard).",
+                    details={
+                        "sender_profile_id": sender_profile_id,
+                        "onboarding_state": sender_onboarding_state,
+                    },
+                )
+            sender_send_as_email = _as_text(sender_row.get("send_as_email")).lower()
+            newsletter_profile["selected_sender_profile_id"] = sender_profile_id
+            newsletter_profile["selected_sender_address"] = sender_send_as_email
+            newsletter_adapter.save_profile(domain=domain, payload=newsletter_profile)
+            details = {
+                "domain": domain,
+                "sender_profile_id": sender_profile_id,
+                "sender_address": sender_send_as_email,
+                "onboarding_state": sender_onboarding_state,
+            }
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return {"view": "domains", "domain": domain, "section": "newsletter"}, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Newsletter sender assigned to {sender_send_as_email} for {domain}.",
+                details=details,
+            )
+
+        if action_kind == "dispatch_newsletter":
+            domain = _normalized_domain(action_payload.get("domain") or surface_query.get("domain"))
+            if not domain:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="domain_required",
+                    message="Select an AWS-CSM domain before dispatching a newsletter.",
+                )
+            newsletter_adapter = _newsletter_state(private_dir)
+            if newsletter_adapter is None:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="newsletter_state_unavailable",
+                    message="Newsletter state adapter is not available in this portal runtime.",
+                )
+            newsletter_profile = _as_dict(newsletter_adapter.load_profile(domain=domain))
+            if not newsletter_profile:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="newsletter_profile_missing",
+                    message=f"No newsletter-admin profile exists for domain {domain}.",
+                )
+            # Check sender onboarding state
+            sender_profile_id = _as_text(newsletter_profile.get("selected_sender_profile_id"))
+            if not sender_profile_id:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="newsletter_sender_unassigned",
+                    message="No newsletter sender is assigned. Use 'assign_newsletter_sender' first.",
+                )
+            sender_row = None
+            for row in _mailbox_profiles(tool_root):
+                if _as_text(row.get("profile_id")) == sender_profile_id:
+                    sender_row = row
+                    break
+            if sender_row is None or _as_text(sender_row.get("onboarding_state")).lower() not in {"send_as_confirmed", "onboard"}:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="sender_not_confirmed",
+                    message="Newsletter sender must have completed send-as confirmation before dispatching.",
+                    details={"sender_profile_id": sender_profile_id},
+                )
+            # Load contact log
+            contacts_payload = _as_dict(newsletter_adapter.load_contact_log(domain=domain))
+            contacts = [item for item in _as_list(contacts_payload.get("contacts")) if isinstance(item, dict)]
+            subscribers = [item for item in contacts if item.get("subscribed") is True]
+            if not subscribers:
+                return surface_query, _action_result(
+                    action_kind=action_kind,
+                    status="error",
+                    code="no_active_subscribers",
+                    message="There are no active subscribers for this newsletter domain.",
+                )
+            # Dependency guard for boto3
+            tenant_id_for_dispatch = _as_text(newsletter_profile.get("tenant_id")) or domain
+            dispatch_cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id_for_dispatch)
+            dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=dispatch_cloud)
+            if dependency_failure:
+                return surface_query, dependency_failure
+            # Generate per-subscriber unsubscribe tokens
+            dispatch_id = str(uuid.uuid4())
+            unsubscribe_secret = _read_newsletter_unsubscribe_secret(private_dir, domain)
+            sender_address = _as_text(newsletter_profile.get("selected_sender_address") or newsletter_profile.get("sender_address")).lower()
+            list_address = _as_text(newsletter_profile.get("list_address")).lower()
+            dispatch_queue_url = _as_text(newsletter_profile.get("dispatch_queue_url"))
+            dispatcher_callback_url = _as_text(newsletter_profile.get("dispatcher_callback_url"))
+            subscriber_list = []
+            for contact in subscribers:
+                email = _as_text(contact.get("email")).lower()
+                if not email:
+                    continue
+                token = _generate_unsubscribe_token(email, domain, dispatch_id, unsubscribe_secret)
+                subscriber_list.append({"email": email, "unsubscribe_token": token})
+            # Build SQS dispatch message
+            sqs_message = {
+                "dispatch_id": dispatch_id,
+                "domain": domain,
+                "list_address": list_address,
+                "sender_profile_id": sender_profile_id,
+                "sender_address": sender_address,
+                "dispatch_queue_url": dispatch_queue_url,
+                "dispatcher_callback_url": dispatcher_callback_url,
+                "subscriber_list": subscriber_list,
+            }
+            # Enqueue via boto3
+            import boto3  # type: ignore[import-untyped]
+            sqs = boto3.client("sqs")
+            sqs.send_message(
+                QueueUrl=dispatch_queue_url,
+                MessageBody=json.dumps(sqs_message),
+            )
+            # Record dispatch_id in newsletter profile
+            newsletter_profile["last_dispatch_id"] = dispatch_id
+            newsletter_adapter.save_profile(domain=domain, payload=newsletter_profile)
+            details = {
+                "domain": domain,
+                "dispatch_id": dispatch_id,
+                "sender_profile_id": sender_profile_id,
+                "sender_address": sender_address,
+                "subscriber_count": str(len(subscriber_list)),
+                "list_address": list_address,
+            }
+            _append_local_audit(
+                audit_storage_file=audit_storage_file,
+                private_dir=private_dir,
+                action_kind=action_kind,
+                details=details,
+            )
+            return {"view": "domains", "domain": domain, "section": "newsletter"}, _action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Newsletter dispatch enqueued for {len(subscriber_list)} subscriber(s) in {domain}. Dispatch ID: {dispatch_id}.",
+                details=details,
             )
 
         profile_row = _selected_profile_row(

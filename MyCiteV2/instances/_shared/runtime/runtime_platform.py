@@ -16,6 +16,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_EBI_TOOL_ENTRYPOINT_ID,
     FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
+    PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+    PAYPAL_CSM_TOOL_ROUTE,
+    PAYPAL_CSM_TOOL_SURFACE_ID,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -53,6 +56,7 @@ AWS_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
 FND_DCM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.surface.v1"
 FND_EBI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.surface.v1"
+PAYPAL_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.surface.v1"
 WORKBENCH_UI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.surface.v1"
 
 AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
@@ -61,6 +65,8 @@ CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
 CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.request.v1"
 FND_DCM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
+PAYPAL_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.request.v1"
+PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.action.request.v1"
 WORKBENCH_UI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.request.v1"
 SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
 
@@ -345,6 +351,26 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             required_configuration=("webapps_root",),
         ),
         PortalRuntimeEntrypointDescriptor(
+            entrypoint_id=PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.portal_paypal_runtime.run_portal_paypal_csm",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/paypal-csm",
+            request_schema=PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
+            surface_schema=PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
+        ),
+        PortalRuntimeEntrypointDescriptor(
+            entrypoint_id="portal.system.tools.paypal_csm.actions",
+            callable_path="MyCiteV2.instances._shared.runtime.portal_paypal_runtime.run_portal_paypal_csm_action",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/paypal-csm/actions",
+            request_schema=PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+            surface_schema=PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
+        ),
+        PortalRuntimeEntrypointDescriptor(
             entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
             callable_path="MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime.run_portal_workbench_ui",
             surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -376,6 +402,7 @@ def surface_schema_for_surface(surface_id: str) -> str:
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_SURFACE_SCHEMA,
         FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_SURFACE_SCHEMA,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_SURFACE_SCHEMA,
+        PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
@@ -392,6 +419,7 @@ def route_for_surface(surface_id: str) -> str:
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_ROUTE,
         FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_ROUTE,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_ROUTE,
+        PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_ROUTE,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_ROUTE,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_ROUTE)
@@ -505,6 +533,9 @@ __all__ = [
     "FND_DCM_TOOL_SURFACE_SCHEMA",
     "FND_EBI_TOOL_REQUEST_SCHEMA",
     "FND_EBI_TOOL_SURFACE_SCHEMA",
+    "PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA",
+    "PAYPAL_CSM_TOOL_REQUEST_SCHEMA",
+    "PAYPAL_CSM_TOOL_SURFACE_SCHEMA",
     "NETWORK_ROOT_SURFACE_SCHEMA",
     "PORTAL_REGION_FAMILY_CONTRACT_SCHEMA",
     "PORTAL_REGION_FAMILY_DIRECTIVE_PANEL",

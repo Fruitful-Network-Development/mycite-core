@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import glob
 import json
 import os
 from pathlib import Path
+import re
+import tempfile
+from datetime import datetime, timezone
 from typing import Any, Mapping
 
 try:
@@ -35,6 +39,8 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_REQUEST_SCHEMA,
     FND_DCM_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_REQUEST_SCHEMA,
+    PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+    PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
@@ -46,6 +52,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
+    PAYPAL_CSM_TOOL_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -119,6 +126,23 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
             },
             {
                 "global": "PortalAwsCsmInspectorRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "paypal_workspace",
+        "file": "v2_portal_paypal_workspace.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.tools.paypal_csm",),
+        "budget_group": "deferred_tool_renderers",
+        "exports": (
+            {
+                "global": "PortalPaypalCsmWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+            {
+                "global": "PortalPaypalCsmInspectorRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -497,6 +521,7 @@ TOOL_SLUG_TO_SURFACE_ID = {
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
     "fnd-dcm": FND_DCM_TOOL_SURFACE_ID,
     "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
+    "paypal-csm": PAYPAL_CSM_TOOL_SURFACE_ID,
     "workbench-ui": WORKBENCH_UI_TOOL_SURFACE_ID,
 }
 
@@ -644,6 +669,156 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "path": str(config.authority_db_file) if config.authority_db_file is not None else "",
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# FND newsletter subscribe pipeline — helpers
+# ---------------------------------------------------------------------------
+
+_NEWSLETTER_WEBAPPS_ROOT = "/srv/webapps/clients"
+_NEWSLETTER_ADMIN_PROFILE_GLOB = (
+    "/srv/mycite-state/instances/fnd/private/utilities/tools/newsletter-admin/newsletter-admin.*.json"
+)
+_CONTACT_LOG_SCHEMA = "mycite.webapp.contact_log.v1"
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _newsletter_contact_log_path(domain: str) -> Path:
+    """Derive canonical contact log path from domain.
+
+    Pattern: /srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json
+    The route handler must NOT rely on the newsletter-admin profile's
+    contact_log_path field at runtime (may be stale).
+    """
+    return Path(_NEWSLETTER_WEBAPPS_ROOT) / domain / "contacts" / f"{domain}-contact_log.json"
+
+
+def _newsletter_known_domains() -> list[str]:
+    """Load known newsletter domains from newsletter-admin profile directory."""
+    domains: list[str] = []
+    for path in glob.glob(_NEWSLETTER_ADMIN_PROFILE_GLOB):
+        basename = os.path.basename(path)
+        # newsletter-admin.<domain>.json
+        token = basename.removeprefix("newsletter-admin.").removesuffix(".json").strip().lower()
+        if token:
+            domains.append(token)
+    return sorted(set(domains))
+
+
+def _normalize_domain(host: str) -> str:
+    token = (host or "").lower().split(":")[0].strip()
+    if token.startswith("www."):
+        token = token[4:]
+    return token
+
+
+def _validate_email(value: object) -> str:
+    """Normalize and validate an email address. Returns lowercase email or empty string."""
+    token = str(value or "").strip().lower()
+    if not token or not _EMAIL_RE.match(token):
+        return ""
+    return token
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _load_contact_log(path: Path, *, domain: str) -> dict[str, Any]:
+    """Load contact log JSON; bootstrap empty log if absent or unparseable."""
+    if path.exists() and path.is_file():
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and payload.get("schema") == _CONTACT_LOG_SCHEMA:
+                return payload
+        except Exception:
+            pass
+    return {
+        "schema": _CONTACT_LOG_SCHEMA,
+        "domain": domain,
+        "contacts": [],
+        "dispatches": [],
+        "updated_at": "",
+    }
+
+
+def _write_contact_log_atomic(path: Path, payload: dict[str, Any]) -> None:
+    """Write contact log atomically via temp-file rename."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-contact-log-")
+    try:
+        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, indent=2) + "\n")
+        os.rename(tmp_path, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def _upsert_subscriber(
+    contact_log: dict[str, Any],
+    *,
+    email: str,
+    name: str,
+    zip_code: str,
+    now_iso: str,
+) -> dict[str, Any]:
+    """Upsert a subscriber record. Sorts contacts by email. Returns the upserted record.
+
+    Write contract:
+    - Does NOT touch dispatches array.
+    - Does NOT modify any contact other than the target email.
+    - Sorts contacts ascending by email after upsert.
+    """
+    contacts: list[dict[str, Any]] = list(contact_log.get("contacts") or [])
+    by_email: dict[str, dict[str, Any]] = {
+        str(row.get("email", "")).lower(): dict(row)
+        for row in contacts
+        if isinstance(row, dict) and row.get("email")
+    }
+    current = by_email.get(email)
+    if current is None:
+        current = {
+            "email": email,
+            "name": name,
+            "zip": zip_code,
+            "source": "website_signup",
+            "subscribed": True,
+            "created_at": now_iso,
+            "subscribed_at": now_iso,
+            "unsubscribed_at": "",
+            "updated_at": now_iso,
+            "last_newsletter_sent_at": "",
+            "send_count": 0,
+            "notes": "",
+        }
+    else:
+        if name:
+            current["name"] = name
+        if zip_code:
+            current["zip"] = zip_code
+        current["source"] = "website_signup"
+        current["subscribed"] = True
+        current["subscribed_at"] = str(current.get("subscribed_at") or "").strip() or now_iso
+        current["unsubscribed_at"] = ""
+        current["updated_at"] = now_iso
+    by_email[email] = current
+    # Sort contacts ascending by email — consistent with AwsCsmNewsletterService.subscribe() line 298
+    contact_log["contacts"] = [by_email[k] for k in sorted(by_email.keys())]
+    # dispatches array passes through unchanged
+    return current
+
+
+def _fnd_newsletter_request_field(field: str) -> str:
+    """Extract a field from JSON body or form data."""
+    data = request.get_json(silent=True)
+    if isinstance(data, dict):
+        return str(data.get(field) or "").strip()
+    return str(request.form.get(field) or "").strip()
 
 
 def create_app(config: V2PortalHostConfig | None = None) -> Flask:
@@ -907,6 +1082,45 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
+    @app.post("/portal/api/v2/system/tools/paypal-csm")
+    def portal_paypal_csm() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import run_portal_paypal_csm
+
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = PAYPAL_CSM_TOOL_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_paypal_csm(
+                    payload,
+                    private_dir=host_config.private_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/paypal-csm/actions")
+    def portal_paypal_csm_actions() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import run_portal_paypal_csm_action
+
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_paypal_csm_action(
+                    payload,
+                    private_dir=host_config.private_dir,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                    audit_storage_file=host_config.portal_audit_storage_file,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
     @app.post("/portal/api/v2/system/tools/fnd-dcm")
     def portal_fnd_dcm() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
@@ -946,6 +1160,374 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
+
+    # ------------------------------------------------------------------
+    # FND newsletter subscribe pipeline routes
+    # ------------------------------------------------------------------
+
+    @app.post("/__fnd/newsletter/subscribe")
+    def fnd_newsletter_subscribe() -> tuple[Any, int]:
+        # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
+        domain = _normalize_domain(request.host)
+        known = _newsletter_known_domains()
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        raw_email = _fnd_newsletter_request_field("email")
+        name = _fnd_newsletter_request_field("name")
+        zip_code = _fnd_newsletter_request_field("zip")
+
+        email = _validate_email(raw_email)
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+
+        contact_log_path = _newsletter_contact_log_path(domain)
+        try:
+            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            now_iso = _utc_now_iso()
+            _upsert_subscriber(contact_log, email=email, name=name, zip_code=zip_code, now_iso=now_iso)
+            contact_log["updated_at"] = now_iso
+            _write_contact_log_atomic(contact_log_path, contact_log)
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        return jsonify({"ok": True, "email": email, "subscribed": True}), 200
+
+    @app.post("/__fnd/newsletter/unsubscribe")
+    def fnd_newsletter_unsubscribe() -> tuple[Any, int]:
+        # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
+        domain = _normalize_domain(request.host)
+        known = _newsletter_known_domains()
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        # Accept token/email from query string or body
+        raw_email = (
+            str(request.args.get("email") or "").strip()
+            or _fnd_newsletter_request_field("email")
+        )
+        token_value = (
+            str(request.args.get("token") or "").strip()
+            or _fnd_newsletter_request_field("token")
+        )
+        email = _validate_email(raw_email)
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+
+        # Validate HMAC token via service layer
+        try:
+            from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter.payload_utils import (
+                render_unsubscribe_token as _render_unsubscribe_token,
+            )
+            from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
+                FilesystemAwsCsmNewsletterStateAdapter,
+            )
+            state_adapter = FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
+            signing_secret = state_adapter.runtime_secret_seed(secret_kind="signing_secret")
+            expected = _render_unsubscribe_token(signing_secret, domain=domain, email=email)
+            if token_value != expected:
+                return jsonify({"ok": False, "error": "invalid_token"}), 403
+        except Exception:
+            return jsonify({"ok": False, "error": "token_validation_error"}), 500
+
+        contact_log_path = _newsletter_contact_log_path(domain)
+        try:
+            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            now_iso = _utc_now_iso()
+            contacts: list[dict[str, Any]] = []
+            for row in list(contact_log.get("contacts") or []):
+                current = dict(row)
+                if str(current.get("email") or "").lower() == email:
+                    current["subscribed"] = False
+                    current["source"] = "unsubscribe_link"
+                    current["unsubscribed_at"] = now_iso
+                    current["updated_at"] = now_iso
+                contacts.append(current)
+            contact_log["contacts"] = contacts
+            contact_log["updated_at"] = now_iso
+            _write_contact_log_atomic(contact_log_path, contact_log)
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        return jsonify({"ok": True, "email": email, "subscribed": False}), 200
+
+    @app.post("/__fnd/newsletter/dispatch-result")
+    def fnd_newsletter_dispatch_result() -> tuple[Any, int]:
+        # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
+        domain = _normalize_domain(request.host)
+        known = _newsletter_known_domains()
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        payload = _json_payload()
+        callback_token = str(payload.get("callback_token") or "").strip()
+        dispatch_id = str(payload.get("dispatch_id") or "").strip()
+        email = _validate_email(str(payload.get("email") or ""))
+        status = str(payload.get("status") or "").strip().lower()
+        message_id = str(payload.get("message_id") or "").strip()
+        queue_message_id = str(payload.get("queue_message_id") or "").strip()
+        error_message = str(payload.get("error_message") or "").strip()
+
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        if status not in {"sent", "failed"}:
+            return jsonify({"ok": False, "error": "invalid_status"}), 400
+        if not dispatch_id or not callback_token:
+            return jsonify({"ok": False, "error": "missing_required_fields"}), 400
+
+        # Validate dispatch callback token
+        try:
+            from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
+                FilesystemAwsCsmNewsletterStateAdapter,
+            )
+            state_adapter = FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
+            expected_token = state_adapter.runtime_secret_seed(secret_kind="dispatch_secret")
+            if callback_token != expected_token:
+                return jsonify({"ok": False, "error": "invalid_callback_token"}), 403
+        except Exception:
+            return jsonify({"ok": False, "error": "token_validation_error"}), 500
+
+        contact_log_path = _newsletter_contact_log_path(domain)
+        try:
+            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            now_iso = _utc_now_iso()
+            contacts: dict[str, dict[str, Any]] = {
+                str(item.get("email") or "").lower(): dict(item)
+                for item in list(contact_log.get("contacts") or [])
+                if isinstance(item, dict) and item.get("email")
+            }
+            updated = False
+            for dispatch in list(contact_log.get("dispatches") or []):
+                if str(dispatch.get("dispatch_id") or "") != dispatch_id:
+                    continue
+                results = list(dispatch.get("results") or [])
+                for row in results:
+                    if not isinstance(row, dict) or str(row.get("email") or "").lower() != email:
+                        continue
+                    prior = str(row.get("status") or "").lower()
+                    row["status"] = status
+                    if message_id:
+                        row["message_id"] = message_id
+                    if queue_message_id:
+                        row["queue_message_id"] = queue_message_id
+                    if error_message:
+                        row["error"] = error_message
+                    row["updated_at"] = now_iso
+                    if status == "sent" and prior != "sent":
+                        contact = contacts.get(email)
+                        if contact is not None:
+                            contact["last_newsletter_sent_at"] = now_iso
+                            contact["send_count"] = int(contact.get("send_count") or 0) + 1
+                            contact["updated_at"] = now_iso
+                            contacts[email] = contact
+                    updated = True
+                    break
+                dispatch["results"] = results
+                break
+            if not updated:
+                return jsonify({"ok": False, "error": "dispatch_result_not_found"}), 404
+            contact_log["contacts"] = [contacts[k] for k in sorted(contacts.keys())]
+            contact_log["updated_at"] = now_iso
+            _write_contact_log_atomic(contact_log_path, contact_log)
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        return jsonify({"ok": True, "domain": domain, "dispatch_id": dispatch_id, "email": email, "status": status}), 200
+
+    # ------------------------------------------------------------------
+    # FND PayPal order mediation routes (peripheral)
+    # ------------------------------------------------------------------
+
+    @app.post("/__fnd/paypal/create-order")
+    def fnd_paypal_create_order() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import (
+            _load_domain_profile,
+            _load_tenant_config,
+            _resolve_credentials,
+            _paypal_base_url,
+            _get_paypal_access_token,
+            _append_to_ndjson,
+        )
+        import urllib.request
+        import urllib.error
+
+        payload = _json_payload()
+        domain = _normalize_domain(request.host)
+        amount = _as_text(payload.get("amount"))
+        donor_name = _as_text(payload.get("donor_name"))
+        donor_email = _as_text(payload.get("donor_email"))
+        designation = _as_text(payload.get("designation"))
+
+        if not amount:
+            return jsonify({"ok": False, "error": "missing_amount"}), 400
+
+        private_dir = host_config.private_dir
+        domain_profile = _load_domain_profile(private_dir, domain)
+        if domain_profile is None:
+            return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
+
+        tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+        tenant_config = _load_tenant_config(private_dir, tenant_ref)
+        if tenant_config is None:
+            return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
+
+        credentials = _resolve_credentials(tenant_config)
+        if credentials is None:
+            return jsonify({"ok": False, "error": "credentials_not_set"}), 503
+
+        client_id, client_secret = credentials
+        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        base_url = _paypal_base_url(environment)
+        checkout_ctx = domain_profile.get("checkout_context", {})
+        donation_defaults = domain_profile.get("donation_defaults", {})
+        brand_name = _as_text(domain_profile.get("brand_name"))
+        custom_id_prefix = _as_text(donation_defaults.get("custom_id_prefix")) or "donation"
+        item_description = _as_text(donation_defaults.get("item_description"))
+        return_url = _as_text(checkout_ctx.get("return_url"))
+        cancel_url = _as_text(checkout_ctx.get("cancel_url"))
+        currency_code = _as_text(checkout_ctx.get("currency_code")) or "USD"
+
+        import time as _time
+        timestamp_ms = int(_time.time() * 1000)
+        custom_id = f"{custom_id_prefix}-{timestamp_ms}"
+
+        try:
+            access_token = _get_paypal_access_token(client_id, client_secret, base_url)
+            order_body = json.dumps({
+                "intent": "CAPTURE",
+                "purchase_units": [{
+                    "amount": {"currency_code": currency_code, "value": amount},
+                    "custom_id": custom_id,
+                    "description": item_description,
+                }],
+                "application_context": {
+                    "brand_name": brand_name,
+                    "return_url": return_url,
+                    "cancel_url": cancel_url,
+                },
+            }).encode()
+            req = urllib.request.Request(
+                f"{base_url}/v2/checkout/orders",
+                data=order_body,
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                order_result = json.loads(resp.read().decode())
+        except Exception as exc:
+            return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
+
+        order_id = _as_text(order_result.get("id"))
+        approval_url = ""
+        for link in order_result.get("links", []):
+            if isinstance(link, dict) and _as_text(link.get("rel")) == "approve":
+                approval_url = _as_text(link.get("href"))
+                break
+
+        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+        _append_to_ndjson(orders_log, {
+            "event": "create_order",
+            "order_id": order_id,
+            "custom_id": custom_id,
+            "domain": domain,
+            "amount": amount,
+            "currency_code": currency_code,
+            "status": _as_text(order_result.get("status")),
+            "approval_url": approval_url,
+            "donor_name": donor_name,
+            "donor_email": donor_email,
+            "designation": designation,
+            "timestamp_ms": timestamp_ms,
+        })
+
+        return jsonify({"ok": True, "order_id": order_id, "approval_url": approval_url,
+                        "status": _as_text(order_result.get("status"))}), 200
+
+    @app.post("/__fnd/paypal/capture-order")
+    def fnd_paypal_capture_order() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import (
+            _load_domain_profile,
+            _load_tenant_config,
+            _resolve_credentials,
+            _paypal_base_url,
+            _get_paypal_access_token,
+            _append_to_ndjson,
+        )
+        import urllib.request
+        import urllib.error
+
+        payload = _json_payload()
+        domain = _normalize_domain(request.host)
+        order_id = _as_text(payload.get("order_id"))
+
+        if not order_id:
+            return jsonify({"ok": False, "error": "missing_order_id"}), 400
+
+        private_dir = host_config.private_dir
+        domain_profile = _load_domain_profile(private_dir, domain)
+        if domain_profile is None:
+            return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
+
+        tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+        tenant_config = _load_tenant_config(private_dir, tenant_ref)
+        if tenant_config is None:
+            return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
+
+        credentials = _resolve_credentials(tenant_config)
+        if credentials is None:
+            return jsonify({"ok": False, "error": "credentials_not_set"}), 503
+
+        client_id, client_secret = credentials
+        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        base_url = _paypal_base_url(environment)
+
+        try:
+            access_token = _get_paypal_access_token(client_id, client_secret, base_url)
+            req = urllib.request.Request(
+                f"{base_url}/v2/checkout/orders/{order_id}/capture",
+                data=b"{}",
+                headers={
+                    "Authorization": f"Bearer {access_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                capture_result = json.loads(resp.read().decode())
+        except Exception as exc:
+            return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
+
+        status = _as_text(capture_result.get("status"))
+        capture_id = ""
+        capture_amount = ""
+        currency_code = ""
+        purchase_units = capture_result.get("purchase_units", [])
+        if purchase_units and isinstance(purchase_units, list):
+            captures = purchase_units[0].get("payments", {}).get("captures", [])
+            if captures and isinstance(captures, list):
+                capture_id = _as_text(captures[0].get("id"))
+                amount_obj = captures[0].get("amount", {})
+                capture_amount = _as_text(amount_obj.get("value"))
+                currency_code = _as_text(amount_obj.get("currency_code"))
+
+        import time as _time
+        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+        _append_to_ndjson(orders_log, {
+            "event": "capture_order",
+            "order_id": order_id,
+            "capture_id": capture_id,
+            "domain": domain,
+            "amount": capture_amount,
+            "currency_code": currency_code,
+            "status": status,
+            "timestamp_ms": int(_time.time() * 1000),
+        })
+
+        return jsonify({"ok": True, "capture_id": capture_id, "status": status,
+                        "amount": capture_amount, "currency_code": currency_code}), 200
 
     return app
 
