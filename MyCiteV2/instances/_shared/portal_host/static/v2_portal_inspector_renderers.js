@@ -858,7 +858,7 @@
     var globalArea = boundsArea(bounds);
     var focusArea = boundsArea(focusBounds);
     var selectedArea = boundsArea(selectedBounds);
-    if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 200)) {
+    if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 50)) {
       bounds = focusBounds;
     } else if (
       selectedArea > 0 &&
@@ -892,6 +892,10 @@
         })
         .join("") +
       "</svg></div>" +
+      '<div class="cts-gis-mapStage__controls">' +
+      '<button type="button" class="cts-gis-mapZoom" data-cts-gis-zoom="fit" title="Fit all features">⊞</button>' +
+      '<button type="button" class="cts-gis-mapZoom' + (focusArea > 0 ? "" : " is-disabled") + '" data-cts-gis-zoom="focus" title="Zoom to focus area">⊕</button>' +
+      '</div>' +
       '<div class="cts-gis-mapStage__caption">' +
       '<span class="cts-gis-mapStage__eyebrow">Projection Focus</span>' +
       "<strong>" +
@@ -1361,7 +1365,7 @@
         var entries = entriesByKind[kind] || [];
         var entry = entries[index] || {};
         if (
-          kind === "district_toggle" &&
+          (kind === "district_toggle" || kind === "overlay_toggle") &&
           entry.action &&
           typeof ctx.dispatchToolAction === "function"
         ) {
@@ -1600,6 +1604,53 @@
     });
   }
 
+  function renderGarlandSummaryObject(activeProfile, geospatialProjection) {
+    var profile = activeProfile || {};
+    var overlayLayers = Array.isArray((geospatialProjection || {}).overlay_layers)
+      ? (geospatialProjection || {}).overlay_layers
+      : [];
+    return (
+      '<section class="cts-gis-garlandSummary">' +
+      '<div class="cts-gis-garlandSummary__identity">' +
+      '<strong class="cts-gis-garlandSummary__label">' + escapeHtml(profile.label || "Active profile") + '</strong>' +
+      '<span class="cts-gis-garlandSummary__meta">' + escapeHtml(profile.node_id || "") + '</span>' +
+      '<span class="cts-gis-garlandSummary__stats">' +
+      escapeHtml(String(profile.feature_count || 0) + " features \xb7 " + String(profile.child_count || 0) + " children") +
+      '</span></div>' +
+      (overlayLayers.length
+        ? '<div class="cts-gis-garlandSummary__overlays">' +
+          overlayLayers.map(function (layer) {
+            return (
+              '<button type="button" class="cts-gis-overlayToggle' + (layer.visible ? " is-active" : "") + '"' +
+              ' data-cts-gis-entry-kind="overlay_toggle"' +
+              ' data-cts-gis-entry-index="' + escapeHtml(String(overlayLayers.indexOf(layer))) + '">' +
+              '<span class="cts-gis-overlayToggle__label">' + escapeHtml(layer.label || layer.layer_id || "Layer") + '</span>' +
+              '</button>'
+            );
+          }).join("") +
+          '</div>'
+        : '') +
+      '</section>'
+    );
+  }
+
+  function bindGeospatialZoomControls(target, ctx, geospatialProjection) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-zoom]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var mode = btn.getAttribute("data-cts-gis-zoom") || "fit";
+        if (mode === "focus" && (geospatialProjection || {}).focus_action) {
+          ctx.dispatchToolAction(geospatialProjection.focus_action);
+        } else if (mode === "fit" && (geospatialProjection || {}).fit_action) {
+          ctx.dispatchToolAction(geospatialProjection.fit_action);
+        } else {
+          if (typeof ctx.loadShell === "function" && (geospatialProjection || {}).fit_request) {
+            ctx.loadShell(geospatialProjection.fit_request);
+          }
+        }
+      });
+    });
+  }
+
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var navigationCanvas = interfaceBody.navigation_canvas || {};
@@ -1637,10 +1688,12 @@
       navMode === "directory_dropdowns"
         ? renderDirectoryDropdownCanvas(navigationCanvas)
         : renderProjectionPlaceholder("This CTS-GIS navigation mode is no longer supported.", "cts-gis-directoryCanvas__empty");
+    var overlayLayers = geospatialProjection.overlay_layers || [];
     var entriesByKind = {
       path: activePathEntries,
       feature: geospatialProjection.features || [],
       district_toggle: hasDistrictToggleRequest ? [districtToggle] : [],
+      overlay_toggle: overlayLayers.filter(function (l) { return !!l.action; }),
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
     var hasRealProfileProjection = !!profileProjection.has_real_projection;
@@ -1733,18 +1786,7 @@
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
         renderProfileHierarchy(profileProjection.hierarchy || []) +
         "</section>" +
-        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
-        '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
-        "<strong>" +
-        escapeHtml(activeProfile.label || "Active profile") +
-        "</strong>" +
-        '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml(activeProfile.node_id || "") +
-        "</span>" +
-        '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml(activeProfileCounts) +
-        "</span>" +
-        "</article></section>" +
+        renderGarlandSummaryObject(activeProfile, geospatialProjection) +
         ((profileProjection.summary_rows || []).length ? renderRows(profileProjection.summary_rows || []) : "") +
         ((profileProjection.warnings || []).length
           ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5>' +
@@ -1781,7 +1823,7 @@
       "</h3><p>" +
       escapeHtml(garlandSplit.summary || "") +
       "</p></header>" +
-      '<div class="cts-gis-garlandSplit">' +
+      '<div class="cts-gis-garlandSplit cts-gis-garlandSplit--stacked">' +
       '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
       escapeHtml(geospatialProjection.title || "Geospatial Projection") +
       "</h4>" +
@@ -1794,25 +1836,31 @@
       "</section>" +
       "</div>" +
       "</section>";
+    var isSplitLayout = (interfaceBody.layout === "diktataograph_garland_split");
     target.innerHTML =
-      '<div class="system-tool-interface cts-gis-interface">' +
+      '<div class="system-tool-interface cts-gis-interface' +
+      (isSplitLayout ? " cts-gis-interface--split" : "") + '">' +
       renderPresentationTabs(interfaceTabs) +
       '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
       escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
       '" data-cts-gis-narrow-layout="' +
       escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
       '">' +
-      renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
-      renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel") +
+      (isSplitLayout
+        ? '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--diktataograph">' + diktataographPanel + '</div>' +
+          '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--garland">' + garlandPanel + '</div>'
+        : renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
+          renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel")) +
       "</div>" +
       "</div>";
-    bindPresentationTabs(target);
+    if (!isSplitLayout) bindPresentationTabs(target);
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
     bindNavigationCanvasEnhancement(target, navMode === "directory_dropdowns");
     bindOrderedHierarchyEnhancement(target);
     bindStagedDiktataographEnhancement(target);
     bindCtsGisStagingWidget(target, ctx, stagingWidget);
+    bindGeospatialZoomControls(target, ctx, geospatialProjection);
   }
 
   function renderGenericInspectorSurface(target, region, surfacePayload) {
