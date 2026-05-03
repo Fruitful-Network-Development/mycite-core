@@ -168,3 +168,89 @@ class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):
         # that payload is inspector-only.
         self.assertNotIn("interface_body.staging_widget", WORKBENCH_SOURCE,
                          "Workbench CTS-GIS block must not read from interface_body.staging_widget")
+
+
+class CtsGisGarlandRedesignTests(unittest.TestCase):
+    """Verify Garland redesign objectives: split layout CSS modifier, summary object,
+    and zoom controls."""
+
+    def test_split_layout_applies_modifier_class(self) -> None:
+        """renderCtsGisInspector must emit cts-gis-interface--split when layout is
+        diktataograph_garland_split (AC-1: thin-column bug fix)."""
+        self.assertIn(
+            'cts-gis-interface--split',
+            INSPECTOR_SOURCE,
+            "renderCtsGisInspector must apply cts-gis-interface--split class for split layout",
+        )
+        # The gate condition must be present in source
+        self.assertIn(
+            'isSplitLayout',
+            INSPECTOR_SOURCE,
+            "renderCtsGisInspector must use isSplitLayout gate variable",
+        )
+        # Split panels must be rendered when split layout is active
+        self.assertIn(
+            'cts-gis-interface__splitPanel',
+            INSPECTOR_SOURCE,
+            "renderCtsGisInspector must render cts-gis-interface__splitPanel divs for split layout",
+        )
+
+    def test_garland_summary_object_function_exists(self) -> None:
+        """renderGarlandSummaryObject must be defined and render overlay toggle buttons
+        when overlay_layers are present (AC-2: summary object replaces static block)."""
+        self.assertIn(
+            'function renderGarlandSummaryObject(',
+            INSPECTOR_SOURCE,
+            "renderGarlandSummaryObject must be defined in inspector renderer",
+        )
+        self.assertIn(
+            'cts-gis-garlandSummary',
+            INSPECTOR_SOURCE,
+            "renderGarlandSummaryObject must produce cts-gis-garlandSummary section",
+        )
+        self.assertIn(
+            'cts-gis-overlayToggle',
+            INSPECTOR_SOURCE,
+            "renderGarlandSummaryObject must render overlay toggle buttons",
+        )
+        # Static 'Current Profile' heading must be removed
+        self.assertNotIn(
+            '<h5>Current Profile</h5>',
+            INSPECTOR_SOURCE,
+            "Static 'Current Profile' section heading must be removed in favour of renderGarlandSummaryObject",
+        )
+
+    def test_geospatial_stage_zoom_controls_present(self) -> None:
+        """renderGeospatialStage must emit zoom control buttons; focus threshold must
+        be lowered to 50 (AC-3: zoom controls + precinct zoom)."""
+        self.assertIn(
+            'cts-gis-mapStage__controls',
+            INSPECTOR_SOURCE,
+            "renderGeospatialStage must render cts-gis-mapStage__controls container",
+        )
+        self.assertIn(
+            'data-cts-gis-zoom="fit"',
+            INSPECTOR_SOURCE,
+            "renderGeospatialStage must render a fit-all zoom button",
+        )
+        self.assertIn(
+            'data-cts-gis-zoom="focus"',
+            INSPECTOR_SOURCE,
+            "renderGeospatialStage must render a zoom-to-focus button",
+        )
+        # Focus threshold must be 50, not the old 200
+        self.assertIn(
+            'globalArea / focusArea > 50',
+            INSPECTOR_SOURCE,
+            "Focus bounds area ratio threshold must be 50 (was 200) for aggressive precinct zoom",
+        )
+        self.assertNotIn(
+            'globalArea / focusArea > 200',
+            INSPECTOR_SOURCE,
+            "Old 200 focus bounds threshold must be removed",
+        )
+        self.assertIn(
+            'function bindGeospatialZoomControls(',
+            INSPECTOR_SOURCE,
+            "bindGeospatialZoomControls must be defined for zoom button event binding",
+        )

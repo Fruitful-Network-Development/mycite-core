@@ -2607,6 +2607,38 @@ def _build_cts_gis_structured_interface_body(
             ),
         }
 
+    # Attach overlay_layers to geospatial_projection so the renderer can drive
+    # per-layer toggle buttons via renderGarlandSummaryObject.
+    # district_overlay_toggle is kept on profile_projection for backwards compat.
+    geospatial_projection = {
+        **geospatial_projection,
+        "overlay_layers": [
+            {
+                "layer_id": "district_precincts",
+                "label": "District Precincts",
+                "visible": bool(district_overlay_toggle.get("overlay_active")),
+                "action": district_overlay_toggle.get("action") or None,
+            }
+        ],
+    }
+
+    # focus_bounds: populate from active features when navigating at precinct level
+    # (few features = precinct scope).  Overrides any service-surface value.
+    active_feature_entries = list(geospatial_projection.get("features") or [])
+    if active_feature_entries and len(active_feature_entries) < 100:
+        if not list(geospatial_projection.get("focus_bounds") or []):
+            active_points: list[list[float]] = []
+            for _feat in (
+                (geospatial_projection.get("feature_collection") or {}).get("features") or []
+            ):
+                active_points.extend(_geometry_points(dict((_feat.get("geometry") or {}))))
+            computed_focus = _bounds_from_points(active_points)
+            if computed_focus:
+                geospatial_projection = {
+                    **geospatial_projection,
+                    "focus_bounds": computed_focus,
+                }
+
     if has_real_profile:
         profile_projection = {
             "title": "Profile Projection",
