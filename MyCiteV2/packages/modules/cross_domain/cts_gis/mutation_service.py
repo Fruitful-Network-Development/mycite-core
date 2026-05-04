@@ -935,6 +935,61 @@ class CtsGisMutationService:
         return preview_result
 
 
+    def soundness_check(self, *, tenant_id: str) -> dict[str, Any]:
+        """Non-mutating structural integrity check over all authoritative datum documents."""
+        failures: list[dict[str, Any]] = []
+        document_count = 0
+        checked_row_count = 0
+        try:
+            catalog = self._catalog(tenant_id=tenant_id)
+        except CtsGisMutationError as exc:
+            return {
+                "ok": False,
+                "document_count": 0,
+                "checked_row_count": 0,
+                "failures": [{"code": exc.code, "message": str(exc), "datum_address": None}],
+            }
+        for document in catalog.documents:
+            document_count += 1
+            try:
+                computed_identity = build_document_version_identity(document)
+                stored_identity = self._document_identity(
+                    tenant_id=tenant_id,
+                    document_id=document.document_id,
+                )
+                if _as_text(computed_identity.get("version_hash")) != _as_text(stored_identity.get("version_hash")):
+                    failures.append({
+                        "code": "version_hash_mismatch",
+                        "message": f"Document '{document.document_id}' stored hash does not match computed hash.",
+                        "datum_address": None,
+                        "document_id": document.document_id,
+                    })
+            except CtsGisMutationError as exc:
+                failures.append({
+                    "code": exc.code,
+                    "message": str(exc),
+                    "datum_address": None,
+                    "document_id": document.document_id,
+                })
+            for row in list(getattr(document, "rows", None) or []):
+                checked_row_count += 1
+                try:
+                    parse_datum_address(_as_text(getattr(row, "datum_address", "") or ""))
+                except Exception as exc:  # noqa: BLE001
+                    failures.append({
+                        "code": "malformed_datum_address",
+                        "message": str(exc),
+                        "datum_address": _as_text(getattr(row, "datum_address", "")),
+                        "document_id": document.document_id,
+                    })
+        return {
+            "ok": len(failures) == 0,
+            "document_count": document_count,
+            "checked_row_count": checked_row_count,
+            "failures": failures,
+        }
+
+
 __all__ = [
     "CTS_GIS_MANIPULATION_STAGE_SCHEMA",
     "CTS_GIS_STAGE_INSERT_SCHEMA",
