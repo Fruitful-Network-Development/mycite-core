@@ -631,6 +631,183 @@
     });
   }
 
+  function renderUnifiedDirectivePanel(ctx, root, region) {
+    var portalIdentity = region.portal_identity || {};
+    var contextConditions = region.context_conditions || [];
+    var nimmAitasControl = region.nimm_aitas_control || {};
+    var terminalControl = region.terminal_control || {};
+    var navigationGroups = region.navigation_groups || [];
+    var actions = region.actions || [];
+
+    // Build HTML
+    var html = '<section class="ide-controlpanel__section">';
+
+    // Portal Identity (compact row)
+    html +=
+      '<div class="ide-controlpanel__identity">' +
+      '<span class="ide-controlpanel__portalId">' +
+      ctx.escapeHtml(portalIdentity.portal_instance_id || "") +
+      "</span>" +
+      (portalIdentity.host_shape ? ' · ' + ctx.escapeHtml(portalIdentity.host_shape) : "") +
+      "</div>";
+
+    // Context Conditions
+    if (contextConditions.length) {
+      html += '<div class="ide-controlpanel__contextRows">';
+      contextConditions.forEach(function (cond) {
+        html +=
+          '<div class="ide-controlpanel__contextRow">' +
+          '<span class="ide-controlpanel__contextKey">' +
+          ctx.escapeHtml(cond.label || "") +
+          ':</span><span class="ide-controlpanel__contextValue">' +
+          ctx.escapeHtml(cond.value || "—") +
+          "</span></div>";
+      });
+      html += "</div>";
+    }
+
+    // NIMM-AITAS Control Section (stacked facets)
+    if (nimmAitasControl.facets && nimmAitasControl.facets.length) {
+      html +=
+        '<div class="ide-controlpanel__directiveControl">' +
+        '<header class="ide-controlpanel__sectionHeader">' +
+        ctx.escapeHtml(nimmAitasControl.title || "Directive Control") +
+        "</header>";
+
+      nimmAitasControl.facets.forEach(function (facet) {
+        html +=
+          '<div class="ide-controlpanel__facet" data-facet-id="' +
+          ctx.escapeHtml(facet.facet_id || "") +
+          '">' +
+          '<h4 class="ide-controlpanel__facetLabel">' +
+          ctx.escapeHtml(facet.label || "") +
+          "</h4>";
+
+        (facet.subsections || []).forEach(function (sub) {
+          if (sub.control_type === "tabs") {
+            // Verb tabs
+            html += '<div class="ide-controlpanel__verbTabs">';
+            (sub.shell_requests || []).forEach(function (tab) {
+              html +=
+                '<button class="ide-controlpanel__verbTab' +
+                (tab.active ? " is-active" : "") +
+                '" type="button">' +
+                ctx.escapeHtml(tab.label || "") +
+                "</button>";
+            });
+            html += "</div>";
+          } else {
+            // Simple label: value display
+            html +=
+              '<div class="ide-controlpanel__facetRow">' +
+              '<span class="ide-controlpanel__facetLabel">' +
+              ctx.escapeHtml(sub.label || "") +
+              ':</span><span class="ide-controlpanel__facetValue">' +
+              ctx.escapeHtml(sub.value || "—") +
+              "</span></div>";
+          }
+        });
+
+        html += "</div>";
+      });
+
+      html += "</div>";
+    }
+
+    // Terminal Control Interface
+    if (terminalControl.interface) {
+      html +=
+        '<div class="ide-controlpanel__terminal">' +
+        '<header class="ide-controlpanel__sectionHeader">' +
+        ctx.escapeHtml(terminalControl.title || "Terminal") +
+        "</header>" +
+        '<textarea class="ide-controlpanel__terminalInput" placeholder="' +
+        ctx.escapeHtml(terminalControl.interface.placeholder || "> inject directive...") +
+        '"></textarea>' +
+        '<div class="ide-controlpanel__terminalActions">';
+
+      (terminalControl.quick_actions || []).forEach(function (action, index) {
+        html +=
+          '<button class="ide-controlpanel__terminalAction" data-terminal-action-index="' +
+          String(index) +
+          '">' +
+          ctx.escapeHtml(action.label || "") +
+          (action.shortcut ? ' <kbd>' + ctx.escapeHtml(action.shortcut) + "</kbd>" : "") +
+          "</button>";
+      });
+
+      html += "</div></div>";
+    }
+
+    // Navigation Groups
+    navigationGroups.forEach(function (group) {
+      html +=
+        '<div class="ide-controlpanel__selectionGroup">' +
+        '<header class="ide-controlpanel__selectionGroupTitle">' +
+        ctx.escapeHtml(group.title || "") +
+        "</header>" +
+        '<div class="ide-controlpanel__selectionPanel">';
+
+      (group.entries || []).forEach(function (entry) {
+        html += renderEntry(entry, ctx.escapeHtml);
+      });
+
+      html += "</div></div>";
+    });
+
+    // Actions
+    if (actions.length) {
+      html += '<div class="ide-controlpanel__actions">';
+      actions.forEach(function (action, index) {
+        html +=
+          '<button class="ide-controlpanel__action" data-control-action-index="' +
+          String(index) +
+          '"' +
+          (action.disabled ? " disabled" : "") +
+          ">" +
+          ctx.escapeHtml(action.label || "") +
+          "</button>";
+      });
+      html += "</div>";
+    }
+
+    html += "</section>";
+
+    root.innerHTML = html;
+
+    // Bind navigation
+    var flatEntries = [];
+    navigationGroups.forEach(function (group) {
+      (group.entries || []).forEach(function (entry) {
+        flatEntries.push(entry);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__selectionEntry"), function (node, index) {
+      bindSurfaceNavigation(node, flatEntries[index], ctx);
+    });
+
+    // Bind actions
+    Array.prototype.forEach.call(root.querySelectorAll("[data-control-action-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var index = Number(node.getAttribute("data-control-action-index"));
+        var action = actions[index] || {};
+        if (action.disabled) return;
+        if (action.action_kind === "copy_text" && action.value) {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(String(action.value)).catch(function () {});
+          }
+          return;
+        }
+        if (
+          (action.route || action.request_schema || action.action_kind) &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(action);
+        }
+      });
+    });
+  }
+
   function renderDirectivePanelHost(ctx, root, region) {
     var adapter = toolSurfaceAdapter();
     var mode =
@@ -643,6 +820,10 @@
     }
     if (mode === "focus_selection_panel") {
       renderGenericFocusSelectionPanel(ctx, root, region);
+      return;
+    }
+    if (mode === "unified_directive_panel" || region.kind === "unified_directive_panel") {
+      renderUnifiedDirectivePanel(ctx, root, region);
       return;
     }
     renderSectionModules(ctx, root, region);
