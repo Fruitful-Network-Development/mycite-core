@@ -7,18 +7,13 @@ from MyCiteV2.packages.state_machine.lens import Lens
 
 from .directives import NimmDirective, NimmTargetAddress, VERB_MANIPULATE
 from .envelope import NimmDirectiveEnvelope
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _target_key(target: NimmTargetAddress) -> str:
-    file_key = _as_text(target.file_key)
-    datum_address = _as_text(target.datum_address)
-    object_ref = _as_text(target.object_ref)
+    file_key = as_text(target.file_key)
+    datum_address = as_text(target.datum_address)
+    object_ref = as_text(target.object_ref)
     return "|".join((file_key, datum_address, object_ref))
 
 
@@ -33,8 +28,8 @@ class StagedValue:
     def __post_init__(self) -> None:
         target = self.target if isinstance(self.target, NimmTargetAddress) else NimmTargetAddress.from_value(self.target)
         object.__setattr__(self, "target", target)
-        object.__setattr__(self, "lens_id", _as_text(self.lens_id) or "identity")
-        object.__setattr__(self, "validation_issues", tuple(_as_text(item) for item in self.validation_issues if _as_text(item)))
+        object.__setattr__(self, "lens_id", as_text(self.lens_id) or "identity")
+        object.__setattr__(self, "validation_issues", tuple(as_text(item) for item in self.validation_issues if as_text(item)))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -69,7 +64,7 @@ class StagingArea:
         canonical_value = lens.encode(display_value)
         replacement = StagedValue(
             target=normalized_target,
-            lens_id=_as_text(getattr(lens, "lens_id", "lens")) or "lens",
+            lens_id=as_text(getattr(lens, "lens_id", "lens")) or "lens",
             display_value=display_value,
             canonical_value=canonical_value,
             validation_issues=issues,

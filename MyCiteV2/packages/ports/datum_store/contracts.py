@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from MyCiteV2.packages.core.identities import require_plain_domain
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA = "mycite.v2.data.system_resource_workbench.surface.v1"
 AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA = "mycite.v2.data.authoritative_document_row.v1"
@@ -16,12 +17,6 @@ JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
@@ -30,7 +25,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -50,7 +45,7 @@ class SystemDatumStoreRequest:
     tenant_id: str
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_id = as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("system_datum_store_request.tenant_id is required")
         object.__setattr__(self, "tenant_id", tenant_id)
@@ -70,7 +65,7 @@ class AuthoritativeDatumDocumentRequest:
     tenant_id: str
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_id = as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("authoritative_datum_document_request.tenant_id is required")
         object.__setattr__(self, "tenant_id", tenant_id)
@@ -92,7 +87,7 @@ class AuthoritativeDatumDocumentRow:
     schema: str = AUTHORITATIVE_DATUM_DOCUMENT_ROW_SCHEMA
 
     def __post_init__(self) -> None:
-        datum_address = _as_text(self.datum_address)
+        datum_address = as_text(self.datum_address)
         if not datum_address:
             raise ValueError("authoritative_datum_document_row.datum_address is required")
         object.__setattr__(self, "datum_address", datum_address)
@@ -137,12 +132,12 @@ class AuthoritativeDatumDocument:
     schema: str = AUTHORITATIVE_DATUM_DOCUMENT_SCHEMA
 
     def __post_init__(self) -> None:
-        document_id = _as_text(self.document_id)
-        source_kind = _as_text(self.source_kind).lower()
-        document_name = _as_text(self.document_name)
-        relative_path = _as_text(self.relative_path)
-        tool_id = _as_text(self.tool_id)
-        source_authority = _as_text(self.source_authority).lower() or "authoritative"
+        document_id = as_text(self.document_id)
+        source_kind = as_text(self.source_kind).lower()
+        document_name = as_text(self.document_name)
+        relative_path = as_text(self.relative_path)
+        tool_id = as_text(self.tool_id)
+        source_authority = as_text(self.source_authority).lower() or "authoritative"
         if not document_id:
             raise ValueError("authoritative_datum_document.document_id is required")
         if source_kind not in {"system_anthology", "sandbox_source"}:
@@ -180,8 +175,8 @@ class AuthoritativeDatumDocument:
                 field_name="authoritative_datum_document.document_metadata",
             ),
         )
-        object.__setattr__(self, "anchor_document_name", _as_text(self.anchor_document_name))
-        object.__setattr__(self, "anchor_document_path", _as_text(self.anchor_document_path))
+        object.__setattr__(self, "anchor_document_name", as_text(self.anchor_document_name))
+        object.__setattr__(self, "anchor_document_path", as_text(self.anchor_document_path))
         object.__setattr__(
             self,
             "anchor_document_metadata",
@@ -192,7 +187,7 @@ class AuthoritativeDatumDocument:
         )
         object.__setattr__(self, "anchor_rows", tuple(normalized_anchor_rows))
         object.__setattr__(self, "rows", tuple(normalized_rows))
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def row_count(self) -> int:
@@ -262,7 +257,7 @@ class AuthoritativeDatumDocumentCatalogResult:
     schema: str = AUTHORITATIVE_DATUM_DOCUMENT_CATALOG_SCHEMA
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_id = as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("authoritative_datum_document_catalog.tenant_id is required")
         normalized_documents: list[AuthoritativeDatumDocument] = []
@@ -288,7 +283,7 @@ class AuthoritativeDatumDocumentCatalogResult:
                 field_name="authoritative_datum_document_catalog.readiness_status",
             ),
         )
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def document_count(self) -> int:
@@ -339,14 +334,14 @@ class SystemDatumResourceRow:
     raw: JsonValue
 
     def __post_init__(self) -> None:
-        resource_id = _as_text(self.resource_id)
+        resource_id = as_text(self.resource_id)
         if not resource_id:
             raise ValueError("system_datum_resource_row.resource_id is required")
-        labels = tuple(_as_text(label) for label in self.labels if _as_text(label))
+        labels = tuple(as_text(label) for label in self.labels if as_text(label))
         object.__setattr__(self, "resource_id", resource_id)
-        object.__setattr__(self, "subject_ref", _as_text(self.subject_ref))
-        object.__setattr__(self, "relation", _as_text(self.relation))
-        object.__setattr__(self, "object_ref", _as_text(self.object_ref))
+        object.__setattr__(self, "subject_ref", as_text(self.subject_ref))
+        object.__setattr__(self, "relation", as_text(self.relation))
+        object.__setattr__(self, "object_ref", as_text(self.object_ref))
         object.__setattr__(self, "labels", labels)
         object.__setattr__(self, "raw", _normalize_json_value(self.raw, field_name="system_datum_resource_row.raw"))
 
@@ -387,7 +382,7 @@ class SystemDatumWorkbenchResult:
     schema: str = SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_id = as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("system_datum_workbench_result.tenant_id is required")
         normalized_rows: list[SystemDatumResourceRow] = []
@@ -408,7 +403,7 @@ class SystemDatumWorkbenchResult:
                 field_name="system_datum_workbench_result.materialization_status",
             ),
         )
-        object.__setattr__(self, "warnings", tuple(_as_text(warning) for warning in self.warnings if _as_text(warning)))
+        object.__setattr__(self, "warnings", tuple(as_text(warning) for warning in self.warnings if as_text(warning)))
 
     @property
     def ok(self) -> bool:
@@ -437,7 +432,7 @@ class PublicationTenantSummaryRequest:
     tenant_domain: str
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
+        tenant_id = as_text(self.tenant_id).lower()
         if not tenant_id:
             raise ValueError("publication_tenant_summary_request.tenant_id is required")
         object.__setattr__(self, "tenant_id", tenant_id)
@@ -487,8 +482,8 @@ class PublicationTenantSummarySource:
     schema: str = PUBLICATION_TENANT_SUMMARY_SOURCE_SCHEMA
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
-        profile_id = _as_text(self.profile_id)
+        tenant_id = as_text(self.tenant_id).lower()
+        profile_id = as_text(self.profile_id)
         if not tenant_id:
             raise ValueError("publication_tenant_summary_source.tenant_id is required")
         if not profile_id:
@@ -569,7 +564,7 @@ class PublicationTenantSummaryResult:
                 field_name="publication_tenant_summary_result.resolution_status",
             ),
         )
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def found(self) -> bool:
@@ -607,8 +602,8 @@ class PublicationProfileBasicsWriteRequest:
     public_website_url: str = ""
 
     def __post_init__(self) -> None:
-        tenant_id = _as_text(self.tenant_id).lower()
-        profile_title = _as_text(self.profile_title)
+        tenant_id = as_text(self.tenant_id).lower()
+        profile_title = as_text(self.profile_title)
         if not tenant_id:
             raise ValueError("publication_profile_basics_write_request.tenant_id is required")
         if not profile_title:
@@ -623,9 +618,9 @@ class PublicationProfileBasicsWriteRequest:
             ),
         )
         object.__setattr__(self, "profile_title", profile_title)
-        object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
-        object.__setattr__(self, "contact_email", _as_text(self.contact_email).lower())
-        object.__setattr__(self, "public_website_url", _as_text(self.public_website_url))
+        object.__setattr__(self, "profile_summary", as_text(self.profile_summary))
+        object.__setattr__(self, "contact_email", as_text(self.contact_email).lower())
+        object.__setattr__(self, "public_website_url", as_text(self.public_website_url))
 
     def to_dict(self) -> dict[str, str]:
         return {
@@ -665,7 +660,7 @@ class PublicationProfileBasicsWriteResult:
             else PublicationTenantSummarySource.from_dict(self.source)
         )
         object.__setattr__(self, "source", normalized_source)
-        schema = _as_text(self.schema) or PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA
+        schema = as_text(self.schema) or PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA
         if schema != PUBLICATION_PROFILE_BASICS_WRITE_RESULT_SCHEMA:
             raise ValueError(
                 "publication_profile_basics_write_result.schema must be "
@@ -680,7 +675,7 @@ class PublicationProfileBasicsWriteResult:
                 field_name="publication_profile_basics_write_result.resolution_status",
             ),
         )
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     def to_dict(self) -> dict[str, JsonValue]:
         return {

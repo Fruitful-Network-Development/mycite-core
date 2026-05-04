@@ -14,12 +14,7 @@ from MyCiteV2.packages.ports.directive_context import (
     DirectiveContextResult,
     DirectiveContextSource,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _candidate_score(

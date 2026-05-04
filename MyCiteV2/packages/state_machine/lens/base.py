@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 class Lens(ABC):
@@ -42,17 +37,17 @@ class TrimmedStringLens(Lens):
     lens_id = "trimmed_string"
 
     def decode(self, canonical_value: Any) -> str:
-        return _as_text(canonical_value)
+        return as_text(canonical_value)
 
     def encode(self, display_value: Any) -> str:
-        return _as_text(display_value)
+        return as_text(display_value)
 
 
 class SamrasTitleLens(TrimmedStringLens):
     lens_id = "samras_title"
 
     def encode(self, display_value: Any) -> str:
-        return " ".join(_as_text(display_value).split()).upper()
+        return " ".join(as_text(display_value).split()).upper()
 
     def validate_display(self, display_value: Any) -> tuple[str, ...]:
         value = self.encode(display_value)
@@ -69,7 +64,7 @@ class EmailAddressLens(TrimmedStringLens):
     lens_id = "email_address"
 
     def encode(self, display_value: Any) -> str:
-        return _as_text(display_value).lower()
+        return as_text(display_value).lower()
 
     def validate_display(self, display_value: Any) -> tuple[str, ...]:
         value = self.encode(display_value)
@@ -84,11 +79,11 @@ class SecretReferenceLens(TrimmedStringLens):
     lens_id = "secret_reference"
 
     def decode(self, canonical_value: Any) -> str:
-        value = _as_text(canonical_value)
+        value = as_text(canonical_value)
         return value if value else "not_configured"
 
     def encode(self, display_value: Any) -> str:
-        return _as_text(display_value)
+        return as_text(display_value)
 
     def validate_display(self, display_value: Any) -> tuple[str, ...]:
         value = self.encode(display_value)
@@ -116,7 +111,7 @@ class BinaryTextLens(TrimmedStringLens):
     lens_id = "binary_text"
 
     def decode(self, canonical_value: Any) -> str:
-        token = _as_text(canonical_value)
+        token = as_text(canonical_value)
         if not token:
             return ""
         if any(bit not in {"0", "1"} for bit in token):

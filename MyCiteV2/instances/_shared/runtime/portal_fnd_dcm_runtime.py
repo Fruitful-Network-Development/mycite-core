@@ -30,26 +30,13 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     normalize_runtime_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list
 _ALLOWED_VIEWS = (
     ("overview", "Overview"),
     ("pages", "Pages"),
     ("collections", "Collections"),
     ("issues", "Issues"),
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_list(value: object) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
 
 
 def _shell_state_payload(shell_state: object | None) -> dict[str, Any] | None:
@@ -91,7 +78,7 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
     )
     if not portal_scope.capabilities:
         default_capabilities = ["datum_recognition", "spatial_projection"]
-        if _as_text(portal_scope.scope_id).lower() == "fnd":
+        if as_text(portal_scope.scope_id).lower() == "fnd":
             default_capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
         portal_scope = PortalScope(scope_id=portal_scope.scope_id, capabilities=default_capabilities)
     return portal_scope, surface_query
@@ -131,7 +118,7 @@ def _tool_status(
 def _facts_rows(items: list[tuple[str, object]]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for label, value in items:
-        token = _as_text(value)
+        token = as_text(value)
         rows.append({"label": label, "value": token or "—"})
     return rows
 
@@ -141,21 +128,21 @@ def _build_control_panel(
     portal_scope: PortalScope,
     workspace: dict[str, Any],
 ) -> dict[str, Any]:
-    canonical_query = _as_dict(workspace.get("canonical_query"))
-    selected_site = _as_text(workspace.get("selected_site"))
-    selected_label = _as_text(workspace.get("selected_label")) or selected_site
-    selected_view = _as_text(workspace.get("view")) or "overview"
+    canonical_query = as_dict(workspace.get("canonical_query"))
+    selected_site = as_text(workspace.get("selected_site"))
+    selected_label = as_text(workspace.get("selected_label")) or selected_site
+    selected_view = as_text(workspace.get("view")) or "overview"
     groups = [
         {
             "title": "Sites",
             "entries": [
                 {
-                    "label": _as_text(row.get("label")) or _as_text(row.get("domain")),
+                    "label": as_text(row.get("label")) or as_text(row.get("domain")),
                     "meta": " · ".join(
                         [
                             token
                             for token in (
-                                _as_text(row.get("schema")),
+                                as_text(row.get("schema")),
                                 f"{int(row.get('page_count') or 0)} pages",
                                 f"{int(row.get('collection_count') or 0)} collections",
                                 (
@@ -170,19 +157,19 @@ def _build_control_panel(
                     "active": bool(row.get("selected")),
                     "href": _href_for_query(
                         {
-                            "site": _as_text(row.get("domain")) or FND_DCM_DEFAULT_SITE,
+                            "site": as_text(row.get("domain")) or FND_DCM_DEFAULT_SITE,
                             "view": "overview",
                         }
                     ),
                     "shell_request": _shell_request(
                         portal_scope,
                         {
-                            "site": _as_text(row.get("domain")) or FND_DCM_DEFAULT_SITE,
+                            "site": as_text(row.get("domain")) or FND_DCM_DEFAULT_SITE,
                             "view": "overview",
                         },
                     ),
                 }
-                for row in _as_list(workspace.get("site_cards"))
+                for row in as_list(workspace.get("site_cards"))
             ],
         },
         {
@@ -215,14 +202,14 @@ def _build_control_panel(
                 "title": "Pages",
                 "entries": [
                     {
-                        "label": _as_text(row.get("title")) or _as_text(row.get("id")),
-                        "meta": _as_text(row.get("template")),
-                        "active": _as_text(row.get("id")) == _as_text(workspace.get("page")),
+                        "label": as_text(row.get("title")) or as_text(row.get("id")),
+                        "meta": as_text(row.get("template")),
+                        "active": as_text(row.get("id")) == as_text(workspace.get("page")),
                         "href": _href_for_query(
                             {
                                 "site": selected_site or FND_DCM_DEFAULT_SITE,
                                 "view": "pages",
-                                "page": _as_text(row.get("id")),
+                                "page": as_text(row.get("id")),
                             }
                         ),
                         "shell_request": _shell_request(
@@ -230,11 +217,11 @@ def _build_control_panel(
                             {
                                 "site": selected_site or FND_DCM_DEFAULT_SITE,
                                 "view": "pages",
-                                "page": _as_text(row.get("id")),
+                                "page": as_text(row.get("id")),
                             },
                         ),
                     }
-                    for row in _as_list(workspace.get("pages"))
+                    for row in as_list(workspace.get("pages"))
                 ],
             }
         )
@@ -244,16 +231,16 @@ def _build_control_panel(
                 "title": "Collections",
                 "entries": [
                     {
-                        "label": _as_text(row.get("id")),
+                        "label": as_text(row.get("id")),
                         "meta": " · ".join(
-                            [token for token in (_as_text(row.get("type")), f"{int(row.get('source_count') or 0)} source files") if token]
+                            [token for token in (as_text(row.get("type")), f"{int(row.get('source_count') or 0)} source files") if token]
                         ),
-                        "active": _as_text(row.get("id")) == _as_text(workspace.get("collection")),
+                        "active": as_text(row.get("id")) == as_text(workspace.get("collection")),
                         "href": _href_for_query(
                             {
                                 "site": selected_site or FND_DCM_DEFAULT_SITE,
                                 "view": "collections",
-                                "collection": _as_text(row.get("id")),
+                                "collection": as_text(row.get("id")),
                             }
                         ),
                         "shell_request": _shell_request(
@@ -261,11 +248,11 @@ def _build_control_panel(
                             {
                                 "site": selected_site or FND_DCM_DEFAULT_SITE,
                                 "view": "collections",
-                                "collection": _as_text(row.get("id")),
+                                "collection": as_text(row.get("id")),
                             },
                         ),
                     }
-                    for row in _as_list(workspace.get("collections"))
+                    for row in as_list(workspace.get("collections"))
                 ],
             }
         )
@@ -275,9 +262,9 @@ def _build_control_panel(
         {"label": "View", "value": selected_view.title()},
     ]
     if selected_view == "pages":
-        context_items.append({"label": "Page", "value": _as_text(workspace.get("page")) or "—"})
+        context_items.append({"label": "Page", "value": as_text(workspace.get("page")) or "—"})
     if selected_view == "collections":
-        context_items.append({"label": "Collection", "value": _as_text(workspace.get("collection")) or "—"})
+        context_items.append({"label": "Collection", "value": as_text(workspace.get("collection")) or "—"})
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
@@ -295,14 +282,14 @@ def _build_inspector(
     tool_status: dict[str, Any],
     workspace: dict[str, Any],
 ) -> dict[str, Any]:
-    overview = _as_dict(workspace.get("overview"))
-    selected_page = _as_dict(workspace.get("selected_page"))
-    selected_collection = _as_dict(workspace.get("selected_collection"))
+    overview = as_dict(workspace.get("overview"))
+    selected_page = as_dict(workspace.get("selected_page"))
+    selected_collection = as_dict(workspace.get("selected_collection"))
     subject = None
     if selected_page:
-        subject = {"level": "page", "id": _as_text(selected_page.get("id"))}
+        subject = {"level": "page", "id": as_text(selected_page.get("id"))}
     elif selected_collection:
-        subject = {"level": "collection", "id": _as_text(selected_collection.get("id"))}
+        subject = {"level": "collection", "id": as_text(selected_collection.get("id"))}
     sections = [
         {
             "title": "Tool Posture",
@@ -311,9 +298,9 @@ def _build_inspector(
                     ("configured", "yes" if tool_status.get("configured") else "no"),
                     ("enabled", "yes" if tool_status.get("enabled") else "no"),
                     ("operational", "yes" if tool_status.get("operational") else "no"),
-                    ("required capabilities", ", ".join(_as_list(tool_status.get("required_capabilities")))),
-                    ("missing capabilities", ", ".join(_as_list(tool_status.get("missing_capabilities")))),
-                    ("missing integrations", ", ".join(_as_list(tool_status.get("missing_integrations")))),
+                    ("required capabilities", ", ".join(as_list(tool_status.get("required_capabilities")))),
+                    ("missing capabilities", ", ".join(as_list(tool_status.get("missing_capabilities")))),
+                    ("missing integrations", ", ".join(as_list(tool_status.get("missing_integrations")))),
                 ]
             ),
         },
@@ -352,7 +339,7 @@ def _build_inspector(
                         ("page id", selected_page.get("id")),
                         ("file", selected_page.get("file")),
                         ("template", selected_page.get("template")),
-                        ("collections", ", ".join(_as_list(selected_page.get("collection_refs")))),
+                        ("collections", ", ".join(as_list(selected_page.get("collection_refs")))),
                     ]
                 ),
             }
@@ -370,17 +357,17 @@ def _build_inspector(
                 ),
             }
         )
-    if _as_list(workspace.get("issues")):
+    if as_list(workspace.get("issues")):
         sections.append(
             {
                 "title": "Issues",
                 "rows": [
                     {
-                        "label": _as_text(item.get("code")) or "issue",
-                        "value": _as_text(item.get("severity")) or "warning",
-                        "detail": _as_text(item.get("message")),
+                        "label": as_text(item.get("code")) or "issue",
+                        "value": as_text(item.get("severity")) or "warning",
+                        "detail": as_text(item.get("message")),
                     }
-                    for item in _as_list(workspace.get("issues"))[:8]
+                    for item in as_list(workspace.get("issues"))[:8]
                     if isinstance(item, dict)
                 ],
             }
@@ -396,7 +383,7 @@ def _build_inspector(
 
 
 def _workbench_surface_payload(workspace: dict[str, Any]) -> dict[str, Any]:
-    board_profile_preview = _as_dict(workspace.get("board_profile_preview"))
+    board_profile_preview = as_dict(workspace.get("board_profile_preview"))
     notes = [
         "FND-DCM is read-only in v1.",
         "Workbench evidence stays hidden until explicitly opened.",
@@ -409,16 +396,16 @@ def _workbench_surface_payload(workspace: dict[str, Any]) -> dict[str, Any]:
         "kind": "fnd_dcm_secondary_evidence",
         "title": "FND-DCM Evidence",
         "cards": [
-            {"label": "Site", "value": _as_text(workspace.get("selected_label")) or _as_text(workspace.get("selected_site"))},
-            {"label": "View", "value": _as_text(workspace.get("view")) or "overview"},
-            {"label": "Sources", "value": str(len(_as_list(workspace.get("selected_collection_sources"))))},
-            {"label": "Issues", "value": str(len(_as_list(workspace.get("issues"))))},
+            {"label": "Site", "value": as_text(workspace.get("selected_label")) or as_text(workspace.get("selected_site"))},
+            {"label": "View", "value": as_text(workspace.get("view")) or "overview"},
+            {"label": "Sources", "value": str(len(as_list(workspace.get("selected_collection_sources"))))},
+            {"label": "Issues", "value": str(len(as_list(workspace.get("issues"))))},
         ],
         "sections": [
             {
                 "title": "Manifest JSON",
-                "summary": _as_text(_as_dict(workspace.get("tool_files")).get("manifest_path")),
-                "preformatted": _as_text(workspace.get("raw_manifest_json")),
+                "summary": as_text(as_dict(workspace.get("tool_files")).get("manifest_path")),
+                "preformatted": as_text(workspace.get("raw_manifest_json")),
             },
             {
                 "title": "Collection Sources",
@@ -430,21 +417,21 @@ def _workbench_surface_payload(workspace: dict[str, Any]) -> dict[str, Any]:
                 ],
                 "items": [
                     {
-                        "collection_id": _as_text(item.get("collection_id")),
-                        "source_kind": _as_text(item.get("source_kind")),
-                        "relative_path": _as_text(item.get("relative_path")),
+                        "collection_id": as_text(item.get("collection_id")),
+                        "source_kind": as_text(item.get("source_kind")),
+                        "relative_path": as_text(item.get("relative_path")),
                         "exists": "yes" if item.get("exists") else "no",
                     }
-                    for item in _as_list(workspace.get("selected_collection_sources"))
+                    for item in as_list(workspace.get("selected_collection_sources"))
                     if isinstance(item, dict)
                 ],
             },
             {
                 "title": "Normalization Evidence",
                 "rows": [
-                    {"label": "step", "value": _as_text(item)}
-                    for item in _as_list(workspace.get("normalization_evidence"))
-                    if _as_text(item)
+                    {"label": "step", "value": as_text(item)}
+                    for item in as_list(workspace.get("normalization_evidence"))
+                    if as_text(item)
                 ],
             },
         ],
@@ -457,7 +444,7 @@ def _surface_payload(
     workspace: dict[str, Any],
     tool_status: dict[str, Any],
 ) -> dict[str, Any]:
-    overview = _as_dict(workspace.get("overview"))
+    overview = as_dict(workspace.get("overview"))
     return {
         "schema": FND_DCM_TOOL_SURFACE_SCHEMA,
         "kind": "tool_mediation_surface",
@@ -473,7 +460,7 @@ def _surface_payload(
             "surface_id": FND_DCM_TOOL_SURFACE_ID,
         },
         "cards": [
-            {"label": "Site", "value": _as_text(workspace.get("selected_label")) or _as_text(workspace.get("selected_site"))},
+            {"label": "Site", "value": as_text(workspace.get("selected_label")) or as_text(workspace.get("selected_site"))},
             {"label": "Pages", "value": str(int(overview.get("page_count") or 0))},
             {"label": "Collections", "value": str(int(overview.get("collection_count") or 0))},
             {"label": "Operational", "value": "yes" if tool_status.get("operational") else "no"},
@@ -514,7 +501,7 @@ def build_portal_fnd_dcm_surface_bundle(
         page=query.get("page") or "",
         collection=query.get("collection") or "",
     )
-    canonical_query = _as_dict(workspace.get("canonical_query"))
+    canonical_query = as_dict(workspace.get("canonical_query"))
     surface_payload = _surface_payload(workspace=workspace, tool_status=tool_status)
     return {
         "entrypoint_id": FND_DCM_TOOL_ENTRYPOINT_ID,
@@ -561,7 +548,7 @@ def run_portal_fnd_dcm(
     portal_domain: str = "",
 ) -> dict[str, Any]:
     portal_scope, surface_query = _normalize_request(request_payload)
-    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    resolved_portal_instance_id = as_text(portal_instance_id) or portal_scope.scope_id
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
     shell_request = {

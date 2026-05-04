@@ -63,19 +63,15 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
     requires_shell_state_machine,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
+from MyCiteV2.packages.modules.shared.time_tokens import utc_now_iso
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
 V2_PORTAL_ERROR_SCHEMA = "mycite.v2.portal.error.v1"
 HOST_SHAPE = "v2_native"
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
+PORTAL_BUILD_ID = as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
 PORTAL_SHELL_INITIAL_LOAD_BUDGET_GZIP_BYTES = 41000
 PORTAL_SHELL_TOTAL_BUDGET_GZIP_BYTES = 65000
@@ -148,19 +144,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
-        "module_id": "system_workspace",
-        "file": "v2_portal_system_workspace.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.root",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalSystemWorkspaceRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
         "module_id": "network_workspace",
         "file": "v2_portal_network_workspace.js",
         "load_phase": "deferred",
@@ -186,6 +169,19 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         "exports": (
             {
                 "global": "PortalShellWorkbenchRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "system_workspace",
+        "file": "v2_portal_system_workspace.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("system.root",),
+        "budget_group": "initial_shell",
+        "exports": (
+            {
+                "global": "PortalSystemWorkspaceRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -258,27 +254,27 @@ def _static_asset_descriptor(filename: str, *, build_id: str, asset_id: str) -> 
 
 
 def _shell_module_descriptor(module_contract: Mapping[str, Any], *, build_id: str) -> dict[str, Any]:
-    filename = _as_text(module_contract.get("file"))
+    filename = as_text(module_contract.get("file"))
     descriptor: dict[str, Any] = _static_asset_descriptor(
         filename,
         build_id=build_id,
         asset_id=filename.rsplit(".", 1)[0],
     )
-    descriptor["module_id"] = _as_text(module_contract.get("module_id"))
-    descriptor["load_phase"] = _as_text(module_contract.get("load_phase")) or "startup_critical"
+    descriptor["module_id"] = as_text(module_contract.get("module_id"))
+    descriptor["load_phase"] = as_text(module_contract.get("load_phase")) or "startup_critical"
     descriptor["loading_scope"] = [
-        _as_text(scope)
+        as_text(scope)
         for scope in module_contract.get("loading_scope") or []
-        if _as_text(scope)
+        if as_text(scope)
     ]
-    descriptor["budget_group"] = _as_text(module_contract.get("budget_group")) or "initial_shell"
+    descriptor["budget_group"] = as_text(module_contract.get("budget_group")) or "initial_shell"
     descriptor["exports"] = [
         {
-            "global": _as_text(export_contract.get("global")),
+            "global": as_text(export_contract.get("global")),
             "required_callables": [
-                _as_text(callable_name)
+                as_text(callable_name)
                 for callable_name in export_contract.get("required_callables") or []
-                if _as_text(callable_name)
+                if as_text(callable_name)
             ],
         }
         for export_contract in module_contract.get("exports") or []
@@ -288,7 +284,7 @@ def _shell_module_descriptor(module_contract: Mapping[str, Any], *, build_id: st
 
 
 def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any]:
-    safe_build_id = _as_text(build_id)
+    safe_build_id = as_text(build_id)
     shell_modules = [
         _shell_module_descriptor(
             module_contract,
@@ -299,12 +295,12 @@ def build_shell_asset_manifest(build_id: str = PORTAL_BUILD_ID) -> dict[str, Any
     startup_module_ids = [
         module["module_id"]
         for module in shell_modules
-        if _as_text(module.get("load_phase")) != "deferred"
+        if as_text(module.get("load_phase")) != "deferred"
     ]
     deferred_module_ids = [
         module["module_id"]
         for module in shell_modules
-        if _as_text(module.get("load_phase")) == "deferred"
+        if as_text(module.get("load_phase")) == "deferred"
     ]
     return {
         "schema": PORTAL_SHELL_ASSET_MANIFEST_SCHEMA,
@@ -356,20 +352,20 @@ def _shell_asset_files_from_manifest(manifest: Mapping[str, Any]) -> list[str]:
         scripts.get("shell_entry"),
     ]:
         if isinstance(asset, Mapping):
-            filename = _as_text(asset.get("file"))
+            filename = as_text(asset.get("file"))
             if filename:
                 files.append(filename)
     for asset in list(scripts.get("shell_modules") or []):
         if not isinstance(asset, Mapping):
             continue
-        filename = _as_text(asset.get("file"))
+        filename = as_text(asset.get("file"))
         if filename:
             files.append(filename)
     return files
 
 
 def _required_env_text(name: str) -> str:
-    value = _as_text(os.environ.get(name))
+    value = as_text(os.environ.get(name))
     if not value:
         raise ValueError(f"{name} is required for the V2 portal host")
     return value
@@ -418,7 +414,7 @@ def _load_optional_json_object(path: Path) -> dict[str, Any]:
 
 def _default_capabilities(portal_instance_id: str) -> list[str]:
     capabilities = ["datum_recognition", "spatial_projection"]
-    if _as_text(portal_instance_id).lower() == "fnd":
+    if as_text(portal_instance_id).lower() == "fnd":
         capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
     return capabilities
 
@@ -460,10 +456,10 @@ class V2PortalHostConfig:
     tool_exposure_policy: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        portal_instance_id = _as_text(self.portal_instance_id).lower()
+        portal_instance_id = as_text(self.portal_instance_id).lower()
         if not portal_instance_id:
             raise ValueError("portal_instance_id is required")
-        portal_domain = _as_text(self.portal_domain).lower()
+        portal_domain = as_text(self.portal_domain).lower()
         if not portal_domain:
             raise ValueError("portal_domain is required")
         object.__setattr__(self, "portal_instance_id", portal_instance_id)
@@ -497,10 +493,10 @@ class V2PortalHostConfig:
             portal_domain=_required_env_text("MYCITE_ANALYTICS_DOMAIN"),
             webapps_root=Path(_required_env_text("MYCITE_WEBAPPS_ROOT")),
             portal_audit_storage_file=Path(_required_env_text("MYCITE_V2_PORTAL_AUDIT_FILE"))
-            if _as_text(os.environ.get("MYCITE_V2_PORTAL_AUDIT_FILE"))
+            if as_text(os.environ.get("MYCITE_V2_PORTAL_AUDIT_FILE"))
             else None,
             authority_db_file=Path(_required_env_text("MYCITE_V2_PORTAL_AUTHORITY_DB"))
-            if _as_text(os.environ.get("MYCITE_V2_PORTAL_AUTHORITY_DB"))
+            if as_text(os.environ.get("MYCITE_V2_PORTAL_AUTHORITY_DB"))
             else None,
         )
 
@@ -535,7 +531,7 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
     error = envelope.get("error")
     if not isinstance(error, dict) or not error:
         return 200
-    code = _as_text(error.get("code"))
+    code = as_text(error.get("code"))
     if code in {"surface_unknown"}:
         return 404
     if code in {
@@ -577,8 +573,8 @@ def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
         from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
 
         envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
-        return _as_text(envelope.directive.target_authority)
-    return _as_text(payload.get("target_authority"))
+        return as_text(envelope.directive.target_authority)
+    return as_text(payload.get("target_authority"))
 
 
 def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_schema: str) -> dict[str, Any]:
@@ -589,7 +585,7 @@ def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_
 
         envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
         directive_payload = dict(envelope.directive.payload or {})
-    action_kind = _as_text(payload.get("action_kind") or directive_payload.get("action_kind") or action)
+    action_kind = as_text(payload.get("action_kind") or directive_payload.get("action_kind") or action)
     raw_action_payload = payload.get("action_payload")
     if raw_action_payload is None:
         raw_action_payload = directive_payload.get("action_payload")
@@ -720,9 +716,6 @@ def _validate_email(value: object) -> str:
         return ""
     return token
 
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
 
 
 def _load_contact_log(path: Path, *, domain: str) -> dict[str, Any]:
@@ -894,7 +887,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            legacy_maps_code = as_text(getattr(exc, "code", ""))
             if legacy_maps_code == "legacy_maps_alias_unsupported":
                 return _error_response(legacy_maps_code, str(exc), status_code=400)
             raise
@@ -980,7 +973,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            legacy_maps_code = as_text(getattr(exc, "code", ""))
             if legacy_maps_code == "legacy_maps_alias_unsupported":
                 return _error_response(legacy_maps_code, str(exc), status_code=400)
             raise
@@ -1007,7 +1000,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            legacy_maps_code = as_text(getattr(exc, "code", ""))
             if legacy_maps_code == "legacy_maps_alias_unsupported":
                 return _error_response(legacy_maps_code, str(exc), status_code=400)
             raise
@@ -1056,7 +1049,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
+            legacy_maps_code = as_text(getattr(exc, "code", ""))
             if legacy_maps_code == "legacy_maps_alias_unsupported":
                 return _error_response(legacy_maps_code, str(exc), status_code=400)
             raise
@@ -1184,7 +1177,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         contact_log_path = _newsletter_contact_log_path(domain)
         try:
             contact_log = _load_contact_log(contact_log_path, domain=domain)
-            now_iso = _utc_now_iso()
+            now_iso = utc_now_iso()
             _upsert_subscriber(contact_log, email=email, name=name, zip_code=zip_code, now_iso=now_iso)
             contact_log["updated_at"] = now_iso
             _write_contact_log_atomic(contact_log_path, contact_log)
@@ -1233,7 +1226,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         contact_log_path = _newsletter_contact_log_path(domain)
         try:
             contact_log = _load_contact_log(contact_log_path, domain=domain)
-            now_iso = _utc_now_iso()
+            now_iso = utc_now_iso()
             contacts: list[dict[str, Any]] = []
             for row in list(contact_log.get("contacts") or []):
                 current = dict(row)
@@ -1290,7 +1283,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         contact_log_path = _newsletter_contact_log_path(domain)
         try:
             contact_log = _load_contact_log(contact_log_path, domain=domain)
-            now_iso = _utc_now_iso()
+            now_iso = utc_now_iso()
             contacts: dict[str, dict[str, Any]] = {
                 str(item.get("email") or "").lower(): dict(item)
                 for item in list(contact_log.get("contacts") or [])
@@ -1353,10 +1346,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         payload = _json_payload()
         domain = _normalize_domain(request.host)
-        amount = _as_text(payload.get("amount"))
-        donor_name = _as_text(payload.get("donor_name"))
-        donor_email = _as_text(payload.get("donor_email"))
-        designation = _as_text(payload.get("designation"))
+        amount = as_text(payload.get("amount"))
+        donor_name = as_text(payload.get("donor_name"))
+        donor_email = as_text(payload.get("donor_email"))
+        designation = as_text(payload.get("designation"))
 
         if not amount:
             return jsonify({"ok": False, "error": "missing_amount"}), 400
@@ -1366,7 +1359,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if domain_profile is None:
             return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
 
-        tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+        tenant_ref = as_text(domain_profile.get("tenant_ref")) or "1"
         tenant_config = _load_tenant_config(private_dir, tenant_ref)
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
@@ -1376,16 +1369,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 
         client_id, client_secret = credentials
-        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        environment = as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
         checkout_ctx = domain_profile.get("checkout_context", {})
         donation_defaults = domain_profile.get("donation_defaults", {})
-        brand_name = _as_text(domain_profile.get("brand_name"))
-        custom_id_prefix = _as_text(donation_defaults.get("custom_id_prefix")) or "donation"
-        item_description = _as_text(donation_defaults.get("item_description"))
-        return_url = _as_text(checkout_ctx.get("return_url"))
-        cancel_url = _as_text(checkout_ctx.get("cancel_url"))
-        currency_code = _as_text(checkout_ctx.get("currency_code")) or "USD"
+        brand_name = as_text(domain_profile.get("brand_name"))
+        custom_id_prefix = as_text(donation_defaults.get("custom_id_prefix")) or "donation"
+        item_description = as_text(donation_defaults.get("item_description"))
+        return_url = as_text(checkout_ctx.get("return_url"))
+        cancel_url = as_text(checkout_ctx.get("cancel_url"))
+        currency_code = as_text(checkout_ctx.get("currency_code")) or "USD"
 
         import time as _time
         timestamp_ms = int(_time.time() * 1000)
@@ -1420,11 +1413,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
 
-        order_id = _as_text(order_result.get("id"))
+        order_id = as_text(order_result.get("id"))
         approval_url = ""
         for link in order_result.get("links", []):
-            if isinstance(link, dict) and _as_text(link.get("rel")) == "approve":
-                approval_url = _as_text(link.get("href"))
+            if isinstance(link, dict) and as_text(link.get("rel")) == "approve":
+                approval_url = as_text(link.get("href"))
                 break
 
         orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
@@ -1435,7 +1428,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "domain": domain,
             "amount": amount,
             "currency_code": currency_code,
-            "status": _as_text(order_result.get("status")),
+            "status": as_text(order_result.get("status")),
             "approval_url": approval_url,
             "donor_name": donor_name,
             "donor_email": donor_email,
@@ -1444,7 +1437,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         })
 
         return jsonify({"ok": True, "order_id": order_id, "approval_url": approval_url,
-                        "status": _as_text(order_result.get("status"))}), 200
+                        "status": as_text(order_result.get("status"))}), 200
 
     @app.post("/__fnd/paypal/capture-order")
     def fnd_paypal_capture_order() -> tuple[Any, int]:
@@ -1461,7 +1454,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         payload = _json_payload()
         domain = _normalize_domain(request.host)
-        order_id = _as_text(payload.get("order_id"))
+        order_id = as_text(payload.get("order_id"))
 
         if not order_id:
             return jsonify({"ok": False, "error": "missing_order_id"}), 400
@@ -1471,7 +1464,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if domain_profile is None:
             return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
 
-        tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+        tenant_ref = as_text(domain_profile.get("tenant_ref")) or "1"
         tenant_config = _load_tenant_config(private_dir, tenant_ref)
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
@@ -1481,7 +1474,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 
         client_id, client_secret = credentials
-        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        environment = as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
 
         try:
@@ -1500,7 +1493,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception as exc:
             return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
 
-        status = _as_text(capture_result.get("status"))
+        status = as_text(capture_result.get("status"))
         capture_id = ""
         capture_amount = ""
         currency_code = ""
@@ -1508,10 +1501,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if purchase_units and isinstance(purchase_units, list):
             captures = purchase_units[0].get("payments", {}).get("captures", [])
             if captures and isinstance(captures, list):
-                capture_id = _as_text(captures[0].get("id"))
+                capture_id = as_text(captures[0].get("id"))
                 amount_obj = captures[0].get("amount", {})
-                capture_amount = _as_text(amount_obj.get("value"))
-                currency_code = _as_text(amount_obj.get("currency_code"))
+                capture_amount = as_text(amount_obj.get("value"))
+                currency_code = as_text(amount_obj.get("currency_code"))
 
         import time as _time
         orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"

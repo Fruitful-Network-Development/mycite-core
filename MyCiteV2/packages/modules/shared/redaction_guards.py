@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Iterable
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def reject_forbidden_keys(
@@ -22,7 +17,7 @@ def reject_forbidden_keys(
     def _walk(value: Any, path: str) -> None:
         if isinstance(value, dict):
             for key, item in value.items():
-                token = _as_text(key)
+                token = as_text(key)
                 if not token:
                     raise ValueError(f"{path} keys must be non-empty strings")
                 if token.lower() in forbidden:

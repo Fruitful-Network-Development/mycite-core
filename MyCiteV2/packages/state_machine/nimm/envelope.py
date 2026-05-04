@@ -6,14 +6,9 @@ from typing import Any
 from MyCiteV2.packages.state_machine.aitas import AitasContext, merge_aitas_context
 
 from .directives import NimmDirective
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 NIMM_ENVELOPE_SCHEMA_V1 = "mycite.v2.nimm.envelope.v1"
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 @dataclass(frozen=True)
@@ -41,7 +36,7 @@ class NimmDirectiveEnvelope:
             return payload
         if not isinstance(payload, dict):
             raise ValueError("nimm envelope must be a dict")
-        schema = _as_text(payload.get("schema"))
+        schema = as_text(payload.get("schema"))
         if schema and schema != NIMM_ENVELOPE_SCHEMA_V1:
             raise ValueError(f"nimm envelope schema must be {NIMM_ENVELOPE_SCHEMA_V1}")
         return cls(

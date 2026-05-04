@@ -9,23 +9,18 @@ from MyCiteV2.packages.ports.aws_csm_newsletter import (
     AWS_CSM_NEWSLETTER_PROFILE_SCHEMA,
     AwsCsmNewsletterStatePort,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _normalized_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.startswith("www."):
         token = token[4:]
     return token
 
 
 def _optional_email(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or token.count("@") != 1 or any(ch.isspace() for ch in token):
         return ""
     local_part, domain_part = token.split("@", 1)
@@ -82,7 +77,7 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         token = _normalized_domain(domain)
         profile = self.load_profile(domain=token)
-        if _as_text(profile.get("schema")) != AWS_CSM_NEWSLETTER_PROFILE_SCHEMA:
+        if as_text(profile.get("schema")) != AWS_CSM_NEWSLETTER_PROFILE_SCHEMA:
             profile = self._bootstrap_profile(
                 domain=token,
                 dispatcher_callback_url=dispatcher_callback_url,
@@ -103,7 +98,7 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
             self.save_profile(domain=token, payload=profile)
 
         contact_log = self.load_contact_log(domain=token)
-        if _as_text(contact_log.get("schema")) != AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA:
+        if as_text(contact_log.get("schema")) != AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA:
             contact_log = self._bootstrap_contact_log(domain=token)
             self.save_contact_log(domain=token, payload=contact_log)
         return self.load_profile(domain=token), self.load_contact_log(domain=token)
@@ -113,15 +108,15 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         profiles = [profile for profile in self._verified_profiles() if _normalized_domain(profile.get("domain")) == token]
         profiles.sort(
             key=lambda item: (
-                0 if _as_text(item.get("mailbox_local_part")).lower() == "admin" else 1,
-                _as_text(item.get("send_as_email")).lower(),
+                0 if as_text(item.get("mailbox_local_part")).lower() == "admin" else 1,
+                as_text(item.get("send_as_email")).lower(),
             )
         )
         return profiles
 
     def load_profile(self, *, domain: str) -> dict[str, Any]:
         payload = _read_json(self._profile_path(domain))
-        if _as_text(payload.get("schema")) != AWS_CSM_NEWSLETTER_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != AWS_CSM_NEWSLETTER_PROFILE_SCHEMA:
             return {}
         return dict(payload)
 
@@ -132,24 +127,24 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         body["domain"] = token
         body["list_address"] = f"news@{token}"
         body["sender_address"] = f"news@{token}"
-        body["selected_author_profile_id"] = _as_text(body.get("selected_author_profile_id"))
+        body["selected_author_profile_id"] = as_text(body.get("selected_author_profile_id"))
         body["selected_author_address"] = _optional_email(body.get("selected_author_address"))
-        body["delivery_mode"] = _as_text(body.get("delivery_mode")) or "inbound-mail-workflow"
-        body["aws_region"] = _as_text(body.get("aws_region")) or "us-east-1"
-        body["callback_url"] = _as_text(body.get("callback_url"))
-        body["inbound_callback_url"] = _as_text(body.get("inbound_callback_url"))
-        body["dispatcher_lambda_name"] = _as_text(body.get("dispatcher_lambda_name")) or "newsletter-dispatcher"
-        body["inbound_processor_lambda_name"] = _as_text(body.get("inbound_processor_lambda_name")) or "newsletter-inbound-capture"
-        body["unsubscribe_secret_name"] = _as_text(body.get("unsubscribe_secret_name"))
-        body["dispatch_callback_secret_name"] = _as_text(body.get("dispatch_callback_secret_name"))
-        body["inbound_callback_secret_name"] = _as_text(body.get("inbound_callback_secret_name"))
-        body["updated_at"] = _as_text(body.get("updated_at")) or ""
+        body["delivery_mode"] = as_text(body.get("delivery_mode")) or "inbound-mail-workflow"
+        body["aws_region"] = as_text(body.get("aws_region")) or "us-east-1"
+        body["callback_url"] = as_text(body.get("callback_url"))
+        body["inbound_callback_url"] = as_text(body.get("inbound_callback_url"))
+        body["dispatcher_lambda_name"] = as_text(body.get("dispatcher_lambda_name")) or "newsletter-dispatcher"
+        body["inbound_processor_lambda_name"] = as_text(body.get("inbound_processor_lambda_name")) or "newsletter-inbound-capture"
+        body["unsubscribe_secret_name"] = as_text(body.get("unsubscribe_secret_name"))
+        body["dispatch_callback_secret_name"] = as_text(body.get("dispatch_callback_secret_name"))
+        body["inbound_callback_secret_name"] = as_text(body.get("inbound_callback_secret_name"))
+        body["updated_at"] = as_text(body.get("updated_at")) or ""
         _write_json(self._profile_path(token), body)
         return body
 
     def load_contact_log(self, *, domain: str) -> dict[str, Any]:
         payload = _read_json(self._contacts_path(domain))
-        if _as_text(payload.get("schema")) != AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA:
+        if as_text(payload.get("schema")) != AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA:
             return {}
         return dict(payload)
 
@@ -166,11 +161,11 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
     def runtime_secret_seed(self, *, secret_kind: str) -> str:
         payload = _read_json(self._runtime_secrets_path)
         if secret_kind == "signing_secret":
-            return _as_text(payload.get("signing_secret"))
+            return as_text(payload.get("signing_secret"))
         if secret_kind == "dispatch_secret":
-            return _as_text(payload.get("dispatch_secret"))
+            return as_text(payload.get("dispatch_secret"))
         if secret_kind == "inbound_secret":
-            return _as_text(payload.get("inbound_secret"))
+            return as_text(payload.get("inbound_secret"))
         return ""
 
     def _profile_path(self, domain: str) -> Path:
@@ -195,7 +190,7 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
         token = _normalized_domain(domain)
         verified = self.list_verified_author_profiles(domain=token)
         selected = next(
-            (item for item in verified if _as_text(item.get("profile_id"))),
+            (item for item in verified if as_text(item.get("profile_id"))),
             None,
         )
         if selected is None and verified:
@@ -205,7 +200,7 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
             "domain": token,
             "list_address": f"news@{token}",
             "sender_address": f"news@{token}",
-            "selected_author_profile_id": _as_text(
+            "selected_author_profile_id": as_text(
                 (selected or {}).get("profile_id")
             ),
             "selected_author_address": _optional_email(
@@ -251,17 +246,17 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
             return out
         for path in sorted(self._aws_root.glob("aws-csm.*.json")):
             payload = _read_json(path)
-            if _as_text(payload.get("schema")) != "mycite.service_tool.aws_csm.profile.v1":
+            if as_text(payload.get("schema")) != "mycite.service_tool.aws_csm.profile.v1":
                 continue
             identity = payload.get("identity") if isinstance(payload.get("identity"), dict) else {}
             verification = payload.get("verification") if isinstance(payload.get("verification"), dict) else {}
             provider = payload.get("provider") if isinstance(payload.get("provider"), dict) else {}
             workflow = payload.get("workflow") if isinstance(payload.get("workflow"), dict) else {}
-            if _as_text(verification.get("status")).lower() != "verified":
+            if as_text(verification.get("status")).lower() != "verified":
                 continue
-            provider_status = _as_text(provider.get("send_as_provider_status")).lower()
+            provider_status = as_text(provider.get("send_as_provider_status")).lower()
             if not provider_status:
-                provider_status = _as_text(provider.get("gmail_send_as_status")).lower()
+                provider_status = as_text(provider.get("gmail_send_as_status")).lower()
             if provider_status != "verified":
                 continue
             if not bool(workflow.get("is_send_as_confirmed") or workflow.get("is_mailbox_operational")):
@@ -272,11 +267,11 @@ class FilesystemAwsCsmNewsletterStateAdapter(AwsCsmNewsletterStatePort):
                 continue
             out.append(
                 {
-                    "profile_id": _as_text(identity.get("profile_id")),
+                    "profile_id": as_text(identity.get("profile_id")),
                     "domain": domain,
                     "send_as_email": send_as_email,
-                    "mailbox_local_part": _as_text(identity.get("mailbox_local_part")),
-                    "role": _as_text(identity.get("role")),
+                    "mailbox_local_part": as_text(identity.get("mailbox_local_part")),
+                    "role": as_text(identity.get("role")),
                     "operator_inbox_target": _optional_email(
                         identity.get("operator_inbox_target") or identity.get("single_user_email")
                     ),

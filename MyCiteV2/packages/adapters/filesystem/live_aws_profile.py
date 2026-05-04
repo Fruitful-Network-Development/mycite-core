@@ -16,26 +16,13 @@ from MyCiteV2.packages.ports.aws_read_only_status import (
     AwsReadOnlyStatusResult,
     AwsReadOnlyStatusSource,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_bool
 
 LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_bool(value: Any) -> bool:
-    return bool(value) if isinstance(value, bool) else str(value).strip().lower() == "true"
-
-
 def _email(value: object) -> str:
-    return _as_text(value).lower()
+    return as_text(value).lower()
 
 
 def _local_part(email: str) -> str:
@@ -50,7 +37,7 @@ def _normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[
     seen: set[str] = set()
     out: list[str] = []
     for index, item in enumerate(value):
-        token = _as_text(item).lower()
+        token = as_text(item).lower()
         if not token or "." not in token:
             raise ValueError(f"{field_name}[{index}] must be a domain-like value")
         if token not in seen:
@@ -60,14 +47,14 @@ def _normalize_optional_domain_list(value: object, *, field_name: str) -> tuple[
 
 
 def _effective_allowed_send_domains(*, primary_domain: str, extra_domains: tuple[str, ...]) -> tuple[str, ...]:
-    primary = _as_text(primary_domain).lower()
+    primary = as_text(primary_domain).lower()
     if not primary:
         return tuple(sorted(extra_domains))
     return tuple(sorted({primary} | set(extra_domains)))
 
 
 def _sender_email_domain(email: object) -> str:
-    token = _as_text(email).lower()
+    token = as_text(email).lower()
     if "@" not in token:
         return ""
     return token.split("@", 1)[1]
@@ -97,7 +84,7 @@ def is_live_aws_profile_file(storage_file: str | Path | None) -> bool:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    return isinstance(payload, dict) and _as_text(payload.get("schema")) == LIVE_AWS_PROFILE_SCHEMA
+    return isinstance(payload, dict) and as_text(payload.get("schema")) == LIVE_AWS_PROFILE_SCHEMA
 
 
 class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort):
@@ -128,25 +115,25 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         if not self._matches_request(payload, normalized_request.tenant_scope_id):
             raise ValueError("live aws profile tenant_scope_id does not match the stored profile")
 
-        identity = _as_dict(payload.get("identity"))
-        profile_id = _as_text(identity.get("profile_id"))
+        identity = as_dict(payload.get("identity"))
+        profile_id = as_text(identity.get("profile_id"))
         if profile_id != normalized_request.profile_id:
             raise ValueError("live aws profile profile_id does not match the stored profile")
 
         selected_sender = _email(normalized_request.selected_verified_sender)
-        domain = _as_text(identity.get("domain")).lower()
+        domain = as_text(identity.get("domain")).lower()
         extra_domains = _extract_allowed_send_domains_from_profile(payload)
         allowed_domains = _effective_allowed_send_domains(primary_domain=domain, extra_domains=extra_domains)
         if allowed_domains and not _selected_verified_sender_allowed(selected_sender, allowed_domains):
             raise ValueError("live aws profile selected_verified_sender must use an allowed send domain")
 
         identity["send_as_email"] = selected_sender
-        identity["mailbox_local_part"] = _local_part(selected_sender) or _as_text(identity.get("mailbox_local_part"))
+        identity["mailbox_local_part"] = _local_part(selected_sender) or as_text(identity.get("mailbox_local_part"))
         payload["identity"] = identity
 
-        smtp = _as_dict(payload.get("smtp"))
+        smtp = as_dict(payload.get("smtp"))
         smtp["send_as_email"] = selected_sender
-        smtp["local_part"] = _local_part(selected_sender) or _as_text(smtp.get("local_part"))
+        smtp["local_part"] = _local_part(selected_sender) or as_text(smtp.get("local_part"))
         payload["smtp"] = smtp
 
         self._storage_file.parent.mkdir(parents=True, exist_ok=True)
@@ -167,7 +154,7 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         payload = json.loads(self._storage_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("live aws profile payload must be a dict")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
             return None
         return payload
 
@@ -178,30 +165,30 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         return payload
 
     def _matches_request(self, payload: dict[str, Any], tenant_scope_id: str) -> bool:
-        identity = _as_dict(payload.get("identity"))
-        requested = _as_text(tenant_scope_id).lower()
+        identity = as_dict(payload.get("identity"))
+        requested = as_text(tenant_scope_id).lower()
         allowed = {
-            _as_text(identity.get("tenant_id")).lower(),
-            _as_text(identity.get("domain")).lower(),
-            _as_text(identity.get("profile_id")).lower(),
+            as_text(identity.get("tenant_id")).lower(),
+            as_text(identity.get("domain")).lower(),
+            as_text(identity.get("profile_id")).lower(),
         }
         return bool(requested and requested in allowed)
 
     def _to_visibility_payload(self, payload: dict[str, Any], *, tenant_scope_id: str) -> dict[str, Any]:
-        identity = _as_dict(payload.get("identity"))
-        smtp = _as_dict(payload.get("smtp"))
-        verification = _as_dict(payload.get("verification"))
-        provider = _as_dict(payload.get("provider"))
-        workflow = _as_dict(payload.get("workflow"))
-        inbound = _as_dict(payload.get("inbound"))
+        identity = as_dict(payload.get("identity"))
+        smtp = as_dict(payload.get("smtp"))
+        verification = as_dict(payload.get("verification"))
+        provider = as_dict(payload.get("provider"))
+        workflow = as_dict(payload.get("workflow"))
+        inbound = as_dict(payload.get("inbound"))
 
-        domain = _as_text(identity.get("domain")).lower()
+        domain = as_text(identity.get("domain")).lower()
         selected_sender = _email(identity.get("send_as_email") or smtp.get("send_as_email"))
         if not selected_sender and domain:
-            selected_sender = f"{_as_text(identity.get('mailbox_local_part'))}@{domain}".lower()
+            selected_sender = f"{as_text(identity.get('mailbox_local_part'))}@{domain}".lower()
 
         profile = {
-            "profile_id": _as_text(identity.get("profile_id")),
+            "profile_id": as_text(identity.get("profile_id")),
             "domain": domain,
             "list_address": selected_sender,
             "selected_verified_sender": selected_sender,
@@ -209,37 +196,37 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         }
 
         mailbox_readiness = "not_ready"
-        if _as_bool(workflow.get("is_mailbox_operational")):
+        if as_bool(workflow.get("is_mailbox_operational")):
             mailbox_readiness = "ready"
-        elif _as_bool(workflow.get("is_ready_for_user_handoff")):
-            provider_for_state = _as_text(
-                _as_dict(payload.get("provider")).get("handoff_provider")
-                or _as_dict(payload.get("identity")).get("handoff_provider")
+        elif as_bool(workflow.get("is_ready_for_user_handoff")):
+            provider_for_state = as_text(
+                as_dict(payload.get("provider")).get("handoff_provider")
+                or as_dict(payload.get("identity")).get("handoff_provider")
             ).lower() or "generic_manual"
             mailbox_readiness = f"ready_for_{provider_for_state}_handoff"
 
-        smtp_ready = _as_bool(smtp.get("handoff_ready")) or _as_text(smtp.get("credentials_secret_state")).lower() == "configured"
+        smtp_ready = as_bool(smtp.get("handoff_ready")) or as_text(smtp.get("credentials_secret_state")).lower() == "configured"
         provider_verified = (
-            _as_text(provider.get("send_as_provider_status")).lower() == "verified"
-            or _as_text(provider.get("gmail_send_as_status")).lower() == "verified"
-            or _as_text(verification.get("status")).lower() == "verified"
-            or _as_text(verification.get("portal_state")).lower() == "verified"
+            as_text(provider.get("send_as_provider_status")).lower() == "verified"
+            or as_text(provider.get("gmail_send_as_status")).lower() == "verified"
+            or as_text(verification.get("status")).lower() == "verified"
+            or as_text(verification.get("portal_state")).lower() == "verified"
         )
-        handoff_provider = _as_text(
+        handoff_provider = as_text(
             provider.get("handoff_provider")
-            or _as_dict(payload.get("identity")).get("handoff_provider")
-            or _as_dict(payload.get("smtp")).get("handoff_provider")
+            or as_dict(payload.get("identity")).get("handoff_provider")
+            or as_dict(payload.get("smtp")).get("handoff_provider")
         ).lower() or "generic_manual"
-        initiated = _as_bool(workflow.get("initiated"))
+        initiated = as_bool(workflow.get("initiated"))
         provider_state_value = "provider_verified" if provider_verified else ("provider_pending" if initiated else "not_started")
-        inbound_ready = _as_bool(inbound.get("receive_verified")) or _as_bool(inbound.get("portal_native_display_ready"))
-        latest_message_id = _as_text(inbound.get("latest_message_id"))
+        inbound_ready = as_bool(inbound.get("receive_verified")) or as_bool(inbound.get("portal_native_display_ready"))
+        latest_message_id = as_text(inbound.get("latest_message_id"))
 
         extra_domains = _extract_allowed_send_domains_from_profile(payload)
         allowed_domains = _effective_allowed_send_domains(primary_domain=domain, extra_domains=extra_domains)
 
         return {
-            "tenant_scope_id": _as_text(tenant_scope_id),
+            "tenant_scope_id": as_text(tenant_scope_id),
             "mailbox_readiness": mailbox_readiness,
             "smtp_state": "smtp_ready" if smtp_ready else "not_configured",
             "provider_state": provider_state_value,
@@ -254,11 +241,11 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
             "compatibility": {"canonical_profile_matches_compatibility_inputs": True},
             "inbound_capture": {
                 "status": "ready" if inbound_ready else ("warning" if latest_message_id else "not_ready"),
-                "last_capture_state": "captured" if latest_message_id else _as_text(inbound.get("receive_state")) or "none",
+                "last_capture_state": "captured" if latest_message_id else as_text(inbound.get("receive_state")) or "none",
             },
             "dispatch_health": {
-                "status": "healthy" if _as_bool(workflow.get("is_mailbox_operational")) else "unknown",
-                "last_delivery_outcome": _as_text(workflow.get("lifecycle_state")) or "unknown",
+                "status": "healthy" if as_bool(workflow.get("is_mailbox_operational")) else "unknown",
+                "last_delivery_outcome": as_text(workflow.get("lifecycle_state")) or "unknown",
                 "pending_message_count": 0,
             },
         }

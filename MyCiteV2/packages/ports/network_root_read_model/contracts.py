@@ -4,15 +4,10 @@ from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from MyCiteV2.packages.core.identities import normalize_optional_plain_domain
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
@@ -23,7 +18,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -47,7 +42,7 @@ class NetworkRootReadModelRequest:
     surface_query: dict[str, str] | None = None
 
     def __post_init__(self) -> None:
-        portal_tenant_id = _as_text(self.portal_tenant_id).lower()
+        portal_tenant_id = as_text(self.portal_tenant_id).lower()
         if not portal_tenant_id:
             raise ValueError("network_root_read_model_request.portal_tenant_id is required")
         object.__setattr__(self, "portal_tenant_id", portal_tenant_id)
@@ -65,10 +60,10 @@ class NetworkRootReadModelRequest:
         elif isinstance(query, dict):
             normalized_query = {}
             for key, value in query.items():
-                token = _as_text(key)
+                token = as_text(key)
                 if not token:
                     raise ValueError("network_root_read_model_request.surface_query keys must be non-empty")
-                normalized_query[token] = _as_text(value)
+                normalized_query[token] = as_text(value)
         else:
             raise ValueError("network_root_read_model_request.surface_query must be a dict when provided")
         object.__setattr__(self, "surface_query", normalized_query)

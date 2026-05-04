@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
@@ -21,7 +16,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -39,7 +34,7 @@ def _normalize_payload(value: object, *, field_name: str) -> dict[str, JsonValue
 
 
 def _normalize_optional_domain(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return ""
     if "." not in token or "/" in token or "\\" in token or ".." in token:
@@ -53,7 +48,7 @@ class FndEbiDonationsReadOnlyRequest:
     selected_domain: str = ""
 
     def __post_init__(self) -> None:
-        portal_tenant_id = _as_text(self.portal_tenant_id).lower()
+        portal_tenant_id = as_text(self.portal_tenant_id).lower()
         if not portal_tenant_id:
             raise ValueError("fnd_ebi_donations_read_only_request.portal_tenant_id is required")
         object.__setattr__(self, "portal_tenant_id", portal_tenant_id)

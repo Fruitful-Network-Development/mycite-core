@@ -10,6 +10,7 @@ from MyCiteV2.packages.modules.domains.datum_recognition import recognize_author
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.ports.directive_context import DirectiveContextEventQuery, DirectiveContextRequest
 from MyCiteV2.packages.state_machine.lens import resolve_datum_lens
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
 WORKBENCH_UI_DEFAULT_DOCUMENT_SORT = "version_hash"
@@ -42,37 +43,31 @@ _LENS_MODES = {"interpreted", "raw"}
 _VISIBILITY_MODES = {"show", "hide"}
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_sort_key(value: object, *, allowed: set[str], default: str) -> str:
-    sort_key = _as_text(value).lower() or default
+    sort_key = as_text(value).lower() or default
     if sort_key not in allowed:
         return default
     return sort_key
 
 
 def _normalize_sort_direction(value: object) -> str:
-    return "desc" if _as_text(value).lower() == "desc" else "asc"
+    return "desc" if as_text(value).lower() == "desc" else "asc"
 
 
 def _normalize_mode(value: object, *, allowed: set[str], default: str) -> str:
-    token = _as_text(value).lower() or default
+    token = as_text(value).lower() or default
     if token not in allowed:
         return default
     return token
 
 
 def _short_hash(value: object, *, length: int = 12) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     return token[:length] if token else ""
 
 
 def _truncate_text(value: object, *, limit: int = 96) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     if len(token) <= limit:
         return token
     return f"{token[:limit - 1]}…"
@@ -82,41 +77,41 @@ def _json_text(value: object) -> str:
     try:
         return json.dumps(value, sort_keys=True)
     except TypeError:
-        return _as_text(value)
+        return as_text(value)
 
 
 def _joined_labels(raw: Any) -> str:
     if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], (list, tuple)):
-        return ", ".join(_as_text(item) for item in raw[1] if _as_text(item))
+        return ", ".join(as_text(item) for item in raw[1] if as_text(item))
     if isinstance(raw, dict):
         labels = raw.get("labels") or raw.get("label") or raw.get("name") or ()
         if isinstance(labels, (list, tuple)):
-            return ", ".join(_as_text(item) for item in labels if _as_text(item))
-        return _as_text(labels)
+            return ", ".join(as_text(item) for item in labels if as_text(item))
+        return as_text(labels)
     return ""
 
 
 def _relation(raw: Any) -> str:
     if isinstance(raw, list) and raw and isinstance(raw[0], list):
         triple = raw[0]
-        return _as_text(triple[1] if len(triple) > 1 else "")
+        return as_text(triple[1] if len(triple) > 1 else "")
     if isinstance(raw, dict):
-        return _as_text(raw.get("relation") or raw.get("predicate"))
+        return as_text(raw.get("relation") or raw.get("predicate"))
     return ""
 
 
 def _object_ref(raw: Any, *, datum_address: str) -> str:
     if isinstance(raw, list) and raw and isinstance(raw[0], list):
         triple = raw[0]
-        return _as_text(triple[2] if len(triple) > 2 else "")
+        return as_text(triple[2] if len(triple) > 2 else "")
     if isinstance(raw, dict):
-        return _as_text(raw.get("object_ref") or raw.get("object") or datum_address)
+        return as_text(raw.get("object_ref") or raw.get("object") or datum_address)
     return ""
 
 
 def _document_filter_haystack(document: dict[str, Any]) -> str:
     return " ".join(
-        _as_text(document.get(key)).lower()
+        as_text(document.get(key)).lower()
         for key in ("document_id", "document_name", "source_kind", "version_hash")
     )
 
@@ -124,12 +119,12 @@ def _document_filter_haystack(document: dict[str, Any]) -> str:
 def _document_sort_value(document: dict[str, Any], *, sort_key: str) -> Any:
     if sort_key == "row_count":
         return int(document.get(sort_key) or 0)
-    return _as_text(document.get(sort_key)).lower()
+    return as_text(document.get(sort_key)).lower()
 
 
 def _row_filter_haystack(row: dict[str, Any]) -> str:
     return " ".join(
-        _as_text(row.get(key)).lower()
+        as_text(row.get(key)).lower()
         for key in (
             "datum_address",
             "labels",
@@ -150,18 +145,18 @@ def _row_sort_value(row: dict[str, Any], *, sort_key: str) -> Any:
         return datum_address_sort_key(row["datum_address"])
     if sort_key in {"layer", "value_group", "iteration"}:
         return int(row.get(sort_key) or 0)
-    return _as_text(row.get(sort_key)).lower()
+    return as_text(row.get(sort_key)).lower()
 
 
 def _joined_tokens(values: object) -> str:
     if not isinstance(values, (list, tuple)):
-        return _as_text(values)
-    return ", ".join(_as_text(item) for item in values if _as_text(item))
+        return as_text(values)
+    return ", ".join(as_text(item) for item in values if as_text(item))
 
 
 def _first_non_empty(*values: object) -> str:
     for value in values:
-        token = _as_text(value)
+        token = as_text(value)
         if token:
             return token
     return ""
@@ -230,9 +225,9 @@ def _layer_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _overlay_summary_rows(overlay: dict[str, Any] | None, *, event_rows: Iterable[dict[str, Any]]) -> list[dict[str, str]]:
     rows = [
         {"label": "overlay", "value": "loaded" if overlay is not None else "missing"},
-        {"label": "context id", "value": _as_text((overlay or {}).get("context_id")) or "—"},
-        {"label": "subject version hash", "value": _as_text((overlay or {}).get("subject_version_hash")) or "—"},
-        {"label": "subject hyphae hash", "value": _as_text((overlay or {}).get("subject_hyphae_hash")) or "—"},
+        {"label": "context id", "value": as_text((overlay or {}).get("context_id")) or "—"},
+        {"label": "subject version hash", "value": as_text((overlay or {}).get("subject_version_hash")) or "—"},
+        {"label": "subject hyphae hash", "value": as_text((overlay or {}).get("subject_hyphae_hash")) or "—"},
     ]
     if overlay is not None:
         rows.append(
@@ -362,17 +357,17 @@ def _navigation_item(items: list[dict[str, Any]], *, index: int, label_key: str,
         return None
     item = items[index]
     return {
-        "id": _as_text(item.get(id_key)),
-        "label": _as_text(item.get(label_key)) or _as_text(item.get(id_key)) or "—",
+        "id": as_text(item.get(id_key)),
+        "label": as_text(item.get(label_key)) or as_text(item.get(id_key)) or "—",
     }
 
 
 def _preferred_document_id(document_rows: list[dict[str, Any]]) -> str:
     for document in document_rows:
-        document_id = _as_text(document.get("document_id"))
+        document_id = as_text(document.get("document_id"))
         if document_id.startswith(WORKBENCH_UI_PREFERRED_DOCUMENT_PREFIX):
             return document_id
-    return _as_text((document_rows[0] if document_rows else {}).get("document_id"))
+    return as_text((document_rows[0] if document_rows else {}).get("document_id"))
 
 
 class WorkbenchUiReadService:
@@ -391,7 +386,7 @@ class WorkbenchUiReadService:
             tenant_id=tenant_id,
             document_id=document.document_id,
         )
-        version_hash = _as_text((document_identity or {}).get("version_hash"))
+        version_hash = as_text((document_identity or {}).get("version_hash"))
         return {
             "document_id": document.document_id,
             "document_name": document.document_name,
@@ -423,11 +418,11 @@ class WorkbenchUiReadService:
                 datum_address=row.datum_address,
             )
             recognized = recognized_rows.get(row.datum_address)
-            hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
-            semantic_hash = _as_text((semantics or {}).get("semantic_hash"))
-            recognized_family = _as_text(getattr(recognized, "recognized_family", ""))
-            recognized_anchor = _as_text(getattr(recognized, "recognized_anchor", ""))
-            primary_value_token = _as_text(getattr(recognized, "primary_value_token", ""))
+            hyphae_hash = as_text((semantics or {}).get("hyphae_hash"))
+            semantic_hash = as_text((semantics or {}).get("semantic_hash"))
+            recognized_family = as_text(getattr(recognized, "recognized_family", ""))
+            recognized_anchor = as_text(getattr(recognized, "recognized_anchor", ""))
+            primary_value_token = as_text(getattr(recognized, "primary_value_token", ""))
             render_hints = dict(getattr(recognized, "render_hints", {}) or {})
             diagnostics = tuple(getattr(recognized, "diagnostic_states", ()) or ())
             lens_resolution = resolve_datum_lens(
@@ -456,8 +451,8 @@ class WorkbenchUiReadService:
                     "recognized_family": recognized_family,
                     "recognized_anchor": recognized_anchor,
                     "primary_value_token": primary_value_token,
-                    "primary_value_kind": _as_text(render_hints.get("primary_value_kind")),
-                    "overlay_kind": _as_text(render_hints.get("overlay_kind")),
+                    "primary_value_kind": as_text(render_hints.get("primary_value_kind")),
+                    "overlay_kind": as_text(render_hints.get("overlay_kind")),
                     "diagnostic_states": list(diagnostics),
                     "resolved_lens": lens_resolution.lens_id,
                     "resolved_lens_match": lens_resolution.matched_on,
@@ -473,7 +468,7 @@ class WorkbenchUiReadService:
                     "hyphae_hash_short": _short_hash(hyphae_hash),
                     "semantic_hash": semantic_hash,
                     "semantic_hash_short": _short_hash(semantic_hash),
-                    "hyphae_policy": _as_text((semantics or {}).get("policy")),
+                    "hyphae_policy": as_text((semantics or {}).get("policy")),
                     "hyphae_chain_addresses": hyphae_chain_addresses,
                     "hyphae_chain_length": len(hyphae_chain_addresses),
                     "local_references": local_references,
@@ -499,16 +494,16 @@ class WorkbenchUiReadService:
         catalog = self._datum_store.read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id=portal_instance_id)
         )
-        selected_document_id = _as_text(query.get("document"))
-        selected_row_id = _as_text(query.get("row"))
-        document_filter = _as_text(query.get("document_filter")).lower()
+        selected_document_id = as_text(query.get("document"))
+        selected_row_id = as_text(query.get("row"))
+        document_filter = as_text(query.get("document_filter")).lower()
         document_sort_key = _normalize_sort_key(
             query.get("document_sort"),
             allowed=_DOCUMENT_SORT_KEYS,
             default=WORKBENCH_UI_DEFAULT_DOCUMENT_SORT,
         )
         document_sort_direction = _normalize_sort_direction(query.get("document_dir"))
-        text_filter = _as_text(query.get("filter")).lower()
+        text_filter = as_text(query.get("filter")).lower()
         row_sort_key = _normalize_sort_key(query.get("sort"), allowed=_ROW_SORT_KEYS, default=WORKBENCH_UI_DEFAULT_ROW_SORT)
         row_sort_direction = _normalize_sort_direction(query.get("dir"))
         group_mode = _normalize_mode(query.get("group"), allowed=_GROUP_MODES, default=WORKBENCH_UI_DEFAULT_GROUP)
@@ -534,7 +529,7 @@ class WorkbenchUiReadService:
         document_rows.sort(
             key=lambda document: (
                 _document_sort_value(document, sort_key=document_sort_key),
-                _as_text(document.get("document_id")).lower(),
+                as_text(document.get("document_id")).lower(),
             ),
             reverse=document_sort_direction == "desc",
         )
@@ -548,8 +543,8 @@ class WorkbenchUiReadService:
         for document in document_rows:
             document["selected"] = document["document_id"] == selected_document_id
 
-        document_version_hash = _as_text((active_document_row or {}).get("version_hash"))
-        document_version_hash_short = _as_text((active_document_row or {}).get("version_hash_short"))
+        document_version_hash = as_text((active_document_row or {}).get("version_hash"))
+        document_version_hash_short = as_text((active_document_row or {}).get("version_hash_short"))
         rows: list[dict[str, Any]] = []
         if active_document is not None:
             rows = self._row_items(tenant_id=portal_instance_id, document=active_document)
@@ -568,7 +563,7 @@ class WorkbenchUiReadService:
         selected_row = next((row for row in active_rows if row["datum_address"] == selected_row_id), None)
         if selected_row is None and active_rows:
             selected_row = active_rows[0]
-        selected_row_id = _as_text((selected_row or {}).get("datum_address"))
+        selected_row_id = as_text((selected_row or {}).get("datum_address"))
         for row in rows:
             row["selected"] = row["datum_address"] == selected_row_id
         selected_row = next((row for row in rows if row["datum_address"] == selected_row_id), selected_row)
@@ -584,7 +579,7 @@ class WorkbenchUiReadService:
             request = DirectiveContextRequest(
                 portal_instance_id=portal_instance_id,
                 tool_id=WORKBENCH_UI_TOOL_ID,
-                subject_hyphae_hash=_as_text((selected_row or {}).get("hyphae_hash")),
+                subject_hyphae_hash=as_text((selected_row or {}).get("hyphae_hash")),
                 subject_version_hash=document_version_hash,
             )
             directive_result = self._directive_context.read_directive_context(request)
@@ -619,41 +614,41 @@ class WorkbenchUiReadService:
 
         selected_document_summary = {
             "document_id": selected_document_id,
-            "document_name": _as_text((active_document_row or {}).get("document_name")),
-            "source_kind": _as_text((active_document_row or {}).get("source_kind")),
+            "document_name": as_text((active_document_row or {}).get("document_name")),
+            "source_kind": as_text((active_document_row or {}).get("source_kind")),
             "version_hash": document_version_hash,
             "version_hash_short": document_version_hash_short,
             "row_count": int((active_document_row or {}).get("row_count") or 0),
         }
         selected_row_summary = {
-            "datum_address": _as_text((selected_row or {}).get("datum_address")),
+            "datum_address": as_text((selected_row or {}).get("datum_address")),
             "layer": int((selected_row or {}).get("layer") or 0),
             "value_group": int((selected_row or {}).get("value_group") or 0),
             "iteration": int((selected_row or {}).get("iteration") or 0),
-            "labels": _as_text((selected_row or {}).get("labels")),
-            "relation": _as_text((selected_row or {}).get("relation")),
-            "object_ref": _as_text((selected_row or {}).get("object_ref")),
-            "recognized_family": _as_text((selected_row or {}).get("recognized_family")),
-            "recognized_anchor": _as_text((selected_row or {}).get("recognized_anchor")),
-            "primary_value_token": _as_text((selected_row or {}).get("primary_value_token")),
-            "primary_value_kind": _as_text((selected_row or {}).get("primary_value_kind")),
-            "overlay_kind": _as_text((selected_row or {}).get("overlay_kind")),
-            "resolved_lens": _as_text((selected_row or {}).get("resolved_lens")),
-            "resolved_lens_match": _as_text((selected_row or {}).get("resolved_lens_match")),
-            "display_value": _as_text((selected_row or {}).get("display_value")),
-            "display_summary": _as_text((selected_row or {}).get("display_summary")),
+            "labels": as_text((selected_row or {}).get("labels")),
+            "relation": as_text((selected_row or {}).get("relation")),
+            "object_ref": as_text((selected_row or {}).get("object_ref")),
+            "recognized_family": as_text((selected_row or {}).get("recognized_family")),
+            "recognized_anchor": as_text((selected_row or {}).get("recognized_anchor")),
+            "primary_value_token": as_text((selected_row or {}).get("primary_value_token")),
+            "primary_value_kind": as_text((selected_row or {}).get("primary_value_kind")),
+            "overlay_kind": as_text((selected_row or {}).get("overlay_kind")),
+            "resolved_lens": as_text((selected_row or {}).get("resolved_lens")),
+            "resolved_lens_match": as_text((selected_row or {}).get("resolved_lens_match")),
+            "display_value": as_text((selected_row or {}).get("display_value")),
+            "display_summary": as_text((selected_row or {}).get("display_summary")),
             "diagnostic_states": list((selected_row or {}).get("diagnostic_states") or []),
-            "hyphae_hash": _as_text((selected_row or {}).get("hyphae_hash")),
-            "hyphae_hash_short": _as_text((selected_row or {}).get("hyphae_hash_short")),
-            "semantic_hash": _as_text((selected_row or {}).get("semantic_hash")),
-            "semantic_hash_short": _as_text((selected_row or {}).get("semantic_hash_short")),
-            "hyphae_policy": _as_text((selected_row or {}).get("hyphae_policy")),
+            "hyphae_hash": as_text((selected_row or {}).get("hyphae_hash")),
+            "hyphae_hash_short": as_text((selected_row or {}).get("hyphae_hash_short")),
+            "semantic_hash": as_text((selected_row or {}).get("semantic_hash")),
+            "semantic_hash_short": as_text((selected_row or {}).get("semantic_hash_short")),
+            "hyphae_policy": as_text((selected_row or {}).get("hyphae_policy")),
             "hyphae_chain_addresses": list((selected_row or {}).get("hyphae_chain_addresses") or []),
             "hyphae_chain_length": int((selected_row or {}).get("hyphae_chain_length") or 0),
             "local_references": list((selected_row or {}).get("local_references") or []),
             "local_reference_count": int((selected_row or {}).get("local_reference_count") or 0),
             "raw": (selected_row or {}).get("raw"),
-            "raw_json": _as_text((selected_row or {}).get("raw_json")),
+            "raw_json": as_text((selected_row or {}).get("raw_json")),
         }
 
         query_summary_rows = [

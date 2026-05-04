@@ -1,18 +1,13 @@
 from __future__ import annotations
 
 import re
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _DOMAIN_LABEL_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def is_plain_domain(value: object) -> bool:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return False
     if len(token) > 253 or "/" in token or "\\" in token or ".." in token:
@@ -26,7 +21,7 @@ def is_plain_domain(value: object) -> bool:
 
 
 def normalize_optional_plain_domain(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return ""
     if not is_plain_domain(token):

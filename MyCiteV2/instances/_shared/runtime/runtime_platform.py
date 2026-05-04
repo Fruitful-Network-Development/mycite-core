@@ -38,6 +38,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     build_portal_tool_registry_entries,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 PORTAL_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
@@ -89,17 +90,11 @@ PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS = (
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_known_tool_ids(known_tool_ids: list[str] | tuple[str, ...]) -> list[str]:
     normalized: list[str] = []
     seen: set[str] = set()
     for value in known_tool_ids:
-        tool_id = _as_text(value)
+        tool_id = as_text(value)
         if not tool_id or tool_id in seen:
             continue
         normalized.append(tool_id)
@@ -108,7 +103,7 @@ def _normalize_known_tool_ids(known_tool_ids: list[str] | tuple[str, ...]) -> li
 
 
 def _canonical_tool_id(raw_tool_id: object, *, known_tool_ids: set[str]) -> str:
-    tool_id = _as_text(raw_tool_id)
+    tool_id = as_text(raw_tool_id)
     if not tool_id:
         return ""
     if tool_id in known_tool_ids:
@@ -130,7 +125,7 @@ def _normalize_required_configuration(value: object) -> tuple[str, ...]:
     normalized: list[str] = []
     seen: set[str] = set()
     for item in value:
-        key = _as_text(item)
+        key = as_text(item)
         if not key or key in seen:
             continue
         normalized.append(key)
@@ -220,7 +215,7 @@ def tool_exposure_configured(tool_exposure_policy: dict[str, Any] | None, *, too
     configured_tools = tool_exposure_policy.get("configured_tools")
     if not isinstance(configured_tools, dict):
         return False
-    return configured_tools.get(_as_text(tool_id), False) is True
+    return configured_tools.get(as_text(tool_id), False) is True
 
 
 def tool_exposure_enabled(tool_exposure_policy: dict[str, Any] | None, *, tool_id: str) -> bool:
@@ -229,7 +224,7 @@ def tool_exposure_enabled(tool_exposure_policy: dict[str, Any] | None, *, tool_i
     enabled_tools = tool_exposure_policy.get("enabled_tools")
     if not isinstance(enabled_tools, dict):
         return False
-    return enabled_tools.get(_as_text(tool_id), False) is True
+    return enabled_tools.get(as_text(tool_id), False) is True
 
 
 @dataclass(frozen=True)
@@ -245,17 +240,17 @@ class PortalRuntimeEntrypointDescriptor:
     schema: str = field(default=PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
-        if not _as_text(self.entrypoint_id):
+        if not as_text(self.entrypoint_id):
             raise ValueError("runtime_entrypoint.entrypoint_id is required")
-        if not _as_text(self.callable_path):
+        if not as_text(self.callable_path):
             raise ValueError("runtime_entrypoint.callable_path is required")
-        if not _as_text(self.surface_id):
+        if not as_text(self.surface_id):
             raise ValueError("runtime_entrypoint.surface_id is required")
-        if not _as_text(self.route):
+        if not as_text(self.route):
             raise ValueError("runtime_entrypoint.route is required")
-        if not _as_text(self.request_schema):
+        if not as_text(self.request_schema):
             raise ValueError("runtime_entrypoint.request_schema is required")
-        if not _as_text(self.surface_schema):
+        if not as_text(self.surface_schema):
             raise ValueError("runtime_entrypoint.surface_schema is required")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("runtime_entrypoint.read_write_posture must be read-only or write")
@@ -384,7 +379,7 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
 
 
 def resolve_portal_runtime_entrypoint(entrypoint_id: object) -> PortalRuntimeEntrypointDescriptor | None:
-    normalized_entrypoint_id = _as_text(entrypoint_id)
+    normalized_entrypoint_id = as_text(entrypoint_id)
     for descriptor in build_portal_runtime_entrypoint_catalog():
         if descriptor.entrypoint_id == normalized_entrypoint_id:
             return descriptor
@@ -405,7 +400,7 @@ def surface_schema_for_surface(surface_id: str) -> str:
         PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
     }
-    return mapping.get(_as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
+    return mapping.get(as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
 
 
 def route_for_surface(surface_id: str) -> str:
@@ -422,13 +417,13 @@ def route_for_surface(surface_id: str) -> str:
         PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_ROUTE,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_ROUTE,
     }
-    return mapping.get(_as_text(surface_id), SYSTEM_ROOT_ROUTE)
+    return mapping.get(as_text(surface_id), SYSTEM_ROOT_ROUTE)
 
 
 def build_portal_runtime_error(*, code: str, message: str) -> dict[str, str]:
     return {
-        "code": _as_text(code) or "runtime_error",
-        "message": _as_text(message) or "The portal runtime could not complete the request.",
+        "code": as_text(code) or "runtime_error",
+        "message": as_text(message) or "The portal runtime could not complete the request.",
     }
 
 
@@ -440,7 +435,7 @@ def build_portal_region_family_contract(
     surface_payload_kind: str = "",
     interface_body_kind: str = "",
 ) -> dict[str, Any]:
-    family_token = _as_text(family)
+    family_token = as_text(family)
     if family_token not in {
         PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
         PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
@@ -450,10 +445,10 @@ def build_portal_region_family_contract(
     return {
         "schema": PORTAL_REGION_FAMILY_CONTRACT_SCHEMA,
         "family": family_token,
-        "surface_id": _as_text(surface_id),
-        "compatibility_kind": _as_text(compatibility_kind),
-        "surface_payload_kind": _as_text(surface_payload_kind),
-        "interface_body_kind": _as_text(interface_body_kind),
+        "surface_id": as_text(surface_id),
+        "compatibility_kind": as_text(compatibility_kind),
+        "surface_payload_kind": as_text(surface_payload_kind),
+        "interface_body_kind": as_text(interface_body_kind),
     }
 
 
@@ -468,10 +463,10 @@ def attach_region_family_contract(
     interface_body = normalized.get("interface_body") if isinstance(normalized.get("interface_body"), dict) else {}
     normalized["family_contract"] = build_portal_region_family_contract(
         family=family,
-        surface_id=_as_text(surface_id) or _as_text(surface_payload.get("surface_id")),
-        compatibility_kind=_as_text(normalized.get("kind")),
-        surface_payload_kind=_as_text(surface_payload.get("kind")),
-        interface_body_kind=_as_text(interface_body.get("kind")),
+        surface_id=as_text(surface_id) or as_text(surface_payload.get("surface_id")),
+        compatibility_kind=as_text(normalized.get("kind")),
+        surface_payload_kind=as_text(surface_payload.get("kind")),
+        interface_body_kind=as_text(interface_body.get("kind")),
     )
     return normalized
 
@@ -496,14 +491,14 @@ def build_portal_runtime_envelope(
     return {
         "schema": PORTAL_RUNTIME_ENVELOPE_SCHEMA,
         "portal_scope": dict(portal_scope or {"scope_id": PORTAL_SCOPE_DEFAULT_ID, "capabilities": []}),
-        "requested_surface_id": _as_text(requested_surface_id) or SYSTEM_ROOT_SURFACE_ID,
-        "surface_id": _as_text(surface_id) or SYSTEM_ROOT_SURFACE_ID,
-        "entrypoint_id": _as_text(entrypoint_id) or PORTAL_SHELL_ENTRYPOINT_ID,
-        "read_write_posture": _as_text(read_write_posture) or "read-only",
+        "requested_surface_id": as_text(requested_surface_id) or SYSTEM_ROOT_SURFACE_ID,
+        "surface_id": as_text(surface_id) or SYSTEM_ROOT_SURFACE_ID,
+        "entrypoint_id": as_text(entrypoint_id) or PORTAL_SHELL_ENTRYPOINT_ID,
+        "read_write_posture": as_text(read_write_posture) or "read-only",
         "reducer_owned": bool(reducer_owned),
-        "canonical_route": _as_text(canonical_route) or route_for_surface(surface_id),
+        "canonical_route": as_text(canonical_route) or route_for_surface(surface_id),
         "canonical_query": dict(canonical_query or {}),
-        "canonical_url": _as_text(canonical_url) or route_for_surface(surface_id),
+        "canonical_url": as_text(canonical_url) or route_for_surface(surface_id),
         "shell_state": dict(shell_state or {"schema": PORTAL_SHELL_STATE_SCHEMA}),
         "surface_payload": dict(surface_payload or {"schema": surface_schema_for_surface(surface_id)}),
         "shell_composition": dict(shell_composition or {}),

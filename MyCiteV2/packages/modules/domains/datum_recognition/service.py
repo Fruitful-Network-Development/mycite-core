@@ -12,6 +12,7 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _RF_TOKEN_RE = re.compile(r"^rf\.([0-9]+-[0-9]+-[0-9]+)$")
 _DATUM_ADDRESS_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
@@ -42,14 +43,8 @@ _OVERLAY_KINDS = frozenset(
 )
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _as_lower(value: object) -> str:
-    return _as_text(value).lower()
+    return as_text(value).lower()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> Any:
@@ -60,7 +55,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> Any:
     if isinstance(value, dict):
         out: dict[str, Any] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -77,15 +72,15 @@ def _normalize_reference_token(value: object) -> str:
 
 
 def _is_numeric_hyphen(value: object) -> bool:
-    return bool(_NUMERIC_HYPHEN_RE.fullmatch(_as_text(value)))
+    return bool(_NUMERIC_HYPHEN_RE.fullmatch(as_text(value)))
 
 
 def _is_binary_string(value: object) -> bool:
-    return bool(_BINARY_RE.fullmatch(_as_text(value)))
+    return bool(_BINARY_RE.fullmatch(as_text(value)))
 
 
 def _address_tuple(value: object) -> tuple[int, int, int] | None:
-    token = _as_text(value)
+    token = as_text(value)
     if not _DATUM_ADDRESS_RE.fullmatch(token):
         return None
     first, second, third = token.split("-", 2)
@@ -94,24 +89,24 @@ def _address_tuple(value: object) -> tuple[int, int, int] | None:
 
 def _extract_labels(raw: Any) -> tuple[str, ...]:
     if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], (list, tuple)):
-        return tuple(_as_text(item) for item in raw[1] if _as_text(item))
+        return tuple(as_text(item) for item in raw[1] if as_text(item))
     if isinstance(raw, dict):
         labels = raw.get("labels") or raw.get("label") or raw.get("name") or ()
         if isinstance(labels, (list, tuple)):
-            return tuple(_as_text(item) for item in labels if _as_text(item))
-        token = _as_text(labels)
+            return tuple(as_text(item) for item in labels if as_text(item))
+        token = as_text(labels)
         return (token,) if token else ()
     return ()
 
 
 def _extract_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
     if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return tuple(_as_text(item) for item in raw[0] if _as_text(item))
+        return tuple(as_text(item) for item in raw[0] if as_text(item))
     if isinstance(raw, dict):
         tokens = [
-            _as_text(raw.get("subject_ref") or raw.get("subject") or datum_address),
-            _as_text(raw.get("relation") or raw.get("predicate")),
-            _as_text(raw.get("object_ref") or raw.get("object")),
+            as_text(raw.get("subject_ref") or raw.get("subject") or datum_address),
+            as_text(raw.get("relation") or raw.get("predicate")),
+            as_text(raw.get("object_ref") or raw.get("object")),
         ]
         return tuple(token for token in tokens if token)
     return ()
@@ -120,7 +115,7 @@ def _extract_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
 def _primary_value_token(tokens: tuple[str, ...]) -> str:
     if not tokens:
         return ""
-    return _as_text(tokens[-1])
+    return as_text(tokens[-1])
 
 
 def _family_contract(anchor_label: object) -> tuple[str, str, str]:
@@ -143,7 +138,7 @@ def _family_contract(anchor_label: object) -> tuple[str, str, str]:
 
 
 def _default_value_kind(value_token: object) -> str:
-    token = _as_text(value_token)
+    token = as_text(value_token)
     if not token:
         return "unknown"
     if _is_binary_string(token):
@@ -206,10 +201,10 @@ class DatumRecognitionReferenceBinding:
     expected_value_kind: str = "unknown"
 
     def __post_init__(self) -> None:
-        reference_form = _as_text(self.reference_form)
+        reference_form = as_text(self.reference_form)
         normalized_reference_form = _normalize_reference_token(self.normalized_reference_form or reference_form)
-        anchor_address = _as_text(self.anchor_address)
-        anchor_label = _as_text(self.anchor_label)
+        anchor_address = as_text(self.anchor_address)
+        anchor_label = as_text(self.anchor_label)
         resolution_state = _as_lower(self.resolution_state)
         expected_value_kind = _as_lower(self.expected_value_kind) or "unknown"
         if not reference_form:
@@ -224,7 +219,7 @@ class DatumRecognitionReferenceBinding:
             raise ValueError("datum_recognition_reference.expected_value_kind is invalid")
         object.__setattr__(self, "reference_form", reference_form)
         object.__setattr__(self, "normalized_reference_form", normalized_reference_form)
-        object.__setattr__(self, "value_token", _as_text(self.value_token))
+        object.__setattr__(self, "value_token", as_text(self.value_token))
         object.__setattr__(self, "anchor_address", anchor_address)
         object.__setattr__(self, "anchor_label", anchor_label)
         object.__setattr__(self, "resolution_state", resolution_state)
@@ -255,16 +250,16 @@ class DatumRecognitionRow:
     render_hints: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        datum_address = _as_text(self.datum_address)
+        datum_address = as_text(self.datum_address)
         if not datum_address:
             raise ValueError("datum_recognition_row.datum_address is required")
-        labels = tuple(_as_text(item) for item in self.labels if _as_text(item))
+        labels = tuple(as_text(item) for item in self.labels if as_text(item))
         bindings: list[DatumRecognitionReferenceBinding] = []
         for item in self.reference_bindings:
             bindings.append(
                 item if isinstance(item, DatumRecognitionReferenceBinding) else DatumRecognitionReferenceBinding(**item)
             )
-        diagnostic_states = tuple(_as_lower(item) for item in self.diagnostic_states if _as_text(item))
+        diagnostic_states = tuple(_as_lower(item) for item in self.diagnostic_states if as_text(item))
         if not diagnostic_states:
             raise ValueError("datum_recognition_row.diagnostic_states is required")
         invalid = [item for item in diagnostic_states if item not in _DIAGNOSTIC_STATES]
@@ -279,9 +274,9 @@ class DatumRecognitionRow:
         object.__setattr__(self, "raw", _normalize_json_value(self.raw, field_name="datum_recognition_row.raw"))
         object.__setattr__(self, "labels", labels)
         object.__setattr__(self, "reference_bindings", tuple(bindings))
-        object.__setattr__(self, "recognized_family", _as_text(self.recognized_family))
-        object.__setattr__(self, "recognized_anchor", _as_text(self.recognized_anchor))
-        object.__setattr__(self, "primary_value_token", _as_text(self.primary_value_token))
+        object.__setattr__(self, "recognized_family", as_text(self.recognized_family))
+        object.__setattr__(self, "recognized_anchor", as_text(self.recognized_anchor))
+        object.__setattr__(self, "primary_value_token", as_text(self.primary_value_token))
         object.__setattr__(self, "diagnostic_states", diagnostic_states)
         object.__setattr__(self, "render_hints", render_hints)
 
@@ -318,7 +313,7 @@ class DatumRecognitionDocument:
     warnings: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        document_id = _as_text(self.document_id)
+        document_id = as_text(self.document_id)
         source_kind = _as_lower(self.source_kind)
         if not document_id:
             raise ValueError("datum_recognition_document.document_id is required")
@@ -340,17 +335,17 @@ class DatumRecognitionDocument:
             raise ValueError("datum_recognition_document.diagnostic_totals must be a dict")
         object.__setattr__(self, "document_id", document_id)
         object.__setattr__(self, "source_kind", source_kind)
-        object.__setattr__(self, "document_name", _as_text(self.document_name))
-        object.__setattr__(self, "relative_path", _as_text(self.relative_path))
-        object.__setattr__(self, "tool_id", _as_text(self.tool_id))
+        object.__setattr__(self, "document_name", as_text(self.document_name))
+        object.__setattr__(self, "relative_path", as_text(self.relative_path))
+        object.__setattr__(self, "tool_id", as_text(self.tool_id))
         object.__setattr__(self, "source_authority", _as_lower(self.source_authority) or "authoritative")
         object.__setattr__(
             self,
             "document_metadata",
             _normalize_json_value(self.document_metadata or {}, field_name="datum_recognition_document.document_metadata"),
         )
-        object.__setattr__(self, "anchor_document_name", _as_text(self.anchor_document_name))
-        object.__setattr__(self, "anchor_document_path", _as_text(self.anchor_document_path))
+        object.__setattr__(self, "anchor_document_name", as_text(self.anchor_document_name))
+        object.__setattr__(self, "anchor_document_path", as_text(self.anchor_document_path))
         object.__setattr__(
             self,
             "anchor_document_metadata",
@@ -363,7 +358,7 @@ class DatumRecognitionDocument:
         object.__setattr__(self, "anchor_rows", tuple(anchor_rows))
         object.__setattr__(self, "rows", tuple(rows))
         object.__setattr__(self, "diagnostic_totals", diagnostic_totals)
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def row_count(self) -> int:
@@ -413,14 +408,14 @@ class DatumWorkbenchProjection:
             documents.append(document if isinstance(document, DatumRecognitionDocument) else DatumRecognitionDocument(**document))
         object.__setattr__(self, "tenant_id", tenant_id)
         object.__setattr__(self, "documents", tuple(documents))
-        object.__setattr__(self, "selected_document_id", _as_text(self.selected_document_id))
+        object.__setattr__(self, "selected_document_id", as_text(self.selected_document_id))
         object.__setattr__(self, "source_files", _normalize_json_value(self.source_files, field_name="datum_workbench_projection.source_files"))
         object.__setattr__(
             self,
             "readiness_status",
             _normalize_json_value(self.readiness_status, field_name="datum_workbench_projection.readiness_status"),
         )
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def selected_document(self) -> DatumRecognitionDocument | None:
@@ -486,15 +481,15 @@ def _build_reference_bindings(
         if not normalized_reference:
             continue
         anchor_address = normalized_reference.split(".", 1)[1]
-        next_token = _as_text(raw_tokens[index + 1]) if index + 1 < len(raw_tokens) else ""
+        next_token = as_text(raw_tokens[index + 1]) if index + 1 < len(raw_tokens) else ""
         if _normalize_reference_token(next_token):
             next_token = ""
-        anchor_label = _as_text(anchor_labels.get(anchor_address))
+        anchor_label = as_text(anchor_labels.get(anchor_address))
         if not next_token:
             resolution_state = "missing_reference"
             diagnostics.append("missing_reference")
             binding = DatumRecognitionReferenceBinding(
-                reference_form=_as_text(token),
+                reference_form=as_text(token),
                 normalized_reference_form=normalized_reference,
                 value_token="",
                 anchor_address=anchor_address,
@@ -508,7 +503,7 @@ def _build_reference_bindings(
             resolution_state = "unresolved_anchor"
             diagnostics.append("unresolved_anchor")
             binding = DatumRecognitionReferenceBinding(
-                reference_form=_as_text(token),
+                reference_form=as_text(token),
                 normalized_reference_form=normalized_reference,
                 value_token=next_token,
                 anchor_address=anchor_address,
@@ -537,7 +532,7 @@ def _build_reference_bindings(
 
         bindings.append(
             DatumRecognitionReferenceBinding(
-                reference_form=_as_text(token),
+                reference_form=as_text(token),
                 normalized_reference_form=normalized_reference,
                 value_token=next_token,
                 anchor_address=anchor_address,

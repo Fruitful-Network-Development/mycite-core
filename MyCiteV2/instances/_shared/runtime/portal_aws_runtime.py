@@ -76,6 +76,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     normalize_runtime_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list, as_bool
 
 AWS_TOOL_STATUS_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.status.v1"
 AWS_CSM_ACTION_RESULT_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.result.v1"
@@ -159,26 +160,8 @@ _AWS_CSM_SOURCE_FINGERPRINT_TARGETS = {
 }
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_list(value: Any) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
-
-
-def _as_bool(value: object) -> bool:
-    return bool(value) if isinstance(value, bool) else _as_text(value).lower() == "true"
-
-
 def _normalized_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.startswith("www."):
         token = token[4:]
     return token
@@ -188,12 +171,9 @@ def _slugify_domain(value: object) -> str:
     return _normalized_domain(value).replace(".", "-")
 
 
-def _utc_now_iso() -> str:
-    return utc_now_iso(seconds_precision=True)
-
 
 def _normalized_email(value: object, *, field_name: str = "email") -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.count("@") != 1 or any(ch.isspace() for ch in token):
         raise ValueError(f"{field_name} must be an email-like value")
     local_part, domain_part = token.split("@", 1)
@@ -203,7 +183,7 @@ def _normalized_email(value: object, *, field_name: str = "email") -> str:
 
 
 def _optional_normalized_email(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return ""
     try:
@@ -213,14 +193,14 @@ def _optional_normalized_email(value: object) -> str:
 
 
 def _normalized_mailbox_local_part(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not _MAILBOX_LOCAL_PART_PATTERN.match(token):
         raise ValueError("mailbox_local_part must use lowercase mailbox characters")
     return token
 
 
 def _normalized_handoff_provider(value: object, *, allow_empty: bool = False) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token and allow_empty:
         return ""
     if token not in _ALLOWED_HANDOFF_PROVIDERS:
@@ -244,7 +224,7 @@ def _handoff_provider_from_email(email: str) -> str:
 
 def _inferred_handoff_provider(*emails: str) -> str:
     for email in emails:
-        if not _as_text(email):
+        if not as_text(email):
             continue
         try:
             return _handoff_provider_from_email(email)
@@ -296,7 +276,7 @@ def _redact_secret_payload_values(value: Any) -> Any:
     if isinstance(value, dict):
         redacted: dict[str, Any] = {}
         for key, child in value.items():
-            token = _as_text(key).lower()
+            token = as_text(key).lower()
             if any(marker in token for marker in _SECRET_PAYLOAD_KEY_MARKERS):
                 redacted[str(key)] = "[redacted]"
             else:
@@ -336,7 +316,7 @@ def _aws_csm_lens_entries(action_payload: Mapping[str, Any]) -> list[dict[str, s
     email_lens = EmailAddressLens()
     secret_lens = SecretReferenceLens()
     for key in ("single_user_email", "operator_inbox_target", "send_as_email", "forward_to_email"):
-        value = _as_text(action_payload.get(key))
+        value = as_text(action_payload.get(key))
         if value:
             entries.append(
                 {
@@ -347,7 +327,7 @@ def _aws_csm_lens_entries(action_payload: Mapping[str, Any]) -> list[dict[str, s
                 }
             )
     for key in ("secret_name", "credentials_secret_name"):
-        value = _as_text(action_payload.get(key))
+        value = as_text(action_payload.get(key))
         if value:
             entries.append(
                 {
@@ -368,17 +348,17 @@ def _build_aws_csm_action_nimm_envelope(
     action_payload: Mapping[str, Any],
     focus_subject: str = "",
 ) -> dict[str, Any]:
-    action = _as_text(action_kind).lower()
+    action = as_text(action_kind).lower()
     target_token = (
-        _as_text(action_payload.get("profile_id"))
-        or _as_text(surface_query.get("profile"))
+        as_text(action_payload.get("profile_id"))
+        or as_text(surface_query.get("profile"))
         or _normalized_domain(action_payload.get("domain") or surface_query.get("domain"))
         or action
     )
     directive = NimmDirective(
         verb="manipulate",
         target_authority="aws_csm",
-        document_id=_as_text(surface_query.get("domain")) or "aws-csm",
+        document_id=as_text(surface_query.get("domain")) or "aws-csm",
         targets=({"object_ref": target_token},),
         payload={
             "action_kind": action,
@@ -393,8 +373,8 @@ def _build_aws_csm_action_nimm_envelope(
         "archetype": "aws_csm_onboarding",
         "scope": f"portal/system/tools/aws-csm:{portal_scope.scope_id}",
     }
-    if _as_text(focus_subject) and "." in _as_text(focus_subject) and _as_text(focus_subject)[0].isdigit():
-        aitas["attention"] = _as_text(focus_subject)
+    if as_text(focus_subject) and "." in as_text(focus_subject) and as_text(focus_subject)[0].isdigit():
+        aitas["attention"] = as_text(focus_subject)
     return NimmDirectiveEnvelope(directive=directive, aitas=aitas).to_dict()
 
 
@@ -439,10 +419,10 @@ def _normalize_action_request(
         directive_payload = dict(envelope.directive.payload or {})
         if envelope.directive.target_authority != "aws_csm":
             raise ValueError("nimm_envelope.directive.target_authority must be aws_csm")
-        envelope_action_kind = _as_text(directive_payload.get("action_kind")).lower()
+        envelope_action_kind = as_text(directive_payload.get("action_kind")).lower()
         raw_envelope_action_payload = directive_payload.get("action_payload")
         envelope_action_payload = dict(raw_envelope_action_payload) if isinstance(raw_envelope_action_payload, dict) else {}
-    action_kind = _as_text(normalized_payload.get("action_kind") or envelope_action_kind).lower()
+    action_kind = as_text(normalized_payload.get("action_kind") or envelope_action_kind).lower()
     if action_kind not in _ALLOWED_ACTION_KINDS:
         raise ValueError(f"action_kind must be one of {sorted(_ALLOWED_ACTION_KINDS)}")
     if not action_payload:
@@ -476,7 +456,7 @@ def _private_config(private_dir: str | Path | None) -> dict[str, Any]:
 
 
 def _audit_focus_subject(private_dir: str | Path | None) -> str:
-    msn_id = _as_text(_private_config(private_dir).get("msn_id"))
+    msn_id = as_text(_private_config(private_dir).get("msn_id"))
     return f"{msn_id}.{_AUDIT_FOCUS_SUFFIX}" if msn_id else ""
 
 
@@ -493,23 +473,23 @@ def _tool_files(tool_root: Path | None) -> tuple[str, str]:
 
 def _handoff_was_sent(workflow: Mapping[str, Any]) -> bool:
     return bool(
-        _as_text(workflow.get("handoff_email_sent_at"))
-        or _as_text(workflow.get("handoff_email_sent_to"))
-        or _as_text(workflow.get("handoff_email_message_id"))
-        or _as_text(workflow.get("handoff_status")).lower() == "instruction_sent"
+        as_text(workflow.get("handoff_email_sent_at"))
+        or as_text(workflow.get("handoff_email_sent_to"))
+        or as_text(workflow.get("handoff_email_message_id"))
+        or as_text(workflow.get("handoff_status")).lower() == "instruction_sent"
     )
 
 
 def _handoff_correction_was_sent(workflow: Mapping[str, Any]) -> bool:
     return bool(
-        _as_text(workflow.get("handoff_correction_sent_at"))
-        or _as_text(workflow.get("handoff_correction_sent_to"))
-        or _as_text(workflow.get("handoff_correction_message_id"))
+        as_text(workflow.get("handoff_correction_sent_at"))
+        or as_text(workflow.get("handoff_correction_sent_to"))
+        or as_text(workflow.get("handoff_correction_message_id"))
     )
 
 
 def _effective_handoff_template_version(workflow: Mapping[str, Any]) -> str:
-    token = _as_text(workflow.get("handoff_template_version"))
+    token = as_text(workflow.get("handoff_template_version"))
     if token:
         return token
     if _handoff_was_sent(workflow):
@@ -518,20 +498,20 @@ def _effective_handoff_template_version(workflow: Mapping[str, Any]) -> str:
 
 
 def _handoff_correction_required(payload: Mapping[str, Any]) -> bool:
-    working = _as_dict(payload)
-    workflow = _as_dict(working.get("workflow"))
+    working = as_dict(payload)
+    workflow = as_dict(working.get("workflow"))
     if not _handoff_was_sent(workflow):
         return False
     if _handoff_correction_was_sent(workflow):
         return False
     explicit_required = workflow.get("handoff_correction_required")
     version_mismatch = _effective_handoff_template_version(workflow) != _CURRENT_HANDOFF_TEMPLATE_VERSION
-    return _as_bool(explicit_required) or version_mismatch
+    return as_bool(explicit_required) or version_mismatch
 
 
 def _handoff_correction_status(payload: Mapping[str, Any]) -> str:
-    working = _as_dict(payload)
-    workflow = _as_dict(working.get("workflow"))
+    working = as_dict(payload)
+    workflow = as_dict(working.get("workflow"))
     if _handoff_correction_required(working):
         return "required"
     if _handoff_correction_was_sent(workflow):
@@ -542,41 +522,41 @@ def _handoff_correction_status(payload: Mapping[str, Any]) -> str:
 
 
 def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]:
-    working = _as_dict(payload)
-    workflow = _as_dict(working.get("workflow"))
-    verification = _as_dict(working.get("verification"))
-    provider = _as_dict(working.get("provider"))
-    inbound = _as_dict(working.get("inbound"))
-    smtp = _as_dict(working.get("smtp"))
+    working = as_dict(payload)
+    workflow = as_dict(working.get("workflow"))
+    verification = as_dict(working.get("verification"))
+    provider = as_dict(working.get("provider"))
+    inbound = as_dict(working.get("inbound"))
+    smtp = as_dict(working.get("smtp"))
     correction_required = _handoff_correction_required(working)
 
-    handoff_status = _as_text(workflow.get("handoff_status")).lower()
-    verification_state = _as_text(verification.get("portal_state") or verification.get("status")).lower()
-    provider_state = _as_text(
+    handoff_status = as_text(workflow.get("handoff_status")).lower()
+    verification_state = as_text(verification.get("portal_state") or verification.get("status")).lower()
+    provider_state = as_text(
         provider.get("send_as_provider_status")
         or provider.get("gmail_send_as_status")
         or provider.get("aws_ses_identity_status")
     ).lower()
-    inbound_state = _as_text(inbound.get("receive_state")).lower()
+    inbound_state = as_text(inbound.get("receive_state")).lower()
 
     provider_verified = provider_state == "verified" or verification_state == "verified"
     handoff_confirmed = handoff_status in {"send_as_confirmed", "send_as_confirmed_attested"}
-    receive_operational = _as_bool(inbound.get("receive_verified")) or inbound_state == "receive_operational"
-    mailbox_operational = _as_bool(workflow.get("is_mailbox_operational"))
-    initiated = _as_bool(workflow.get("initiated"))
+    receive_operational = as_bool(inbound.get("receive_verified")) or inbound_state == "receive_operational"
+    mailbox_operational = as_bool(workflow.get("is_mailbox_operational"))
+    initiated = as_bool(workflow.get("initiated"))
     smtp_material_staged = bool(
-        _as_bool(smtp.get("handoff_ready"))
-        or _as_text(smtp.get("credentials_secret_state")).lower() == "configured"
-        or _as_text(smtp.get("staging_state")).lower() == "material_ready"
+        as_bool(smtp.get("handoff_ready"))
+        or as_text(smtp.get("credentials_secret_state")).lower() == "configured"
+        or as_text(smtp.get("staging_state")).lower() == "material_ready"
         or handoff_status.startswith("ready_for_")
     )
     handoff_forwarded = bool(
-        _as_text(workflow.get("handoff_email_sent_at"))
-        or _as_text(workflow.get("handoff_email_sent_to"))
-        or _as_text(workflow.get("handoff_email_message_id"))
-        or _as_text(verification.get("email_received_at"))
-        or _as_text(verification.get("latest_message_reference"))
-        or _as_text(inbound.get("latest_message_captured_at"))
+        as_text(workflow.get("handoff_email_sent_at"))
+        or as_text(workflow.get("handoff_email_sent_to"))
+        or as_text(workflow.get("handoff_email_message_id"))
+        or as_text(verification.get("email_received_at"))
+        or as_text(verification.get("latest_message_reference"))
+        or as_text(inbound.get("latest_message_captured_at"))
         or handoff_status == "instruction_sent"
         or verification_state in {"capture_requested", "capture_received"}
         or inbound_state in {"awaiting_message", "receive_pending", "receive_configured"}
@@ -618,22 +598,22 @@ def _profile_onboarding_projection(payload: Mapping[str, Any]) -> dict[str, str]
 
 
 def _mailbox_profile_row(payload: Mapping[str, Any], *, fallback_profile_id: str = "") -> dict[str, Any] | None:
-    working = _as_dict(payload)
-    identity = _as_dict(working.get("identity"))
+    working = as_dict(payload)
+    identity = as_dict(working.get("identity"))
     if not identity:
         return None
-    profile_id = _as_text(identity.get("profile_id")) or _as_text(fallback_profile_id)
-    domain = _as_text(identity.get("domain")).lower()
+    profile_id = as_text(identity.get("profile_id")) or as_text(fallback_profile_id)
+    domain = as_text(identity.get("domain")).lower()
     if not profile_id or not domain:
         return None
-    send_as_email = _as_text(identity.get("send_as_email")).lower()
-    user_email = _as_text(identity.get("single_user_email")).lower()
-    mailbox_local_part = _as_text(identity.get("mailbox_local_part"))
-    workflow = _as_dict(working.get("workflow"))
-    verification = _as_dict(working.get("verification"))
-    provider = _as_dict(working.get("provider"))
-    smtp = _as_dict(working.get("smtp"))
-    inbound = _as_dict(working.get("inbound"))
+    send_as_email = as_text(identity.get("send_as_email")).lower()
+    user_email = as_text(identity.get("single_user_email")).lower()
+    mailbox_local_part = as_text(identity.get("mailbox_local_part"))
+    workflow = as_dict(working.get("workflow"))
+    verification = as_dict(working.get("verification"))
+    provider = as_dict(working.get("provider"))
+    smtp = as_dict(working.get("smtp"))
+    inbound = as_dict(working.get("inbound"))
     onboarding = _profile_onboarding_projection(working)
     return {
         "profile_id": profile_id,
@@ -646,23 +626,23 @@ def _mailbox_profile_row(payload: Mapping[str, Any], *, fallback_profile_id: str
         ),
         "send_as_email": send_as_email,
         "user_email": user_email,
-        "role": _as_text(identity.get("role")) or _as_text(identity.get("profile_kind")) or "mailbox",
-        "workflow_state": _as_text(workflow.get("lifecycle_state")) or "unknown",
-        "verification_state": _as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
-        "provider_state": _as_text(
+        "role": as_text(identity.get("role")) or as_text(identity.get("profile_kind")) or "mailbox",
+        "workflow_state": as_text(workflow.get("lifecycle_state")) or "unknown",
+        "verification_state": as_text(verification.get("portal_state") or verification.get("status")) or "unknown",
+        "provider_state": as_text(
             provider.get("send_as_provider_status")
             or provider.get("gmail_send_as_status")
             or provider.get("aws_ses_identity_status")
         )
         or "unknown",
-        "inbound_state": _as_text(inbound.get("receive_state")) or "unknown",
+        "inbound_state": as_text(inbound.get("receive_state")) or "unknown",
         "onboarding_state": onboarding["state"],
         "onboarding_summary": onboarding["summary"],
         "handoff_template_version": _effective_handoff_template_version(workflow),
         "handoff_correction_required": "yes" if _handoff_correction_required(working) else "no",
         "handoff_correction_status": _handoff_correction_status(working),
-        "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
-        "forward_target": _as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
+        "handoff_correction_sent_at": as_text(workflow.get("handoff_correction_sent_at")),
+        "forward_target": as_text(smtp.get("forward_to_email") or identity.get("operator_inbox_target")),
         "raw": working,
     }
 
@@ -686,11 +666,11 @@ def _newsletter_domains(private_dir: str | Path | None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for domain in state.list_newsletter_domains():
         token = _normalized_domain(domain)
-        profile = _as_dict(state.load_profile(domain=token))
-        domain = _as_text(profile.get("domain")).lower()
+        profile = as_dict(state.load_profile(domain=token))
+        domain = as_text(profile.get("domain")).lower()
         if not domain:
             continue
-        contacts_payload = _as_dict(state.load_contact_log(domain=domain))
+        contacts_payload = as_dict(state.load_contact_log(domain=domain))
         contacts = [item for item in list(contacts_payload.get("contacts") or []) if isinstance(item, dict)]
         dispatches = [item for item in list(contacts_payload.get("dispatches") or []) if isinstance(item, dict)]
         subscribed_count = sum(1 for item in contacts if item.get("subscribed") is True)
@@ -698,19 +678,19 @@ def _newsletter_domains(private_dir: str | Path | None) -> list[dict[str, Any]]:
         rows.append(
             {
                 "domain": domain,
-                "list_address": _as_text(profile.get("list_address")).lower(),
-                "sender_address": _as_text(profile.get("selected_sender_address") or profile.get("sender_address")).lower(),
-                "sender_profile_id": _as_text(profile.get("selected_sender_profile_id")),
-                "author_profile_id": _as_text(profile.get("selected_author_profile_id")),
-                "author_address": _as_text(profile.get("selected_author_address")).lower(),
-                "delivery_mode": _as_text(profile.get("delivery_mode")) or "unknown",
+                "list_address": as_text(profile.get("list_address")).lower(),
+                "sender_address": as_text(profile.get("selected_sender_address") or profile.get("sender_address")).lower(),
+                "sender_profile_id": as_text(profile.get("selected_sender_profile_id")),
+                "author_profile_id": as_text(profile.get("selected_author_profile_id")),
+                "author_address": as_text(profile.get("selected_author_address")).lower(),
+                "delivery_mode": as_text(profile.get("delivery_mode")) or "unknown",
                 "contact_count": len(contacts),
                 "subscribed_count": subscribed_count,
                 "unsubscribed_count": unsubscribed_count,
                 "dispatch_count": len(dispatches),
-                "last_dispatch_id": _as_text(profile.get("last_dispatch_id")),
-                "last_inbound_status": _as_text(profile.get("last_inbound_status")),
-                "last_inbound_subject": _as_text(profile.get("last_inbound_subject")),
+                "last_dispatch_id": as_text(profile.get("last_dispatch_id")),
+                "last_inbound_status": as_text(profile.get("last_inbound_status")),
+                "last_inbound_subject": as_text(profile.get("last_inbound_subject")),
                 "contacts_raw": contacts_payload,
                 "raw": profile,
             }
@@ -724,22 +704,22 @@ def _domain_records(tool_root: Path | None) -> list[dict[str, Any]]:
         return []
     rows: list[dict[str, Any]] = []
     for payload in store.list_domains():
-        identity = _as_dict(payload.get("identity"))
+        identity = as_dict(payload.get("identity"))
         domain = _normalized_domain(identity.get("domain"))
         if not domain:
             continue
         readiness = _project_domain_readiness(payload)
-        observation = _as_dict(payload.get("observation"))
+        observation = as_dict(payload.get("observation"))
         rows.append(
             {
-                "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+                "tenant_id": as_text(identity.get("tenant_id")).lower(),
                 "domain": domain,
-                "region": _as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
-                "hosted_zone_id": _as_text(identity.get("hosted_zone_id")),
-                "readiness_state": _as_text(readiness.get("state")) or "unknown",
-                "readiness_summary": _as_text(readiness.get("summary")),
-                "blocker_count": len(_as_list(readiness.get("blockers"))),
-                "last_checked_at": _as_text(observation.get("last_checked_at")),
+                "region": as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
+                "hosted_zone_id": as_text(identity.get("hosted_zone_id")),
+                "readiness_state": as_text(readiness.get("state")) or "unknown",
+                "readiness_summary": as_text(readiness.get("summary")),
+                "blocker_count": len(as_list(readiness.get("blockers"))),
+                "last_checked_at": as_text(observation.get("last_checked_at")),
                 "raw": payload,
             }
         )
@@ -747,24 +727,24 @@ def _domain_records(tool_root: Path | None) -> list[dict[str, Any]]:
 
 
 def _join_list(value: object) -> str:
-    return ", ".join(_as_text(item) for item in _as_list(value) if _as_text(item))
+    return ", ".join(as_text(item) for item in as_list(value) if as_text(item))
 
 
 def _project_domain_readiness(payload: dict[str, Any]) -> dict[str, Any]:
-    identity = _as_dict(payload.get("identity"))
-    dns = _as_dict(payload.get("dns"))
-    ses = _as_dict(payload.get("ses"))
-    receipt = _as_dict(payload.get("receipt"))
-    observation = _as_dict(payload.get("observation"))
+    identity = as_dict(payload.get("identity"))
+    dns = as_dict(payload.get("dns"))
+    ses = as_dict(payload.get("ses"))
+    receipt = as_dict(payload.get("receipt"))
+    observation = as_dict(payload.get("observation"))
 
-    identity_exists = _as_bool(ses.get("identity_exists"))
-    nameserver_match = _as_bool(dns.get("nameserver_match"))
-    hosted_zone_present = _as_bool(dns.get("hosted_zone_present"))
-    mx_record_present = _as_bool(dns.get("mx_record_present"))
-    dkim_records_present = _as_bool(dns.get("dkim_records_present"))
-    identity_status = _as_text(ses.get("identity_status")).lower()
-    dkim_status = _as_text(ses.get("dkim_status")).lower()
-    receipt_status = _as_text(receipt.get("status")).lower()
+    identity_exists = as_bool(ses.get("identity_exists"))
+    nameserver_match = as_bool(dns.get("nameserver_match"))
+    hosted_zone_present = as_bool(dns.get("hosted_zone_present"))
+    mx_record_present = as_bool(dns.get("mx_record_present"))
+    dkim_records_present = as_bool(dns.get("dkim_records_present"))
+    identity_status = as_text(ses.get("identity_status")).lower()
+    dkim_status = as_text(ses.get("dkim_status")).lower()
+    receipt_status = as_text(receipt.get("status")).lower()
 
     blockers: list[str] = []
     if not hosted_zone_present:
@@ -811,7 +791,7 @@ def _project_domain_readiness(payload: dict[str, Any]) -> dict[str, Any]:
         "state": state,
         "summary": summary,
         "blockers": blockers,
-        "last_checked_at": _as_text(observation.get("last_checked_at")),
+        "last_checked_at": as_text(observation.get("last_checked_at")),
         "domain": _normalized_domain(identity.get("domain")),
     }
 
@@ -823,14 +803,14 @@ def _domain_actions(
 ) -> list[dict[str, Any]]:
     if not isinstance(domain_record, dict):
         return []
-    dns = _as_dict(domain_record.get("dns"))
-    ses = _as_dict(domain_record.get("ses"))
+    dns = as_dict(domain_record.get("dns"))
+    ses = as_dict(domain_record.get("ses"))
 
-    nameserver_match = _as_bool(dns.get("nameserver_match"))
-    hosted_zone_present = _as_bool(dns.get("hosted_zone_present"))
-    dkim_tokens = _as_list(ses.get("dkim_tokens"))
-    identity_exists = _as_bool(ses.get("identity_exists"))
-    mx_record_present = _as_bool(dns.get("mx_record_present"))
+    nameserver_match = as_bool(dns.get("nameserver_match"))
+    hosted_zone_present = as_bool(dns.get("hosted_zone_present"))
+    dkim_tokens = as_list(ses.get("dkim_tokens"))
+    identity_exists = as_bool(ses.get("identity_exists"))
+    mx_record_present = as_bool(dns.get("mx_record_present"))
 
     sync_dns_enabled = hosted_zone_present and nameserver_match and len(dkim_tokens) >= 3
     receipt_enabled = nameserver_match and identity_exists and mx_record_present
@@ -887,44 +867,44 @@ def _selected_domain_onboarding(
 ) -> dict[str, Any] | None:
     if not isinstance(selected_domain_record, dict):
         return None
-    raw = _as_dict(selected_domain_record.get("raw"))
-    identity = _as_dict(raw.get("identity"))
-    dns = _as_dict(raw.get("dns"))
-    ses = _as_dict(raw.get("ses"))
-    receipt = _as_dict(raw.get("receipt"))
-    observation = _as_dict(raw.get("observation"))
+    raw = as_dict(selected_domain_record.get("raw"))
+    identity = as_dict(raw.get("identity"))
+    dns = as_dict(raw.get("dns"))
+    ses = as_dict(raw.get("ses"))
+    receipt = as_dict(raw.get("receipt"))
+    observation = as_dict(raw.get("observation"))
     readiness = _project_domain_readiness(raw)
     mailboxes = [dict(row) for row in list(mailbox_rows or []) if isinstance(row, dict)]
     pending_correction_count = sum(
-        1 for row in mailboxes if _as_text(row.get("handoff_correction_required")).lower() == "yes"
+        1 for row in mailboxes if as_text(row.get("handoff_correction_required")).lower() == "yes"
     )
     completed_correction_count = sum(
-        1 for row in mailboxes if _as_text(row.get("handoff_correction_status")).lower() == "sent"
+        1 for row in mailboxes if as_text(row.get("handoff_correction_status")).lower() == "sent"
     )
     return {
-        "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+        "tenant_id": as_text(identity.get("tenant_id")).lower(),
         "domain": _normalized_domain(identity.get("domain")),
-        "region": _as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
-        "hosted_zone_id": _as_text(identity.get("hosted_zone_id")),
-        "readiness_state": _as_text(readiness.get("state")),
-        "readiness_summary": _as_text(readiness.get("summary")),
+        "region": as_text(identity.get("region")) or _DEFAULT_DOMAIN_REGION,
+        "hosted_zone_id": as_text(identity.get("hosted_zone_id")),
+        "readiness_state": as_text(readiness.get("state")),
+        "readiness_summary": as_text(readiness.get("summary")),
         "blockers": list(readiness.get("blockers") or []),
-        "last_checked_at": _as_text(observation.get("last_checked_at")),
+        "last_checked_at": as_text(observation.get("last_checked_at")),
         "registrar_nameservers": _join_list(dns.get("registrar_nameservers")),
         "hosted_zone_nameservers": _join_list(dns.get("hosted_zone_nameservers")),
-        "nameserver_match": "yes" if _as_bool(dns.get("nameserver_match")) else "no",
-        "mx_record_present": "yes" if _as_bool(dns.get("mx_record_present")) else "no",
+        "nameserver_match": "yes" if as_bool(dns.get("nameserver_match")) else "no",
+        "mx_record_present": "yes" if as_bool(dns.get("mx_record_present")) else "no",
         "mx_record_values": _join_list(dns.get("mx_record_values")),
-        "ses_identity_exists": "yes" if _as_bool(ses.get("identity_exists")) else "no",
-        "ses_identity_status": _as_text(ses.get("identity_status")) or "not_started",
-        "dkim_status": _as_text(ses.get("dkim_status")) or "not_started",
-        "dkim_token_count": str(len(_as_list(ses.get("dkim_tokens")))),
-        "dkim_records_present": "yes" if _as_bool(dns.get("dkim_records_present")) else "no",
-        "receipt_rule_status": _as_text(receipt.get("status")) or "not_ready",
-        "receipt_rule_name": _as_text(receipt.get("rule_name")) or f"portal-capture-{_slugify_domain(identity.get('domain'))}",
-        "receipt_rule_recipient": _as_text(receipt.get("expected_recipient") or identity.get("domain")),
-        "receipt_rule_bucket": _as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET,
-        "receipt_rule_prefix": _as_text(receipt.get("prefix")) or f"inbound/{_normalized_domain(identity.get('domain'))}/",
+        "ses_identity_exists": "yes" if as_bool(ses.get("identity_exists")) else "no",
+        "ses_identity_status": as_text(ses.get("identity_status")) or "not_started",
+        "dkim_status": as_text(ses.get("dkim_status")) or "not_started",
+        "dkim_token_count": str(len(as_list(ses.get("dkim_tokens")))),
+        "dkim_records_present": "yes" if as_bool(dns.get("dkim_records_present")) else "no",
+        "receipt_rule_status": as_text(receipt.get("status")) or "not_ready",
+        "receipt_rule_name": as_text(receipt.get("rule_name")) or f"portal-capture-{_slugify_domain(identity.get('domain'))}",
+        "receipt_rule_recipient": as_text(receipt.get("expected_recipient") or identity.get("domain")),
+        "receipt_rule_bucket": as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET,
+        "receipt_rule_prefix": as_text(receipt.get("prefix")) or f"inbound/{_normalized_domain(identity.get('domain'))}/",
         "mailbox_count": str(len(mailboxes)),
         "handoff_correction_required_count": str(pending_correction_count),
         "handoff_correction_completed_count": str(completed_correction_count),
@@ -979,7 +959,7 @@ def _workspace(
     profiles_by_id = {item["profile_id"]: item for item in mailbox_profiles}
     domain_map: dict[str, dict[str, Any]] = {}
     for domain_record in domain_records:
-        domain = _as_text(domain_record.get("domain"))
+        domain = as_text(domain_record.get("domain"))
         domain_map.setdefault(
             domain,
             {
@@ -1007,8 +987,8 @@ def _workspace(
         )
         domain_row["newsletter"] = newsletter
 
-    requested_profile = profiles_by_id.get(_as_text(query.get("profile")))
-    selected_domain = _as_text(query.get("domain")).lower()
+    requested_profile = profiles_by_id.get(as_text(query.get("profile")))
+    selected_domain = as_text(query.get("domain")).lower()
     if not selected_domain and requested_profile is not None:
         selected_domain = requested_profile["domain"]
     if selected_domain not in domain_map:
@@ -1018,7 +998,7 @@ def _workspace(
     if requested_profile is not None and requested_profile["domain"] == selected_domain:
         selected_profile = requested_profile
 
-    selected_section = _as_text(query.get("section")).lower()
+    selected_section = as_text(query.get("section")).lower()
     if selected_section not in {"users", "onboarding", "newsletter"}:
         selected_section = ""
 
@@ -1047,10 +1027,10 @@ def _workspace(
                 "newsletter_configured": newsletter is not None,
                 "contact_count": contact_count,
                 "dispatch_count": int(newsletter.get("dispatch_count") or 0) if isinstance(newsletter, dict) else 0,
-                "onboarding_state": _as_text(_as_dict(domain_record).get("readiness_state")) or "legacy_inferred",
-                "onboarding_summary": _as_text(_as_dict(domain_record).get("readiness_summary")),
-                "tenant_id": _as_text(_as_dict(domain_record).get("tenant_id")),
-                "hosted_zone_id": _as_text(_as_dict(domain_record).get("hosted_zone_id")),
+                "onboarding_state": as_text(as_dict(domain_record).get("readiness_state")) or "legacy_inferred",
+                "onboarding_summary": as_text(as_dict(domain_record).get("readiness_summary")),
+                "tenant_id": as_text(as_dict(domain_record).get("tenant_id")),
+                "hosted_zone_id": as_text(as_dict(domain_record).get("hosted_zone_id")),
                 "active": domain == selected_domain,
                 "href": _href_for_query(query_for_domain),
                 "shell_request": _shell_request(portal_scope, query_for_domain),
@@ -1120,7 +1100,7 @@ def _workspace(
 
 
 def _selected_domain_create_profile(tool_root: Path | None, *, selected_domain: str) -> dict[str, Any] | None:
-    domain = _as_text(selected_domain).lower()
+    domain = as_text(selected_domain).lower()
     if not domain:
         return None
     registry = _tool_store(tool_root)
@@ -1147,8 +1127,8 @@ def _selected_domain_create_profile(tool_root: Path | None, *, selected_domain: 
         "domain": domain,
         "enabled": True,
         "disabled_reason": "",
-        "tenant_id": _as_text(seed.get("tenant_id")).lower(),
-        "region": _as_text(seed.get("region")) or "us-east-1",
+        "tenant_id": as_text(seed.get("tenant_id")).lower(),
+        "region": as_text(seed.get("region")) or "us-east-1",
         "default_role": "operator",
     }
 
@@ -1156,19 +1136,19 @@ def _selected_domain_create_profile(tool_root: Path | None, *, selected_domain: 
 def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(selected_profile, dict):
         return None
-    raw = _as_dict(selected_profile.get("raw"))
-    identity = _as_dict(raw.get("identity"))
-    workflow = _as_dict(raw.get("workflow"))
-    verification = _as_dict(raw.get("verification"))
-    provider = _as_dict(raw.get("provider"))
-    smtp = _as_dict(raw.get("smtp"))
-    inbound = _as_dict(raw.get("inbound"))
+    raw = as_dict(selected_profile.get("raw"))
+    identity = as_dict(raw.get("identity"))
+    workflow = as_dict(raw.get("workflow"))
+    verification = as_dict(raw.get("verification"))
+    provider = as_dict(raw.get("provider"))
+    smtp = as_dict(raw.get("smtp"))
+    inbound = as_dict(raw.get("inbound"))
     tenant_scope_id = (
-        _as_text(identity.get("tenant_id"))
-        or _as_text(identity.get("domain")).lower()
-        or _as_text(identity.get("profile_id"))
+        as_text(identity.get("tenant_id"))
+        or as_text(identity.get("domain")).lower()
+        or as_text(identity.get("profile_id"))
     )
-    handoff_ready = _as_text(smtp.get("credentials_secret_state")).lower() == "configured" or bool(
+    handoff_ready = as_text(smtp.get("credentials_secret_state")).lower() == "configured" or bool(
         smtp.get("handoff_ready")
     )
     handoff_already_sent = _handoff_was_sent(workflow)
@@ -1176,8 +1156,8 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
     correction_sent = _handoff_correction_was_sent(workflow)
     correction_status = _handoff_correction_status(raw)
     handoff_template_version = _effective_handoff_template_version(workflow)
-    forward_target = _as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target"))
-    initiated = _as_bool(workflow.get("initiated"))
+    forward_target = as_text(smtp.get("forward_to_email") or selected_profile.get("forward_target"))
+    initiated = as_bool(workflow.get("initiated"))
     onboarding = _profile_onboarding_projection(raw)
     actions = [
         {
@@ -1252,62 +1232,62 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
         },
     ]
     return {
-        "profile_id": _as_text(selected_profile.get("profile_id")),
+        "profile_id": as_text(selected_profile.get("profile_id")),
         "tenant_scope_id": tenant_scope_id,
-        "workflow_state": _as_text(workflow.get("lifecycle_state")) or _as_text(selected_profile.get("workflow_state")),
-        "handoff_status": _as_text(workflow.get("handoff_status")),
+        "workflow_state": as_text(workflow.get("lifecycle_state")) or as_text(selected_profile.get("workflow_state")),
+        "handoff_status": as_text(workflow.get("handoff_status")),
         "onboarding_state": onboarding["state"],
         "onboarding_summary": onboarding["summary"],
         "handoff_template_version": handoff_template_version,
         "handoff_correction_required": "yes" if correction_required else "no",
         "handoff_correction_status": correction_status,
-        "handoff_correction_sent_to": _as_text(workflow.get("handoff_correction_sent_to")),
-        "handoff_correction_message_id": _as_text(workflow.get("handoff_correction_message_id")),
-        "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
-        "verification_state": _as_text(verification.get("portal_state") or verification.get("status"))
-        or _as_text(selected_profile.get("verification_state")),
-        "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
-        "verified_at": _as_text(verification.get("verified_at")),
-        "latest_message_reference": _as_text(
+        "handoff_correction_sent_to": as_text(workflow.get("handoff_correction_sent_to")),
+        "handoff_correction_message_id": as_text(workflow.get("handoff_correction_message_id")),
+        "handoff_correction_sent_at": as_text(workflow.get("handoff_correction_sent_at")),
+        "verification_state": as_text(verification.get("portal_state") or verification.get("status"))
+        or as_text(selected_profile.get("verification_state")),
+        "email_received_at": as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
+        "verified_at": as_text(verification.get("verified_at")),
+        "latest_message_reference": as_text(
             verification.get("latest_message_reference")
             or inbound.get("latest_message_s3_uri")
             or inbound.get("capture_source_reference")
         ),
-        "provider_state": _as_text(
+        "provider_state": as_text(
             provider.get("send_as_provider_status")
             or provider.get("gmail_send_as_status")
             or provider.get("aws_ses_identity_status")
         )
-        or _as_text(selected_profile.get("provider_state")),
-        "inbound_state": _as_text(inbound.get("receive_state")) or _as_text(selected_profile.get("inbound_state")),
+        or as_text(selected_profile.get("provider_state")),
+        "inbound_state": as_text(inbound.get("receive_state")) or as_text(selected_profile.get("inbound_state")),
         "handoff": {
-            "send_as_email": _as_text(identity.get("send_as_email") or selected_profile.get("send_as_email")),
-            "single_user_email": _as_text(identity.get("single_user_email") or selected_profile.get("user_email")),
-            "operator_inbox_target": _as_text(identity.get("operator_inbox_target")),
+            "send_as_email": as_text(identity.get("send_as_email") or selected_profile.get("send_as_email")),
+            "single_user_email": as_text(identity.get("single_user_email") or selected_profile.get("user_email")),
+            "operator_inbox_target": as_text(identity.get("operator_inbox_target")),
             "forward_target": forward_target,
-            "handoff_email_sent_to": _as_text(workflow.get("handoff_email_sent_to")),
-            "handoff_email_message_id": _as_text(workflow.get("handoff_email_message_id")),
-            "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
+            "handoff_email_sent_to": as_text(workflow.get("handoff_email_sent_to")),
+            "handoff_email_message_id": as_text(workflow.get("handoff_email_message_id")),
+            "handoff_email_sent_at": as_text(workflow.get("handoff_email_sent_at")),
             "handoff_template_version": handoff_template_version,
             "current_handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
             "handoff_correction_required": "yes" if correction_required else "no",
             "handoff_correction_status": correction_status,
-            "handoff_correction_sent_to": _as_text(workflow.get("handoff_correction_sent_to")),
-            "handoff_correction_message_id": _as_text(workflow.get("handoff_correction_message_id")),
-            "handoff_correction_sent_at": _as_text(workflow.get("handoff_correction_sent_at")),
-            "handoff_provider": _as_text(
+            "handoff_correction_sent_to": as_text(workflow.get("handoff_correction_sent_to")),
+            "handoff_correction_message_id": as_text(workflow.get("handoff_correction_message_id")),
+            "handoff_correction_sent_at": as_text(workflow.get("handoff_correction_sent_at")),
+            "handoff_provider": as_text(
                 provider.get("handoff_provider")
                 or identity.get("handoff_provider")
                 or smtp.get("handoff_provider")
             ),
-            "smtp_host": _as_text(smtp.get("host")),
-            "smtp_port": _as_text(smtp.get("port")),
-            "smtp_username": _as_text(smtp.get("username")),
-            "secret_name": _as_text(smtp.get("credentials_secret_name")),
-            "secret_state": _as_text(smtp.get("credentials_secret_state")),
+            "smtp_host": as_text(smtp.get("host")),
+            "smtp_port": as_text(smtp.get("port")),
+            "smtp_username": as_text(smtp.get("username")),
+            "secret_name": as_text(smtp.get("credentials_secret_name")),
+            "secret_state": as_text(smtp.get("credentials_secret_state")),
             "handoff_ready": handoff_ready,
-            "email_received_at": _as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
-            "verified_at": _as_text(verification.get("verified_at")),
+            "email_received_at": as_text(verification.get("email_received_at") or inbound.get("latest_message_captured_at")),
+            "verified_at": as_text(verification.get("verified_at")),
         },
         "actions": actions,
     }
@@ -1316,7 +1296,7 @@ def _selected_profile_onboarding(selected_profile: dict[str, Any] | None) -> dic
 def _facts_rows(pairs: list[tuple[str, object]]) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for label, value in pairs:
-        text = _as_text(value)
+        text = as_text(value)
         if text:
             rows.append({"label": label, "value": text})
     return rows
@@ -1327,21 +1307,21 @@ def _build_control_panel(
     portal_scope: PortalScope,
     workspace: dict[str, Any],
 ) -> dict[str, Any]:
-    collection_file = _as_text(workspace.get("collection_file"))
-    mediation_file = _as_text(workspace.get("mediation_file"))
+    collection_file = as_text(workspace.get("collection_file"))
+    mediation_file = as_text(workspace.get("mediation_file"))
     groups = [
         {
             "title": "Domains",
             "entries": [
                 {
-                    "label": _as_text(row.get("label")) or _as_text(row.get("domain")),
+                    "label": as_text(row.get("label")) or as_text(row.get("domain")),
                     "meta": (
                         f"{int(row.get('profile_count') or 0)} mailbox"
                         + ("" if int(row.get("profile_count") or 0) == 1 else "es")
                         + (" · newsletter" if row.get("newsletter_configured") else "")
                     ),
                     "active": bool(row.get("active")),
-                    "href": _as_text(row.get("href")),
+                    "href": as_text(row.get("href")),
                     "shell_request": row.get("shell_request"),
                 }
                 for row in list(workspace.get("domain_rows") or [])
@@ -1355,12 +1335,12 @@ def _build_control_panel(
                 "title": "User Emails",
                 "entries": [
                     {
-                        "label": _as_text(row.get("title")) or _as_text(row.get("profile_id")),
+                        "label": as_text(row.get("title")) or as_text(row.get("profile_id")),
                         "meta": " · ".join(
-                            [token for token in (_as_text(row.get("role")), _as_text(row.get("workflow_state"))) if token]
+                            [token for token in (as_text(row.get("role")), as_text(row.get("workflow_state"))) if token]
                         ),
                         "active": bool(row.get("active")),
-                        "href": _as_text(row.get("href")),
+                        "href": as_text(row.get("href")),
                         "shell_request": row.get("shell_request"),
                     }
                     for row in mailbox_rows
@@ -1407,7 +1387,7 @@ def _build_inspector(
             ),
         }
     ]
-    action_result = _as_dict(surface_payload.get("action_result"))
+    action_result = as_dict(surface_payload.get("action_result"))
     if action_result:
         sections.append(
             {
@@ -1429,7 +1409,7 @@ def _build_inspector(
         provider = dict(raw.get("provider") or {})
         smtp = dict(raw.get("smtp") or {})
         inbound = dict(raw.get("inbound") or {})
-        subject = {"level": "profile", "id": _as_text(selected_profile.get("profile_id"))}
+        subject = {"level": "profile", "id": as_text(selected_profile.get("profile_id"))}
         sections.extend(
             [
                 {
@@ -1478,7 +1458,7 @@ def _build_inspector(
         identity = dict(raw.get("identity") or {})
         readiness = _project_domain_readiness(raw)
         receipt = dict(raw.get("receipt") or {})
-        subject = {"level": "domain", "id": _as_text(identity.get("domain"))}
+        subject = {"level": "domain", "id": as_text(identity.get("domain"))}
         sections.extend(
             [
                 {
@@ -1497,7 +1477,7 @@ def _build_inspector(
             ]
         )
     elif isinstance(selected_newsletter, dict):
-        subject = {"level": "domain", "id": _as_text(selected_newsletter.get("domain"))}
+        subject = {"level": "domain", "id": as_text(selected_newsletter.get("domain"))}
         sections.append(
             {
                 "title": "Newsletter",
@@ -1648,7 +1628,7 @@ def build_portal_aws_surface_bundle(
     }
     enriched_workspace["selected_domain_create_profile"] = _selected_domain_create_profile(
         tool_root,
-        selected_domain=_as_text(workspace.get("selected_domain")),
+        selected_domain=as_text(workspace.get("selected_domain")),
     )
     enriched_workspace["selected_domain_onboarding"] = _selected_domain_onboarding(
         workspace.get("selected_domain_record") if isinstance(workspace.get("selected_domain_record"), dict) else None,
@@ -1714,16 +1694,16 @@ def _runtime_envelope_from_bundle(
     composition = build_shell_composition_payload(
         active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
         portal_instance_id=portal_scope.scope_id,
-        page_title=_as_text(bundle.get("page_title")) or "AWS-CSM",
-        page_subtitle=_as_text(bundle.get("page_subtitle")),
+        page_title=as_text(bundle.get("page_title")) or "AWS-CSM",
+        page_subtitle=as_text(bundle.get("page_subtitle")),
         activity_items=_activity_items(
             portal_scope=portal_scope,
             active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
             shell_state=shell_state,
         ),
-        control_panel=_as_dict(bundle.get("control_panel")),
-        workbench=_as_dict(bundle.get("workbench")),
-        inspector=_as_dict(bundle.get("inspector")),
+        control_panel=as_dict(bundle.get("control_panel")),
+        workbench=as_dict(bundle.get("workbench")),
+        inspector=as_dict(bundle.get("inspector")),
         shell_state=shell_state,
         control_panel_collapsed=_control_panel_collapsed(shell_state),
     )
@@ -1734,12 +1714,12 @@ def _runtime_envelope_from_bundle(
         entrypoint_id=entrypoint_id,
         read_write_posture=read_write_posture,
         reducer_owned=False,
-        canonical_route=_as_text(bundle.get("canonical_route")) or AWS_CSM_TOOL_ROUTE,
-        canonical_query=_as_dict(bundle.get("canonical_query")),
-        canonical_url=_as_text(bundle.get("canonical_url"))
-        or build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=_as_dict(bundle.get("canonical_query"))),
+        canonical_route=as_text(bundle.get("canonical_route")) or AWS_CSM_TOOL_ROUTE,
+        canonical_query=as_dict(bundle.get("canonical_query")),
+        canonical_url=as_text(bundle.get("canonical_url"))
+        or build_canonical_url(surface_id=AWS_CSM_TOOL_SURFACE_ID, query=as_dict(bundle.get("canonical_query"))),
         shell_state=_shell_state_payload(shell_state),
-        surface_payload=_as_dict(bundle.get("surface_payload")),
+        surface_payload=as_dict(bundle.get("surface_payload")),
         shell_composition=composition,
         warnings=[],
         error=None,
@@ -1761,11 +1741,11 @@ def _action_result(
 ) -> dict[str, Any]:
     payload = {
         "schema": AWS_CSM_ACTION_RESULT_SCHEMA,
-        "action_kind": _as_text(action_kind),
-        "mutation_lifecycle_action": _as_text(mutation_lifecycle_action) or aws_csm_lifecycle_action(action_kind),
-        "status": _as_text(status) or "accepted",
-        "code": _as_text(code),
-        "message": _as_text(message),
+        "action_kind": as_text(action_kind),
+        "mutation_lifecycle_action": as_text(mutation_lifecycle_action) or aws_csm_lifecycle_action(action_kind),
+        "status": as_text(status) or "accepted",
+        "code": as_text(code),
+        "message": as_text(message),
         "details": dict(details or {}),
     }
     if isinstance(nimm_envelope, dict) and nimm_envelope:
@@ -1811,14 +1791,14 @@ def _selected_profile_row(
     action_payload: Mapping[str, Any],
 ) -> dict[str, Any] | None:
     candidate_ids: list[str] = []
-    for candidate in (_as_text(surface_query.get("profile")), _as_text(action_payload.get("profile_id"))):
+    for candidate in (as_text(surface_query.get("profile")), as_text(action_payload.get("profile_id"))):
         if candidate and candidate not in candidate_ids:
             candidate_ids.append(candidate)
     if not candidate_ids:
         return None
     for candidate_id in candidate_ids:
         for row in _mailbox_profiles(tool_root):
-            if _as_text(row.get("profile_id")) == candidate_id:
+            if as_text(row.get("profile_id")) == candidate_id:
                 return row
     return None
 
@@ -1839,11 +1819,11 @@ def _selected_domain_record(
     if payload is None:
         return None
     readiness = _project_domain_readiness(payload)
-    identity = _as_dict(payload.get("identity"))
+    identity = as_dict(payload.get("identity"))
     return {
-        "tenant_id": _as_text(identity.get("tenant_id")).lower(),
+        "tenant_id": as_text(identity.get("tenant_id")).lower(),
         "domain": requested_domain,
-        "readiness_state": _as_text(readiness.get("state")),
+        "readiness_state": as_text(readiness.get("state")),
         "raw": payload,
     }
 
@@ -1854,7 +1834,7 @@ def _newsletter_profile_references(
     profile_id: str,
 ) -> list[str]:
     state = _newsletter_state(private_dir)
-    if state is None or not _as_text(profile_id):
+    if state is None or not as_text(profile_id):
         return []
     references: list[str] = []
     try:
@@ -1863,13 +1843,13 @@ def _newsletter_profile_references(
         return []
     for domain in domains:
         try:
-            payload = _as_dict(state.load_profile(domain=domain))
+            payload = as_dict(state.load_profile(domain=domain))
         except Exception:
             continue
-        if _as_text(payload.get("selected_author_profile_id")) == _as_text(profile_id):
+        if as_text(payload.get("selected_author_profile_id")) == as_text(profile_id):
             references.append(_normalized_domain(domain))
             continue
-        if _as_text(payload.get("selected_sender_profile_id")) == _as_text(profile_id):
+        if as_text(payload.get("selected_sender_profile_id")) == as_text(profile_id):
             references.append(_normalized_domain(domain))
     return sorted(token for token in set(references) if token)
 
@@ -1883,7 +1863,7 @@ def _rewrite_newsletter_profile_references(
     new_send_as_email: str,
 ) -> list[str]:
     state = _newsletter_state(private_dir)
-    if state is None or not _as_text(old_profile_id):
+    if state is None or not as_text(old_profile_id):
         return []
     updated_domains: list[str] = []
     try:
@@ -1893,15 +1873,15 @@ def _rewrite_newsletter_profile_references(
     for domain in domains:
         token = _normalized_domain(domain)
         try:
-            payload = _as_dict(state.load_profile(domain=token))
+            payload = as_dict(state.load_profile(domain=token))
         except Exception:
             continue
         changed = False
-        if _as_text(payload.get("selected_author_profile_id")) == _as_text(old_profile_id):
-            payload["selected_author_profile_id"] = _as_text(new_profile_id)
+        if as_text(payload.get("selected_author_profile_id")) == as_text(old_profile_id):
+            payload["selected_author_profile_id"] = as_text(new_profile_id)
             changed = True
-        if _as_text(payload.get("selected_sender_profile_id")) == _as_text(old_profile_id):
-            payload["selected_sender_profile_id"] = _as_text(new_profile_id)
+        if as_text(payload.get("selected_sender_profile_id")) == as_text(old_profile_id):
+            payload["selected_sender_profile_id"] = as_text(new_profile_id)
             changed = True
         if _optional_normalized_email(payload.get("selected_author_address")) == _optional_normalized_email(old_send_as_email):
             payload["selected_author_address"] = _optional_normalized_email(new_send_as_email)
@@ -1922,25 +1902,25 @@ def _updated_profile_payload(
     action_payload: Mapping[str, Any],
 ) -> tuple[dict[str, Any], dict[str, str]]:
     working = deepcopy(existing_profile)
-    identity = _as_dict(working.get("identity"))
-    smtp = _as_dict(working.get("smtp"))
-    verification = _as_dict(working.get("verification"))
-    provider = _as_dict(working.get("provider"))
-    workflow = _as_dict(working.get("workflow"))
-    inbound = _as_dict(working.get("inbound"))
+    identity = as_dict(working.get("identity"))
+    smtp = as_dict(working.get("smtp"))
+    verification = as_dict(working.get("verification"))
+    provider = as_dict(working.get("provider"))
+    workflow = as_dict(working.get("workflow"))
+    inbound = as_dict(working.get("inbound"))
 
-    tenant_id = _as_text(identity.get("tenant_id")).lower()
+    tenant_id = as_text(identity.get("tenant_id")).lower()
     domain = _normalized_domain(identity.get("domain"))
     if not tenant_id or not domain:
         raise ValueError("The selected AWS-CSM profile is missing tenant/domain identity metadata.")
 
-    current_profile_id = _as_text(identity.get("profile_id"))
+    current_profile_id = as_text(identity.get("profile_id"))
     current_send_as_email = _optional_normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
     current_single_user_email = _optional_normalized_email(identity.get("single_user_email"))
     current_operator_inbox_target = _optional_normalized_email(
         smtp.get("forward_to_email") or identity.get("operator_inbox_target") or identity.get("single_user_email")
     )
-    current_handoff_provider = _as_text(
+    current_handoff_provider = as_text(
         provider.get("handoff_provider") or identity.get("handoff_provider") or smtp.get("handoff_provider")
     ).lower() or _inferred_handoff_provider(current_operator_inbox_target, current_single_user_email)
 
@@ -1963,7 +1943,7 @@ def _updated_profile_payload(
         or next_single_user_email,
         field_name="operator_inbox_target",
     )
-    next_role = _as_text(action_payload.get("role") or identity.get("role") or "operator").lower() or "operator"
+    next_role = as_text(action_payload.get("role") or identity.get("role") or "operator").lower() or "operator"
     next_handoff_provider = (
         _normalized_handoff_provider(
             action_payload.get("handoff_provider")
@@ -1992,7 +1972,7 @@ def _updated_profile_payload(
             next_handoff_provider != current_handoff_provider,
         )
     )
-    secret_name = _as_text(smtp.get("credentials_secret_name")) or f"aws-cms/smtp/{tenant_id}.{next_mailbox_local_part}"
+    secret_name = as_text(smtp.get("credentials_secret_name")) or f"aws-cms/smtp/{tenant_id}.{next_mailbox_local_part}"
     if next_profile_id != current_profile_id:
         secret_name = f"aws-cms/smtp/{tenant_id}.{next_mailbox_local_part}"
     smtp["send_as_email"] = next_send_as_email
@@ -2074,10 +2054,10 @@ def _domain_rule_name(domain: str) -> str:
 
 
 def _domain_seed_payload(action_payload: Mapping[str, Any]) -> dict[str, Any]:
-    tenant_id = _as_text(action_payload.get("tenant_id")).lower()
+    tenant_id = as_text(action_payload.get("tenant_id")).lower()
     domain = _normalized_domain(action_payload.get("domain"))
-    hosted_zone_id = _as_text(action_payload.get("hosted_zone_id")).upper()
-    region = _as_text(action_payload.get("region")) or _DEFAULT_DOMAIN_REGION
+    hosted_zone_id = as_text(action_payload.get("hosted_zone_id")).upper()
+    region = as_text(action_payload.get("region")) or _DEFAULT_DOMAIN_REGION
     if not tenant_id or any(ch.isspace() for ch in tenant_id):
         raise ValueError("tenant_id must be a non-empty token")
     if not domain or "." not in domain or any(ch.isspace() for ch in domain):
@@ -2131,10 +2111,10 @@ def _domain_seed_payload(action_payload: Mapping[str, Any]) -> dict[str, Any]:
 def _merged_domain_payload(base_payload: dict[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
     working = deepcopy(base_payload)
     for section in ("identity", "dns", "ses", "receipt", "observation"):
-        fragment = _as_dict(patch.get(section))
+        fragment = as_dict(patch.get(section))
         if not fragment:
             continue
-        merged = _as_dict(working.get(section))
+        merged = as_dict(working.get(section))
         merged.update(fragment)
         working[section] = merged
     working["readiness"] = _project_domain_readiness(working)
@@ -2152,7 +2132,7 @@ def _refresh_domain_record(
     observed = getattr(cloud, "describe_domain_status")(domain_record)
     merged = _merged_domain_payload(domain_record, observed if isinstance(observed, Mapping) else {})
     return store.save_domain(
-        domain=_normalized_domain(_as_dict(domain_record.get("identity")).get("domain")),
+        domain=_normalized_domain(as_dict(domain_record.get("identity")).get("domain")),
         payload=merged,
     )
 
@@ -2201,12 +2181,12 @@ def _onboarding_cloud(*, private_dir: str | Path | None, tenant_id: str) -> obje
 
 
 def _tenant_scope_for_profile(profile_row: dict[str, Any]) -> str:
-    raw = _as_dict(profile_row.get("raw"))
-    identity = _as_dict(raw.get("identity"))
+    raw = as_dict(profile_row.get("raw"))
+    identity = as_dict(raw.get("identity"))
     return (
-        _as_text(identity.get("tenant_id"))
-        or _as_text(identity.get("domain")).lower()
-        or _as_text(identity.get("profile_id"))
+        as_text(identity.get("tenant_id"))
+        or as_text(identity.get("domain")).lower()
+        or as_text(identity.get("profile_id"))
     )
 
 
@@ -2218,21 +2198,21 @@ def _record_profile_handoff_event(
     fields: Mapping[str, object],
 ) -> dict[str, Any]:
     tenant_scope_id = _tenant_scope_for_profile(profile_row)
-    working = deepcopy(_as_dict(profile_row.get("raw")))
-    workflow = _as_dict(working.get("workflow"))
+    working = deepcopy(as_dict(profile_row.get("raw")))
+    workflow = as_dict(working.get("workflow"))
     workflow["handoff_status"] = status
     for field_name, field_value in dict(fields).items():
-        workflow[_as_text(field_name)] = field_value
+        workflow[as_text(field_name)] = field_value
     working["workflow"] = workflow
     return store.save_profile(
         tenant_scope_id=tenant_scope_id,
-        profile_id=_as_text(profile_row.get("profile_id")),
+        profile_id=as_text(profile_row.get("profile_id")),
         payload=working,
     )
 
 
 def _route_sync_fail_closed() -> bool:
-    token = _as_text(os.getenv(_ROUTE_SYNC_FAIL_CLOSED_ENV)).lower()
+    token = as_text(os.getenv(_ROUTE_SYNC_FAIL_CLOSED_ENV)).lower()
     return token in {"1", "true", "yes", "on"}
 
 
@@ -2289,7 +2269,7 @@ def _sync_verification_route_map(
         summary = sync(profiles=store.list_profiles())
     except Exception as exc:  # noqa: BLE001
         warning = (
-            f"Verification-forward route sync failed: {_as_text(exc) or 'unknown error'}. "
+            f"Verification-forward route sync failed: {as_text(exc) or 'unknown error'}. "
             f"Fallback: {_route_sync_manual_step(private_dir)}"
         )
         if _route_sync_fail_closed():
@@ -2303,11 +2283,11 @@ def _sync_verification_route_map(
             "changed": False,
             "manual_step": _route_sync_manual_step(private_dir),
         }
-    payload = _as_dict(summary)
-    status = _as_text(payload.get("status")).lower() or "success"
+    payload = as_dict(summary)
+    status = as_text(payload.get("status")).lower() or "success"
     if status not in {"success", "warning", "failure", "skipped"}:
         status = "success"
-    message = _as_text(payload.get("message")) or (
+    message = as_text(payload.get("message")) or (
         "Verification-forward route sync completed."
         if status in {"success", "skipped"}
         else "Verification-forward route sync needs operator attention."
@@ -2319,27 +2299,27 @@ def _sync_verification_route_map(
         "message": message,
         "route_count": payload.get("route_count"),
         "tracked_recipients": list(payload.get("tracked_recipients") or []),
-        "lambda_name": _as_text(payload.get("lambda_name")),
-        "changed": _as_bool(payload.get("changed")),
-        "manual_step": _as_text(payload.get("manual_step")) or _route_sync_manual_step(private_dir),
+        "lambda_name": as_text(payload.get("lambda_name")),
+        "changed": as_bool(payload.get("changed")),
+        "manual_step": as_text(payload.get("manual_step")) or _route_sync_manual_step(private_dir),
     }
 
 
 def _merge_route_sync_details(details: dict[str, Any], route_sync: dict[str, Any] | None) -> None:
-    payload = _as_dict(route_sync)
+    payload = as_dict(route_sync)
     if not payload:
         return
-    details["route_sync_status"] = _as_text(payload.get("status")) or "unknown"
-    details["route_sync_message"] = _as_text(payload.get("message"))
-    details["route_sync_route_count"] = _as_text(payload.get("route_count"))
-    details["route_sync_lambda_name"] = _as_text(payload.get("lambda_name"))
-    details["route_sync_changed"] = "true" if _as_bool(payload.get("changed")) else "false"
-    details["route_sync_route_changed"] = "true" if _as_bool(payload.get("route_changed")) else "false"
-    details["route_sync_code_changed"] = "true" if _as_bool(payload.get("code_changed")) else "false"
+    details["route_sync_status"] = as_text(payload.get("status")) or "unknown"
+    details["route_sync_message"] = as_text(payload.get("message"))
+    details["route_sync_route_count"] = as_text(payload.get("route_count"))
+    details["route_sync_lambda_name"] = as_text(payload.get("lambda_name"))
+    details["route_sync_changed"] = "true" if as_bool(payload.get("changed")) else "false"
+    details["route_sync_route_changed"] = "true" if as_bool(payload.get("route_changed")) else "false"
+    details["route_sync_code_changed"] = "true" if as_bool(payload.get("code_changed")) else "false"
     details["route_sync_tracked_recipients"] = ", ".join(
-        _as_text(item) for item in _as_list(payload.get("tracked_recipients")) if _as_text(item)
+        as_text(item) for item in as_list(payload.get("tracked_recipients")) if as_text(item)
     )
-    details["route_sync_manual_step"] = _as_text(payload.get("manual_step"))
+    details["route_sync_manual_step"] = as_text(payload.get("manual_step"))
 
 
 def _apply_action(
@@ -2370,7 +2350,7 @@ def _apply_action(
     try:
         if action_kind == "create_domain":
             domain_payload = _domain_seed_payload(action_payload)
-            tenant_id = _as_text(_as_dict(domain_payload.get("identity")).get("tenant_id")).lower()
+            tenant_id = as_text(as_dict(domain_payload.get("identity")).get("tenant_id")).lower()
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
             dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
             if dependency_failure:
@@ -2379,13 +2359,13 @@ def _apply_action(
             convergence_steps = _run_domain_readiness_convergence(cloud=cloud, domain_record=created_domain)
             refreshed_domain = _refresh_domain_record(store=store, domain_record=created_domain, cloud=cloud)
             readiness = _project_domain_readiness(refreshed_domain)
-            domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
+            domain = _normalized_domain(as_dict(refreshed_domain.get("identity")).get("domain"))
             next_query = {"view": "domains", "domain": domain, "section": "onboarding"}
             details = {
                 "tenant_id": tenant_id,
                 "domain": domain,
-                "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
-                "readiness_state": _as_text(readiness.get("state")),
+                "hosted_zone_id": as_text(as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
+                "readiness_state": as_text(readiness.get("state")),
                 "convergence_steps": convergence_steps,
             }
             _append_local_audit(
@@ -2420,19 +2400,19 @@ def _apply_action(
                     code="domain_required",
                     message="Select an AWS-CSM domain before running this action.",
                 )
-            tenant_id = _as_text(domain_row.get("tenant_id"))
+            tenant_id = as_text(domain_row.get("tenant_id"))
             cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id)
             dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=cloud)
             if dependency_failure:
                 return surface_query, dependency_failure
-            raw_domain = _as_dict(domain_row.get("raw"))
+            raw_domain = as_dict(domain_row.get("raw"))
             convergence_steps: list[str] = []
             if action_kind == "send_pending_handoff_corrections":
-                domain = _normalized_domain(_as_dict(raw_domain.get("identity")).get("domain"))
+                domain = _normalized_domain(as_dict(raw_domain.get("identity")).get("domain"))
                 correction_rows = [
                     row
                     for row in _mailbox_profiles(tool_root)
-                    if _normalized_domain(row.get("domain")) == domain and _handoff_correction_required(_as_dict(row.get("raw")))
+                    if _normalized_domain(row.get("domain")) == domain and _handoff_correction_required(as_dict(row.get("raw")))
                 ]
                 if not correction_rows:
                     return {"view": "domains", "domain": domain, "section": "onboarding"}, _action_result(
@@ -2453,7 +2433,7 @@ def _apply_action(
                 for row in correction_rows:
                     live_profile_payload = store.load_profile(
                         tenant_scope_id=_tenant_scope_for_profile(row),
-                        profile_id=_as_text(row.get("profile_id")),
+                        profile_id=as_text(row.get("profile_id")),
                     )
                     if live_profile_payload is None:
                         continue
@@ -2463,18 +2443,18 @@ def _apply_action(
                     _record_profile_handoff_event(
                         store=store,
                         profile_row=live_row,
-                        status=_as_text(_as_dict(live_profile_payload.get("workflow")).get("handoff_status")) or "instruction_sent",
+                        status=as_text(as_dict(live_profile_payload.get("workflow")).get("handoff_status")) or "instruction_sent",
                         fields={
                             "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
                             "handoff_correction_required": False,
-                            "handoff_correction_sent_to": _as_text(dispatch.get("sent_to")),
-                            "handoff_correction_message_id": _as_text(dispatch.get("message_id")),
-                            "handoff_correction_sent_at": _utc_now_iso(),
+                            "handoff_correction_sent_to": as_text(dispatch.get("sent_to")),
+                            "handoff_correction_message_id": as_text(dispatch.get("message_id")),
+                            "handoff_correction_sent_at": utc_now_iso(seconds_precision=True),
                         },
                     )
-                    corrected_profiles.append(_as_text(dispatch.get("send_as_email")))
-                    corrected_recipients.append(_as_text(dispatch.get("sent_to")))
-                    corrected_message_ids.append(_as_text(dispatch.get("message_id")))
+                    corrected_profiles.append(as_text(dispatch.get("send_as_email")))
+                    corrected_recipients.append(as_text(dispatch.get("sent_to")))
+                    corrected_message_ids.append(as_text(dispatch.get("message_id")))
                 details = {
                     "tenant_id": tenant_id,
                     "domain": domain,
@@ -2515,13 +2495,13 @@ def _apply_action(
                 convergence_steps = _run_domain_readiness_convergence(cloud=cloud, domain_record=raw_domain)
             refreshed_domain = _refresh_domain_record(store=store, domain_record=raw_domain, cloud=cloud)
             readiness = _project_domain_readiness(refreshed_domain)
-            domain = _normalized_domain(_as_dict(refreshed_domain.get("identity")).get("domain"))
+            domain = _normalized_domain(as_dict(refreshed_domain.get("identity")).get("domain"))
             next_query = {"view": "domains", "domain": domain, "section": "onboarding"}
             details = {
-                "tenant_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("tenant_id")),
+                "tenant_id": as_text(as_dict(refreshed_domain.get("identity")).get("tenant_id")),
                 "domain": domain,
-                "hosted_zone_id": _as_text(_as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
-                "readiness_state": _as_text(readiness.get("state")),
+                "hosted_zone_id": as_text(as_dict(refreshed_domain.get("identity")).get("hosted_zone_id")),
+                "readiness_state": as_text(readiness.get("state")),
                 "updated_sections": ["dns", "ses", "receipt", "observation", "readiness"],
                 "convergence_steps": convergence_steps,
             }
@@ -2561,7 +2541,7 @@ def _apply_action(
             }
             _merge_route_sync_details(details, route_sync)
             message = f"Created draft AWS-CSM profile {outcome.profile_id}."
-            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+            if as_text(route_sync.get("status")) in {"warning", "failure"}:
                 message += " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -2595,7 +2575,7 @@ def _apply_action(
                     code="newsletter_state_unavailable",
                     message="Newsletter state adapter is not available in this portal runtime.",
                 )
-            newsletter_profile = _as_dict(newsletter_adapter.load_profile(domain=domain))
+            newsletter_profile = as_dict(newsletter_adapter.load_profile(domain=domain))
             if not newsletter_profile:
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -2603,7 +2583,7 @@ def _apply_action(
                     code="newsletter_profile_missing",
                     message=f"No newsletter-admin profile exists for domain {domain}.",
                 )
-            sender_profile_id = _as_text(action_payload.get("sender_profile_id"))
+            sender_profile_id = as_text(action_payload.get("sender_profile_id"))
             if not sender_profile_id:
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -2614,7 +2594,7 @@ def _apply_action(
             # Validate sender onboarding state
             sender_row = None
             for row in _mailbox_profiles(tool_root):
-                if _as_text(row.get("profile_id")) == sender_profile_id and _normalized_domain(row.get("domain")) == domain:
+                if as_text(row.get("profile_id")) == sender_profile_id and _normalized_domain(row.get("domain")) == domain:
                     sender_row = row
                     break
             if sender_row is None:
@@ -2624,7 +2604,7 @@ def _apply_action(
                     code="sender_profile_not_found",
                     message=f"Profile {sender_profile_id} was not found in domain {domain}.",
                 )
-            sender_onboarding_state = _as_text(sender_row.get("onboarding_state")).lower()
+            sender_onboarding_state = as_text(sender_row.get("onboarding_state")).lower()
             if sender_onboarding_state not in {"send_as_confirmed", "onboard"}:
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -2636,7 +2616,7 @@ def _apply_action(
                         "onboarding_state": sender_onboarding_state,
                     },
                 )
-            sender_send_as_email = _as_text(sender_row.get("send_as_email")).lower()
+            sender_send_as_email = as_text(sender_row.get("send_as_email")).lower()
             newsletter_profile["selected_sender_profile_id"] = sender_profile_id
             newsletter_profile["selected_sender_address"] = sender_send_as_email
             newsletter_adapter.save_profile(domain=domain, payload=newsletter_profile)
@@ -2676,7 +2656,7 @@ def _apply_action(
                     code="newsletter_state_unavailable",
                     message="Newsletter state adapter is not available in this portal runtime.",
                 )
-            newsletter_profile = _as_dict(newsletter_adapter.load_profile(domain=domain))
+            newsletter_profile = as_dict(newsletter_adapter.load_profile(domain=domain))
             if not newsletter_profile:
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -2685,7 +2665,7 @@ def _apply_action(
                     message=f"No newsletter-admin profile exists for domain {domain}.",
                 )
             # Check sender onboarding state
-            sender_profile_id = _as_text(newsletter_profile.get("selected_sender_profile_id"))
+            sender_profile_id = as_text(newsletter_profile.get("selected_sender_profile_id"))
             if not sender_profile_id:
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -2695,10 +2675,10 @@ def _apply_action(
                 )
             sender_row = None
             for row in _mailbox_profiles(tool_root):
-                if _as_text(row.get("profile_id")) == sender_profile_id:
+                if as_text(row.get("profile_id")) == sender_profile_id:
                     sender_row = row
                     break
-            if sender_row is None or _as_text(sender_row.get("onboarding_state")).lower() not in {"send_as_confirmed", "onboard"}:
+            if sender_row is None or as_text(sender_row.get("onboarding_state")).lower() not in {"send_as_confirmed", "onboard"}:
                 return surface_query, _action_result(
                     action_kind=action_kind,
                     status="error",
@@ -2707,8 +2687,8 @@ def _apply_action(
                     details={"sender_profile_id": sender_profile_id},
                 )
             # Load contact log
-            contacts_payload = _as_dict(newsletter_adapter.load_contact_log(domain=domain))
-            contacts = [item for item in _as_list(contacts_payload.get("contacts")) if isinstance(item, dict)]
+            contacts_payload = as_dict(newsletter_adapter.load_contact_log(domain=domain))
+            contacts = [item for item in as_list(contacts_payload.get("contacts")) if isinstance(item, dict)]
             subscribers = [item for item in contacts if item.get("subscribed") is True]
             if not subscribers:
                 return surface_query, _action_result(
@@ -2718,7 +2698,7 @@ def _apply_action(
                     message="There are no active subscribers for this newsletter domain.",
                 )
             # Dependency guard for boto3
-            tenant_id_for_dispatch = _as_text(newsletter_profile.get("tenant_id")) or domain
+            tenant_id_for_dispatch = as_text(newsletter_profile.get("tenant_id")) or domain
             dispatch_cloud = _onboarding_cloud(private_dir=private_dir, tenant_id=tenant_id_for_dispatch)
             dependency_failure = _enforce_runtime_dependency_baseline(action_kind=action_kind, cloud=dispatch_cloud)
             if dependency_failure:
@@ -2726,13 +2706,13 @@ def _apply_action(
             # Generate per-subscriber unsubscribe tokens
             dispatch_id = str(uuid.uuid4())
             unsubscribe_secret = _read_newsletter_unsubscribe_secret(private_dir, domain)
-            sender_address = _as_text(newsletter_profile.get("selected_sender_address") or newsletter_profile.get("sender_address")).lower()
-            list_address = _as_text(newsletter_profile.get("list_address")).lower()
-            dispatch_queue_url = _as_text(newsletter_profile.get("dispatch_queue_url"))
-            dispatcher_callback_url = _as_text(newsletter_profile.get("dispatcher_callback_url"))
+            sender_address = as_text(newsletter_profile.get("selected_sender_address") or newsletter_profile.get("sender_address")).lower()
+            list_address = as_text(newsletter_profile.get("list_address")).lower()
+            dispatch_queue_url = as_text(newsletter_profile.get("dispatch_queue_url"))
+            dispatcher_callback_url = as_text(newsletter_profile.get("dispatcher_callback_url"))
             subscriber_list = []
             for contact in subscribers:
-                email = _as_text(contact.get("email")).lower()
+                email = as_text(contact.get("email")).lower()
                 if not email:
                     continue
                 token = _generate_unsubscribe_token(email, domain, dispatch_id, unsubscribe_secret)
@@ -2803,7 +2783,7 @@ def _apply_action(
         if action_kind == "update_profile":
             live_profile = store.load_profile(
                 tenant_scope_id=tenant_scope_id,
-                profile_id=_as_text(profile_row.get("profile_id")),
+                profile_id=as_text(profile_row.get("profile_id")),
             )
             if live_profile is None:
                 raise ValueError("AWS-CSM profile could not be reloaded for the requested update.")
@@ -2811,15 +2791,15 @@ def _apply_action(
                 existing_profile=live_profile,
                 action_payload=action_payload,
             )
-            next_profile_id = _as_text(_as_dict(updated_profile.get("identity")).get("profile_id"))
+            next_profile_id = as_text(as_dict(updated_profile.get("identity")).get("profile_id"))
             next_send_as_email = _optional_normalized_email(
-                _as_dict(updated_profile.get("identity")).get("send_as_email")
+                as_dict(updated_profile.get("identity")).get("send_as_email")
             )
             for candidate in store.list_profiles():
-                candidate_identity = _as_dict(candidate.get("identity"))
-                candidate_profile_id = _as_text(candidate_identity.get("profile_id"))
+                candidate_identity = as_dict(candidate.get("identity"))
+                candidate_profile_id = as_text(candidate_identity.get("profile_id"))
                 candidate_send_as_email = _optional_normalized_email(candidate_identity.get("send_as_email"))
-                if candidate_profile_id == _as_text(profile_row.get("profile_id")):
+                if candidate_profile_id == as_text(profile_row.get("profile_id")):
                     continue
                 if candidate_profile_id == next_profile_id:
                     return surface_query, _action_result(
@@ -2838,12 +2818,12 @@ def _apply_action(
 
             saved_profile = store.replace_profile(
                 tenant_scope_id=tenant_scope_id,
-                profile_id=_as_text(profile_row.get("profile_id")),
+                profile_id=as_text(profile_row.get("profile_id")),
                 payload=updated_profile,
             )
             updated_domains = _rewrite_newsletter_profile_references(
                 private_dir=private_dir,
-                old_profile_id=_as_text(profile_row.get("profile_id")),
+                old_profile_id=as_text(profile_row.get("profile_id")),
                 new_profile_id=next_profile_id,
                 old_send_as_email=_optional_normalized_email(profile_row.get("send_as_email")),
                 new_send_as_email=next_send_as_email,
@@ -2854,12 +2834,12 @@ def _apply_action(
                 cloud=cloud,
                 private_dir=private_dir,
             )
-            identity = _as_dict(saved_profile.get("identity"))
+            identity = as_dict(saved_profile.get("identity"))
             details.update(
                 {
                     "tenant_scope_id": tenant_scope_id,
                     "domain": _normalized_domain(identity.get("domain")),
-                    "role": _as_text(identity.get("role")),
+                    "role": as_text(identity.get("role")),
                     "newsletter_reference_updates": ", ".join(updated_domains),
                 }
             )
@@ -2868,12 +2848,12 @@ def _apply_action(
                 "view": "domains",
                 "domain": _normalized_domain(identity.get("domain")),
                 "profile": next_profile_id,
-                "section": _as_text(surface_query.get("section")) or "users",
+                "section": as_text(surface_query.get("section")) or "users",
             }
             message = f"Updated AWS-CSM profile {next_profile_id}."
             if details.get("mailbox_identity_changed") == "true":
                 message += " Onboarding state was reset so the revised mailbox can be restaged cleanly."
-            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+            if as_text(route_sync.get("status")) in {"warning", "failure"}:
                 message += " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -2898,7 +2878,7 @@ def _apply_action(
         if action_kind == "delete_profile":
             newsletter_references = _newsletter_profile_references(
                 private_dir=private_dir,
-                profile_id=_as_text(profile_row.get("profile_id")),
+                profile_id=as_text(profile_row.get("profile_id")),
             )
             if newsletter_references:
                 return surface_query, _action_result(
@@ -2911,7 +2891,7 @@ def _apply_action(
                     ),
                     details={"newsletter_references": ", ".join(newsletter_references)},
                 )
-            current_profile_id = _as_text(profile_row.get("profile_id"))
+            current_profile_id = as_text(profile_row.get("profile_id"))
             current_domain = _normalized_domain(profile_row.get("domain"))
             current_send_as_email = _optional_normalized_email(profile_row.get("send_as_email"))
             store.delete_profile(
@@ -2934,10 +2914,10 @@ def _apply_action(
             next_query = {
                 "view": "domains",
                 "domain": current_domain,
-                "section": _as_text(surface_query.get("section")) or "users",
+                "section": as_text(surface_query.get("section")) or "users",
             }
             message = f"Deleted AWS-CSM profile {current_profile_id}."
-            if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+            if as_text(route_sync.get("status")) in {"warning", "failure"}:
                 message += " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -2969,12 +2949,12 @@ def _apply_action(
                 {
                     "tenant_scope": {"scope_id": tenant_scope_id},
                     "focus_subject": focus_subject,
-                    "profile_id": _as_text(profile_row.get("profile_id")),
+                    "profile_id": as_text(profile_row.get("profile_id")),
                     "onboarding_action": action_kind,
                 }
             )
             details = {
-                "profile_id": _as_text(profile_row.get("profile_id")),
+                "profile_id": as_text(profile_row.get("profile_id")),
                 "tenant_scope_id": tenant_scope_id,
                 "updated_sections": list(outcome.updated_sections),
             }
@@ -2986,7 +2966,7 @@ def _apply_action(
                     private_dir=private_dir,
                 )
                 _merge_route_sync_details(details, route_sync)
-                if _as_text(route_sync.get("status")) in {"warning", "failure"}:
+                if as_text(route_sync.get("status")) in {"warning", "failure"}:
                     route_sync_message_suffix = " Verification-forward route sync needs operator attention."
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -2997,7 +2977,7 @@ def _apply_action(
             return surface_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"AWS-CSM action {action_kind} completed for {_as_text(profile_row.get('profile_id'))}.{route_sync_message_suffix}",
+                message=f"AWS-CSM action {action_kind} completed for {as_text(profile_row.get('profile_id'))}.{route_sync_message_suffix}",
                 details=details,
             )
 
@@ -3007,23 +2987,23 @@ def _apply_action(
             return surface_query, dependency_failure
         live_profile = store.load_profile(
             tenant_scope_id=tenant_scope_id,
-            profile_id=_as_text(profile_row.get("profile_id")),
+            profile_id=as_text(profile_row.get("profile_id")),
         )
         if live_profile is None:
             raise ValueError("AWS-CSM profile could not be reloaded for the requested action.")
 
         if action_kind == "send_handoff_email":
-            existing_handoff = _as_dict(live_profile.get("workflow"))
-            previously_sent_to = _as_text(existing_handoff.get("handoff_email_sent_to"))
+            existing_handoff = as_dict(live_profile.get("workflow"))
+            previously_sent_to = as_text(existing_handoff.get("handoff_email_sent_to"))
             if (
                 _handoff_was_sent(existing_handoff)
             ):
                 details = {
-                    "profile_id": _as_text(profile_row.get("profile_id")),
+                    "profile_id": as_text(profile_row.get("profile_id")),
                     "tenant_scope_id": tenant_scope_id,
-                    "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
+                    "send_as_email": as_text(as_dict(live_profile.get("identity")).get("send_as_email")),
                     "sent_to": previously_sent_to,
-                    "handoff_status": _as_text(existing_handoff.get("handoff_status")),
+                    "handoff_status": as_text(existing_handoff.get("handoff_status")),
                     "template_version": _effective_handoff_template_version(existing_handoff),
                 }
                 _append_local_audit(
@@ -3047,21 +3027,21 @@ def _apply_action(
                 profile_row=profile_row,
                 status="instruction_sent",
                 fields={
-                    "handoff_email_sent_to": _as_text(dispatch.get("sent_to")),
-                    "handoff_email_message_id": _as_text(dispatch.get("message_id")),
-                    "handoff_email_sent_at": _utc_now_iso(),
+                    "handoff_email_sent_to": as_text(dispatch.get("sent_to")),
+                    "handoff_email_message_id": as_text(dispatch.get("message_id")),
+                    "handoff_email_sent_at": utc_now_iso(seconds_precision=True),
                     "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
                     "handoff_correction_required": False,
                 },
             )
             details = {
-                "profile_id": _as_text(profile_row.get("profile_id")),
+                "profile_id": as_text(profile_row.get("profile_id")),
                 "tenant_scope_id": tenant_scope_id,
-                "send_as_email": _as_text(dispatch.get("send_as_email")),
-                "sent_to": _as_text(dispatch.get("sent_to")),
-                "message_id": _as_text(dispatch.get("message_id")),
-                "handoff_provider": _as_text(dispatch.get("handoff_provider")),
-                "template_version": _as_text(dispatch.get("template_version")),
+                "send_as_email": as_text(dispatch.get("send_as_email")),
+                "sent_to": as_text(dispatch.get("sent_to")),
+                "message_id": as_text(dispatch.get("message_id")),
+                "handoff_provider": as_text(dispatch.get("handoff_provider")),
+                "template_version": as_text(dispatch.get("template_version")),
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -3072,13 +3052,13 @@ def _apply_action(
             return surface_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"Sent send-as handoff instructions to {_as_text(dispatch.get('sent_to'))}.",
+                message=f"Sent send-as handoff instructions to {as_text(dispatch.get('sent_to'))}.",
                 details=details,
                 handoff_dispatch=dispatch,
             )
 
         if action_kind == "send_handoff_correction_email":
-            existing_handoff = _as_dict(live_profile.get("workflow"))
+            existing_handoff = as_dict(live_profile.get("workflow"))
             if not _handoff_was_sent(existing_handoff):
                 return surface_query, _action_result(
                     action_kind=action_kind,
@@ -3086,20 +3066,20 @@ def _apply_action(
                     code="handoff_initial_send_required",
                     message="Initial handoff instructions must be sent before a correction email can be issued.",
                     details={
-                        "profile_id": _as_text(profile_row.get("profile_id")),
+                        "profile_id": as_text(profile_row.get("profile_id")),
                         "tenant_scope_id": tenant_scope_id,
-                        "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
+                        "send_as_email": as_text(as_dict(live_profile.get("identity")).get("send_as_email")),
                     },
                 )
             correction_sent = _handoff_correction_was_sent(existing_handoff)
             correction_required = _handoff_correction_required(live_profile)
             if correction_sent or not correction_required:
                 details = {
-                    "profile_id": _as_text(profile_row.get("profile_id")),
+                    "profile_id": as_text(profile_row.get("profile_id")),
                     "tenant_scope_id": tenant_scope_id,
-                    "send_as_email": _as_text(_as_dict(live_profile.get("identity")).get("send_as_email")),
-                    "sent_to": _as_text(existing_handoff.get("handoff_correction_sent_to") or existing_handoff.get("handoff_email_sent_to")),
-                    "handoff_status": _as_text(existing_handoff.get("handoff_status")),
+                    "send_as_email": as_text(as_dict(live_profile.get("identity")).get("send_as_email")),
+                    "sent_to": as_text(existing_handoff.get("handoff_correction_sent_to") or existing_handoff.get("handoff_email_sent_to")),
+                    "handoff_status": as_text(existing_handoff.get("handoff_status")),
                     "template_version": _effective_handoff_template_version(existing_handoff),
                 }
                 code = "handoff_correction_already_sent" if correction_sent else "handoff_correction_not_required"
@@ -3125,23 +3105,23 @@ def _apply_action(
             _record_profile_handoff_event(
                 store=store,
                 profile_row=profile_row,
-                status=_as_text(existing_handoff.get("handoff_status")) or "instruction_sent",
+                status=as_text(existing_handoff.get("handoff_status")) or "instruction_sent",
                 fields={
                     "handoff_template_version": _CURRENT_HANDOFF_TEMPLATE_VERSION,
                     "handoff_correction_required": False,
-                    "handoff_correction_sent_to": _as_text(dispatch.get("sent_to")),
-                    "handoff_correction_message_id": _as_text(dispatch.get("message_id")),
-                    "handoff_correction_sent_at": _utc_now_iso(),
+                    "handoff_correction_sent_to": as_text(dispatch.get("sent_to")),
+                    "handoff_correction_message_id": as_text(dispatch.get("message_id")),
+                    "handoff_correction_sent_at": utc_now_iso(seconds_precision=True),
                 },
             )
             details = {
-                "profile_id": _as_text(profile_row.get("profile_id")),
+                "profile_id": as_text(profile_row.get("profile_id")),
                 "tenant_scope_id": tenant_scope_id,
-                "send_as_email": _as_text(dispatch.get("send_as_email")),
-                "sent_to": _as_text(dispatch.get("sent_to")),
-                "message_id": _as_text(dispatch.get("message_id")),
-                "handoff_provider": _as_text(dispatch.get("handoff_provider")),
-                "template_version": _as_text(dispatch.get("template_version")),
+                "send_as_email": as_text(dispatch.get("send_as_email")),
+                "sent_to": as_text(dispatch.get("sent_to")),
+                "message_id": as_text(dispatch.get("message_id")),
+                "handoff_provider": as_text(dispatch.get("handoff_provider")),
+                "template_version": as_text(dispatch.get("template_version")),
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -3152,7 +3132,7 @@ def _apply_action(
             return surface_query, _action_result(
                 action_kind=action_kind,
                 status="accepted",
-                message=f"Sent one-time handoff correction to {_as_text(dispatch.get('sent_to'))}.",
+                message=f"Sent one-time handoff correction to {as_text(dispatch.get('sent_to'))}.",
                 details=details,
                 handoff_dispatch=dispatch,
             )
@@ -3164,19 +3144,19 @@ def _apply_action(
                 profile_row=profile_row,
                 status="secret_revealed",
                 fields={
-                    "handoff_secret_revealed_to": _as_text(
-                        _as_dict(live_profile.get("smtp")).get("forward_to_email")
-                        or _as_dict(live_profile.get("identity")).get("operator_inbox_target")
+                    "handoff_secret_revealed_to": as_text(
+                        as_dict(live_profile.get("smtp")).get("forward_to_email")
+                        or as_dict(live_profile.get("identity")).get("operator_inbox_target")
                     ),
-                    "handoff_secret_revealed_at": _utc_now_iso(),
+                    "handoff_secret_revealed_at": utc_now_iso(seconds_precision=True),
                 },
             )
             details = {
-                "profile_id": _as_text(profile_row.get("profile_id")),
+                "profile_id": as_text(profile_row.get("profile_id")),
                 "tenant_scope_id": tenant_scope_id,
-                "send_as_email": _as_text(secret.get("send_as_email")),
-                "secret_name": _as_text(secret.get("secret_name")),
-                "state": _as_text(secret.get("state")),
+                "send_as_email": as_text(secret.get("send_as_email")),
+                "secret_name": as_text(secret.get("secret_name")),
+                "state": as_text(secret.get("state")),
             }
             _append_local_audit(
                 audit_storage_file=audit_storage_file,
@@ -3202,7 +3182,7 @@ def _apply_action(
         return surface_query, _action_result(
             action_kind=action_kind,
             status="error",
-            code=_as_text(getattr(exc, "code", "")) or "policy_error",
+            code=as_text(getattr(exc, "code", "")) or "policy_error",
             message=str(exc),
         )
     except ValueError as exc:
@@ -3217,7 +3197,7 @@ def _apply_action(
             action_kind=action_kind,
             status="error",
             code="action_failed",
-            message=_as_text(exc) or "The AWS-CSM action could not be completed.",
+            message=as_text(exc) or "The AWS-CSM action could not be completed.",
         )
 
 
@@ -3230,7 +3210,7 @@ def run_portal_aws_csm(
     portal_domain: str = "",
 ) -> dict[str, Any]:
     portal_scope, surface_query = _normalize_request(request_payload)
-    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    resolved_portal_instance_id = as_text(portal_instance_id) or portal_scope.scope_id
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
     shell_request = {

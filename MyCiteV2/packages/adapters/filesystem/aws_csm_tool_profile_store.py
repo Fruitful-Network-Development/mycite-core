@@ -10,33 +10,24 @@ from typing import Any
 from MyCiteV2.packages.adapters.filesystem.live_aws_profile import LIVE_AWS_PROFILE_SCHEMA
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingProfileStorePort
 from MyCiteV2.packages.ports.aws_csm_profile_registry import AwsCsmProfileRegistryPort
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict
 
 AWS_CSM_DOMAIN_SCHEMA = "mycite.service_tool.aws_csm.domain.v1"
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
 def _matches_tenant_scope(payload: dict[str, Any], tenant_scope_id: str) -> bool:
-    identity = _as_dict(payload.get("identity"))
-    requested = _as_text(tenant_scope_id).lower()
+    identity = as_dict(payload.get("identity"))
+    requested = as_text(tenant_scope_id).lower()
     allowed = {
-        _as_text(identity.get("tenant_id")).lower(),
-        _as_text(identity.get("domain")).lower(),
-        _as_text(identity.get("profile_id")).lower(),
+        as_text(identity.get("tenant_id")).lower(),
+        as_text(identity.get("domain")).lower(),
+        as_text(identity.get("profile_id")).lower(),
     }
     return bool(requested and requested in allowed)
 
 
 def _normalized_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.startswith("www."):
         token = token[4:]
     return token
@@ -72,50 +63,50 @@ class FilesystemAwsCsmToolProfileStore(
         if not token:
             return None
         for domain_record in self.list_domains():
-            identity = _as_dict(domain_record.get("identity"))
+            identity = as_dict(domain_record.get("identity"))
             if _normalized_domain(identity.get("domain")) != token:
                 continue
-            tenant_id = _as_text(identity.get("tenant_id")).lower()
+            tenant_id = as_text(identity.get("tenant_id")).lower()
             if not tenant_id:
                 continue
-            ses = _as_dict(domain_record.get("ses"))
-            observation = _as_dict(domain_record.get("observation"))
+            ses = as_dict(domain_record.get("ses"))
+            observation = as_dict(domain_record.get("observation"))
             return {
                 "tenant_id": tenant_id,
-                "region": _as_text(identity.get("region")) or "us-east-1",
+                "region": as_text(identity.get("region")) or "us-east-1",
                 "provider": {
-                    "aws_ses_identity_status": _as_text(ses.get("identity_status")),
-                    "last_checked_at": _as_text(observation.get("last_checked_at")),
+                    "aws_ses_identity_status": as_text(ses.get("identity_status")),
+                    "last_checked_at": as_text(observation.get("last_checked_at")),
                 },
-                "profile_id": _as_text(identity.get("profile_id")),
+                "profile_id": as_text(identity.get("profile_id")),
             }
         for profile in self.list_profiles():
-            identity = _as_dict(profile.get("identity"))
+            identity = as_dict(profile.get("identity"))
             if _normalized_domain(identity.get("domain")) != token:
                 continue
-            tenant_id = _as_text(identity.get("tenant_id")).lower()
+            tenant_id = as_text(identity.get("tenant_id")).lower()
             if not tenant_id:
                 continue
-            provider = _as_dict(profile.get("provider"))
+            provider = as_dict(profile.get("provider"))
             return {
                 "tenant_id": tenant_id,
-                "region": _as_text(identity.get("region")) or "us-east-1",
+                "region": as_text(identity.get("region")) or "us-east-1",
                 "provider": {
-                    "aws_ses_identity_status": _as_text(provider.get("aws_ses_identity_status")),
-                    "last_checked_at": _as_text(provider.get("last_checked_at")),
+                    "aws_ses_identity_status": as_text(provider.get("aws_ses_identity_status")),
+                    "last_checked_at": as_text(provider.get("last_checked_at")),
                 },
-                "profile_id": _as_text(identity.get("profile_id")),
+                "profile_id": as_text(identity.get("profile_id")),
             }
         return None
 
     def create_domain(self, *, tenant_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        tenant_token = _as_text(tenant_id).lower()
-        identity = _as_dict(payload.get("identity"))
+        tenant_token = as_text(tenant_id).lower()
+        identity = as_dict(payload.get("identity"))
         domain = _normalized_domain(identity.get("domain"))
-        payload_tenant = _as_text(identity.get("tenant_id")).lower()
+        payload_tenant = as_text(identity.get("tenant_id")).lower()
         if not tenant_token:
             raise ValueError("tenant_id is required")
-        if _as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
+        if as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
             raise ValueError("domain schema must remain mycite.service_tool.aws_csm.domain.v1")
         if payload_tenant != tenant_token:
             raise ValueError("domain payload tenant_id does not match create_domain tenant_id")
@@ -129,9 +120,9 @@ class FilesystemAwsCsmToolProfileStore(
         collection_path = self._collection_path()
         collection_payload = self._read_collection_payload(collection_path)
         member_files = [
-            _as_text(item)
+            as_text(item)
             for item in list(collection_payload.get("member_files") or [])
-            if _as_text(item)
+            if as_text(item)
         ]
         filename = domain_path.name
         if filename in member_files:
@@ -155,10 +146,10 @@ class FilesystemAwsCsmToolProfileStore(
         return reloaded
 
     def create_profile(self, *, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-        profile_token = _as_text(profile_id)
+        profile_token = as_text(profile_id)
         if not profile_token:
             raise ValueError("profile_id is required")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
             raise ValueError("profile schema must remain mycite.service_tool.aws_csm.profile.v1")
         profile_path = self._tool_root / f"{profile_token}.json"
         if profile_path.exists():
@@ -166,9 +157,9 @@ class FilesystemAwsCsmToolProfileStore(
         collection_path = self._collection_path()
         collection_payload = self._read_collection_payload(collection_path)
         member_files = [
-            _as_text(item)
+            as_text(item)
             for item in list(collection_payload.get("member_files") or [])
-            if _as_text(item)
+            if as_text(item)
         ]
         filename = profile_path.name
         if filename in member_files:
@@ -192,14 +183,14 @@ class FilesystemAwsCsmToolProfileStore(
         return reloaded
 
     def load_profile(self, *, tenant_scope_id: str, profile_id: str) -> dict[str, Any] | None:
-        path = self._tool_root / f"{_as_text(profile_id)}.json"
+        path = self._tool_root / f"{as_text(profile_id)}.json"
         payload = self._read_profile_file(path, allow_missing=True)
         if payload is None:
             return None
         if not _matches_tenant_scope(payload, tenant_scope_id):
             return None
-        identity = _as_dict(payload.get("identity"))
-        if _as_text(identity.get("profile_id")) != _as_text(profile_id):
+        identity = as_dict(payload.get("identity"))
+        if as_text(identity.get("profile_id")) != as_text(profile_id):
             return None
         return deepcopy(payload)
 
@@ -208,7 +199,7 @@ class FilesystemAwsCsmToolProfileStore(
         if not domain_token:
             return None
         for payload in self.list_domains():
-            identity = _as_dict(payload.get("identity"))
+            identity = as_dict(payload.get("identity"))
             if _normalized_domain(identity.get("domain")) == domain_token:
                 return deepcopy(payload)
         return None
@@ -216,14 +207,14 @@ class FilesystemAwsCsmToolProfileStore(
     def save_profile(self, *, tenant_scope_id: str, profile_id: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("profile payload must be a dict")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
             raise ValueError("profile schema must remain mycite.service_tool.aws_csm.profile.v1")
         if not _matches_tenant_scope(payload, tenant_scope_id):
             raise ValueError("profile tenant_scope_id does not match stored identity")
-        identity = _as_dict(payload.get("identity"))
-        if _as_text(identity.get("profile_id")) != _as_text(profile_id):
+        identity = as_dict(payload.get("identity"))
+        if as_text(identity.get("profile_id")) != as_text(profile_id):
             raise ValueError("profile_id does not match stored identity")
-        path = self._tool_root / f"{_as_text(profile_id)}.json"
+        path = self._tool_root / f"{as_text(profile_id)}.json"
         self._tool_root.mkdir(parents=True, exist_ok=True)
         self._write_json_atomic(path, payload)
         reloaded = self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=profile_id)
@@ -240,19 +231,19 @@ class FilesystemAwsCsmToolProfileStore(
     ) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("profile payload must be a dict")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
             raise ValueError("profile schema must remain mycite.service_tool.aws_csm.profile.v1")
         existing = self.load_profile(tenant_scope_id=tenant_scope_id, profile_id=profile_id)
         if existing is None:
             raise ValueError(f"AWS-CSM profile is missing: {profile_id}")
-        identity = _as_dict(payload.get("identity"))
-        next_profile_id = _as_text(identity.get("profile_id"))
+        identity = as_dict(payload.get("identity"))
+        next_profile_id = as_text(identity.get("profile_id"))
         if not next_profile_id:
             raise ValueError("profile payload must include identity.profile_id")
         if not _matches_tenant_scope(payload, tenant_scope_id):
             raise ValueError("profile tenant_scope_id does not match stored identity")
 
-        source_path = self._tool_root / f"{_as_text(profile_id)}.json"
+        source_path = self._tool_root / f"{as_text(profile_id)}.json"
         target_path = self._tool_root / f"{next_profile_id}.json"
         if source_path != target_path and target_path.exists():
             raise ValueError(f"AWS-CSM profile already exists: {next_profile_id}")
@@ -260,9 +251,9 @@ class FilesystemAwsCsmToolProfileStore(
         collection_path = self._collection_path()
         collection_payload = self._read_collection_payload(collection_path)
         member_files = [
-            _as_text(item)
+            as_text(item)
             for item in list(collection_payload.get("member_files") or [])
-            if _as_text(item)
+            if as_text(item)
         ]
         source_name = source_path.name
         target_name = target_path.name
@@ -303,13 +294,13 @@ class FilesystemAwsCsmToolProfileStore(
         if existing is None:
             raise ValueError(f"AWS-CSM profile is missing: {profile_id}")
 
-        profile_path = self._tool_root / f"{_as_text(profile_id)}.json"
+        profile_path = self._tool_root / f"{as_text(profile_id)}.json"
         collection_path = self._collection_path()
         collection_payload = self._read_collection_payload(collection_path)
         member_files = [
-            _as_text(item)
+            as_text(item)
             for item in list(collection_payload.get("member_files") or [])
-            if _as_text(item)
+            if as_text(item)
         ]
         profile_name = profile_path.name
         if profile_name not in member_files:
@@ -335,12 +326,12 @@ class FilesystemAwsCsmToolProfileStore(
     def save_domain(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not isinstance(payload, dict):
             raise ValueError("domain payload must be a dict")
-        if _as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
+        if as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
             raise ValueError("domain schema must remain mycite.service_tool.aws_csm.domain.v1")
-        identity = _as_dict(payload.get("identity"))
+        identity = as_dict(payload.get("identity"))
         domain_token = _normalized_domain(domain)
         payload_domain = _normalized_domain(identity.get("domain"))
-        tenant_id = _as_text(identity.get("tenant_id")).lower()
+        tenant_id = as_text(identity.get("tenant_id")).lower()
         if not tenant_id:
             raise ValueError("domain payload must include identity.tenant_id")
         if payload_domain != domain_token:
@@ -361,7 +352,7 @@ class FilesystemAwsCsmToolProfileStore(
         raise ValueError("AWS-CSM collection file is missing from the tool root")
 
     def _domain_path_for_tenant(self, tenant_id: str) -> Path:
-        return self._tool_root / f"aws-csm-domain.{_as_text(tenant_id).lower()}.json"
+        return self._tool_root / f"aws-csm-domain.{as_text(tenant_id).lower()}.json"
 
     def _read_collection_payload(self, path: Path) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -377,7 +368,7 @@ class FilesystemAwsCsmToolProfileStore(
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("AWS-CSM profile payload must be a dict")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
             return None
         return payload
 
@@ -389,7 +380,7 @@ class FilesystemAwsCsmToolProfileStore(
         payload = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("AWS-CSM domain payload must be a dict")
-        if _as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
+        if as_text(payload.get("schema")) != AWS_CSM_DOMAIN_SCHEMA:
             return None
         return payload
 

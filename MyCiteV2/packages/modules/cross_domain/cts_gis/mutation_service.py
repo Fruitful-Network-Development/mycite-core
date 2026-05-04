@@ -24,6 +24,7 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list
 
 CTS_GIS_STAGE_INSERT_SCHEMA = "mycite.v2.cts_gis.stage_insert.v1"
 CTS_GIS_STAGED_INSERT_STATE_SCHEMA = "mycite.v2.cts_gis.staged_insert.state.v1"
@@ -45,20 +46,6 @@ _REQUIRED_MANIPULATION_STAGE_KEYS = frozenset({
 })
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_list(value: object) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
-
-
 def _json_clone(value: object) -> Any:
     return json.loads(json.dumps(value))
 
@@ -70,7 +57,7 @@ def _payload_hash(value: object) -> str:
 
 
 def _ascii_normalize(value: object) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return ""
     normalized = unicodedata.normalize("NFKD", token).encode("ascii", "ignore").decode("ascii")
@@ -93,7 +80,7 @@ def _ascii_bit_length(value: object) -> int:
 
 
 def _samras_key(value: object) -> tuple[int, ...]:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return (10**9,)
     parts = token.split("-")
@@ -114,9 +101,9 @@ def _reference_order(references: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(
         references,
         key=lambda item: (
-            rank.get(_as_text(item.get("type")).lower(), 10**9),
+            rank.get(as_text(item.get("type")).lower(), 10**9),
             _samras_key(item.get("nodeAddress")),
-            _as_text(item.get("text")).lower(),
+            as_text(item.get("text")).lower(),
         ),
     )
 
@@ -133,14 +120,14 @@ def _looks_like_placeholder_title(title: object) -> bool:
 
 def _reference_value_by_type(references: list[dict[str, Any]], reference_type: str) -> dict[str, Any] | None:
     for reference in references:
-        if _as_text(reference.get("type")).lower() == reference_type:
+        if as_text(reference.get("type")).lower() == reference_type:
             return reference
     return None
 
 
 def _longest_shared_prefix_depth(left: object, right: object) -> int:
-    left_parts = [part for part in _as_text(left).split("-") if part]
-    right_parts = [part for part in _as_text(right).split("-") if part]
+    left_parts = [part for part in as_text(left).split("-") if part]
+    right_parts = [part for part in as_text(right).split("-") if part]
     depth = 0
     for left_part, right_part in zip(left_parts, right_parts):
         if left_part != right_part:
@@ -152,7 +139,7 @@ def _longest_shared_prefix_depth(left: object, right: object) -> int:
 class CtsGisMutationError(ValueError):
     def __init__(self, code: str, message: str, *, details: dict[str, Any] | None = None) -> None:
         super().__init__(message)
-        self.code = _as_text(code) or "cts_gis_mutation_error"
+        self.code = as_text(code) or "cts_gis_mutation_error"
         self.details = dict(details or {})
 
 
@@ -180,12 +167,12 @@ class CtsGisMutationService:
         document_id: str,
     ) -> AuthoritativeDatumDocument:
         for document in self._catalog(tenant_id=tenant_id).documents:
-            if document.document_id == _as_text(document_id):
+            if document.document_id == as_text(document_id):
                 return document
         raise CtsGisMutationError(
             "unresolved_target_document",
             "The requested CTS-GIS authoritative document could not be resolved.",
-            details={"document_id": _as_text(document_id)},
+            details={"document_id": as_text(document_id)},
         )
 
     def _document_identity(self, *, tenant_id: str, document_id: str) -> dict[str, Any]:
@@ -193,11 +180,11 @@ class CtsGisMutationService:
             tenant_id=tenant_id,
             document_id=document_id,
         )
-        if not isinstance(identity, dict) or not _as_text(identity.get("version_hash")):
+        if not isinstance(identity, dict) or not as_text(identity.get("version_hash")):
             raise CtsGisMutationError(
                 "document_version_identity_missing",
                 "CTS-GIS mutations require a stable authoritative document version identity.",
-                details={"document_id": _as_text(document_id)},
+                details={"document_id": as_text(document_id)},
             )
         return dict(identity)
 
@@ -233,8 +220,8 @@ class CtsGisMutationService:
         return dict(payload), "yaml"
 
     def parse_stage_input(self, action_payload: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-        payload = _as_dict(action_payload)
-        stage_text = _as_text(payload.get("stage_text"))
+        payload = as_dict(action_payload)
+        stage_text = as_text(payload.get("stage_text"))
         stage_document = payload.get("stage_document")
         if stage_text:
             stage_mapping, draft_format = self._parse_stage_text(stage_text)
@@ -260,7 +247,7 @@ class CtsGisMutationService:
         }
 
     def _normalize_reference(self, raw_reference: object) -> dict[str, Any]:
-        reference = _as_dict(raw_reference)
+        reference = as_dict(raw_reference)
         extra_keys = sorted(set(reference.keys()) - _ALLOWED_REFERENCE_KEYS)
         if extra_keys:
             raise CtsGisMutationError(
@@ -268,14 +255,14 @@ class CtsGisMutationService:
                 "CTS-GIS staged references contain unsupported fields.",
                 details={"keys": extra_keys},
             )
-        reference_type = _as_text(reference.get("type")).lower()
+        reference_type = as_text(reference.get("type")).lower()
         if reference_type not in _SUPPORTED_REFERENCE_TYPES:
             raise CtsGisMutationError(
                 "reference_type_invalid",
                 f"CTS-GIS staged references must use one of {_SUPPORTED_REFERENCE_TYPES}.",
             )
         if reference_type == "msn-samras":
-            node_address = _as_text(reference.get("nodeAddress"))
+            node_address = as_text(reference.get("nodeAddress"))
             if not node_address:
                 raise CtsGisMutationError(
                     "reference_node_missing",
@@ -293,7 +280,7 @@ class CtsGisMutationService:
         selected_document_id: str = "",
         selected_document_name: str = "",
     ) -> tuple[dict[str, Any], list[str]]:
-        payload = _as_dict(stage_document)
+        payload = as_dict(stage_document)
         extra_root_keys = sorted(set(payload.keys()) - _ALLOWED_STAGE_ROOT_KEYS)
         if extra_root_keys:
             raise CtsGisMutationError(
@@ -301,32 +288,32 @@ class CtsGisMutationService:
                 "CTS-GIS stage documents contain unsupported top-level fields.",
                 details={"keys": extra_root_keys},
             )
-        schema = _as_text(payload.get("schema"))
+        schema = as_text(payload.get("schema"))
         if schema != CTS_GIS_STAGE_INSERT_SCHEMA:
             raise CtsGisMutationError(
                 "stage_schema_invalid",
                 f"schema must be {CTS_GIS_STAGE_INSERT_SCHEMA}",
             )
-        operation = _as_text(payload.get("operation"))
+        operation = as_text(payload.get("operation"))
         if operation != _SUPPORTED_OPERATION:
             raise CtsGisMutationError(
                 "stage_operation_invalid",
                 f"operation must be {_SUPPORTED_OPERATION}",
             )
-        document_id = _as_text(payload.get("document_id")) or _as_text(selected_document_id)
-        document_name = _as_text(payload.get("document_name")) or _as_text(selected_document_name)
+        document_id = as_text(payload.get("document_id")) or as_text(selected_document_id)
+        document_name = as_text(payload.get("document_name")) or as_text(selected_document_name)
         if not document_id:
             raise CtsGisMutationError("stage_document_id_required", "document_id is required.")
         if not document_name:
             raise CtsGisMutationError("stage_document_name_required", "document_name is required.")
-        raw_datums = _as_list(payload.get("datums"))
+        raw_datums = as_list(payload.get("datums"))
         if not raw_datums:
             raise CtsGisMutationError("stage_datums_required", "CTS-GIS staged inserts require at least one datum.")
 
         warnings: list[str] = []
         normalized_datums: list[dict[str, Any]] = []
         for index, raw_datum in enumerate(raw_datums):
-            datum = _as_dict(raw_datum)
+            datum = as_dict(raw_datum)
             extra_datum_keys = sorted(set(datum.keys()) - _ALLOWED_DATUM_KEYS)
             if extra_datum_keys:
                 raise CtsGisMutationError(
@@ -334,7 +321,7 @@ class CtsGisMutationService:
                     "CTS-GIS staged datums contain unsupported fields.",
                     details={"index": index, "keys": extra_datum_keys},
                 )
-            family = _as_text(datum.get("family"))
+            family = as_text(datum.get("family"))
             if family != _SUPPORTED_FAMILY:
                 raise CtsGisMutationError(
                     "stage_family_invalid",
@@ -351,14 +338,14 @@ class CtsGisMutationService:
                     "CTS-GIS staged inserts require valueGroup: 2.",
                     details={"index": index},
                 )
-            target_node_address = _as_text(datum.get("targetNodeAddress"))
+            target_node_address = as_text(datum.get("targetNodeAddress"))
             if not target_node_address:
                 raise CtsGisMutationError(
                     "target_node_missing",
                     "targetNodeAddress is required for each staged CTS-GIS datum.",
                     details={"index": index},
                 )
-            references = [self._normalize_reference(item) for item in _as_list(datum.get("references"))]
+            references = [self._normalize_reference(item) for item in as_list(datum.get("references"))]
             if not references:
                 raise CtsGisMutationError(
                     "references_required",
@@ -374,7 +361,7 @@ class CtsGisMutationService:
                     "Each staged CTS-GIS datum must include msn-samras and title references.",
                     details={"index": index},
                 )
-            if _as_text(node_reference.get("nodeAddress")) != target_node_address:
+            if as_text(node_reference.get("nodeAddress")) != target_node_address:
                 raise CtsGisMutationError(
                     "target_node_reference_mismatch",
                     "targetNodeAddress must match the msn-samras nodeAddress.",
@@ -438,7 +425,7 @@ class CtsGisMutationService:
             {
                 "schema": CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
                 "draft_text": draft_text,
-                "draft_format": _as_text(draft_format) or "yaml",
+                "draft_format": as_text(draft_format) or "yaml",
                 "normalized_payload": normalized_payload,
                 "placeholder_title_requested": bool(placeholder_title_requested),
                 "last_validation": {},
@@ -456,8 +443,8 @@ class CtsGisMutationService:
         if len(tokens) < 5:
             return ""
         for index in range(len(tokens) - 1):
-            if _as_text(tokens[index]).lower() == "rf.3-1-2":
-                return _as_text(tokens[index + 1])
+            if as_text(tokens[index]).lower() == "rf.3-1-2":
+                return as_text(tokens[index + 1])
         return ""
 
     def _document_row_title_bits(self, row: AuthoritativeDatumDocumentRow) -> str:
@@ -469,8 +456,8 @@ class CtsGisMutationService:
         if len(tokens) < 5:
             return ""
         for index in range(len(tokens) - 1):
-            if _as_text(tokens[index]).lower() == "rf.3-1-3":
-                return _as_text(tokens[index + 1])
+            if as_text(tokens[index]).lower() == "rf.3-1-3":
+                return as_text(tokens[index + 1])
         return ""
 
     def _template_row(
@@ -534,12 +521,12 @@ class CtsGisMutationService:
         node_rewritten = False
         title_rewritten = False
         for index in range(len(updated_tokens) - 1):
-            token = _as_text(updated_tokens[index]).lower()
+            token = as_text(updated_tokens[index]).lower()
             if token == "rf.3-1-2":
                 updated_tokens[index + 1] = target_node_address
                 node_rewritten = True
             if token == "rf.3-1-3":
-                template_bits = _as_text(updated_tokens[index + 1])
+                template_bits = as_text(updated_tokens[index + 1])
                 try:
                     updated_tokens[index + 1] = _ascii_bits(title, target_length=len(template_bits))
                 except ValueError as exc:
@@ -560,7 +547,7 @@ class CtsGisMutationService:
 
     def validate_manipulation_stage(self, stage_text: str) -> tuple[dict[str, Any], list[str]]:
         stage_mapping, _ = self._parse_stage_text(stage_text)
-        schema = _as_text(stage_mapping.get("schema"))
+        schema = as_text(stage_mapping.get("schema"))
         if schema != CTS_GIS_MANIPULATION_STAGE_SCHEMA:
             raise CtsGisMutationError(
                 "manipulation_stage_schema_invalid",
@@ -584,37 +571,37 @@ class CtsGisMutationService:
                 "structure_decode_not_confirmed",
                 "structure_decode_confirmed must be true before a manipulation stage can proceed.",
             )
-        proposed_operation = _as_text(stage_mapping.get("proposed_operation"))
+        proposed_operation = as_text(stage_mapping.get("proposed_operation"))
         if proposed_operation not in _ALLOWED_PROPOSED_OPERATIONS:
             raise CtsGisMutationError(
                 "manipulation_stage_operation_invalid",
                 f"proposed_operation must be one of {sorted(_ALLOWED_PROPOSED_OPERATIONS)}.",
                 details={"proposed_operation": proposed_operation},
             )
-        target_document = _as_text(stage_mapping.get("target_document"))
+        target_document = as_text(stage_mapping.get("target_document"))
         if target_document not in _ALLOWED_TARGET_DOCUMENTS:
             raise CtsGisMutationError(
                 "manipulation_stage_target_document_invalid",
                 f"target_document must be one of {sorted(_ALLOWED_TARGET_DOCUMENTS)}.",
                 details={"target_document": target_document},
             )
-        if _as_text(stage_mapping.get("archetype")) != "SAMRAS_family":
+        if as_text(stage_mapping.get("archetype")) != "SAMRAS_family":
             raise CtsGisMutationError(
                 "manipulation_stage_archetype_invalid",
                 "archetype must be SAMRAS_family.",
-                details={"archetype": _as_text(stage_mapping.get("archetype"))},
+                details={"archetype": as_text(stage_mapping.get("archetype"))},
             )
-        if _as_text(stage_mapping.get("space")) != "msn":
+        if as_text(stage_mapping.get("space")) != "msn":
             raise CtsGisMutationError(
                 "manipulation_stage_space_invalid",
                 "space must be msn.",
-                details={"space": _as_text(stage_mapping.get("space"))},
+                details={"space": as_text(stage_mapping.get("space"))},
             )
         warnings: list[str] = []
         target_position = stage_mapping.get("target_position")
-        if target_position is None or _as_text(target_position) == "":
+        if target_position is None or as_text(target_position) == "":
             warnings.append("target_position_unset")
-        if not _as_text(stage_mapping.get("attention")):
+        if not as_text(stage_mapping.get("attention")):
             warnings.append("attention_unset")
         return dict(stage_mapping), warnings
 
@@ -641,7 +628,7 @@ class CtsGisMutationService:
         family_layer = rows[0]["layer"] if rows else 4
         grouped: dict[str, list[int]] = {}
         for row in rows:
-            target = _as_text(row.get("target_node_address"))
+            target = as_text(row.get("target_node_address"))
             if target:
                 grouped.setdefault(target, []).append(int(row.get("iteration") or 0))
         max_iteration = max((row["iteration"] for row in rows), default=0)
@@ -654,19 +641,19 @@ class CtsGisMutationService:
         tool_state: Mapping[str, Any],
         contract_state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        state = _as_dict(tool_state)
-        stage_state = _as_dict(state.get("staged_insert"))
-        normalized_payload = _as_dict(stage_state.get("normalized_payload"))
+        state = as_dict(tool_state)
+        stage_state = as_dict(state.get("staged_insert"))
+        normalized_payload = as_dict(stage_state.get("normalized_payload"))
         if not normalized_payload:
             raise CtsGisMutationError("stage_missing", "Stage a CTS-GIS insert batch before validation.")
 
-        contract = _as_dict(contract_state)
+        contract = as_dict(contract_state)
         if contract:
             if contract.get("configured") is False:
                 raise CtsGisMutationError("contract_denied", "CTS-GIS is not configured for mutation in this runtime.")
             if contract.get("enabled") is False:
                 raise CtsGisMutationError("contract_denied", "CTS-GIS is disabled in this runtime.")
-            missing_capabilities = [item for item in _as_list(contract.get("missing_capabilities")) if _as_text(item)]
+            missing_capabilities = [item for item in as_list(contract.get("missing_capabilities")) if as_text(item)]
             if missing_capabilities:
                 raise CtsGisMutationError(
                     "contract_denied",
@@ -674,8 +661,8 @@ class CtsGisMutationService:
                     details={"missing_capabilities": missing_capabilities},
                 )
 
-        selected_document_id = _as_text(_as_dict(state.get("source")).get("attention_document_id"))
-        document_id = _as_text(normalized_payload.get("document_id"))
+        selected_document_id = as_text(as_dict(state.get("source")).get("attention_document_id"))
+        document_id = as_text(normalized_payload.get("document_id"))
         if selected_document_id and selected_document_id != document_id:
             raise CtsGisMutationError(
                 "selected_document_mismatch",
@@ -683,7 +670,7 @@ class CtsGisMutationService:
                 details={"selected_document_id": selected_document_id, "document_id": document_id},
             )
         document = self._document(tenant_id=tenant_id, document_id=document_id)
-        if _as_text(document.tool_id) != "cts_gis":
+        if as_text(document.tool_id) != "cts_gis":
             raise CtsGisMutationError(
                 "target_document_tool_mismatch",
                 "The selected authoritative document is not owned by CTS-GIS.",
@@ -692,14 +679,14 @@ class CtsGisMutationService:
         identity = self._document_identity(tenant_id=tenant_id, document_id=document.document_id)
         family_layer, grouped_iterations, max_iteration = self._group_iteration_state(document)
         warnings = []
-        warnings.extend(_as_list(stage_state.get("warnings")))
-        warnings.extend(_as_list((stage_state.get("last_validation") or {}).get("warnings")))
-        warnings = [item for item in warnings if _as_text(item)]
+        warnings.extend(as_list(stage_state.get("warnings")))
+        warnings.extend(as_list((stage_state.get("last_validation") or {}).get("warnings")))
+        warnings = [item for item in warnings if as_text(item)]
 
         groups: dict[str, list[dict[str, Any]]] = {}
-        for datum in _as_list(normalized_payload.get("datums")):
-            normalized_datum = _as_dict(datum)
-            groups.setdefault(_as_text(normalized_datum.get("targetNodeAddress")), []).append(normalized_datum)
+        for datum in as_list(normalized_payload.get("datums")):
+            normalized_datum = as_dict(datum)
+            groups.setdefault(as_text(normalized_datum.get("targetNodeAddress")), []).append(normalized_datum)
         plan_groups: list[dict[str, Any]] = []
         for target_node_address, items in groups.items():
             current_iterations = sorted(int(value) for value in grouped_iterations.get(target_node_address, []))
@@ -707,7 +694,7 @@ class CtsGisMutationService:
             ordered_items = sorted(
                 items,
                 key=lambda item: (
-                    _samras_key(_as_dict(_reference_value_by_type(_as_list(item.get("references")), "msn-samras")).get("nodeAddress")),
+                    _samras_key(as_dict(_reference_value_by_type(as_list(item.get("references")), "msn-samras")).get("nodeAddress")),
                     _ascii_normalize(item.get("title")).lower(),
                 ),
             )
@@ -715,7 +702,7 @@ class CtsGisMutationService:
             for offset, item in enumerate(ordered_items):
                 assignments.append(
                     {
-                        "title": _as_text(item.get("title")),
+                        "title": as_text(item.get("title")),
                         "target_node_address": target_node_address,
                         "iteration": next_iteration + offset,
                     }
@@ -746,7 +733,7 @@ class CtsGisMutationService:
                 "value_group": 2,
                 "groups": plan_groups,
             },
-            "expected_document_version_hash": _as_text(identity.get("version_hash")),
+            "expected_document_version_hash": as_text(identity.get("version_hash")),
             "payload_hash": _payload_hash(normalized_payload),
         }
         return validation
@@ -758,14 +745,14 @@ class CtsGisMutationService:
         tool_state: Mapping[str, Any],
         contract_state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        state = _as_dict(tool_state)
+        state = as_dict(tool_state)
         validation = self.validate_stage(
             tenant_id=tenant_id,
             tool_state=state,
             contract_state=contract_state,
         )
-        normalized_payload = _as_dict(validation.get("normalized_payload"))
-        document = self._document(tenant_id=tenant_id, document_id=_as_text(normalized_payload.get("document_id")))
+        normalized_payload = as_dict(validation.get("normalized_payload"))
+        document = self._document(tenant_id=tenant_id, document_id=as_text(normalized_payload.get("document_id")))
         current_document = document
         original_address_map = {
             row.datum_address: row.datum_address
@@ -775,19 +762,19 @@ class CtsGisMutationService:
         inserted_rows: list[dict[str, Any]] = []
         remap_by_original: dict[str, str] = dict(original_address_map)
 
-        family_layer = int(_as_dict(validation.get("insertion_plan")).get("family_layer") or 4)
-        groups = _as_list(_as_dict(validation.get("insertion_plan")).get("groups"))
+        family_layer = int(as_dict(validation.get("insertion_plan")).get("family_layer") or 4)
+        groups = as_list(as_dict(validation.get("insertion_plan")).get("groups"))
         for group in groups:
-            target_node_address = _as_text(_as_dict(group).get("target_node_address"))
+            target_node_address = as_text(as_dict(group).get("target_node_address"))
             datums = [
                 datum
-                for datum in _as_list(normalized_payload.get("datums"))
-                if _as_text(_as_dict(datum).get("targetNodeAddress")) == target_node_address
+                for datum in as_list(normalized_payload.get("datums"))
+                if as_text(as_dict(datum).get("targetNodeAddress")) == target_node_address
             ]
             ordered_datums = sorted(
-                [_as_dict(item) for item in datums],
+                [as_dict(item) for item in datums],
                 key=lambda item: (
-                    _samras_key(_as_dict(_reference_value_by_type(_as_list(item.get("references")), "msn-samras")).get("nodeAddress")),
+                    _samras_key(as_dict(_reference_value_by_type(as_list(item.get("references")), "msn-samras")).get("nodeAddress")),
                     _ascii_normalize(item.get("title")).lower(),
                 ),
             )
@@ -799,12 +786,12 @@ class CtsGisMutationService:
                 template_row = self._template_row(
                     document=current_document,
                     target_node_address=target_node_address,
-                    title=_as_text(datum.get("title")),
+                    title=as_text(datum.get("title")),
                 )
                 raw = self._compile_insert_raw(
                     template_row=template_row,
                     target_node_address=target_node_address,
-                    title=_as_text(datum.get("title")),
+                    title=as_text(datum.get("title")),
                 )
                 preview = preview_document_insert_mutation(
                     current_document,
@@ -812,9 +799,9 @@ class CtsGisMutationService:
                     raw=raw,
                 )
                 address_map = {
-                    _as_text(from_address): _as_text(to_address)
-                    for from_address, to_address in _as_dict(preview.get("address_map")).items()
-                    if _as_text(from_address)
+                    as_text(from_address): as_text(to_address)
+                    for from_address, to_address in as_dict(preview.get("address_map")).items()
+                    if as_text(from_address)
                 }
                 for original_address, current_address in list(remap_by_original.items()):
                     remap_by_original[original_address] = address_map.get(current_address, current_address)
@@ -829,7 +816,7 @@ class CtsGisMutationService:
                         "datum_address": target_address,
                         "iteration": next_iteration,
                         "target_node_address": target_node_address,
-                        "title": _as_text(datum.get("title")),
+                        "title": as_text(datum.get("title")),
                         "raw": _json_clone(raw),
                     }
                 )
@@ -838,13 +825,13 @@ class CtsGisMutationService:
         preview_rows = self._administrative_rows(current_document)
         preview_result = {
             "schema": "mycite.v2.cts_gis.stage_preview.v1",
-            "expected_document_version_hash": _as_text(validation.get("expected_document_version_hash")),
-            "payload_hash": _as_text(validation.get("payload_hash")),
+            "expected_document_version_hash": as_text(validation.get("expected_document_version_hash")),
+            "payload_hash": as_text(validation.get("payload_hash")),
             "affected_document": {
                 "document_id": document.document_id,
                 "document_name": document.document_name,
-                "version_hash_before": _as_text(validation.get("expected_document_version_hash")),
-                "version_hash_after": _as_text(updated_identity.get("version_hash")),
+                "version_hash_before": as_text(validation.get("expected_document_version_hash")),
+                "version_hash_after": as_text(updated_identity.get("version_hash")),
                 "row_count_before": int(document.row_count),
                 "row_count_after": int(current_document.row_count),
             },
@@ -875,7 +862,7 @@ class CtsGisMutationService:
                 for from_address, to_address in sorted(remap_by_original.items(), key=lambda item: datum_address_sort_key(item[0]))
                 if from_address != to_address
             ],
-            "warnings": list(_as_list(validation.get("warnings"))),
+            "warnings": list(as_list(validation.get("warnings"))),
             "updated_document": current_document,
         }
         return preview_result
@@ -887,25 +874,25 @@ class CtsGisMutationService:
         tool_state: Mapping[str, Any],
         contract_state: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        state = _as_dict(tool_state)
-        stage_state = _as_dict(state.get("staged_insert"))
-        last_preview = _as_dict(stage_state.get("last_preview"))
+        state = as_dict(tool_state)
+        stage_state = as_dict(state.get("staged_insert"))
+        last_preview = as_dict(stage_state.get("last_preview"))
         if not last_preview:
             raise CtsGisMutationError(
                 "preview_required",
                 "Preview the staged CTS-GIS insert plan before applying it.",
             )
-        normalized_payload = _as_dict(stage_state.get("normalized_payload"))
+        normalized_payload = as_dict(stage_state.get("normalized_payload"))
         current_identity = self._document_identity(
             tenant_id=tenant_id,
-            document_id=_as_text(normalized_payload.get("document_id")),
+            document_id=as_text(normalized_payload.get("document_id")),
         )
-        if _as_text(last_preview.get("expected_document_version_hash")) != _as_text(current_identity.get("version_hash")):
+        if as_text(last_preview.get("expected_document_version_hash")) != as_text(current_identity.get("version_hash")):
             raise CtsGisMutationError(
                 "stale_preview_version",
                 "The authoritative CTS-GIS document changed after preview; run preview again before applying.",
             )
-        if _as_text(last_preview.get("payload_hash")) != _payload_hash(normalized_payload):
+        if as_text(last_preview.get("payload_hash")) != _payload_hash(normalized_payload):
             raise CtsGisMutationError(
                 "stale_preview_payload",
                 "The staged CTS-GIS payload changed after preview; run preview again before applying.",
@@ -931,7 +918,7 @@ class CtsGisMutationService:
             document_id=updated_document.document_id,
         )
         preview_result["persisted_catalog"] = persisted_catalog
-        preview_result["persisted_version_hash"] = _as_text(latest_identity.get("version_hash"))
+        preview_result["persisted_version_hash"] = as_text(latest_identity.get("version_hash"))
         return preview_result
 
 
@@ -957,7 +944,7 @@ class CtsGisMutationService:
                     tenant_id=tenant_id,
                     document_id=document.document_id,
                 )
-                if _as_text(computed_identity.get("version_hash")) != _as_text(stored_identity.get("version_hash")):
+                if as_text(computed_identity.get("version_hash")) != as_text(stored_identity.get("version_hash")):
                     failures.append({
                         "code": "version_hash_mismatch",
                         "message": f"Document '{document.document_id}' stored hash does not match computed hash.",
@@ -974,12 +961,12 @@ class CtsGisMutationService:
             for row in list(getattr(document, "rows", None) or []):
                 checked_row_count += 1
                 try:
-                    parse_datum_address(_as_text(getattr(row, "datum_address", "") or ""))
+                    parse_datum_address(as_text(getattr(row, "datum_address", "") or ""))
                 except Exception as exc:  # noqa: BLE001
                     failures.append({
                         "code": "malformed_datum_address",
                         "message": str(exc),
-                        "datum_address": _as_text(getattr(row, "datum_address", "")),
+                        "datum_address": as_text(getattr(row, "datum_address", "")),
                         "document_id": document.document_id,
                     })
         return {

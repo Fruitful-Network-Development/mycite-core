@@ -31,12 +31,7 @@ from ...ports.network_root_read_model import (
     normalize_network_surface_query,
     validate_network_hops_address,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _safe_read_json(path: Path, *, warnings: list[str], label: str) -> dict[str, Any]:
@@ -76,7 +71,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             return datetime.fromtimestamp(number, tz=timezone.utc)
         except Exception:
             return None
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return None
     if token.isdigit():
@@ -146,7 +141,7 @@ def _json_key(value: object) -> str:
     try:
         return json.dumps(value, sort_keys=True, separators=(",", ":"))
     except Exception:
-        return _as_text(value)
+        return as_text(value)
 
 
 def _make_source_key(*parts: object) -> str:
@@ -155,25 +150,25 @@ def _make_source_key(*parts: object) -> str:
 
 
 def _encode_name_bits(value: object) -> str:
-    text = _as_text(value)
+    text = as_text(value)
     return "".join(f"{byte:08b}" for byte in text.encode("utf-8"))
 
 
 def _log_title(kind_slug: str, payload: dict[str, Any]) -> str:
     for key in ("title", "label", "name"):
-        token = _as_text(payload.get(key))
+        token = as_text(payload.get(key))
         if token:
             return token
     details = payload.get("details")
     if isinstance(details, dict):
         proposal = details.get("proposal")
         if isinstance(proposal, dict):
-            proposal_id = _as_text(proposal.get("proposal_id"))
+            proposal_id = as_text(proposal.get("proposal_id"))
             if proposal_id:
                 return proposal_id
         confirmation = details.get("confirmation")
         if isinstance(confirmation, dict):
-            proposal_id = _as_text(confirmation.get("proposal_id"))
+            proposal_id = as_text(confirmation.get("proposal_id"))
             if proposal_id:
                 return proposal_id
     contract_id = _derive_contract_id(payload)
@@ -184,7 +179,7 @@ def _log_title(kind_slug: str, payload: dict[str, Any]) -> str:
 
 def _request_log_counterparty(payload: dict[str, Any], *, local_msn_id: str) -> str:
     for key in ("counterparty_msn_id", "client_msn_id", "company_msn_id", "receiver", "transmitter"):
-        token = _as_text(payload.get(key))
+        token = as_text(payload.get(key))
         if token and token != local_msn_id and token != f"msn-{local_msn_id}":
             return token.removeprefix("msn-")
     details = payload.get("details")
@@ -192,20 +187,20 @@ def _request_log_counterparty(payload: dict[str, Any], *, local_msn_id: str) -> 
         proposal = details.get("proposal")
         if isinstance(proposal, dict):
             for key in ("receiver_msn_id", "sender_msn_id"):
-                token = _as_text(proposal.get(key))
+                token = as_text(proposal.get(key))
                 if token and token != local_msn_id:
                     return token
         confirmation = details.get("confirmation")
         if isinstance(confirmation, dict):
             for key in ("receiver_msn_id", "sender_msn_id"):
-                token = _as_text(confirmation.get(key))
+                token = as_text(confirmation.get(key))
                 if token and token != local_msn_id:
                     return token
     return ""
 
 
 def _derive_contract_id(payload: dict[str, Any]) -> str:
-    direct = _as_text(payload.get("contract_id"))
+    direct = as_text(payload.get("contract_id"))
     if direct:
         return direct
     details = payload.get("details")
@@ -213,20 +208,20 @@ def _derive_contract_id(payload: dict[str, Any]) -> str:
         for key in ("proposal", "confirmation"):
             nested = details.get(key)
             if isinstance(nested, dict):
-                token = _as_text(nested.get("contract_id"))
+                token = as_text(nested.get("contract_id"))
                 if token:
                     return token
     return ""
 
 
 def _contract_summary(payload: dict[str, Any], *, path: Path | None = None) -> dict[str, Any]:
-    contract_id = _as_text(payload.get("contract_id")) or (_as_text(path.stem) if path is not None else "")
-    relationship_kind = _as_text(payload.get("relationship_kind") or payload.get("contract_type")) or "unknown"
+    contract_id = as_text(payload.get("contract_id")) or (as_text(path.stem) if path is not None else "")
+    relationship_kind = as_text(payload.get("relationship_kind") or payload.get("contract_type")) or "unknown"
     return {
         "contract_id": contract_id,
         "relationship_kind": relationship_kind,
-        "enforcement_state": _as_text(payload.get("status")) or "unknown",
-        "counterparty_msn_id": _as_text(payload.get("counterparty_msn_id")),
+        "enforcement_state": as_text(payload.get("status")) or "unknown",
+        "counterparty_msn_id": as_text(payload.get("counterparty_msn_id")),
         "owner_selected_refs": list(payload.get("owner_selected_refs") or []),
         "owner_mss": payload.get("owner_mss"),
         "counterparty_mss": payload.get("counterparty_mss"),
@@ -257,8 +252,8 @@ def _preserved_kind_labels(payload: dict[str, Any]) -> dict[str, str]:
             continue
         labels = raw[1] if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) else []
         metadata = raw[2] if isinstance(raw, list) and len(raw) > 2 and isinstance(raw[2], dict) else {}
-        slug = _as_text(metadata.get("slug") or (labels[0] if labels else datum_address))
-        label = _as_text(metadata.get("label") or (labels[0] if labels else slug))
+        slug = as_text(metadata.get("slug") or (labels[0] if labels else datum_address))
+        label = as_text(metadata.get("label") or (labels[0] if labels else slug))
         if slug and slug not in out:
             out[slug] = label or slug
     return out
@@ -273,11 +268,11 @@ def _parse_kind_catalog(payload: dict[str, Any]) -> tuple[dict[str, dict[str, An
         header = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
         labels = raw[1] if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) else []
         metadata = raw[2] if isinstance(raw, list) and len(raw) > 2 and isinstance(raw[2], dict) else {}
-        local_kind_id = _as_text(metadata.get(LOCAL_LOG_KIND_ID_KEY) or (header[2] if len(header) > 2 else ""))
-        label = _as_text(metadata.get("label") or (labels[0] if labels else datum_address))
-        slug = _as_text(metadata.get("slug") or label or datum_address)
+        local_kind_id = as_text(metadata.get(LOCAL_LOG_KIND_ID_KEY) or (header[2] if len(header) > 2 else ""))
+        label = as_text(metadata.get("label") or (labels[0] if labels else datum_address))
+        slug = as_text(metadata.get("slug") or label or datum_address)
         entry = build_log_kind_entry(
-            kind_id=_as_text(metadata.get(LOG_KIND_ID_KEY) or datum_address),
+            kind_id=as_text(metadata.get(LOG_KIND_ID_KEY) or datum_address),
             local_kind_id=local_kind_id,
             slug=slug or label or datum_address,
             label=label or slug,
@@ -301,26 +296,26 @@ def _parse_canonical_records(
         header = raw[0] if isinstance(raw, list) and raw and isinstance(raw[0], list) else []
         labels = raw[1] if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) else []
         metadata = raw[2] if isinstance(raw, list) and len(raw) > 2 and isinstance(raw[2], dict) else {}
-        log_kind = kinds_by_id.get(_as_text(metadata.get(LOG_KIND_ID_KEY) or (header[1] if len(header) > 1 else "")))
+        log_kind = kinds_by_id.get(as_text(metadata.get(LOG_KIND_ID_KEY) or (header[1] if len(header) > 1 else "")))
         if log_kind is None and len(header) > 2:
-            log_kind = kinds_by_local.get(_as_text(header[2]))
-        hops_timestamp = _as_text(metadata.get("hops_timestamp") or (header[4] if len(header) > 4 else ""))
+            log_kind = kinds_by_local.get(as_text(header[2]))
+        hops_timestamp = as_text(metadata.get("hops_timestamp") or (header[4] if len(header) > 4 else ""))
         validation = validate_network_hops_address(hops_timestamp, schema_payload) if hops_timestamp else {"ok": False}
         chronology_state = "valid" if bool(validation.get("ok")) else "invalid"
-        contract_id = _as_text(metadata.get("contract_id"))
+        contract_id = as_text(metadata.get("contract_id"))
         records.append(
             {
-                "datum_address": _as_text(datum_address),
-                "source_key": _as_text(metadata.get("source_key") or datum_address),
-                "source_kind": _as_text(metadata.get("source_kind") or "canonical"),
-                "source_timestamp": _as_text(metadata.get("source_timestamp")),
-                "title": _as_text(metadata.get("title") or (labels[0] if labels else datum_address)),
-                "label": _as_text(metadata.get("label") or (labels[0] if labels else datum_address)),
-                LOG_KIND_ID_KEY: _as_text(log_kind[LOG_KIND_ID_KEY] if log_kind else metadata.get(LOG_KIND_ID_KEY)),
-                LOG_KIND_LABEL_KEY: _as_text(log_kind["label"] if log_kind else metadata.get(LOG_KIND_LABEL_KEY)),
-                LOG_KIND_SLUG_KEY: _as_text(log_kind["slug"] if log_kind else metadata.get(LOG_KIND_SLUG_KEY)),
-                "status": _as_text(metadata.get("status")),
-                "counterparty": _as_text(metadata.get("counterparty")),
+                "datum_address": as_text(datum_address),
+                "source_key": as_text(metadata.get("source_key") or datum_address),
+                "source_kind": as_text(metadata.get("source_kind") or "canonical"),
+                "source_timestamp": as_text(metadata.get("source_timestamp")),
+                "title": as_text(metadata.get("title") or (labels[0] if labels else datum_address)),
+                "label": as_text(metadata.get("label") or (labels[0] if labels else datum_address)),
+                LOG_KIND_ID_KEY: as_text(log_kind[LOG_KIND_ID_KEY] if log_kind else metadata.get(LOG_KIND_ID_KEY)),
+                LOG_KIND_LABEL_KEY: as_text(log_kind["label"] if log_kind else metadata.get(LOG_KIND_LABEL_KEY)),
+                LOG_KIND_SLUG_KEY: as_text(log_kind["slug"] if log_kind else metadata.get(LOG_KIND_SLUG_KEY)),
+                "status": as_text(metadata.get("status")),
+                "counterparty": as_text(metadata.get("counterparty")),
                 "contract_id": contract_id,
                 "hops_timestamp": hops_timestamp,
                 "chronology_state": chronology_state,
@@ -333,20 +328,20 @@ def _parse_canonical_records(
 
 def _sort_records_desc(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     def _compare(left: dict[str, Any], right: dict[str, Any]) -> int:
-        hops_left = _as_text(left.get("hops_timestamp"))
-        hops_right = _as_text(right.get("hops_timestamp"))
+        hops_left = as_text(left.get("hops_timestamp"))
+        hops_right = as_text(right.get("hops_timestamp"))
         if hops_left and hops_right:
             timestamp_cmp = compare_network_hops_addresses(hops_left, hops_right)
             if timestamp_cmp != 0:
                 return -timestamp_cmp
-        title_left = _as_text(left.get("title"))
-        title_right = _as_text(right.get("title"))
+        title_left = as_text(left.get("title"))
+        title_right = as_text(right.get("title"))
         if title_left < title_right:
             return -1
         if title_left > title_right:
             return 1
-        key_left = _as_text(left.get("source_key"))
-        key_right = _as_text(right.get("source_key"))
+        key_left = as_text(left.get("source_key"))
+        key_right = as_text(right.get("source_key"))
         if key_left < key_right:
             return -1
         if key_left > key_right:
@@ -359,7 +354,7 @@ def _sort_records_desc(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def _dedupe_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: dict[str, dict[str, Any]] = {}
     for record in records:
-        key = _as_text(record.get("source_key")) or _make_source_key(
+        key = as_text(record.get("source_key")) or _make_source_key(
             record.get("hops_timestamp"),
             record.get(LOG_KIND_SLUG_KEY),
             record.get("contract_id"),
@@ -447,7 +442,7 @@ def _request_log_import_records(
             if authority is None:
                 warnings.append(f"Skipping request-log entry without chronology authority in {path.name}:{line_number}")
                 continue
-            existing_hops = _as_text(payload.get("hops_timestamp"))
+            existing_hops = as_text(payload.get("hops_timestamp"))
             if existing_hops and bool(validate_network_hops_address(existing_hops, authority.schema_payload).get("ok")):
                 hops_timestamp = existing_hops
             else:
@@ -461,7 +456,7 @@ def _request_log_import_records(
                     "title": title,
                     "label": title,
                     LOG_KIND_SLUG_KEY: kind_slug,
-                    "status": _as_text(payload.get("status")),
+                    "status": as_text(payload.get("status")),
                     "counterparty": _request_log_counterparty(payload, local_msn_id=local_msn_id),
                     "contract_id": _derive_contract_id(payload),
                     "hops_timestamp": hops_timestamp,
@@ -498,8 +493,8 @@ def _contract_history_records(
                     "title": contract_id,
                     "label": contract_id,
                     LOG_KIND_SLUG_KEY: f"contract_record.{phase}",
-                    "status": _as_text(summary.get("enforcement_state")),
-                    "counterparty": _as_text(summary.get("counterparty_msn_id")),
+                    "status": as_text(summary.get("enforcement_state")),
+                    "counterparty": as_text(summary.get("counterparty_msn_id")),
                     "contract_id": contract_id,
                     "hops_timestamp": encode_network_datetime_as_hops(timestamp, authority=authority),
                     "chronology_state": "valid",
@@ -516,9 +511,9 @@ def build_system_log_document(
 ) -> dict[str, Any]:
     preserved = dict(preserved_kind_labels or {})
     for record in records:
-        slug = _as_text(record.get(LOG_KIND_SLUG_KEY))
+        slug = as_text(record.get(LOG_KIND_SLUG_KEY))
         if slug and slug not in preserved:
-            preserved[slug] = _as_text(record.get(LOG_KIND_LABEL_KEY) or slug)
+            preserved[slug] = as_text(record.get(LOG_KIND_LABEL_KEY) or slug)
     kind_entries: list[dict[str, str]] = []
     for index, slug in enumerate(sorted(preserved), start=1):
         kind_entries.append(
@@ -550,43 +545,43 @@ def build_system_log_document(
         records,
         key=cmp_to_key(
             lambda left, right: (
-                compare_network_hops_addresses(_as_text(left.get("hops_timestamp")), _as_text(right.get("hops_timestamp")))
-                if _as_text(left.get("hops_timestamp")) and _as_text(right.get("hops_timestamp"))
+                compare_network_hops_addresses(as_text(left.get("hops_timestamp")), as_text(right.get("hops_timestamp")))
+                if as_text(left.get("hops_timestamp")) and as_text(right.get("hops_timestamp"))
                 else (
                     -1
-                    if _as_text(left.get("hops_timestamp")) < _as_text(right.get("hops_timestamp"))
-                    else (1 if _as_text(left.get("hops_timestamp")) > _as_text(right.get("hops_timestamp")) else 0)
+                    if as_text(left.get("hops_timestamp")) < as_text(right.get("hops_timestamp"))
+                    else (1 if as_text(left.get("hops_timestamp")) > as_text(right.get("hops_timestamp")) else 0)
                 )
             )
             or (
                 -1
-                if _as_text(left.get("source_key")) < _as_text(right.get("source_key"))
-                else (1 if _as_text(left.get("source_key")) > _as_text(right.get("source_key")) else 0)
+                if as_text(left.get("source_key")) < as_text(right.get("source_key"))
+                else (1 if as_text(left.get("source_key")) > as_text(right.get("source_key")) else 0)
             )
             or (
                 -1
-                if _as_text(left.get("title")) < _as_text(right.get("title"))
-                else (1 if _as_text(left.get("title")) > _as_text(right.get("title")) else 0)
+                if as_text(left.get("title")) < as_text(right.get("title"))
+                else (1 if as_text(left.get("title")) > as_text(right.get("title")) else 0)
             )
         ),
     )
     for index, record in enumerate(ordered_records, start=1):
-        type_entry = type_by_slug[_as_text(record.get(LOG_KIND_SLUG_KEY))]
+        type_entry = type_by_slug[as_text(record.get(LOG_KIND_SLUG_KEY))]
         datum_address = f"7-3-{index}"
-        title = _as_text(record.get("title") or record.get("label") or datum_address)
+        title = as_text(record.get("title") or record.get("label") or datum_address)
         metadata = {
-            "source_key": _as_text(record.get("source_key")),
-            "source_kind": _as_text(record.get("source_kind")),
-            "source_timestamp": _as_text(record.get("source_timestamp")),
+            "source_key": as_text(record.get("source_key")),
+            "source_kind": as_text(record.get("source_kind")),
+            "source_timestamp": as_text(record.get("source_timestamp")),
             "title": title,
-            "label": _as_text(record.get("label") or title),
+            "label": as_text(record.get("label") or title),
             LOG_KIND_ID_KEY: type_entry[LOG_KIND_ID_KEY],
             LOG_KIND_LABEL_KEY: type_entry["label"],
             LOG_KIND_SLUG_KEY: type_entry["slug"],
-            "status": _as_text(record.get("status")),
-            "counterparty": _as_text(record.get("counterparty")),
-            "contract_id": _as_text(record.get("contract_id")),
-            "hops_timestamp": _as_text(record.get("hops_timestamp")),
+            "status": as_text(record.get("status")),
+            "counterparty": as_text(record.get("counterparty")),
+            "contract_id": as_text(record.get("contract_id")),
+            "hops_timestamp": as_text(record.get("hops_timestamp")),
             "raw": record.get("raw"),
         }
         space[datum_address] = [
@@ -622,7 +617,7 @@ def rebuild_network_system_log_document(
     private_root = None if private_dir is None else Path(private_dir)
     authority, schema_payload, quadrennium_path = _load_chronology_authority(data_dir=data_root, warnings=warnings)
     config = _safe_read_json(private_root / "config.json", warnings=warnings, label="private/config.json") if private_root else {}
-    local_msn_id = _as_text(config.get("msn_id"))
+    local_msn_id = as_text(config.get("msn_id"))
     contracts_by_id = _read_contract_catalog(private_root, warnings=warnings)
     current_payload = _safe_read_json(
         data_root / "system" / "system_log.json",
@@ -664,7 +659,7 @@ def _merge_records(
     canonical_records: list[dict[str, Any]],
     transition_records: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    valid_canonical = [record for record in canonical_records if _as_text(record.get("chronology_state")) == "valid"]
+    valid_canonical = [record for record in canonical_records if as_text(record.get("chronology_state")) == "valid"]
     return _dedupe_records(valid_canonical + transition_records)
 
 
@@ -672,10 +667,10 @@ def _record_counts(records: list[dict[str, Any]]) -> tuple[dict[str, int], dict[
     kind_counts: dict[str, int] = {}
     contract_counts: dict[str, int] = {}
     for record in records:
-        kind_id = _as_text(record.get(LOG_KIND_ID_KEY))
+        kind_id = as_text(record.get(LOG_KIND_ID_KEY))
         if kind_id:
             kind_counts[kind_id] = int(kind_counts.get(kind_id) or 0) + 1
-        contract_id = _as_text(record.get("contract_id"))
+        contract_id = as_text(record.get("contract_id"))
         if contract_id:
             contract_counts[contract_id] = int(contract_counts.get(contract_id) or 0) + 1
     return kind_counts, contract_counts
@@ -741,7 +736,7 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
 
         authority, schema_payload, quadrennium_path = _load_chronology_authority(data_dir=data_dir, warnings=warnings)
         config = _safe_read_json(private_dir / "config.json", warnings=warnings, label="private/config.json") if private_dir else {}
-        local_msn_id = _as_text(config.get("msn_id"))
+        local_msn_id = as_text(config.get("msn_id"))
         contracts_by_id = _read_contract_catalog(private_dir, warnings=warnings)
         canonical_payload = _safe_read_json(
             data_dir / "system" / "system_log.json",
@@ -773,22 +768,22 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
         rebuilt_records, _ = _parse_canonical_records(payload=rebuilt_document, schema_payload=schema_payload)
         records = _sort_records_desc(rebuilt_records)
 
-        contract_id_filter = _as_text(surface_query.get("contract"))
-        kind_id_filter = _as_text(surface_query.get("type"))
-        record_id_filter = _as_text(surface_query.get("record"))
+        contract_id_filter = as_text(surface_query.get("contract"))
+        kind_id_filter = as_text(surface_query.get("type"))
+        record_id_filter = as_text(surface_query.get("record"))
         filtered_records = [
             record
             for record in records
-            if (not contract_id_filter or _as_text(record.get("contract_id")) == contract_id_filter)
-            and (not kind_id_filter or _as_text(record.get(LOG_KIND_ID_KEY)) == kind_id_filter)
+            if (not contract_id_filter or as_text(record.get("contract_id")) == contract_id_filter)
+            and (not kind_id_filter or as_text(record.get(LOG_KIND_ID_KEY)) == kind_id_filter)
         ]
         selected_record = None
         for record in filtered_records:
-            if _as_text(record.get("datum_address")) == record_id_filter:
+            if as_text(record.get("datum_address")) == record_id_filter:
                 selected_record = dict(record)
                 break
         if selected_record is not None:
-            contract_id = _as_text(selected_record.get("contract_id"))
+            contract_id = as_text(selected_record.get("contract_id"))
             if contract_id and contract_id in contracts_by_id:
                 selected_record["linked_contract"] = contracts_by_id[contract_id]
 
@@ -803,30 +798,30 @@ class FilesystemNetworkRootReadModelAdapter(NetworkRootReadModelPort):
             )
             for kind_id, entry in sorted(
                 kinds_by_id.items(),
-                key=lambda item: (_as_text(item[1].get("label")), _as_text(item[0])),
+                key=lambda item: (as_text(item[1].get("label")), as_text(item[0])),
             )
         ]
         contract_filters = [
             {
                 "contract_id": contract_id,
                 "label": contract_id,
-                "relationship_kind": _as_text(summary.get("relationship_kind")),
+                "relationship_kind": as_text(summary.get("relationship_kind")),
                 "count": int(contract_counts.get(contract_id) or 0),
                 "active": contract_id == contract_id_filter,
             }
             for contract_id, summary in sorted(contracts_by_id.items(), key=lambda item: item[0])
         ]
 
-        latest_hops_timestamp = _as_text(records[0].get("hops_timestamp")) if records else ""
+        latest_hops_timestamp = as_text(records[0].get("hops_timestamp")) if records else ""
         chronology_state = "ready" if authority is not None and bool(schema_payload.get("ok")) else "unavailable"
-        invalid_rows = len([record for record in canonical_records if _as_text(record.get("chronology_state")) != "valid"])
+        invalid_rows = len([record for record in canonical_records if as_text(record.get("chronology_state")) != "valid"])
         if invalid_rows:
             warnings.append(
                 f"Ignored {invalid_rows} invalid canonical system-log row(s) whose HOPS timestamps do not satisfy the live chronology authority."
             )
         selected_contract_id = contract_id_filter
         if not selected_contract_id and selected_record is not None:
-            selected_contract_id = _as_text(selected_record.get("contract_id"))
+            selected_contract_id = as_text(selected_record.get("contract_id"))
 
         payload = {
             "portal_instance": {

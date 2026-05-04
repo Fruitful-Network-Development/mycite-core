@@ -14,6 +14,7 @@ from MyCiteV2.packages.core.structures.hops.time_address_schema import (
     schema_from_anchor_payload,
     validate_address_with_schema,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 LOG_KIND_ID_KEY = "event_type_id"
 LOCAL_LOG_KIND_ID_KEY = "local_event_type_id"
@@ -24,12 +25,6 @@ LOG_KIND_COUNT_KEY = "event_type_count"
 LOG_KIND_COUNTS_KEY = "event_type_counts"
 LOG_KIND_COLLECTION_LABEL = "event_type_collection"
 LOG_KIND_BABELETTE_LABEL = "event_type_babelette"
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def build_network_chronology_authority(

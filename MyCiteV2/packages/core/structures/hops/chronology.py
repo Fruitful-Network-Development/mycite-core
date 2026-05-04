@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from .time_address import normalize_time_address_for_schema
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _SECONDS_PER_DAY = 24 * 60 * 60
 
@@ -14,12 +15,6 @@ class ChronologyAuthority:
     schema_payload: dict[str, Any]
     quadrennium_payload: dict[str, Any]
     cosmological_prefix: tuple[int, int] = (0, 0)
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _require_quadrennium_authority(payload: dict[str, Any]) -> None:

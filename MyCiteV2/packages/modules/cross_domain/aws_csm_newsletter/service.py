@@ -30,10 +30,7 @@ from .payload_utils import (
     render_inbound_capture_signature as _render_inbound_capture_signature,
     render_unsubscribe_token as _render_unsubscribe_token,
 )
-
-
-def _as_text(value: object) -> str:
-    return as_text(value)
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 class AwsCsmNewsletterService:
@@ -100,15 +97,15 @@ class AwsCsmNewsletterService:
         )
         verified = list(self._state_port.list_verified_author_profiles(domain=token))
         selected_author = {}
-        selected_author_profile_id = _as_text(profile.get("selected_author_profile_id"))
+        selected_author_profile_id = as_text(profile.get("selected_author_profile_id"))
         for item in verified:
-            if _as_text(item.get("profile_id")) == selected_author_profile_id:
+            if as_text(item.get("profile_id")) == selected_author_profile_id:
                 selected_author = dict(item)
                 break
         if not selected_author and verified:
             selected_author = dict(verified[0])
-            profile["selected_author_profile_id"] = _as_text(selected_author.get("profile_id"))
-            profile["selected_author_address"] = _as_text(selected_author.get("send_as_email"))
+            profile["selected_author_profile_id"] = as_text(selected_author.get("profile_id"))
+            profile["selected_author_address"] = as_text(selected_author.get("send_as_email"))
             self._state_port.save_profile(domain=token, payload=profile)
 
         normalized_contact_log = _normalize_contact_log(contact_log, domain=token)
@@ -118,18 +115,18 @@ class AwsCsmNewsletterService:
         warnings: list[str] = []
         if not verified:
             warnings.append(f"No verified AWS-CSM author profiles are available for {token}.")
-        if not _as_text(profile.get("dispatch_queue_url")):
+        if not as_text(profile.get("dispatch_queue_url")):
             warnings.append(f"Dispatch queue is not configured for {token}.")
-        if not _as_text(profile.get("callback_url")):
+        if not as_text(profile.get("callback_url")):
             warnings.append(f"Dispatch callback URL is not configured for {token}.")
 
-        delivery_mode = _as_text(profile.get("delivery_mode")) or _DELIVERY_MODE
+        delivery_mode = as_text(profile.get("delivery_mode")) or _DELIVERY_MODE
         readiness = {
             "author_selected": bool(selected_author),
             "contact_log_ready": True,
-            "dispatch_configured": bool(_as_text(profile.get("dispatch_queue_url")) and _as_text(profile.get("dispatcher_lambda_name"))),
+            "dispatch_configured": bool(as_text(profile.get("dispatch_queue_url")) and as_text(profile.get("dispatcher_lambda_name"))),
             "delivery_mode": delivery_mode,
-            "inbound_capture_status": _as_text(profile.get("last_inbound_status")) or "not_processed",
+            "inbound_capture_status": as_text(profile.get("last_inbound_status")) or "not_processed",
         }
         return {
             "schema": "mycite.v2.portal.system.tools.aws_csm.newsletter_domain_state.v1",
@@ -168,22 +165,22 @@ class AwsCsmNewsletterService:
         receipt_rules: list[dict[str, Any]] = []
         if domain_states:
             first_profile = domain_states[0]["profile"]
-            region = _as_text(first_profile.get("aws_region")) or "us-east-1"
-            queue_url = _as_text(first_profile.get("dispatch_queue_url"))
-            queue_arn = _as_text(first_profile.get("dispatch_queue_arn"))
+            region = as_text(first_profile.get("aws_region")) or "us-east-1"
+            queue_url = as_text(first_profile.get("dispatch_queue_url"))
+            queue_arn = as_text(first_profile.get("dispatch_queue_arn"))
             if queue_url and queue_arn:
                 queue_summary = self._cloud_port.queue_health_summary(
                     queue_url=queue_url,
                     queue_arn=queue_arn,
                     region=region,
                 )
-            dispatcher_name = _as_text(first_profile.get("dispatcher_lambda_name"))
+            dispatcher_name = as_text(first_profile.get("dispatcher_lambda_name"))
             if dispatcher_name:
                 dispatcher_summary = self._cloud_port.lambda_health_summary(
                     function_name=dispatcher_name,
                     region=region,
                 )
-            inbound_name = _as_text(first_profile.get("inbound_processor_lambda_name"))
+            inbound_name = as_text(first_profile.get("inbound_processor_lambda_name"))
             if inbound_name:
                 inbound_summary = self._cloud_port.lambda_health_summary(
                     function_name=inbound_name,
@@ -194,9 +191,9 @@ class AwsCsmNewsletterService:
                 receipt_rules.append(
                     self._cloud_port.receipt_rule_summary(
                         domain=state["domain"],
-                        expected_recipient=_as_text(profile.get("list_address")) or f"news@{state['domain']}",
-                        expected_lambda_name=_as_text(profile.get("inbound_processor_lambda_name")),
-                        region=_as_text(profile.get("aws_region")) or "us-east-1",
+                        expected_recipient=as_text(profile.get("list_address")) or f"news@{state['domain']}",
+                        expected_lambda_name=as_text(profile.get("inbound_processor_lambda_name")),
+                        region=as_text(profile.get("aws_region")) or "us-east-1",
                     )
                 )
         return {
@@ -231,14 +228,14 @@ class AwsCsmNewsletterService:
         )
         verified = list(self._state_port.list_verified_author_profiles(domain=token))
         matched = next(
-            (item for item in verified if _as_text(item.get("profile_id")) == _as_text(selected_author_profile_id)),
+            (item for item in verified if as_text(item.get("profile_id")) == as_text(selected_author_profile_id)),
             None,
         )
         if matched is None:
             raise ValueError("selected author is not currently verified for this domain")
         profile = self._state_port.load_profile(domain=token)
-        profile["selected_author_profile_id"] = _as_text(matched.get("profile_id"))
-        profile["selected_author_address"] = _as_text(matched.get("send_as_email"))
+        profile["selected_author_profile_id"] = as_text(matched.get("profile_id"))
+        profile["selected_author_address"] = as_text(matched.get("send_as_email"))
         self._state_port.save_profile(domain=token, payload=profile)
         return self.resolve_domain_state(
             domain=token,
@@ -272,8 +269,8 @@ class AwsCsmNewsletterService:
         if current is None:
             current = {
                 "email": normalized_email,
-                "name": _as_text(name),
-                "zip": _as_text(zip_code),
+                "name": as_text(name),
+                "zip": as_text(zip_code),
                 "source": "website_signup",
                 "subscribed": True,
                 "created_at": now_iso,
@@ -285,14 +282,14 @@ class AwsCsmNewsletterService:
                 "notes": "",
             }
         else:
-            if _as_text(name):
-                current["name"] = _as_text(name)
-            if _as_text(zip_code):
-                current["zip"] = _as_text(zip_code)
+            if as_text(name):
+                current["name"] = as_text(name)
+            if as_text(zip_code):
+                current["zip"] = as_text(zip_code)
             current["source"] = "website_signup"
             current["subscribed"] = True
             current["updated_at"] = now_iso
-            current["subscribed_at"] = _as_text(current.get("subscribed_at")) or now_iso
+            current["subscribed_at"] = as_text(current.get("subscribed_at")) or now_iso
             current["unsubscribed_at"] = ""
         by_email[normalized_email] = current
         normalized["contacts"] = [by_email[key] for key in sorted(by_email.keys())]
@@ -328,7 +325,7 @@ class AwsCsmNewsletterService:
         contacts: list[dict[str, Any]] = []
         for row in list(contact_log.get("contacts") or []):
             current = dict(row)
-            if _as_text(current.get("email")).lower() == normalized_email:
+            if as_text(current.get("email")).lower() == normalized_email:
                 current["subscribed"] = False
                 current["source"] = "unsubscribe_link"
                 current["unsubscribed_at"] = now_iso
@@ -401,31 +398,31 @@ class AwsCsmNewsletterService:
             dispatcher_callback_url=dispatcher_callback_url,
             inbound_callback_url=inbound_callback_url,
         )
-        if _as_text(status).lower() not in {"sent", "failed"}:
+        if as_text(status).lower() not in {"sent", "failed"}:
             raise ValueError("dispatch result status must be sent or failed")
         contact_log = _normalize_contact_log(self._state_port.load_contact_log(domain=domain_token), domain=domain_token)
         contacts = {
-            _as_text(item.get("email")).lower(): dict(item)
+            as_text(item.get("email")).lower(): dict(item)
             for item in list(contact_log.get("contacts") or [])
-            if isinstance(item, dict) and _as_text(item.get("email"))
+            if isinstance(item, dict) and as_text(item.get("email"))
         }
         now_iso = utc_now_iso()
         updated = False
         for dispatch in list(contact_log.get("dispatches") or []):
-            if _as_text(dispatch.get("dispatch_id")) != _as_text(dispatch_id):
+            if as_text(dispatch.get("dispatch_id")) != as_text(dispatch_id):
                 continue
             results = list(dispatch.get("results") or [])
             for row in results:
-                if not isinstance(row, dict) or _as_text(row.get("email")).lower() != normalized_email:
+                if not isinstance(row, dict) or as_text(row.get("email")).lower() != normalized_email:
                     continue
-                prior_status = _as_text(row.get("status")).lower()
-                row["status"] = _as_text(status).lower()
-                if _as_text(message_id):
-                    row["message_id"] = _as_text(message_id)
-                if _as_text(queue_message_id):
-                    row["queue_message_id"] = _as_text(queue_message_id)
-                if _as_text(error_message):
-                    row["error"] = _as_text(error_message)
+                prior_status = as_text(row.get("status")).lower()
+                row["status"] = as_text(status).lower()
+                if as_text(message_id):
+                    row["message_id"] = as_text(message_id)
+                if as_text(queue_message_id):
+                    row["queue_message_id"] = as_text(queue_message_id)
+                if as_text(error_message):
+                    row["error"] = as_text(error_message)
                 row["updated_at"] = now_iso
                 if row["status"] == "sent" and prior_status != "sent":
                     current = contacts.get(normalized_email)
@@ -438,13 +435,13 @@ class AwsCsmNewsletterService:
                 break
             dispatch["results"] = results[-_MAX_DISPATCH_RESULT_HISTORY:]
             dispatch["queued_count"] = sum(
-                1 for row in results if _as_text((row or {}).get("status")).lower() == "queued"
+                1 for row in results if as_text((row or {}).get("status")).lower() == "queued"
             )
             dispatch["sent_count"] = sum(
-                1 for row in results if _as_text((row or {}).get("status")).lower() == "sent"
+                1 for row in results if as_text((row or {}).get("status")).lower() == "sent"
             )
             dispatch["failed_count"] = sum(
-                1 for row in results if _as_text((row or {}).get("status")).lower() == "failed"
+                1 for row in results if as_text((row or {}).get("status")).lower() == "failed"
             )
             if int(dispatch.get("queued_count") or 0) == 0:
                 dispatch["completed_at"] = now_iso
@@ -456,9 +453,9 @@ class AwsCsmNewsletterService:
         self._state_port.save_contact_log(domain=domain_token, payload=contact_log)
         return {
             "domain": domain_token,
-            "dispatch_id": _as_text(dispatch_id),
+            "dispatch_id": as_text(dispatch_id),
             "email": normalized_email,
-            "status": _as_text(status).lower(),
+            "status": as_text(status).lower(),
         }
 
     def _profile_from_dispatcher_urls(
@@ -476,9 +473,9 @@ class AwsCsmNewsletterService:
 
     def _selected_author_for_domain(self, *, domain: str, profile: dict[str, Any]) -> dict[str, Any]:
         verified = list(self._state_port.list_verified_author_profiles(domain=domain))
-        selected_profile_id = _as_text(profile.get("selected_author_profile_id"))
+        selected_profile_id = as_text(profile.get("selected_author_profile_id"))
         for item in verified:
-            if _as_text(item.get("profile_id")) == selected_profile_id:
+            if as_text(item.get("profile_id")) == selected_profile_id:
                 return dict(item)
         return dict(verified[0]) if verified else {}
 
@@ -531,21 +528,21 @@ class AwsCsmNewsletterService:
             raise ValueError("inbound recipient does not target the canonical list address")
         if (
             not force_reprocess
-            and _as_text(profile.get("last_inbound_message_id")) == _as_text(ses_message_id)
-            and _as_text(profile.get("last_inbound_status")) == "processed"
+            and as_text(profile.get("last_inbound_message_id")) == as_text(ses_message_id)
+            and as_text(profile.get("last_inbound_status")) == "processed"
         ):
             return {
                 "ok": True,
                 "already_processed": True,
-                "dispatch_id": _as_text(profile.get("last_dispatch_id")),
+                "dispatch_id": as_text(profile.get("last_dispatch_id")),
             }
 
-        region = _as_text(profile.get("aws_region")) or "us-east-1"
-        raw_bytes = self._cloud_port.read_s3_bytes(s3_uri=_as_text(s3_uri), region=region)
+        region = as_text(profile.get("aws_region")) or "us-east-1"
+        raw_bytes = self._cloud_port.read_s3_bytes(s3_uri=as_text(s3_uri), region=region)
         body_text = _message_text_from_email(raw_bytes).strip()
         if not body_text:
             raise ValueError("captured inbound newsletter body is empty")
-        effective_subject = _as_text(subject) or _message_subject_from_email(raw_bytes)
+        effective_subject = as_text(subject) or _message_subject_from_email(raw_bytes)
         if not effective_subject:
             raise ValueError("captured inbound newsletter subject is missing")
 
@@ -566,7 +563,7 @@ class AwsCsmNewsletterService:
             secret_kind="dispatch_secret",
         )
         results: list[dict[str, Any]] = []
-        queue_url = _as_text(profile.get("dispatch_queue_url"))
+        queue_url = as_text(profile.get("dispatch_queue_url"))
         if not queue_url:
             raise ValueError("newsletter dispatch queue is not configured")
         sender_address = _optional_email(profile.get("sender_address")) or list_address
@@ -587,7 +584,7 @@ class AwsCsmNewsletterService:
                 "sender_address": sender_address,
                 "reply_to_address": reply_to_address,
                 "author_address": reply_to_address,
-                "author_profile_id": _as_text(selected_author.get("profile_id")),
+                "author_profile_id": as_text(selected_author.get("profile_id")),
                 "list_address": list_address,
                 "subject": effective_subject,
                 "body_text": body_text,
@@ -596,8 +593,8 @@ class AwsCsmNewsletterService:
                 "callback_token": callback_secret,
                 "aws_region": region,
                 "source_kind": "inbound_email",
-                "source_message_id": _as_text(ses_message_id),
-                "source_message_s3_uri": _as_text(s3_uri),
+                "source_message_id": as_text(ses_message_id),
+                "source_message_s3_uri": as_text(s3_uri),
             }
             result_row = {"email": email, "status": "queued", "unsubscribe_url": unsubscribe_url}
             try:
@@ -608,39 +605,39 @@ class AwsCsmNewsletterService:
                 )
             except Exception as exc:
                 result_row["status"] = "failed"
-                result_row["error"] = _as_text(exc)
+                result_row["error"] = as_text(exc)
             results.append(result_row)
 
         now_iso = utc_now_iso()
         dispatch_row = {
             "dispatch_id": dispatch_id,
             "requested_at": now_iso,
-            "completed_at": "" if any(_as_text(row.get("status")) == "queued" for row in results) else now_iso,
+            "completed_at": "" if any(as_text(row.get("status")) == "queued" for row in results) else now_iso,
             "requested_by": "inbound_capture",
             "domain": domain_token,
-            "author_profile_id": _as_text(selected_author.get("profile_id")),
+            "author_profile_id": as_text(selected_author.get("profile_id")),
             "author_address": reply_to_address,
-            "sender_profile_id": _as_text(selected_author.get("profile_id")),
+            "sender_profile_id": as_text(selected_author.get("profile_id")),
             "sender_address": sender_address,
             "list_address": list_address,
             "reply_to_address": reply_to_address,
             "subject": effective_subject,
             "body_text": body_text,
             "target_count": len(subscribers),
-            "queued_count": sum(1 for row in results if _as_text(row.get("status")) == "queued"),
-            "sent_count": sum(1 for row in results if _as_text(row.get("status")) == "sent"),
-            "failed_count": sum(1 for row in results if _as_text(row.get("status")) == "failed"),
+            "queued_count": sum(1 for row in results if as_text(row.get("status")) == "queued"),
+            "sent_count": sum(1 for row in results if as_text(row.get("status")) == "sent"),
+            "failed_count": sum(1 for row in results if as_text(row.get("status")) == "failed"),
             "delivery_mode": _DELIVERY_MODE,
             "aws_region": region,
             "source_kind": "inbound_email",
-            "source_message_id": _as_text(ses_message_id),
-            "source_message_s3_uri": _as_text(s3_uri),
-            "source_message_captured_at": _as_text(captured_at),
+            "source_message_id": as_text(ses_message_id),
+            "source_message_s3_uri": as_text(s3_uri),
+            "source_message_captured_at": as_text(captured_at),
             "status": (
                 "queued"
-                if any(_as_text(row.get("status")) == "queued" for row in results)
+                if any(as_text(row.get("status")) == "queued" for row in results)
                 else "completed"
-                if not any(_as_text(row.get("status")) == "failed" for row in results)
+                if not any(as_text(row.get("status")) == "failed" for row in results)
                 else "completed_with_errors"
             ),
             "results": results[-_MAX_DISPATCH_RESULT_HISTORY:],
@@ -648,7 +645,7 @@ class AwsCsmNewsletterService:
         contact_log["dispatches"] = list(contact_log.get("dispatches") or [])[-(_MAX_DISPATCH_HISTORY - 1):] + [dispatch_row]
         self._state_port.save_contact_log(domain=domain_token, payload=contact_log)
 
-        profile["last_inbound_message_id"] = _as_text(ses_message_id)
+        profile["last_inbound_message_id"] = as_text(ses_message_id)
         profile["last_inbound_status"] = "processed"
         profile["last_inbound_checked_at"] = now_iso
         profile["last_inbound_processed_at"] = now_iso
@@ -656,7 +653,7 @@ class AwsCsmNewsletterService:
         profile["last_inbound_sender"] = expected_sender
         profile["last_inbound_recipient"] = list_address
         profile["last_inbound_error"] = ""
-        profile["last_inbound_s3_uri"] = _as_text(s3_uri)
+        profile["last_inbound_s3_uri"] = as_text(s3_uri)
         profile["last_dispatch_id"] = dispatch_id
         self._state_port.save_profile(domain=domain_token, payload=profile)
 
@@ -680,12 +677,12 @@ class AwsCsmNewsletterService:
             dispatcher_callback_url=dispatcher_callback_url,
             inbound_callback_url=inbound_callback_url,
         )
-        s3_uri = _as_text(profile.get("last_inbound_s3_uri"))
-        message_id = _as_text(profile.get("last_inbound_message_id"))
-        sender = _as_text(profile.get("last_inbound_sender"))
-        recipient = _as_text(profile.get("last_inbound_recipient"))
-        subject = _as_text(profile.get("last_inbound_subject"))
-        captured_at = _as_text(profile.get("last_inbound_checked_at"))
+        s3_uri = as_text(profile.get("last_inbound_s3_uri"))
+        message_id = as_text(profile.get("last_inbound_message_id"))
+        sender = as_text(profile.get("last_inbound_sender"))
+        recipient = as_text(profile.get("last_inbound_recipient"))
+        subject = as_text(profile.get("last_inbound_subject"))
+        captured_at = as_text(profile.get("last_inbound_checked_at"))
         if not s3_uri or not message_id:
             raise LookupError("no previously captured inbound newsletter is available for reprocessing")
         return self.process_inbound_capture(

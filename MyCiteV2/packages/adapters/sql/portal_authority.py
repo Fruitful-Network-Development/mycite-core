@@ -11,12 +11,7 @@ from MyCiteV2.packages.ports.portal_authority import (
     PortalAuthorityResult,
     PortalAuthoritySource,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 class SqlitePortalAuthorityAdapter(PortalAuthorityPort):
@@ -33,7 +28,7 @@ class SqlitePortalAuthorityAdapter(PortalAuthorityPort):
         return open_sqlite(self._db_file)
 
     def has_scope(self, scope_id: str) -> bool:
-        token = _as_text(scope_id)
+        token = as_text(scope_id)
         if not token:
             return False
         with self._connect() as connection:

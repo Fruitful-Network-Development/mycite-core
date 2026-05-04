@@ -31,12 +31,7 @@ from MyCiteV2.packages.adapters.filesystem import (
 )
 from MyCiteV2.packages.modules.cross_domain.fnd_ebi.service import FndEbiReadOnlyService
 from MyCiteV2.packages.modules.cross_domain.fnd_ebi_donations.service import FndEbiDonationsReadOnlyService
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
@@ -113,7 +108,7 @@ def build_portal_fnd_ebi_surface_bundle(
         },
     }
     # --- Analytics surface ---
-    selected_domain = _as_text(dict(shell_state.focus_subject or {}).get("domain"))
+    selected_domain = as_text(dict(shell_state.focus_subject or {}).get("domain"))
     analytics_surface: dict[str, Any] = {}
     if private_dir is not None:
         try:
@@ -149,12 +144,12 @@ def build_portal_fnd_ebi_surface_bundle(
 
     # --- Workbench visibility gate ---
     # Visible when at least one data section (analytics or donations) has state == "ready".
-    analytics_access_state = _as_text(
+    analytics_access_state = as_text(
         dict(analytics_surface.get("files") or {})
         .get("access_log", {})
         .get("state")
     )
-    donations_log_state = _as_text(
+    donations_log_state = as_text(
         dict(donations_surface.get("donations_log") or {}).get("state")
     )
     workbench_visible = analytics_access_state == "ready" or donations_log_state == "ready"
@@ -253,7 +248,7 @@ def run_portal_fnd_ebi(
     portal_domain: str = "",
 ) -> dict[str, Any]:
     portal_scope, shell_state, _ = _normalize_request(request_payload)
-    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    resolved_portal_instance_id = as_text(portal_instance_id) or portal_scope.scope_id
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
     shell_request = {

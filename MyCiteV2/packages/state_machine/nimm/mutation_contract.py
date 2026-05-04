@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from .envelope import NimmDirectiveEnvelope
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 DEFAULT_MUTATION_ENDPOINTS = {
     "stage": "/portal/api/v2/mutations/stage",
@@ -51,12 +52,6 @@ AWS_CSM_ACTION_LIFECYCLE = {
 }
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def mutation_action_endpoint(action: object) -> str:
     action_name = normalize_mutation_lifecycle_action(action)
     if action_name not in DEFAULT_MUTATION_ENDPOINTS:
@@ -66,19 +61,19 @@ def mutation_action_endpoint(action: object) -> str:
 
 
 def normalize_mutation_lifecycle_action(action: object) -> str:
-    action_name = _as_text(action).lower()
+    action_name = as_text(action).lower()
     return CTS_GIS_MUTATION_ACTION_ALIASES.get(action_name, action_name)
 
 
 def cts_gis_runtime_action_kind(action: object) -> str:
-    action_name = _as_text(action).lower()
+    action_name = as_text(action).lower()
     if action_name in CTS_GIS_MUTATION_ACTION_ALIASES:
         return action_name
     return CTS_GIS_CANONICAL_ACTIONS.get(action_name, action_name)
 
 
 def aws_csm_lifecycle_action(action_kind: object) -> str:
-    return AWS_CSM_ACTION_LIFECYCLE.get(_as_text(action_kind).lower(), "apply")
+    return AWS_CSM_ACTION_LIFECYCLE.get(as_text(action_kind).lower(), "apply")
 
 
 @dataclass(frozen=True)
@@ -90,8 +85,8 @@ class MutationContractResult:
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "status": _as_text(self.status) or "accepted",
-            "message": _as_text(self.message),
+            "status": as_text(self.status) or "accepted",
+            "message": as_text(self.message),
         }
         if self.envelope is not None:
             payload["envelope"] = self.envelope.to_dict()

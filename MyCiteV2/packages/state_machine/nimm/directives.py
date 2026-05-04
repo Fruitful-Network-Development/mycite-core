@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 NIMM_DIRECTIVE_SCHEMA_V1 = "mycite.v2.nimm.directive.v1"
 
@@ -58,14 +59,8 @@ NIMM_DIRECTIVE_GRAMMAR_V1 = {
 }
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def normalize_shell_verb(value: object, *, field_name: str = "shell_verb") -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token not in SUPPORTED_SHELL_VERBS:
         supported = ", ".join(SUPPORTED_SHELL_VERBS)
         raise ValueError(f"{field_name} must be one of: {supported}")
@@ -73,7 +68,7 @@ def normalize_shell_verb(value: object, *, field_name: str = "shell_verb") -> st
 
 
 def normalize_nimm_verb(value: object, *, field_name: str = "nimm.verb") -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token not in SUPPORTED_NIMM_VERB_TOKENS:
         supported = ", ".join(SUPPORTED_NIMM_VERB_TOKENS)
         raise ValueError(f"{field_name} must be one of: {supported}")
@@ -87,9 +82,9 @@ class NimmTargetAddress:
     object_ref: str = ""
 
     def __post_init__(self) -> None:
-        file_key = _as_text(self.file_key)
-        datum_address = _as_text(self.datum_address)
-        object_ref = _as_text(self.object_ref)
+        file_key = as_text(self.file_key)
+        datum_address = as_text(self.datum_address)
+        object_ref = as_text(self.object_ref)
         if not (file_key or datum_address or object_ref):
             raise ValueError("nimm.target requires at least one of file_key, datum_address, object_ref")
         object.__setattr__(self, "file_key", file_key)
@@ -133,8 +128,8 @@ class NimmDirective:
         if self.schema != NIMM_DIRECTIVE_SCHEMA_V1:
             raise ValueError(f"nimm.schema must be {NIMM_DIRECTIVE_SCHEMA_V1}")
         verb = normalize_nimm_verb(self.verb)
-        target_authority = _as_text(self.target_authority)
-        document_id = _as_text(self.document_id)
+        target_authority = as_text(self.target_authority)
+        document_id = as_text(self.document_id)
         if not (target_authority or document_id):
             raise ValueError("nimm.target_authority or nimm.document_id is required")
         normalized_targets = tuple(NimmTargetAddress.from_value(item) for item in self.targets)
@@ -144,7 +139,7 @@ class NimmDirective:
         object.__setattr__(self, "verb", verb)
         object.__setattr__(self, "target_authority", target_authority)
         object.__setattr__(self, "document_id", document_id)
-        object.__setattr__(self, "aitas_ref", _as_text(self.aitas_ref) or "default")
+        object.__setattr__(self, "aitas_ref", as_text(self.aitas_ref) or "default")
         object.__setattr__(self, "targets", normalized_targets)
         object.__setattr__(self, "payload", payload)
 
@@ -167,7 +162,7 @@ class NimmDirective:
             return payload
         if not isinstance(payload, dict):
             raise ValueError("nimm directive must be a dict")
-        schema = _as_text(payload.get("schema"))
+        schema = as_text(payload.get("schema"))
         if schema and schema != NIMM_DIRECTIVE_SCHEMA_V1:
             raise ValueError(f"nimm.schema must be {NIMM_DIRECTIVE_SCHEMA_V1}")
         return cls(

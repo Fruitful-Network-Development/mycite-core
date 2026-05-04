@@ -29,12 +29,7 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStoreRequest,
     SystemDatumWorkbenchResult,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _workbench_from_payload(payload: dict[str, object]) -> SystemDatumWorkbenchResult:
@@ -71,7 +66,7 @@ class SqliteSystemDatumStoreAdapter(
         return open_sqlite(self._db_file)
 
     def has_authoritative_catalog(self, tenant_id: str) -> bool:
-        token = _as_text(tenant_id).lower()
+        token = as_text(tenant_id).lower()
         if not token:
             return False
         with self._connect() as connection:
@@ -82,7 +77,7 @@ class SqliteSystemDatumStoreAdapter(
         return row is not None
 
     def has_system_workbench(self, tenant_id: str) -> bool:
-        token = _as_text(tenant_id).lower()
+        token = as_text(tenant_id).lower()
         if not token:
             return False
         with self._connect() as connection:
@@ -232,7 +227,7 @@ class SqliteSystemDatumStoreAdapter(
         tenant_domain: str | None = None,
     ) -> None:
         filesystem = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
-        normalized_tenant_id = _as_text(tenant_id).lower()
+        normalized_tenant_id = as_text(tenant_id).lower()
         self.store_authoritative_catalog(
             filesystem.read_authoritative_datum_documents(
                 AuthoritativeDatumDocumentRequest(tenant_id=normalized_tenant_id)
@@ -326,7 +321,7 @@ class SqliteSystemDatumStoreAdapter(
 
     def read_document_version_identity(self, *, tenant_id: str, document_id: str) -> dict[str, Any] | None:
         normalized_request = AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
-        document_token = _as_text(document_id)
+        document_token = as_text(document_id)
         if not document_token:
             raise ValueError("document_id is required")
         with self._connect() as connection:
@@ -354,8 +349,8 @@ class SqliteSystemDatumStoreAdapter(
         datum_address: str,
     ) -> dict[str, Any] | None:
         normalized_request = AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
-        document_token = _as_text(document_id)
-        datum_token = _as_text(datum_address)
+        document_token = as_text(document_id)
+        datum_token = as_text(datum_address)
         if not document_token:
             raise ValueError("document_id is required")
         if not datum_token:
@@ -388,7 +383,7 @@ class SqliteSystemDatumStoreAdapter(
     ) -> tuple[AuthoritativeDatumDocumentCatalogResult, AuthoritativeDatumDocument]:
         catalog = self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
         for document in catalog.documents:
-            if document.document_id == _as_text(document_id):
+            if document.document_id == as_text(document_id):
                 return catalog, document
         raise ValueError("authoritative_document_missing")
 
@@ -403,7 +398,7 @@ class SqliteSystemDatumStoreAdapter(
         documents: list[AuthoritativeDatumDocument] = []
         found = False
         for document in catalog.documents:
-            if document.document_id == _as_text(document_id):
+            if document.document_id == as_text(document_id):
                 documents.append(updated_document)
                 found = True
             else:
@@ -432,7 +427,7 @@ class SqliteSystemDatumStoreAdapter(
             if isinstance(updated_document, AuthoritativeDatumDocument)
             else AuthoritativeDatumDocument.from_dict(updated_document)
         )
-        if normalized_document.document_id != _as_text(document_id):
+        if normalized_document.document_id != as_text(document_id):
             raise ValueError("updated_document.document_id must match document_id")
         return self._persist_updated_document(
             tenant_id=tenant_id,
@@ -470,7 +465,7 @@ class SqliteSystemDatumStoreAdapter(
         )
         latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
         preview["updated_document"] = next(
-            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == as_text(document_id)
         )
         preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
         return preview
@@ -503,7 +498,7 @@ class SqliteSystemDatumStoreAdapter(
         )
         latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
         preview["updated_document"] = next(
-            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == as_text(document_id)
         )
         preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
         return preview
@@ -546,7 +541,7 @@ class SqliteSystemDatumStoreAdapter(
         )
         latest_identity = self.read_document_version_identity(tenant_id=tenant_id, document_id=document_id)
         preview["updated_document"] = next(
-            item.to_dict() for item in persisted_catalog.documents if item.document_id == _as_text(document_id)
+            item.to_dict() for item in persisted_catalog.documents if item.document_id == as_text(document_id)
         )
         preview["persisted_version_hash"] = latest_identity["version_hash"] if latest_identity else ""
         return preview

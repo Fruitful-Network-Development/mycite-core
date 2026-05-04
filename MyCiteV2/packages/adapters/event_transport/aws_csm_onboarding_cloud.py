@@ -20,14 +20,14 @@ import zipfile
 from MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud import (
     AwsEc2RoleNewsletterCloudAdapter,
 )
-from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
-    FilesystemAwsCsmNewsletterStateAdapter,
-)
 from MyCiteV2.packages.modules.cross_domain.aws_csm_forwarder_filter import (
     AwsCsmVerificationForwardFilter,
     extract_links_from_raw_email,
 )
+from MyCiteV2.packages.ports.aws_csm_newsletter import AwsCsmNewsletterStatePort
 from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingCloudPort
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list, as_bool
+from MyCiteV2.packages.modules.shared.time_tokens import utc_now_iso
 
 _AWS_SMTP_IAM_USER = str(os.getenv("AWS_CMS_SMTP_IAM_USER", "aws-cms-smtp")).strip() or "aws-cms-smtp"
 _AWS_SMTP_MESSAGE = "SendRawEmail"
@@ -45,37 +45,16 @@ AWS_CSM_HANDOFF_TEMPLATE_VERSION = "smtp_credentials_v2_minimal_5field"
 _INBOUND_CAPTURE_LAMBDA_SOURCE = Path(__file__).resolve().with_name("aws_csm_inbound_capture_lambda.py")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: Any) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_list(value: Any) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
-
-
-def _as_bool(value: Any) -> bool:
-    return bool(value) if isinstance(value, bool) else str(value).strip().lower() == "true"
-
-
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
-
 
 def _normalized_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.startswith("www."):
         token = token[4:]
     return token
 
 
 def _normalized_email(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.count("@") != 1 or any(ch.isspace() for ch in token):
         return ""
     local_part, domain_part = token.split("@", 1)
@@ -95,11 +74,11 @@ def _email_domain(email: object) -> str:
 
 
 def _status_is_ready(value: object) -> bool:
-    return _as_text(value).lower() in {"ok", "active", "ready", "successful"}
+    return as_text(value).lower() in {"ok", "active", "ready", "successful"}
 
 
 def _normalized_handoff_provider(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token in _ALLOWED_HANDOFF_PROVIDERS:
         return token
     return ""
@@ -131,7 +110,7 @@ def _provider_label(provider: str) -> str:
 
 
 def _smtp_secret_description(secret_name: str) -> str:
-    token = _as_text(secret_name)
+    token = as_text(secret_name)
     if not token:
         return "SES SMTP credentials for AWS-CSM send-as onboarding"
     prefix = "aws-cms/smtp/"
@@ -142,8 +121,8 @@ def _smtp_secret_description(secret_name: str) -> str:
 
 
 def _aws_smtp_password(secret_access_key: str, *, region: str) -> str:
-    secret = _as_text(secret_access_key)
-    region_token = _as_text(region) or _DEFAULT_REGION
+    secret = as_text(secret_access_key)
+    region_token = as_text(region) or _DEFAULT_REGION
     if not secret:
         raise ValueError("Missing secret access key for SES SMTP password derivation.")
 
@@ -192,23 +171,34 @@ def _raw_message_summary(raw_bytes: bytes) -> dict[str, Any]:
     return {
         "sender": sender,
         "recipient": recipient,
-        "subject": _as_text(message.get("Subject")),
+        "subject": as_text(message.get("Subject")),
         "links": links,
     }
 
 
 class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmOnboardingCloudPort):
-    def __init__(self, *, private_dir: str | Path | None = None, tenant_id: str = "") -> None:
+    def __init__(
+        self,
+        *,
+        private_dir: str | Path | None = None,
+        tenant_id: str = "",
+        newsletter_state: AwsCsmNewsletterStatePort | None = None,
+    ) -> None:
         self._private_dir = None if private_dir is None else Path(private_dir)
-        self._tenant_id = _as_text(tenant_id)
-        self._newsletter_state = (
-            None
-            if self._private_dir is None
-            else FilesystemAwsCsmNewsletterStateAdapter(self._private_dir)
-        )
+        self._tenant_id = as_text(tenant_id)
+        if newsletter_state is not None:
+            self._newsletter_state: AwsCsmNewsletterStatePort | None = newsletter_state
+        elif self._private_dir is not None:
+            from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
+                FilesystemAwsCsmNewsletterStateAdapter,
+            )
+
+            self._newsletter_state = FilesystemAwsCsmNewsletterStateAdapter(self._private_dir)
+        else:
+            self._newsletter_state = None
 
     def supplemental_profile_patch(self, action: str, profile: dict[str, Any]) -> dict[str, Any]:
-        token = _as_text(action)
+        token = as_text(action)
         if token in {"prepare_send_as", "stage_smtp_credentials"}:
             return self._stage_smtp_patch(profile)
         if token == "refresh_provider_status":
@@ -219,7 +209,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         if token == "capture_verification":
             readiness = self.describe_profile_readiness(profile)
             patch = self._inbound_status_patch(profile, readiness=readiness)
-            capture = _as_dict(_as_dict(readiness.get("inbound")).get("latest_capture"))
+            capture = as_dict(as_dict(readiness.get("inbound")).get("latest_capture"))
             verification_patch = self._verification_capture_patch(profile, capture=capture)
             if verification_patch:
                 patch["verification"] = verification_patch
@@ -228,20 +218,20 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
 
     def confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
         readiness = self.describe_profile_readiness(profile)
-        confirmation = _as_dict(readiness.get("confirmation"))
+        confirmation = as_dict(readiness.get("confirmation"))
         return bool(confirmation.get("already_verified")) or bool(confirmation.get("can_confirm_verified"))
 
     def gmail_confirmation_evidence_satisfied(self, profile: dict[str, Any]) -> bool:
         return self.confirmation_evidence_satisfied(profile)
 
     def describe_profile_readiness(self, profile: dict[str, Any]) -> dict[str, Any]:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
-        provider = _as_dict(profile.get("provider"))
-        verification = _as_dict(profile.get("verification"))
-        inbound = _as_dict(profile.get("inbound"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
+        provider = as_dict(profile.get("provider"))
+        verification = as_dict(profile.get("verification"))
+        inbound = as_dict(profile.get("inbound"))
 
-        checked_at = _utc_now_iso()
+        checked_at = utc_now_iso(seconds_precision=True)
         region = self._region_for_profile(profile)
         domain = _normalized_domain(identity.get("domain"))
         send_as_email = self._send_as_email(profile)
@@ -252,13 +242,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             if secret_name
             else {"state": "missing", "secret_name": "", "username": "", "password": "", "message": "No SMTP secret is configured."}
         )
-        smtp_state = _as_text(smtp_material.get("state")).lower()
+        smtp_state = as_text(smtp_material.get("state")).lower()
         smtp_status = "ready" if smtp_state == "configured" else ("blocked" if smtp_state in {"error", "quota_blocked"} else "action_required")
         provider_summary = self._ses_identity_summary(
             region=region,
             email_identity=domain or send_as_email,
         )
-        provider_state = _as_text(provider_summary.get("aws_ses_identity_status") or provider.get("aws_ses_identity_status")).lower()
+        provider_state = as_text(provider_summary.get("aws_ses_identity_status") or provider.get("aws_ses_identity_status")).lower()
         provider_status = "ready" if provider_state == "verified" else ("blocked" if provider_state in {"error", "access_denied"} else "action_required")
         expected_lambda_name = self._inbound_lambda_name(profile)
         receipt_rule = self.receipt_rule_summary(
@@ -276,19 +266,19 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         capture_evidence = bool(capture.get("portal_native_evidence_present"))
         provider_send_as_status = self._provider_send_as_status(profile)
         already_verified = (
-            _as_text(verification.get("status")).lower() == "verified"
-            or _as_text(verification.get("portal_state")).lower() == "verified"
+            as_text(verification.get("status")).lower() == "verified"
+            or as_text(verification.get("portal_state")).lower() == "verified"
             or provider_send_as_status == "verified"
-            or _as_text(provider.get("gmail_send_as_status")).lower() == "verified"
+            or as_text(provider.get("gmail_send_as_status")).lower() == "verified"
         )
-        inbound_ready = bool(inbound.get("receive_verified")) or _as_bool(inbound.get("portal_native_display_ready"))
+        inbound_ready = bool(inbound.get("receive_verified")) or as_bool(inbound.get("portal_native_display_ready"))
         if inbound_ready:
             inbound_status = "ready"
         elif _status_is_ready(receipt_rule.get("status")) and _status_is_ready(inbound_lambda.get("status")) and capture_evidence:
             inbound_status = "captured"
         elif _status_is_ready(receipt_rule.get("status")) and _status_is_ready(inbound_lambda.get("status")):
             inbound_status = "listening"
-        elif _as_text(receipt_rule.get("status")).lower() == "error" or _as_text(inbound_lambda.get("status")).lower() == "error":
+        elif as_text(receipt_rule.get("status")).lower() == "error" or as_text(inbound_lambda.get("status")).lower() == "error":
             inbound_status = "blocked"
         else:
             inbound_status = "action_required"
@@ -304,26 +294,26 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         return {
             "schema": "mycite.v2.portal.system.tools.aws_csm.cloud_readiness.v1",
             "checked_at": checked_at,
-            "profile_id": _as_text(identity.get("profile_id")),
+            "profile_id": as_text(identity.get("profile_id")),
             "domain": domain,
             "smtp": {
                 "status": smtp_status,
-                "credentials_secret_state": _as_text(smtp_material.get("state")),
-                "secret_name": _as_text(smtp_material.get("secret_name") or secret_name),
-                "username": _as_text(smtp_material.get("persisted_username") or smtp_material.get("username") or smtp.get("username")),
-                "smtp_host": _as_text(smtp_material.get("smtp_host") or smtp.get("host") or f"email-smtp.{region}.amazonaws.com"),
-                "smtp_port": _as_text(smtp_material.get("smtp_port") or smtp.get("port") or "587"),
+                "credentials_secret_state": as_text(smtp_material.get("state")),
+                "secret_name": as_text(smtp_material.get("secret_name") or secret_name),
+                "username": as_text(smtp_material.get("persisted_username") or smtp_material.get("username") or smtp.get("username")),
+                "smtp_host": as_text(smtp_material.get("smtp_host") or smtp.get("host") or f"email-smtp.{region}.amazonaws.com"),
+                "smtp_port": as_text(smtp_material.get("smtp_port") or smtp.get("port") or "587"),
                 "handoff_ready": smtp_status == "ready",
-                "message": _as_text(smtp_material.get("message"))
+                "message": as_text(smtp_material.get("message"))
                 or ("SMTP secret material is ready for handoff." if smtp_status == "ready" else "SMTP credentials still need operator attention."),
             },
             "provider": {
                 "status": provider_status,
                 "handoff_provider": handoff_provider,
                 "send_as_provider_status": provider_send_as_status,
-                "aws_ses_identity_status": provider_state or _as_text(provider.get("aws_ses_identity_status")),
+                "aws_ses_identity_status": provider_state or as_text(provider.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
-                "message": _as_text(provider_summary.get("message"))
+                "message": as_text(provider_summary.get("message"))
                 or ("AWS SES identity is verified." if provider_status == "ready" else "AWS SES identity still needs verification or refresh."),
             },
             "inbound": {
@@ -359,12 +349,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         }
 
     def describe_domain_status(self, domain_record: dict[str, Any]) -> dict[str, Any]:
-        identity = _as_dict(domain_record.get("identity"))
-        dns = _as_dict(domain_record.get("dns"))
-        receipt = _as_dict(domain_record.get("receipt"))
+        identity = as_dict(domain_record.get("identity"))
+        dns = as_dict(domain_record.get("dns"))
+        receipt = as_dict(domain_record.get("receipt"))
         domain = _normalized_domain(identity.get("domain"))
-        region = _as_text(identity.get("region")) or _DEFAULT_REGION
-        hosted_zone_id = _as_text(identity.get("hosted_zone_id"))
+        region = as_text(identity.get("region")) or _DEFAULT_REGION
+        hosted_zone_id = as_text(identity.get("hosted_zone_id"))
         caller = self.caller_identity_summary()
 
         registrar_nameservers = self._registrar_nameservers(domain)
@@ -378,16 +368,16 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             hosted_zone_id=hosted_zone_id,
             domain=domain,
             region=region,
-            dkim_tokens=_as_list(identity_summary.get("dkim_tokens")),
+            dkim_tokens=as_list(identity_summary.get("dkim_tokens")),
         )
         receipt_summary = self.receipt_rule_summary(
             domain=domain,
             expected_recipient=domain,
-            expected_lambda_name=_as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
+            expected_lambda_name=as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
             region=region,
         )
-        matching_rules = _as_list(receipt_summary.get("matching_rules"))
-        primary_rule = _as_dict(matching_rules[0]) if matching_rules else {}
+        matching_rules = as_list(receipt_summary.get("matching_rules"))
+        primary_rule = as_dict(matching_rules[0]) if matching_rules else {}
         return {
             "dns": {
                 "hosted_zone_present": hosted_zone_present,
@@ -395,32 +385,32 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "hosted_zone_nameservers": hosted_zone_nameservers,
                 "nameserver_match": nameserver_match,
                 "mx_expected_value": mx_expected_value,
-                "mx_record_present": _as_bool(record_summary.get("mx_record_present")),
-                "mx_record_values": _as_list(record_summary.get("mx_record_values")),
-                "dkim_records_present": _as_bool(record_summary.get("dkim_records_present")),
-                "dkim_record_values": _as_list(record_summary.get("dkim_record_values")),
+                "mx_record_present": as_bool(record_summary.get("mx_record_present")),
+                "mx_record_values": as_list(record_summary.get("mx_record_values")),
+                "dkim_records_present": as_bool(record_summary.get("dkim_records_present")),
+                "dkim_record_values": as_list(record_summary.get("dkim_record_values")),
             },
             "ses": identity_summary,
             "receipt": {
-                "status": _as_text(receipt_summary.get("status")) or "not_ready",
-                "rule_name": _as_text(primary_rule.get("rule_name") or receipt.get("rule_name") or self._domain_rule_name(domain)),
-                "expected_recipient": _as_text(receipt_summary.get("expected_recipient") or domain),
-                "expected_lambda_name": _as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
-                "bucket": _as_text(primary_rule.get("s3_bucket") or receipt.get("bucket") or _DEFAULT_DOMAIN_RECEIPT_BUCKET),
-                "prefix": _as_text(primary_rule.get("s3_prefix") or receipt.get("prefix") or f"inbound/{domain}/"),
+                "status": as_text(receipt_summary.get("status")) or "not_ready",
+                "rule_name": as_text(primary_rule.get("rule_name") or receipt.get("rule_name") or self._domain_rule_name(domain)),
+                "expected_recipient": as_text(receipt_summary.get("expected_recipient") or domain),
+                "expected_lambda_name": as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA,
+                "bucket": as_text(primary_rule.get("s3_bucket") or receipt.get("bucket") or _DEFAULT_DOMAIN_RECEIPT_BUCKET),
+                "prefix": as_text(primary_rule.get("s3_prefix") or receipt.get("prefix") or f"inbound/{domain}/"),
                 "matching_rules": matching_rules,
             },
             "observation": {
-                "last_checked_at": _utc_now_iso(),
-                "account": _as_text(caller.get("account")),
-                "role_arn": _as_text(caller.get("arn")),
+                "last_checked_at": utc_now_iso(seconds_precision=True),
+                "account": as_text(caller.get("account")),
+                "role_arn": as_text(caller.get("arn")),
             },
         }
 
     def ensure_domain_identity(self, domain_record: dict[str, Any]) -> None:
-        identity = _as_dict(domain_record.get("identity"))
+        identity = as_dict(domain_record.get("identity"))
         domain = _normalized_domain(identity.get("domain"))
-        region = _as_text(identity.get("region")) or _DEFAULT_REGION
+        region = as_text(identity.get("region")) or _DEFAULT_REGION
         if not domain:
             raise ValueError("AWS-CSM domain onboarding record is missing identity.domain.")
         client = self._client("sesv2", region=region)
@@ -428,24 +418,24 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             client.get_email_identity(EmailIdentity=domain)
             return
         except Exception as exc:  # noqa: BLE001
-            message = _as_text(exc).lower()
+            message = as_text(exc).lower()
             if "notfound" not in message and "not found" not in message:
                 raise
         client.create_email_identity(EmailIdentity=domain)
 
     def sync_domain_dns(self, domain_record: dict[str, Any]) -> None:
         status = self.describe_domain_status(domain_record)
-        identity = _as_dict(domain_record.get("identity"))
-        dns = _as_dict(status.get("dns"))
-        ses = _as_dict(status.get("ses"))
+        identity = as_dict(domain_record.get("identity"))
+        dns = as_dict(status.get("dns"))
+        ses = as_dict(status.get("ses"))
         domain = _normalized_domain(identity.get("domain"))
-        region = _as_text(identity.get("region")) or _DEFAULT_REGION
-        hosted_zone_id = _as_text(identity.get("hosted_zone_id"))
-        if not _as_bool(dns.get("hosted_zone_present")):
+        region = as_text(identity.get("region")) or _DEFAULT_REGION
+        hosted_zone_id = as_text(identity.get("hosted_zone_id"))
+        if not as_bool(dns.get("hosted_zone_present")):
             raise ValueError("The configured Route 53 hosted zone is missing or unreadable.")
-        if not _as_bool(dns.get("nameserver_match")):
+        if not as_bool(dns.get("nameserver_match")):
             raise ValueError("Refusing DNS sync because registrar nameservers do not match the selected hosted zone.")
-        dkim_tokens = [token for token in (_as_text(item) for item in _as_list(ses.get("dkim_tokens"))) if token]
+        dkim_tokens = [token for token in (as_text(item) for item in as_list(ses.get("dkim_tokens"))) if token]
         if len(dkim_tokens) < 3:
             raise ValueError("Create the SES domain identity first so DKIM tokens exist before syncing DNS.")
         route53 = self._client("route53")
@@ -478,23 +468,23 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
 
     def ensure_domain_receipt_rule(self, domain_record: dict[str, Any]) -> None:
-        identity = _as_dict(domain_record.get("identity"))
-        receipt = _as_dict(domain_record.get("receipt"))
+        identity = as_dict(domain_record.get("identity"))
+        receipt = as_dict(domain_record.get("receipt"))
         domain = _normalized_domain(identity.get("domain"))
-        region = _as_text(identity.get("region")) or _DEFAULT_REGION
-        rule_name = _as_text(receipt.get("rule_name")) or self._domain_rule_name(domain)
-        expected_lambda_name = _as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
-        bucket = _as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET
-        prefix = _as_text(receipt.get("prefix")) or f"inbound/{domain}/"
+        region = as_text(identity.get("region")) or _DEFAULT_REGION
+        rule_name = as_text(receipt.get("rule_name")) or self._domain_rule_name(domain)
+        expected_lambda_name = as_text(receipt.get("expected_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
+        bucket = as_text(receipt.get("bucket")) or _DEFAULT_DOMAIN_RECEIPT_BUCKET
+        prefix = as_text(receipt.get("prefix")) or f"inbound/{domain}/"
         if not domain:
             raise ValueError("AWS-CSM domain onboarding record is missing identity.domain.")
         ses = self._client("ses", region=region)
         active = ses.describe_active_receipt_rule_set()
-        rule_set_name = _as_text(_as_dict(active.get("Metadata")).get("Name"))
+        rule_set_name = as_text(as_dict(active.get("Metadata")).get("Name"))
         if not rule_set_name:
             raise ValueError("No active SES receipt rule set is configured.")
-        rules = [row for row in _as_list(active.get("Rules")) if isinstance(row, dict)]
-        lambda_arn = _as_text(self.lambda_health_summary(function_name=expected_lambda_name, region=region).get("function_arn"))
+        rules = [row for row in as_list(active.get("Rules")) if isinstance(row, dict)]
+        lambda_arn = as_text(self.lambda_health_summary(function_name=expected_lambda_name, region=region).get("function_arn"))
         if not lambda_arn:
             raise ValueError(f"Unable to resolve Lambda ARN for {expected_lambda_name}.")
         rule_payload = {
@@ -518,11 +508,11 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             ],
             "ScanEnabled": True,
         }
-        existing = next((row for row in rules if _as_text(row.get("Name")) == rule_name), None)
+        existing = next((row for row in rules if as_text(row.get("Name")) == rule_name), None)
         if existing is not None:
             ses.update_receipt_rule(RuleSetName=rule_set_name, Rule=rule_payload)
             return
-        after = _as_text(rules[-1].get("Name")) if rules else ""
+        after = as_text(rules[-1].get("Name")) if rules else ""
         kwargs: dict[str, Any] = {"RuleSetName": rule_set_name, "Rule": rule_payload}
         if after:
             kwargs["After"] = after
@@ -550,10 +540,10 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         if not destination:
             raise ValueError("AWS-CSM operator inbox target is not configured for this profile.")
         material = self.read_handoff_secret(profile)
-        username = _as_text(material.get("username"))
-        password = _as_text(material.get("password"))
-        smtp_host = _as_text(material.get("smtp_host"))
-        smtp_port = _as_text(material.get("smtp_port"))
+        username = as_text(material.get("username"))
+        password = as_text(material.get("password"))
+        smtp_host = as_text(material.get("smtp_host"))
+        smtp_port = as_text(material.get("smtp_port"))
         handoff_provider = self._handoff_provider(profile)
         provider_label = _provider_label(handoff_provider)
         region = self._region_for_profile(profile)
@@ -582,13 +572,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             },
         )
         return {
-            "message_id": _as_text(response.get("MessageId")),
+            "message_id": as_text(response.get("MessageId")),
             "sent_to": destination,
             "send_as_email": send_as_email,
             "username": username,
             "smtp_host": smtp_host,
             "smtp_port": smtp_port,
-            "state": _as_text(material.get("state")),
+            "state": as_text(material.get("state")),
             "handoff_provider": handoff_provider,
             "template_version": AWS_CSM_HANDOFF_TEMPLATE_VERSION,
             "correction": "true" if correction_note else "false",
@@ -597,7 +587,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
     def sync_verification_route_map(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:
         routes = self._verification_route_map_from_profiles(profiles=profiles)
         lambda_name = (
-            _as_text(os.getenv(_ROUTE_MAP_LAMBDA_ENV_KEY))
+            as_text(os.getenv(_ROUTE_MAP_LAMBDA_ENV_KEY))
             or self._verification_lambda_name(profiles=profiles)
             or _DEFAULT_INBOUND_LAMBDA
         )
@@ -609,8 +599,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             function_name=lambda_name,
             current_configuration=configuration,
         )
-        environment = dict(_as_dict(configuration.get("Environment")).get("Variables") or {})
-        existing_raw = _as_text(environment.get(_ROUTE_MAP_ENV_KEY)) or "{}"
+        environment = dict(as_dict(configuration.get("Environment")).get("Variables") or {})
+        existing_raw = as_text(environment.get(_ROUTE_MAP_ENV_KEY)) or "{}"
         try:
             existing_routes = json.loads(existing_raw)
         except json.JSONDecodeError:
@@ -619,7 +609,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         route_changed = existing_routes != routes
         if not route_changed:
             message = "Verification-forward Lambda code and route map are already up to date."
-            if _as_bool(code_sync.get("changed")):
+            if as_bool(code_sync.get("changed")):
                 message = "Verification-forward Lambda code refreshed; route map already up to date."
             return {
                 "status": "success",
@@ -628,10 +618,10 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "tracked_recipients": sorted(routes),
                 "lambda_name": lambda_name,
                 "region": region,
-                "changed": _as_bool(code_sync.get("changed")),
+                "changed": as_bool(code_sync.get("changed")),
                 "route_changed": False,
-                "code_changed": _as_bool(code_sync.get("changed")),
-                "code_sha256": _as_text(code_sync.get("code_sha256")),
+                "code_changed": as_bool(code_sync.get("changed")),
+                "code_sha256": as_text(code_sync.get("code_sha256")),
             }
         environment[_ROUTE_MAP_ENV_KEY] = json.dumps(routes, separators=(",", ":"), sort_keys=True)
         client.update_function_configuration(
@@ -640,7 +630,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         self._wait_for_lambda_update(client=client, function_name=lambda_name)
         message = "Verification-forward route map synced to Lambda environment."
-        if _as_bool(code_sync.get("changed")):
+        if as_bool(code_sync.get("changed")):
             message = "Verification-forward Lambda code and route map synced."
         return {
             "status": "success",
@@ -651,8 +641,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "region": region,
             "changed": True,
             "route_changed": True,
-            "code_changed": _as_bool(code_sync.get("changed")),
-            "code_sha256": _as_text(code_sync.get("code_sha256")),
+            "code_changed": as_bool(code_sync.get("changed")),
+            "code_sha256": as_text(code_sync.get("code_sha256")),
         }
 
     def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
@@ -662,26 +652,26 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             raise ValueError("AWS-CSM SMTP secret name is not configured for this profile.")
         region = self._region_for_profile(profile)
         material = self._smtp_secret_material(secret_name=secret_name, region=region)
-        state = _as_text(material.get("state")).lower()
-        username = _as_text(material.get("persisted_username") or material.get("username"))
-        secret_value = _as_text(material.get("password"))
+        state = as_text(material.get("state")).lower()
+        username = as_text(material.get("persisted_username") or material.get("username"))
+        secret_value = as_text(material.get("password"))
         if state != "configured" or not username or not secret_value:
             raise ValueError("SMTP credentials must be staged before the password can be revealed.")
         return {
             "send_as_email": send_as_email,
-            "secret_name": _as_text(material.get("secret_name") or secret_name),
+            "secret_name": as_text(material.get("secret_name") or secret_name),
             "state": state,
             "username": username,
             "password": secret_value,
-            "smtp_host": _as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
-            "smtp_port": _as_text(material.get("smtp_port")) or "587",
+            "smtp_host": as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
+            "smtp_port": as_text(material.get("smtp_port")) or "587",
         }
 
     def _stage_smtp_patch(self, profile: dict[str, Any]) -> dict[str, Any]:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
-        workflow = _as_dict(profile.get("workflow"))
-        checked_at = _utc_now_iso()
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
+        workflow = as_dict(profile.get("workflow"))
+        checked_at = utc_now_iso(seconds_precision=True)
         region = self._region_for_profile(profile)
         secret_name = self._smtp_secret_name(profile)
         material = (
@@ -693,19 +683,19 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             region=region,
             email_identity=_normalized_domain(identity.get("domain")) or self._send_as_email(profile),
         )
-        handoff_ready = _as_text(material.get("state")).lower() == "configured"
+        handoff_ready = as_text(material.get("state")).lower() == "configured"
         send_as_email = self._send_as_email(profile)
         handoff_provider = self._handoff_provider(profile)
-        local_part = _local_part(send_as_email) or _as_text(identity.get("mailbox_local_part")) or _as_text(smtp.get("local_part"))
+        local_part = _local_part(send_as_email) or as_text(identity.get("mailbox_local_part")) or as_text(smtp.get("local_part"))
         return {
             "smtp": {
-                "host": _as_text(material.get("smtp_host") or smtp.get("host") or f"email-smtp.{region}.amazonaws.com"),
-                "port": _as_text(material.get("smtp_port") or smtp.get("port") or "587"),
-                "username": _as_text(material.get("persisted_username") or material.get("username") or smtp.get("username")),
-                "credentials_source": _as_text(smtp.get("credentials_source")) or "operator_managed",
+                "host": as_text(material.get("smtp_host") or smtp.get("host") or f"email-smtp.{region}.amazonaws.com"),
+                "port": as_text(material.get("smtp_port") or smtp.get("port") or "587"),
+                "username": as_text(material.get("persisted_username") or material.get("username") or smtp.get("username")),
+                "credentials_source": as_text(smtp.get("credentials_source")) or "operator_managed",
                 "handoff_ready": handoff_ready,
-                "credentials_secret_name": _as_text(material.get("secret_name") or secret_name),
-                "credentials_secret_state": "configured" if handoff_ready else (_as_text(smtp.get("credentials_secret_state")) or "missing"),
+                "credentials_secret_name": as_text(material.get("secret_name") or secret_name),
+                "credentials_secret_state": "configured" if handoff_ready else (as_text(smtp.get("credentials_secret_state")) or "missing"),
                 "send_as_email": send_as_email,
                 "local_part": local_part,
                 "handoff_provider": handoff_provider,
@@ -714,7 +704,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "provider": {
                 "handoff_provider": handoff_provider,
                 "send_as_provider_status": self._provider_send_as_status(profile),
-                "aws_ses_identity_status": _as_text(provider.get("aws_ses_identity_status")),
+                "aws_ses_identity_status": as_text(provider.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
             },
             "workflow": {
@@ -723,14 +713,14 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "handoff_status": (
                     f"ready_for_{handoff_provider}_handoff"
                     if handoff_ready
-                    else (_as_text(workflow.get("handoff_status")) or "smtp_pending")
+                    else (as_text(workflow.get("handoff_status")) or "smtp_pending")
                 ),
             },
         }
 
     def _provider_status_patch(self, profile: dict[str, Any]) -> dict[str, Any]:
-        identity = _as_dict(profile.get("identity"))
-        checked_at = _utc_now_iso()
+        identity = as_dict(profile.get("identity"))
+        checked_at = utc_now_iso(seconds_precision=True)
         summary = self._ses_identity_summary(
             region=self._region_for_profile(profile),
             email_identity=_normalized_domain(identity.get("domain")) or self._send_as_email(profile),
@@ -739,23 +729,23 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "provider": {
                 "handoff_provider": self._handoff_provider(profile),
                 "send_as_provider_status": self._provider_send_as_status(profile),
-                "aws_ses_identity_status": _as_text(summary.get("aws_ses_identity_status")),
+                "aws_ses_identity_status": as_text(summary.get("aws_ses_identity_status")),
                 "last_checked_at": checked_at,
             }
         }
 
     def _inbound_status_patch(self, profile: dict[str, Any], *, readiness: dict[str, Any]) -> dict[str, Any]:
-        inbound = _as_dict(profile.get("inbound"))
-        workflow = _as_dict(profile.get("workflow"))
-        inbound_summary = _as_dict(readiness.get("inbound"))
-        capture = _as_dict(inbound_summary.get("latest_capture"))
-        receipt_rule = _as_dict(inbound_summary.get("receipt_rule"))
-        inbound_lambda = _as_dict(inbound_summary.get("inbound_lambda"))
+        inbound = as_dict(profile.get("inbound"))
+        workflow = as_dict(profile.get("workflow"))
+        inbound_summary = as_dict(readiness.get("inbound"))
+        capture = as_dict(inbound_summary.get("latest_capture"))
+        receipt_rule = as_dict(inbound_summary.get("receipt_rule"))
+        inbound_lambda = as_dict(inbound_summary.get("inbound_lambda"))
         capture_evidence = bool(inbound_summary.get("portal_native_evidence_present"))
         receipt_ready = _status_is_ready(receipt_rule.get("status"))
         lambda_ready = _status_is_ready(inbound_lambda.get("status"))
-        existing_receive_verified = _as_bool(inbound.get("receive_verified"))
-        existing_portal_ready = _as_bool(inbound.get("portal_native_display_ready"))
+        existing_receive_verified = as_bool(inbound.get("receive_verified"))
+        existing_portal_ready = as_bool(inbound.get("portal_native_display_ready"))
         if existing_receive_verified:
             receive_state = "receive_operational"
         elif capture_evidence:
@@ -763,28 +753,28 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         elif receipt_ready and lambda_ready:
             receive_state = "receive_configured"
         else:
-            receive_state = _as_text(inbound.get("receive_state")) or "receive_unconfigured"
+            receive_state = as_text(inbound.get("receive_state")) or "receive_unconfigured"
         patch = {
             "inbound": {
                 "receive_state": receive_state,
-                "receive_last_checked_at": _as_text(readiness.get("checked_at")),
+                "receive_last_checked_at": as_text(readiness.get("checked_at")),
                 "portal_native_display_ready": capture_evidence or existing_portal_ready,
-                "capture_source_kind": "s3_object" if _as_text(capture.get("s3_uri")) else _as_text(inbound.get("capture_source_kind")),
-                "capture_source_reference": _as_text(capture.get("s3_uri") or inbound.get("capture_source_reference")),
-                "latest_message_s3_uri": _as_text(capture.get("s3_uri") or inbound.get("latest_message_s3_uri")),
-                "latest_message_s3_key": _as_text(capture.get("s3_key") or inbound.get("latest_message_s3_key")),
-                "latest_message_id": _as_text(capture.get("message_id") or inbound.get("latest_message_id")),
-                "latest_message_sender": _as_text(capture.get("sender") or inbound.get("latest_message_sender")),
-                "latest_message_recipient": _as_text(capture.get("recipient") or inbound.get("latest_message_recipient")),
-                "latest_message_subject": _as_text(capture.get("subject") or inbound.get("latest_message_subject")),
-                "latest_message_captured_at": _as_text(capture.get("captured_at") or inbound.get("latest_message_captured_at")),
+                "capture_source_kind": "s3_object" if as_text(capture.get("s3_uri")) else as_text(inbound.get("capture_source_kind")),
+                "capture_source_reference": as_text(capture.get("s3_uri") or inbound.get("capture_source_reference")),
+                "latest_message_s3_uri": as_text(capture.get("s3_uri") or inbound.get("latest_message_s3_uri")),
+                "latest_message_s3_key": as_text(capture.get("s3_key") or inbound.get("latest_message_s3_key")),
+                "latest_message_id": as_text(capture.get("message_id") or inbound.get("latest_message_id")),
+                "latest_message_sender": as_text(capture.get("sender") or inbound.get("latest_message_sender")),
+                "latest_message_recipient": as_text(capture.get("recipient") or inbound.get("latest_message_recipient")),
+                "latest_message_subject": as_text(capture.get("subject") or inbound.get("latest_message_subject")),
+                "latest_message_captured_at": as_text(capture.get("captured_at") or inbound.get("latest_message_captured_at")),
                 "latest_message_has_verification_link": bool(
                     capture.get("has_verification_link") or inbound.get("latest_message_has_verification_link")
                 ),
             },
             "workflow": {
                 "is_receive_path_modeled": receipt_ready and lambda_ready,
-                "is_portal_native_inbound_ready": capture_evidence or _as_bool(workflow.get("is_portal_native_inbound_ready")),
+                "is_portal_native_inbound_ready": capture_evidence or as_bool(workflow.get("is_portal_native_inbound_ready")),
             },
         }
         if existing_receive_verified:
@@ -792,15 +782,15 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         return patch
 
     def _verification_capture_patch(self, profile: dict[str, Any], *, capture: dict[str, Any]) -> dict[str, Any]:
-        verification = _as_dict(profile.get("verification"))
-        s3_uri = _as_text(capture.get("s3_uri"))
+        verification = as_dict(profile.get("verification"))
+        s3_uri = as_text(capture.get("s3_uri"))
         if not s3_uri:
             return {}
         return {
             "portal_state": "capture_received",
             "latest_message_reference": s3_uri,
-            "email_received_at": _as_text(capture.get("captured_at") or verification.get("email_received_at")),
-            "link": _as_text(capture.get("link") or verification.get("link")),
+            "email_received_at": as_text(capture.get("captured_at") or verification.get("email_received_at")),
+            "link": as_text(capture.get("link") or verification.get("link")),
         }
 
     def _capture_summary(
@@ -810,9 +800,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         region: str,
         receipt_rule: dict[str, Any],
     ) -> dict[str, Any]:
-        inbound = _as_dict(profile.get("inbound"))
-        verification = _as_dict(profile.get("verification"))
-        s3_uri = _as_text(
+        inbound = as_dict(profile.get("inbound"))
+        verification = as_dict(profile.get("verification"))
+        s3_uri = as_text(
             inbound.get("latest_message_s3_uri")
             or inbound.get("capture_source_reference")
             or verification.get("latest_message_reference")
@@ -823,9 +813,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             region=region,
             expected_recipient=expected_recipient,
             handoff_provider=self._handoff_provider(profile),
-            fallback_subject=_as_text(inbound.get("latest_message_subject")),
-            fallback_captured_at=_as_text(inbound.get("latest_message_captured_at")),
-            fallback_message_id=_as_text(inbound.get("latest_message_id")),
+            fallback_subject=as_text(inbound.get("latest_message_subject")),
+            fallback_captured_at=as_text(inbound.get("latest_message_captured_at")),
+            fallback_message_id=as_text(inbound.get("latest_message_id")),
         )
         if existing.get("portal_native_evidence_present"):
             return existing
@@ -837,23 +827,23 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         if discovered.get("portal_native_evidence_present"):
             return discovered
-        if _as_text(existing.get("s3_uri")):
+        if as_text(existing.get("s3_uri")):
             return existing
-        if _as_text(discovered.get("s3_uri")):
+        if as_text(discovered.get("s3_uri")):
             return discovered
         return {
             "s3_uri": "",
             "message_id": "",
-            "subject": _as_text(inbound.get("latest_message_subject")),
-            "captured_at": _as_text(inbound.get("latest_message_captured_at")),
-            "has_verification_link": bool(inbound.get("latest_message_has_verification_link")) or bool(_as_text(verification.get("link"))),
+            "subject": as_text(inbound.get("latest_message_subject")),
+            "captured_at": as_text(inbound.get("latest_message_captured_at")),
+            "has_verification_link": bool(inbound.get("latest_message_has_verification_link")) or bool(as_text(verification.get("link"))),
             "accessible": False,
             "access_error": "",
             "portal_native_evidence_present": False,
-            "sender": _as_text(inbound.get("latest_message_sender")),
-            "recipient": _as_text(inbound.get("latest_message_recipient")),
-            "link": _as_text(verification.get("link")),
-            "s3_key": _as_text(inbound.get("latest_message_s3_key")),
+            "sender": as_text(inbound.get("latest_message_sender")),
+            "recipient": as_text(inbound.get("latest_message_recipient")),
+            "link": as_text(verification.get("link")),
+            "s3_key": as_text(inbound.get("latest_message_s3_key")),
         }
 
     def _capture_from_s3_uri(
@@ -867,12 +857,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         fallback_captured_at: str = "",
         fallback_message_id: str = "",
     ) -> dict[str, Any]:
-        s3_uri_token = _as_text(s3_uri)
+        s3_uri_token = as_text(s3_uri)
         summary = {
             "s3_uri": s3_uri_token,
-            "message_id": _as_text(fallback_message_id),
-            "subject": _as_text(fallback_subject),
-            "captured_at": _as_text(fallback_captured_at),
+            "message_id": as_text(fallback_message_id),
+            "subject": as_text(fallback_subject),
+            "captured_at": as_text(fallback_captured_at),
             "has_verification_link": False,
             "accessible": False,
             "access_error": "",
@@ -887,13 +877,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         try:
             raw_bytes = self.read_s3_bytes(s3_uri=s3_uri_token, region=region)
         except Exception as exc:  # noqa: BLE001
-            summary["access_error"] = _as_text(exc)
+            summary["access_error"] = as_text(exc)
             return summary
         summary["accessible"] = bool(raw_bytes)
         raw_message = _raw_message_summary(raw_bytes)
-        sender = _as_text(raw_message.get("sender"))
-        recipient = _as_text(raw_message.get("recipient") or expected_recipient)
-        subject = _as_text(raw_message.get("subject") or fallback_subject)
+        sender = as_text(raw_message.get("sender"))
+        recipient = as_text(raw_message.get("recipient") or expected_recipient)
+        subject = as_text(raw_message.get("subject") or fallback_subject)
         links = list(raw_message.get("links") or [])
         decision = AwsCsmVerificationForwardFilter().decide(
             tracked_recipients={expected_recipient} if expected_recipient else set(),
@@ -905,9 +895,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         )
         summary.update(
             {
-                "message_id": _as_text(fallback_message_id) or summary["s3_key"].split("/")[-1],
+                "message_id": as_text(fallback_message_id) or summary["s3_key"].split("/")[-1],
                 "subject": subject,
-                "captured_at": _as_text(fallback_captured_at),
+                "captured_at": as_text(fallback_captured_at),
                 "has_verification_link": bool(links),
                 "portal_native_evidence_present": decision.should_forward,
                 "sender": sender,
@@ -924,7 +914,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         region: str,
         receipt_rule: dict[str, Any],
     ) -> dict[str, Any]:
-        identity = _as_dict(profile.get("identity"))
+        identity = as_dict(profile.get("identity"))
         expected_recipient = self._send_as_email(profile)
         domain = _normalized_domain(identity.get("domain"))
         fallback_prefixes = [f"inbound/{domain}/"] if domain else []
@@ -932,12 +922,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             fallback_prefixes.append("inbound/")
         candidates: list[dict[str, str]] = []
         seen: set[str] = set()
-        matching_rules = list(_as_dict(receipt_rule).get("matching_rules") or [])
+        matching_rules = list(as_dict(receipt_rule).get("matching_rules") or [])
         for rule in matching_rules:
             if not isinstance(rule, dict):
                 continue
-            bucket = _as_text(rule.get("s3_bucket"))
-            prefix = _as_text(rule.get("s3_prefix"))
+            bucket = as_text(rule.get("s3_bucket"))
+            prefix = as_text(rule.get("s3_prefix"))
             if bucket and prefix:
                 key = f"{bucket}/{prefix}"
                 if key not in seen:
@@ -947,7 +937,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                     except Exception:  # noqa: BLE001
                         continue
         if matching_rules:
-            default_bucket = _as_text(_as_dict(matching_rules[0]).get("s3_bucket"))
+            default_bucket = as_text(as_dict(matching_rules[0]).get("s3_bucket"))
             for prefix in fallback_prefixes:
                 key = f"{default_bucket}/{prefix}"
                 if default_bucket and key not in seen:
@@ -959,37 +949,37 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         candidates.sort(key=lambda item: item.get("last_modified") or "", reverse=True)
         for candidate in candidates[:40]:
             summary = self._capture_from_s3_uri(
-                s3_uri=_as_text(candidate.get("s3_uri")),
+                s3_uri=as_text(candidate.get("s3_uri")),
                 region=region,
                 expected_recipient=expected_recipient,
                 handoff_provider=self._handoff_provider(profile),
-                fallback_captured_at=_as_text(candidate.get("last_modified")),
-                fallback_message_id=_as_text(candidate.get("key")).split("/")[-1],
+                fallback_captured_at=as_text(candidate.get("last_modified")),
+                fallback_message_id=as_text(candidate.get("key")).split("/")[-1],
             )
             if summary.get("portal_native_evidence_present"):
                 return summary
         return {}
 
     def _region_for_profile(self, profile: dict[str, Any]) -> str:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
         token = (
-            _as_text(identity.get("region"))
-            or _as_text(smtp.get("smtp_region"))
-            or _as_text(self._newsletter_profile(_normalized_domain(identity.get("domain"))).get("aws_region"))
+            as_text(identity.get("region"))
+            or as_text(smtp.get("smtp_region"))
+            or as_text(self._newsletter_profile(_normalized_domain(identity.get("domain"))).get("aws_region"))
             or _DEFAULT_REGION
         )
         return token
 
     def _send_as_email(self, profile: dict[str, Any]) -> str:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
         return _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
 
     def _handoff_provider(self, profile: dict[str, Any]) -> str:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
-        provider = _as_dict(profile.get("provider"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
+        provider = as_dict(profile.get("provider"))
         explicit = _normalized_handoff_provider(
             provider.get("handoff_provider")
             or identity.get("handoff_provider")
@@ -1005,16 +995,16 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         return inferred or "generic_manual"
 
     def _provider_send_as_status(self, profile: dict[str, Any]) -> str:
-        provider = _as_dict(profile.get("provider"))
-        status = _as_text(provider.get("send_as_provider_status")).lower()
+        provider = as_dict(profile.get("provider"))
+        status = as_text(provider.get("send_as_provider_status")).lower()
         if status:
             return status
-        legacy = _as_text(provider.get("gmail_send_as_status")).lower()
+        legacy = as_text(provider.get("gmail_send_as_status")).lower()
         return legacy or "not_started"
 
     def _handoff_destination(self, profile: dict[str, Any]) -> str:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
         return _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
 
     def _handoff_instruction_lines(self, *, handoff_provider: str, send_as_email: str) -> list[str]:
@@ -1046,13 +1036,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         ]
 
     def _smtp_secret_name(self, profile: dict[str, Any]) -> str:
-        identity = _as_dict(profile.get("identity"))
-        smtp = _as_dict(profile.get("smtp"))
-        configured = _as_text(smtp.get("credentials_secret_name"))
+        identity = as_dict(profile.get("identity"))
+        smtp = as_dict(profile.get("smtp"))
+        configured = as_text(smtp.get("credentials_secret_name"))
         if configured:
             return configured
-        tenant_id = _as_text(identity.get("tenant_id"))
-        mailbox_local_part = _as_text(identity.get("mailbox_local_part")) or _local_part(self._send_as_email(profile))
+        tenant_id = as_text(identity.get("tenant_id"))
+        mailbox_local_part = as_text(identity.get("mailbox_local_part")) or _local_part(self._send_as_email(profile))
         if not tenant_id or not mailbox_local_part:
             return ""
         return f"aws-cms/smtp/{tenant_id}.{mailbox_local_part}"
@@ -1067,19 +1057,19 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         return payload if isinstance(payload, dict) else {}
 
     def _inbound_lambda_name(self, profile: dict[str, Any]) -> str:
-        inbound = _as_dict(profile.get("inbound"))
-        identity = _as_dict(profile.get("identity"))
-        configured = _as_text(inbound.get("inbound_processor_lambda_name"))
+        inbound = as_dict(profile.get("inbound"))
+        identity = as_dict(profile.get("identity"))
+        configured = as_text(inbound.get("inbound_processor_lambda_name"))
         if configured:
             return configured
         newsletter_profile = self._newsletter_profile(_normalized_domain(identity.get("domain")))
-        return _as_text(newsletter_profile.get("inbound_processor_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
+        return as_text(newsletter_profile.get("inbound_processor_lambda_name")) or _DEFAULT_INBOUND_LAMBDA
 
     def _domain_rule_name(self, domain: str) -> str:
         return f"portal-capture-{domain.replace('.', '-')}"
 
     def _normalized_record_token(self, value: object) -> str:
-        return _as_text(value).lower().rstrip(".")
+        return as_text(value).lower().rstrip(".")
 
     def _registrar_nameservers(self, domain: str) -> list[str]:
         if not domain:
@@ -1089,7 +1079,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         except Exception:  # noqa: BLE001
             return []
         nameservers = []
-        for row in _as_list(response.get("Nameservers")):
+        for row in as_list(response.get("Nameservers")):
             if not isinstance(row, dict):
                 continue
             token = self._normalized_record_token(row.get("Name"))
@@ -1104,10 +1094,10 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             response = self._client("route53").get_hosted_zone(Id=hosted_zone_id)
         except Exception:  # noqa: BLE001
             return []
-        delegation = _as_dict(response.get("DelegationSet"))
+        delegation = as_dict(response.get("DelegationSet"))
         nameservers = [
             self._normalized_record_token(item)
-            for item in _as_list(delegation.get("NameServers"))
+            for item in as_list(delegation.get("NameServers"))
             if self._normalized_record_token(item)
         ]
         return sorted(set(nameservers))
@@ -1136,15 +1126,15 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "dkim_records_present": False,
                 "dkim_record_values": [],
             }
-        records = [row for row in _as_list(response.get("ResourceRecordSets")) if isinstance(row, dict)]
+        records = [row for row in as_list(response.get("ResourceRecordSets")) if isinstance(row, dict)]
         mx_values = [
             self._normalized_record_token(item.get("Value"))
             for row in records
-            if self._normalized_record_token(row.get("Name")) == domain and _as_text(row.get("Type")) == "MX"
-            for item in _as_list(row.get("ResourceRecords"))
+            if self._normalized_record_token(row.get("Name")) == domain and as_text(row.get("Type")) == "MX"
+            for item in as_list(row.get("ResourceRecords"))
             if isinstance(item, dict) and self._normalized_record_token(item.get("Value"))
         ]
-        dkim_tokens_text = [token for token in (_as_text(item) for item in dkim_tokens) if token]
+        dkim_tokens_text = [token for token in (as_text(item) for item in dkim_tokens) if token]
         matched_dkim_values: list[str] = []
         for token in dkim_tokens_text:
             expected_name = self._normalized_record_token(f"{token}._domainkey.{domain}")
@@ -1153,7 +1143,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 (
                     row
                     for row in records
-                    if self._normalized_record_token(row.get("Name")) == expected_name and _as_text(row.get("Type")) == "CNAME"
+                    if self._normalized_record_token(row.get("Name")) == expected_name and as_text(row.get("Type")) == "CNAME"
                 ),
                 None,
             )
@@ -1161,7 +1151,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 continue
             values = [
                 self._normalized_record_token(item.get("Value"))
-                for item in _as_list(record.get("ResourceRecords"))
+                for item in as_list(record.get("ResourceRecords"))
                 if isinstance(item, dict) and self._normalized_record_token(item.get("Value"))
             ]
             if expected_value in values:
@@ -1187,7 +1177,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         try:
             response = client.get_email_identity(EmailIdentity=domain)
         except Exception as exc:  # noqa: BLE001
-            message = _as_text(exc).lower()
+            message = as_text(exc).lower()
             if "notfound" in message or "not found" in message:
                 return {
                     "identity_exists": False,
@@ -1203,28 +1193,28 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "dkim_status": "error",
                 "dkim_tokens": [],
             }
-        dkim = _as_dict(response.get("DkimAttributes"))
-        verification_status = _as_text(response.get("VerificationStatus")).upper()
+        dkim = as_dict(response.get("DkimAttributes"))
+        verification_status = as_text(response.get("VerificationStatus")).upper()
         verified_for_sending = bool(response.get("VerifiedForSendingStatus"))
         identity_status = "not_started"
         if verification_status == "SUCCESS" and verified_for_sending:
             identity_status = "verified"
         elif verification_status:
             identity_status = verification_status.lower()
-        dkim_status = _as_text(dkim.get("Status")).lower() or "not_started"
+        dkim_status = as_text(dkim.get("Status")).lower() or "not_started"
         return {
             "identity_exists": True,
             "identity_status": identity_status,
             "verified_for_sending_status": verified_for_sending,
             "dkim_status": dkim_status,
-            "dkim_tokens": [token for token in (_as_text(item) for item in _as_list(dkim.get("Tokens"))) if token],
+            "dkim_tokens": [token for token in (as_text(item) for item in as_list(dkim.get("Tokens"))) if token],
         }
 
     def _smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
         client = self._client("secretsmanager", region=_DEFAULT_REGION)
         try:
             response = client.get_secret_value(SecretId=secret_name)
-            secret_string = _as_text(response.get("SecretString"))
+            secret_string = as_text(response.get("SecretString"))
         except client.exceptions.ResourceNotFoundException:
             return {
                 "secret_name": secret_name,
@@ -1245,7 +1235,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "smtp_host": f"email-smtp.{region}.amazonaws.com",
                 "smtp_port": "587",
                 "state": "error",
-                "message": _as_text(exc) or "Unable to read SMTP secret material.",
+                "message": as_text(exc) or "Unable to read SMTP secret material.",
             }
         payload: dict[str, Any] = {}
         if secret_string:
@@ -1255,8 +1245,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 parsed = {}
             if isinstance(parsed, dict):
                 payload = parsed
-        username = _as_text(payload.get("username"))
-        password = _as_text(payload.get("password"))
+        username = as_text(payload.get("username"))
+        password = as_text(payload.get("password"))
         is_placeholder = any(token.startswith("REPLACE_") for token in (username, password) if token)
         state = "configured" if username and password and not is_placeholder else ("placeholder" if (username or password) else "missing")
         return {
@@ -1264,8 +1254,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "username": username,
             "persisted_username": "" if is_placeholder else username,
             "password": password,
-            "smtp_host": _as_text(payload.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
-            "smtp_port": _as_text(payload.get("smtp_port")) or "587",
+            "smtp_host": as_text(payload.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
+            "smtp_port": as_text(payload.get("smtp_port")) or "587",
             "state": state,
             "message": "",
         }
@@ -1273,16 +1263,16 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
     def _ensure_smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
         with self._smtp_provision_lock():
             current = self._smtp_secret_material(secret_name=secret_name, region=region)
-            if _as_text(current.get("state")).lower() == "configured":
+            if as_text(current.get("state")).lower() == "configured":
                 return current
             active_keys = [
                 row
                 for row in self._list_smtp_access_keys()
-                if _as_text(row.get("status")).lower() == "active"
+                if as_text(row.get("status")).lower() == "active"
             ]
             if len(active_keys) >= 2:
                 reused = self._reuse_existing_smtp_secret_material(secret_name=secret_name, region=region)
-                if _as_text(reused.get("state")).lower() == "configured":
+                if as_text(reused.get("state")).lower() == "configured":
                     return reused
                 current["state"] = "quota_blocked"
                 current["message"] = (
@@ -1293,12 +1283,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 created = self._create_smtp_secret_material(secret_name=secret_name, region=region)
             except Exception as exc:  # noqa: BLE001
                 current["state"] = "error"
-                current["message"] = _as_text(exc) or "Unable to materialize SMTP secret material."
+                current["message"] = as_text(exc) or "Unable to materialize SMTP secret material."
                 return current
             return created
 
     def _reuse_existing_smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
-        token = _as_text(secret_name)
+        token = as_text(secret_name)
         if not token:
             return {}
         prefix = "aws-cms/smtp/"
@@ -1311,12 +1301,12 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         candidate_names.extend(
             name
             for name in self._list_smtp_secret_names(prefix=f"{prefix}{tenant_id}.")
-            if _as_text(name)
+            if as_text(name)
         )
         seen: set[str] = set()
         ordered_candidates: list[str] = []
         for candidate in candidate_names:
-            normalized = _as_text(candidate)
+            normalized = as_text(candidate)
             if not normalized or normalized == token or normalized in seen:
                 continue
             seen.add(normalized)
@@ -1324,29 +1314,29 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         # If tenant-local secrets are not configured, fall back to any configured SMTP secret.
         # This keeps staging operable when IAM SMTP keys are quota-blocked for new profiles.
         for candidate in sorted(self._list_smtp_secret_names(prefix=prefix)):
-            normalized = _as_text(candidate)
+            normalized = as_text(candidate)
             if not normalized or normalized == token or normalized in seen:
                 continue
             seen.add(normalized)
             ordered_candidates.append(normalized)
         for candidate in ordered_candidates:
             material = self._smtp_secret_material(secret_name=candidate, region=region)
-            if _as_text(material.get("state")).lower() != "configured":
+            if as_text(material.get("state")).lower() != "configured":
                 continue
-            username = _as_text(material.get("persisted_username") or material.get("username"))
-            password = _as_text(material.get("password"))
+            username = as_text(material.get("persisted_username") or material.get("username"))
+            password = as_text(material.get("password"))
             if not username or not password:
                 continue
             payload = {
                 "username": username,
                 "password": password,
                 "iam_user": _AWS_SMTP_IAM_USER,
-                "access_key_id": _as_text(material.get("access_key_id") or username),
+                "access_key_id": as_text(material.get("access_key_id") or username),
                 "smtp_region": region,
-                "smtp_host": _as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
-                "smtp_port": _as_text(material.get("smtp_port")) or "587",
+                "smtp_host": as_text(material.get("smtp_host")) or f"email-smtp.{region}.amazonaws.com",
+                "smtp_port": as_text(material.get("smtp_port")) or "587",
                 "tls_mode": "TLS",
-                "provisioned_at": _utc_now_iso(),
+                "provisioned_at": utc_now_iso(seconds_precision=True),
                 "reused_from_secret": candidate,
             }
             self._upsert_secret_payload(
@@ -1363,7 +1353,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         return {}
 
     def _list_smtp_secret_names(self, *, prefix: str) -> list[str]:
-        token = _as_text(prefix)
+        token = as_text(prefix)
         if not token:
             return []
         client = self._client("secretsmanager", region=_DEFAULT_REGION)
@@ -1380,13 +1370,13 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 response = client.list_secrets(**kwargs)
             except Exception:  # noqa: BLE001
                 return collected
-            for row in _as_list(response.get("SecretList")):
+            for row in as_list(response.get("SecretList")):
                 if not isinstance(row, dict):
                     continue
-                name = _as_text(row.get("Name"))
+                name = as_text(row.get("Name"))
                 if name and name.startswith(token):
                     collected.append(name)
-            next_token = _as_text(response.get("NextToken"))
+            next_token = as_text(response.get("NextToken"))
             if not next_token:
                 break
         collected.sort()
@@ -1404,9 +1394,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 continue
             out.append(
                 {
-                    "access_key_id": _as_text(row.get("AccessKeyId")),
-                    "status": _as_text(row.get("Status")),
-                    "created_at": _as_text(row.get("CreateDate")),
+                    "access_key_id": as_text(row.get("AccessKeyId")),
+                    "status": as_text(row.get("Status")),
+                    "created_at": as_text(row.get("CreateDate")),
                 }
             )
         out.sort(key=lambda item: item.get("created_at") or "", reverse=True)
@@ -1414,9 +1404,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
 
     def _create_smtp_secret_material(self, *, secret_name: str, region: str) -> dict[str, Any]:
         payload = self._client("iam").create_access_key(UserName=_AWS_SMTP_IAM_USER)
-        access_key = _as_dict(payload.get("AccessKey"))
-        access_key_id = _as_text(access_key.get("AccessKeyId"))
-        secret_access_key = _as_text(access_key.get("SecretAccessKey"))
+        access_key = as_dict(payload.get("AccessKey"))
+        access_key_id = as_text(access_key.get("AccessKeyId"))
+        secret_access_key = as_text(access_key.get("SecretAccessKey"))
         if not access_key_id or not secret_access_key:
             raise ValueError("AWS IAM create_access_key did not return usable key material.")
         password = _aws_smtp_password(secret_access_key, region=region)
@@ -1429,7 +1419,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "smtp_host": f"email-smtp.{region}.amazonaws.com",
             "smtp_port": "587",
             "tls_mode": "TLS",
-            "provisioned_at": _utc_now_iso(),
+            "provisioned_at": utc_now_iso(seconds_precision=True),
         }
         self._upsert_secret_payload(
             secret_name=secret_name,
@@ -1468,15 +1458,15 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         for profile in list(profiles or []):
             if not isinstance(profile, dict):
                 continue
-            identity = _as_dict(profile.get("identity"))
-            smtp = _as_dict(profile.get("smtp"))
+            identity = as_dict(profile.get("identity"))
+            smtp = as_dict(profile.get("smtp"))
             send_as_email = _normalized_email(identity.get("send_as_email") or smtp.get("send_as_email"))
             forward_to_email = _normalized_email(smtp.get("forward_to_email") or identity.get("operator_inbox_target"))
             if not send_as_email or not forward_to_email:
                 continue
             routes[send_as_email] = {
                 "forward_to_email": forward_to_email,
-                "profile_id": _as_text(identity.get("profile_id")),
+                "profile_id": as_text(identity.get("profile_id")),
                 "domain": _normalized_domain(identity.get("domain")) or _email_domain(send_as_email),
                 "handoff_provider": self._handoff_provider(profile),
             }
@@ -1486,8 +1476,8 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 start_recipient=send_as_email,
                 routes=routes,
             )
-            destination = resolved_forward_to_email or _as_text(route.get("forward_to_email"))
-            provider = _as_text(route.get("handoff_provider")) or "generic_manual"
+            destination = resolved_forward_to_email or as_text(route.get("forward_to_email"))
+            provider = as_text(route.get("handoff_provider")) or "generic_manual"
             inferred_provider = _provider_from_email(destination)
             # Keep Lambda env payload compact so route-map sync remains under the 4KB env-var limit.
             # Use the shortest representation when provider can be inferred from destination.
@@ -1517,7 +1507,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 return current, "cycle_detected", chain
             visited.add(current)
             chain.append(current)
-            route = _as_dict(routes.get(current))
+            route = as_dict(routes.get(current))
             forward_to_email = _normalized_email(route.get("forward_to_email"))
             if not forward_to_email:
                 return "", "missing_target", chain
@@ -1537,7 +1527,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         for profile in list(profiles or []):
             if not isinstance(profile, dict):
                 continue
-            lambda_name = _as_text(self._inbound_lambda_name(profile))
+            lambda_name = as_text(self._inbound_lambda_name(profile))
             if lambda_name:
                 return lambda_name
         return _DEFAULT_INBOUND_LAMBDA
@@ -1567,7 +1557,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         configuration = current_configuration if isinstance(current_configuration, dict) else client.get_function_configuration(
             FunctionName=function_name
         )
-        current_code_sha256 = _as_text(configuration.get("CodeSha256"))
+        current_code_sha256 = as_text(configuration.get("CodeSha256"))
         zip_bytes, desired_code_sha256 = self._verification_lambda_zip_payload()
         if current_code_sha256 == desired_code_sha256:
             return {
@@ -1588,19 +1578,19 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         deadline = time.time() + _ROUTE_MAP_SYNC_TIMEOUT_SECONDS
         while time.time() < deadline:
             payload = client.get_function_configuration(FunctionName=function_name)
-            status = _as_text(payload.get("LastUpdateStatus"))
-            state = _as_text(payload.get("State"))
+            status = as_text(payload.get("LastUpdateStatus"))
+            state = as_text(payload.get("State"))
             if status in {"Successful", ""} and state in {"Active", ""}:
                 return
             if status == "Failed":
                 raise ValueError(
-                    f"Lambda route-map update failed for {function_name}: {_as_text(payload.get('LastUpdateStatusReason'))}"
+                    f"Lambda route-map update failed for {function_name}: {as_text(payload.get('LastUpdateStatusReason'))}"
                 )
             time.sleep(2)
         raise TimeoutError(f"Timed out waiting for Lambda route-map update on {function_name}.")
 
     def _ses_identity_summary(self, *, region: str, email_identity: str) -> dict[str, Any]:
-        identity = _as_text(email_identity)
+        identity = as_text(email_identity)
         if not identity:
             return {
                 "aws_ses_identity_status": "not_started",
@@ -1610,7 +1600,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         try:
             response = client.get_email_identity(EmailIdentity=identity)
         except Exception as exc:  # noqa: BLE001
-            message = _as_text(exc)
+            message = as_text(exc)
             lowered = message.lower()
             if "notfound" in lowered or "not found" in lowered:
                 return {
@@ -1621,7 +1611,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "aws_ses_identity_status": "error",
                 "message": message or "Unable to query SES identity status.",
             }
-        verification_status = _as_text(response.get("VerificationStatus")).upper()
+        verification_status = as_text(response.get("VerificationStatus")).upper()
         verified_for_sending = bool(response.get("VerifiedForSendingStatus"))
         aws_status = "not_started"
         if verification_status == "SUCCESS" and verified_for_sending:

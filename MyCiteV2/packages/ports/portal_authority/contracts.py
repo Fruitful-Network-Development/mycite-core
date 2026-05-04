@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
@@ -21,7 +16,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -37,7 +32,7 @@ def _normalize_string_tuple(value: object, *, field_name: str) -> tuple[str, ...
     normalized: list[str] = []
     seen: set[str] = set()
     for item in value:
-        token = _as_text(item)
+        token = as_text(item)
         if not token or token in seen:
             continue
         normalized.append(token)
@@ -51,7 +46,7 @@ class PortalAuthorityRequest:
     known_tool_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
-        scope_id = _as_text(self.scope_id)
+        scope_id = as_text(self.scope_id)
         if not scope_id:
             raise ValueError("portal_authority_request.scope_id is required")
         object.__setattr__(self, "scope_id", scope_id)
@@ -86,10 +81,10 @@ class PortalAuthoritySource:
     source_authority: str = "authoritative"
 
     def __post_init__(self) -> None:
-        scope_id = _as_text(self.scope_id)
+        scope_id = as_text(self.scope_id)
         if not scope_id:
             raise ValueError("portal_authority_source.scope_id is required")
-        source_authority = _as_text(self.source_authority).lower() or "authoritative"
+        source_authority = as_text(self.source_authority).lower() or "authoritative"
         if source_authority != "authoritative":
             raise ValueError("portal_authority_source.source_authority must be authoritative")
         object.__setattr__(self, "scope_id", scope_id)
@@ -105,7 +100,7 @@ class PortalAuthoritySource:
         if not isinstance(normalized_policy, dict):
             raise ValueError("portal_authority_source.tool_exposure_policy must be a dict")
         object.__setattr__(self, "tool_exposure_policy", normalized_policy)
-        object.__setattr__(self, "ownership_posture", _as_text(self.ownership_posture))
+        object.__setattr__(self, "ownership_posture", as_text(self.ownership_posture))
         object.__setattr__(self, "source_authority", source_authority)
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -153,7 +148,7 @@ class PortalAuthorityResult:
         if not isinstance(normalized_status, dict):
             raise ValueError("portal_authority_result.resolution_status must be a dict")
         object.__setattr__(self, "resolution_status", normalized_status)
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def found(self) -> bool:

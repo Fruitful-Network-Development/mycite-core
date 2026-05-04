@@ -19,21 +19,16 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStoreRequest,
     SystemDatumWorkbenchResult,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CTS_GIS_CANONICAL_TOOL_SLUG = "cts-gis"
 _CTS_GIS_CANONICAL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _as_text_tuple(value: object) -> tuple[str, ...]:
     if isinstance(value, (list, tuple)):
-        return tuple(_as_text(item) for item in value if _as_text(item))
-    token = _as_text(value)
+        return tuple(as_text(item) for item in value if as_text(item))
+    token = as_text(value)
     return (token,) if token else ()
 
 
@@ -83,14 +78,14 @@ def _load_anchor_document(path: Path | None) -> tuple[str, str, dict[str, Any], 
 
 
 def _canonical_tool_public_id(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token in {_CTS_GIS_CANONICAL_TOOL_PUBLIC_ID, _CTS_GIS_CANONICAL_TOOL_SLUG}:
         return _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
     return token
 
 
 def _find_tool_anchor_file(tool_dir: Path) -> Path | None:
-    tool_slug = _as_text(tool_dir.name).lower()
+    tool_slug = as_text(tool_dir.name).lower()
     if tool_slug == _CTS_GIS_CANONICAL_TOOL_SLUG:
         preferred_patterns = (_CTS_GIS_CANONICAL_ANCHOR_PATTERN,)
     else:
@@ -142,15 +137,15 @@ def _extract_row(resource_id: str, raw: Any) -> SystemDatumResourceRow:
     if isinstance(raw, list) and raw:
         triple = raw[0]
         if isinstance(triple, list):
-            subject_ref = _as_text(triple[0] if len(triple) > 0 else resource_id) or resource_id
-            relation = _as_text(triple[1] if len(triple) > 1 else "")
-            object_ref = _as_text(triple[2] if len(triple) > 2 else "")
+            subject_ref = as_text(triple[0] if len(triple) > 0 else resource_id) or resource_id
+            relation = as_text(triple[1] if len(triple) > 1 else "")
+            object_ref = as_text(triple[2] if len(triple) > 2 else "")
         if len(raw) > 1:
             labels = _as_text_tuple(raw[1])
     elif isinstance(raw, dict):
-        subject_ref = _as_text(raw.get("subject_ref") or raw.get("subject") or resource_id) or resource_id
-        relation = _as_text(raw.get("relation") or raw.get("predicate"))
-        object_ref = _as_text(raw.get("object_ref") or raw.get("object"))
+        subject_ref = as_text(raw.get("subject_ref") or raw.get("subject") or resource_id) or resource_id
+        relation = as_text(raw.get("relation") or raw.get("predicate"))
+        object_ref = as_text(raw.get("object_ref") or raw.get("object"))
         labels = _as_text_tuple(raw.get("labels") or raw.get("label") or raw.get("name"))
 
     return SystemDatumResourceRow(
@@ -649,7 +644,7 @@ def _resolve_profile_id_from_domain(
     anthology_payload: dict[str, Any],
     tenant_domain: str,
 ) -> str:
-    normalized_domain = _as_text(tenant_domain).lower()
+    normalized_domain = as_text(tenant_domain).lower()
     if not normalized_domain:
         return ""
     for resource_id in sorted(anthology_payload.keys()):
@@ -675,9 +670,9 @@ def _extract_profile_id(raw: Any) -> str:
     if isinstance(raw, list) and raw:
         triple = raw[0]
         if isinstance(triple, list) and len(triple) > 4:
-            return _as_text(triple[4])
+            return as_text(triple[4])
     if isinstance(raw, dict):
-        return _as_text(raw.get("profile_id") or raw.get("msn_id"))
+        return as_text(raw.get("profile_id") or raw.get("msn_id"))
     return ""
 
 

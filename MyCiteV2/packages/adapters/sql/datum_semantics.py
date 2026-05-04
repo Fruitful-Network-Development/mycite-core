@@ -7,6 +7,7 @@ from typing import Any
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRow
 
 from ._sqlite import dumps_json
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 MSS_VERSION_HASH_POLICY = "mos.mss_sha256_v1"
 HYPHAE_CHAIN_POLICY = "mos.hyphae_chain_v1"
@@ -17,22 +18,16 @@ _RF_TOKEN_RE = re.compile(r"^rf\.([0-9]+-[0-9]+-[0-9]+)$", re.IGNORECASE)
 _NUMERIC_HYPHEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)+$")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _is_numeric_hyphen_token(value: object) -> bool:
-    return bool(_NUMERIC_HYPHEN_RE.fullmatch(_as_text(value)))
+    return bool(_NUMERIC_HYPHEN_RE.fullmatch(as_text(value)))
 
 
 def is_datum_address(value: object) -> bool:
-    return bool(_DATUM_ADDRESS_RE.fullmatch(_as_text(value)))
+    return bool(_DATUM_ADDRESS_RE.fullmatch(as_text(value)))
 
 
 def parse_datum_address(value: object) -> tuple[int, int, int]:
-    token = _as_text(value)
+    token = as_text(value)
     if not is_datum_address(token):
         raise ValueError("datum address must be <layer>-<value_group>-<iteration>")
     layer, value_group, iteration = token.split("-", 2)
@@ -81,7 +76,7 @@ def _copy_document(
 
 def _row_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
     if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return tuple(_as_text(item) for item in raw[0] if _as_text(item))
+        return tuple(as_text(item) for item in raw[0] if as_text(item))
     if isinstance(raw, dict):
         values = (
             raw.get("datum_address"),
@@ -89,7 +84,7 @@ def _row_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
             raw.get("relation") or raw.get("predicate"),
             raw.get("object_ref") or raw.get("object"),
         )
-        return tuple(_as_text(item) for item in values if _as_text(item))
+        return tuple(as_text(item) for item in values if as_text(item))
     return ()
 
 
@@ -164,7 +159,7 @@ def _remap_semantic_raw(
             if index == 0 and isinstance(item, list):
                 tokens: list[Any] = []
                 for token_index, token in enumerate(item):
-                    value = _as_text(token)
+                    value = as_text(token)
                     if token_index == 0 and value == current_address:
                         tokens.append("__self__")
                         continue
@@ -184,7 +179,7 @@ def _remap_semantic_raw(
     if isinstance(raw, dict):
         out = dict(raw)
         for key in ("datum_address", "subject_ref", "subject", "object_ref", "object"):
-            value = _as_text(out.get(key))
+            value = as_text(out.get(key))
             if not value:
                 continue
             if value == current_address and key in {"datum_address", "subject_ref", "subject"}:
@@ -331,7 +326,7 @@ def _normalize_mutation_token(
     *,
     address_map: dict[str, str],
 ) -> Any:
-    value = _as_text(token)
+    value = as_text(token)
     if not value:
         return token
     if _RF_TOKEN_RE.fullmatch(value):
@@ -375,7 +370,7 @@ def _remap_row_raw(
         return out
     if isinstance(raw, dict):
         out = dict(raw)
-        if _as_text(out.get("datum_address")):
+        if as_text(out.get("datum_address")):
             out["datum_address"] = next_address
         for key in ("subject_ref", "subject", "object_ref", "object"):
             if key in out:
@@ -464,7 +459,7 @@ def preview_document_insert(
     target_address: str,
     raw: Any,
 ) -> dict[str, Any]:
-    target_address = _as_text(target_address)
+    target_address = as_text(target_address)
     _validate_insert_target(document.rows, target_address=target_address)
     row_map = _document_row_map(document)
     target_layer, target_value_group, target_iteration = parse_datum_address(target_address)
@@ -515,7 +510,7 @@ def preview_document_delete(
     *,
     target_address: str,
 ) -> dict[str, Any]:
-    target_address = _as_text(target_address)
+    target_address = as_text(target_address)
     row_map = _document_row_map(document)
     if target_address not in row_map:
         raise ValueError("delete_target_row_missing")
@@ -577,8 +572,8 @@ def preview_document_move(
     source_address: str,
     destination_address: str,
 ) -> dict[str, Any]:
-    source_address = _as_text(source_address)
-    destination_address = _as_text(destination_address)
+    source_address = as_text(source_address)
+    destination_address = as_text(destination_address)
     if source_address == destination_address:
         raise ValueError("move_source_and_destination_must_differ")
     row_map = _document_row_map(document)

@@ -2,16 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 AUDIT_LOG_RECENT_WINDOW_LIMIT = 20
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_non_negative_int(value: object, *, field_name: str) -> int:
@@ -34,7 +29,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -80,7 +75,7 @@ class AuditLogAppendReceipt:
     recorded_at_unix_ms: int
 
     def __post_init__(self) -> None:
-        token = _as_text(self.record_id)
+        token = as_text(self.record_id)
         if not token:
             raise ValueError("audit_log_append_receipt.record_id is required")
         object.__setattr__(self, "record_id", token)
@@ -114,7 +109,7 @@ class AuditLogReadRequest:
     record_id: str
 
     def __post_init__(self) -> None:
-        token = _as_text(self.record_id)
+        token = as_text(self.record_id)
         if not token:
             raise ValueError("audit_log_read.record_id is required")
         object.__setattr__(self, "record_id", token)
@@ -138,7 +133,7 @@ class AuditLogRecord:
     record: dict[str, JsonValue]
 
     def __post_init__(self) -> None:
-        token = _as_text(self.record_id)
+        token = as_text(self.record_id)
         if not token:
             raise ValueError("audit_log_record.record_id is required")
         object.__setattr__(self, "record_id", token)

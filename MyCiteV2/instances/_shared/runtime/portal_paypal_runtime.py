@@ -36,23 +36,18 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_canonical_url,
     canonical_query_for_surface_query,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _load_domain_profile(private_dir: str | Path, domain: str) -> dict[str, Any] | None:
     """Scan all paypal-csm.*.json files in the tool dir, match by domain field."""
     tool_dir = Path(private_dir) / "utilities" / "tools" / "paypal-csm"
     pattern = str(tool_dir / "paypal-csm.*.json")
-    domain_lower = _as_text(domain).lower()
+    domain_lower = as_text(domain).lower()
     for path in sorted(glob.glob(pattern)):
         try:
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
-            if isinstance(payload, dict) and _as_text(payload.get("domain")).lower() == domain_lower:
+            if isinstance(payload, dict) and as_text(payload.get("domain")).lower() == domain_lower:
                 return payload
         except Exception:
             continue
@@ -94,21 +89,21 @@ def _resolve_credentials(tenant_config: dict[str, Any]) -> tuple[str, str] | Non
 
     Otherwise uses PAYPAL_CLIENT_ID_{REF.upper()} and PAYPAL_CLIENT_SECRET_{REF.upper()}
     """
-    credentials_ref = _as_text(tenant_config.get("credentials_ref"))
+    credentials_ref = as_text(tenant_config.get("credentials_ref"))
     if not credentials_ref or credentials_ref in {"1", "set-locally-in-state-or-runtime"}:
-        client_id = _as_text(os.environ.get("PAYPAL_CLIENT_ID"))
-        client_secret = _as_text(os.environ.get("PAYPAL_CLIENT_SECRET"))
+        client_id = as_text(os.environ.get("PAYPAL_CLIENT_ID"))
+        client_secret = as_text(os.environ.get("PAYPAL_CLIENT_SECRET"))
     else:
         ref_upper = credentials_ref.upper().replace("-", "_")
-        client_id = _as_text(os.environ.get(f"PAYPAL_CLIENT_ID_{ref_upper}"))
-        client_secret = _as_text(os.environ.get(f"PAYPAL_CLIENT_SECRET_{ref_upper}"))
+        client_id = as_text(os.environ.get(f"PAYPAL_CLIENT_ID_{ref_upper}"))
+        client_secret = as_text(os.environ.get(f"PAYPAL_CLIENT_SECRET_{ref_upper}"))
     if client_id and client_secret:
         return (client_id, client_secret)
     return None
 
 
 def _paypal_base_url(environment: str) -> str:
-    if _as_text(environment).lower() == "production":
+    if as_text(environment).lower() == "production":
         return "https://api-m.paypal.com"
     return "https://api-m.sandbox.paypal.com"
 
@@ -131,7 +126,7 @@ def _get_paypal_access_token(client_id: str, client_secret: str, base_url: str) 
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         result = json.loads(resp.read().decode())
-    return _as_text(result.get("access_token"))
+    return as_text(result.get("access_token"))
 
 
 def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
@@ -173,18 +168,18 @@ def build_portal_paypal_csm_surface_bundle(
     profile_summary: dict[str, Any] = {}
     if domain_profile:
         profile_summary = {
-            "domain": _as_text(domain_profile.get("domain")),
-            "environment": _as_text(domain_profile.get("environment")),
-            "brand_name": _as_text(domain_profile.get("brand_name")),
-            "tenant_ref": _as_text(domain_profile.get("tenant_ref")),
+            "domain": as_text(domain_profile.get("domain")),
+            "environment": as_text(domain_profile.get("environment")),
+            "brand_name": as_text(domain_profile.get("brand_name")),
+            "tenant_ref": as_text(domain_profile.get("tenant_ref")),
             "configured": bool(domain_profile.get("configured")),
         }
 
     tenant_summary: dict[str, Any] = {}
     if tenant_config:
         tenant_summary = {
-            "environment": _as_text(tenant_config.get("environment")),
-            "brand_name": _as_text(tenant_config.get("brand_name", "")),
+            "environment": as_text(tenant_config.get("environment")),
+            "brand_name": as_text(tenant_config.get("brand_name", "")),
         }
 
     surface_payload = {
@@ -208,7 +203,7 @@ def build_portal_paypal_csm_surface_bundle(
         "domain_profile": profile_summary,
         "tenant_summary": tenant_summary,
         "credentials_ready": credentials_ready,
-        "fnd_environment": _as_text(fnd_config.get("environment")),
+        "fnd_environment": as_text(fnd_config.get("environment")),
         "focus_subject": dict(shell_state.focus_subject or {}),
         "mediation_subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "request_contract": {
@@ -324,7 +319,7 @@ def run_portal_paypal_csm(
         expected_schema=PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
         surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
     )
-    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    resolved_portal_instance_id = as_text(portal_instance_id) or portal_scope.scope_id
     if not portal_scope.scope_id:
         portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
 
@@ -336,7 +331,7 @@ def run_portal_paypal_csm(
     if private_dir is not None:
         domain_profile = _load_domain_profile(private_dir, "cuyahogavalleycountrysideconservancy.org")
         if domain_profile:
-            tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+            tenant_ref = as_text(domain_profile.get("tenant_ref")) or "1"
             tenant_config = _load_tenant_config(private_dir, tenant_ref)
         fnd_config = _load_fnd_config(private_dir)
         if tenant_config:
@@ -427,12 +422,12 @@ def run_portal_paypal_csm_action(
         return _error_envelope("no_private_dir", "private_dir is required for PayPal actions")
 
     # Load state
-    request_domain = _as_text(action_payload.get("domain")) or "cuyahogavalleycountrysideconservancy.org"
+    request_domain = as_text(action_payload.get("domain")) or "cuyahogavalleycountrysideconservancy.org"
     domain_profile = _load_domain_profile(private_dir, request_domain)
     if domain_profile is None:
         return _error_envelope("domain_profile_not_found", f"No domain profile found for domain: {request_domain}")
 
-    tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+    tenant_ref = as_text(domain_profile.get("tenant_ref")) or "1"
     tenant_config = _load_tenant_config(private_dir, tenant_ref)
     if tenant_config is None:
         return _error_envelope("tenant_config_not_found", f"Tenant config not found for ref: {tenant_ref}")
@@ -442,7 +437,7 @@ def run_portal_paypal_csm_action(
         return _error_envelope("credentials_not_set", "PayPal credentials are not set in environment variables")
 
     client_id, client_secret = credentials
-    environment = _as_text(domain_profile.get("environment")) or "sandbox"
+    environment = as_text(domain_profile.get("environment")) or "sandbox"
     base_url = _paypal_base_url(environment)
 
     # NDJSON log path
@@ -477,17 +472,17 @@ def run_portal_paypal_csm_action(
         }
 
     if action_kind == "create_order":
-        amount = _as_text(action_payload.get("amount"))
+        amount = as_text(action_payload.get("amount"))
         if not amount:
             return _error_envelope("missing_amount", "amount is required for create_order")
         checkout_ctx = domain_profile.get("checkout_context", {})
         donation_defaults = domain_profile.get("donation_defaults", {})
-        brand_name = _as_text(domain_profile.get("brand_name"))
-        custom_id_prefix = _as_text(donation_defaults.get("custom_id_prefix")) or "donation"
-        item_description = _as_text(donation_defaults.get("item_description"))
-        return_url = _as_text(checkout_ctx.get("return_url"))
-        cancel_url = _as_text(checkout_ctx.get("cancel_url"))
-        currency_code = _as_text(checkout_ctx.get("currency_code")) or "USD"
+        brand_name = as_text(domain_profile.get("brand_name"))
+        custom_id_prefix = as_text(donation_defaults.get("custom_id_prefix")) or "donation"
+        item_description = as_text(donation_defaults.get("item_description"))
+        return_url = as_text(checkout_ctx.get("return_url"))
+        cancel_url = as_text(checkout_ctx.get("cancel_url"))
+        currency_code = as_text(checkout_ctx.get("currency_code")) or "USD"
         timestamp_ms = int(time.time() * 1000)
         custom_id = f"{custom_id_prefix}-{timestamp_ms}"
 
@@ -520,11 +515,11 @@ def run_portal_paypal_csm_action(
         except Exception as exc:
             return _error_envelope("paypal_create_order_error", str(exc))
 
-        order_id = _as_text(order_result.get("id"))
+        order_id = as_text(order_result.get("id"))
         approval_url = ""
         for link in order_result.get("links", []):
-            if isinstance(link, dict) and _as_text(link.get("rel")) == "approve":
-                approval_url = _as_text(link.get("href"))
+            if isinstance(link, dict) and as_text(link.get("rel")) == "approve":
+                approval_url = as_text(link.get("href"))
                 break
 
         _append_to_ndjson(orders_log, {
@@ -534,7 +529,7 @@ def run_portal_paypal_csm_action(
             "domain": request_domain,
             "amount": amount,
             "currency_code": currency_code,
-            "status": _as_text(order_result.get("status")),
+            "status": as_text(order_result.get("status")),
             "approval_url": approval_url,
             "timestamp_ms": timestamp_ms,
         })
@@ -558,7 +553,7 @@ def run_portal_paypal_csm_action(
                     "action_kind": "create_order",
                     "order_id": order_id,
                     "approval_url": approval_url,
-                    "status": _as_text(order_result.get("status")),
+                    "status": as_text(order_result.get("status")),
                 },
             },
             "shell_composition": {},
@@ -567,7 +562,7 @@ def run_portal_paypal_csm_action(
         }
 
     if action_kind == "capture_order":
-        order_id = _as_text(action_payload.get("order_id"))
+        order_id = as_text(action_payload.get("order_id"))
         if not order_id:
             return _error_envelope("missing_order_id", "order_id is required for capture_order")
 
@@ -587,7 +582,7 @@ def run_portal_paypal_csm_action(
         except Exception as exc:
             return _error_envelope("paypal_capture_order_error", str(exc))
 
-        status = _as_text(capture_result.get("status"))
+        status = as_text(capture_result.get("status"))
         capture_id = ""
         capture_amount = ""
         currency_code = ""
@@ -595,10 +590,10 @@ def run_portal_paypal_csm_action(
         if purchase_units and isinstance(purchase_units, list):
             captures = purchase_units[0].get("payments", {}).get("captures", [])
             if captures and isinstance(captures, list):
-                capture_id = _as_text(captures[0].get("id"))
+                capture_id = as_text(captures[0].get("id"))
                 amount_obj = captures[0].get("amount", {})
-                capture_amount = _as_text(amount_obj.get("value"))
-                currency_code = _as_text(amount_obj.get("currency_code"))
+                capture_amount = as_text(amount_obj.get("value"))
+                currency_code = as_text(amount_obj.get("currency_code"))
 
         _append_to_ndjson(orders_log, {
             "event": "capture_order",

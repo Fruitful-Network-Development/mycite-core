@@ -11,19 +11,14 @@ from ...ports.fnd_ebi_donations_read_only import (
     FndEbiDonationsReadOnlyResult,
     FndEbiDonationsReadOnlySource,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
 DEFAULT_WEBAPPS_ROOT = Path("/srv/webapps")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "." not in token or "/" in token or "\\" in token or ".." in token:
         raise ValueError("fnd_ebi_donations profile domain must be a plain domain-like value")
     return token
@@ -42,7 +37,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             return datetime.fromtimestamp(number, tz=timezone.utc)
         except Exception:
             return None
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return None
     if token.isdigit():
@@ -126,7 +121,7 @@ def _summarize_donations(lines: list[str], *, now_utc: datetime) -> dict[str, An
             if age <= timedelta(days=30):
                 donations_30d += 1
                 # Provisional: accumulate amount if present and in USD
-                currency = _as_text(record.get("currency", "")).upper()
+                currency = as_text(record.get("currency", "")).upper()
                 try:
                     amount_raw = record.get("amount")
                     if amount_raw is not None and (not currency or currency == "USD"):
@@ -137,7 +132,7 @@ def _summarize_donations(lines: list[str], *, now_utc: datetime) -> dict[str, An
             day_counts[day_key] = int(day_counts.get(day_key) or 0) + 1
 
         # Provisional: status field
-        raw_status = _as_text(record.get("status", "")).upper()
+        raw_status = as_text(record.get("status", "")).upper()
         if raw_status in status_counts:
             status_counts[raw_status] = status_counts[raw_status] + 1
 
@@ -253,7 +248,7 @@ class FilesystemFndEbiDonationsReadOnlyAdapter(FndEbiDonationsReadOnlyPort):
             if not isinstance(members, list):
                 continue
             for item in members:
-                token = _as_text(item)
+                token = as_text(item)
                 if not token:
                     continue
                 member_path = (root / token).resolve()
@@ -285,7 +280,7 @@ class FilesystemFndEbiDonationsReadOnlyAdapter(FndEbiDonationsReadOnlyPort):
             return None
         if not isinstance(payload, dict):
             return None
-        if _as_text(payload.get("schema")) != FND_EBI_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != FND_EBI_PROFILE_SCHEMA:
             return None
         return payload
 
@@ -296,7 +291,7 @@ class FilesystemFndEbiDonationsReadOnlyAdapter(FndEbiDonationsReadOnlyPort):
             return None
         if not donations_block.get("enabled"):
             return None
-        log_path_token = _as_text(donations_block.get("log_path"))
+        log_path_token = as_text(donations_block.get("log_path"))
         if not log_path_token:
             return None
         return Path(log_path_token)
@@ -348,7 +343,7 @@ class FilesystemFndEbiDonationsReadOnlyAdapter(FndEbiDonationsReadOnlyPort):
             if not exists:
                 warnings.append("donations log file is missing")
 
-        warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
+        warnings = list(dict.fromkeys(as_text(item) for item in warnings if as_text(item)))
 
         return {
             "domain": domain,

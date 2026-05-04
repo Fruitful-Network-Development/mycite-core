@@ -29,14 +29,9 @@ from .time_address_schema import (
     schema_from_anchor_payload,
     validate_address_with_schema,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _DEFAULT_HOPS_RADICES = (8, 81, 100, 100, 100, 100)
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _looks_like_hyphenated_hex(token: str) -> bool:
@@ -76,7 +71,7 @@ def classify_hops_coordinate_token(
     *,
     schema_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    token = _as_text(raw_value)
+    token = as_text(raw_value)
     if not token:
         return {"classification": "invalid", "reason": "empty token", "token": token}
     if _looks_like_hyphenated_hex(token):
@@ -106,7 +101,7 @@ def decode_hops_coordinate_token(
     if classification.get("classification") != "hops":
         return None
 
-    token = _as_text(raw_value)
+    token = as_text(raw_value)
     segments = tuple(int(piece) for piece in token.split("-"))
     radices = _as_hops_radices(schema_payload)
 

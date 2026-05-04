@@ -2,15 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
@@ -21,7 +16,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -44,10 +39,10 @@ class DirectiveContextRequest:
     subject_version_hash: str = ""
 
     def __post_init__(self) -> None:
-        portal_instance_id = _as_text(self.portal_instance_id)
-        tool_id = _as_text(self.tool_id)
-        subject_hyphae_hash = _as_text(self.subject_hyphae_hash)
-        subject_version_hash = _as_text(self.subject_version_hash)
+        portal_instance_id = as_text(self.portal_instance_id)
+        tool_id = as_text(self.tool_id)
+        subject_hyphae_hash = as_text(self.subject_hyphae_hash)
+        subject_version_hash = as_text(self.subject_version_hash)
         if not portal_instance_id:
             raise ValueError("directive_context_request.portal_instance_id is required")
         if not tool_id:
@@ -93,12 +88,12 @@ class DirectiveContextSource:
     source_authority: str = "authoritative"
 
     def __post_init__(self) -> None:
-        context_id = _as_text(self.context_id)
-        portal_instance_id = _as_text(self.portal_instance_id)
-        tool_id = _as_text(self.tool_id)
-        subject_hyphae_hash = _as_text(self.subject_hyphae_hash)
-        subject_version_hash = _as_text(self.subject_version_hash)
-        source_authority = _as_text(self.source_authority).lower() or "authoritative"
+        context_id = as_text(self.context_id)
+        portal_instance_id = as_text(self.portal_instance_id)
+        tool_id = as_text(self.tool_id)
+        subject_hyphae_hash = as_text(self.subject_hyphae_hash)
+        subject_version_hash = as_text(self.subject_version_hash)
+        source_authority = as_text(self.source_authority).lower() or "authoritative"
         if not context_id:
             raise ValueError("directive_context_source.context_id is required")
         if not portal_instance_id:
@@ -191,7 +186,7 @@ class DirectiveContextResult:
         if not isinstance(normalized_status, dict):
             raise ValueError("directive_context_result.resolution_status must be a dict")
         object.__setattr__(self, "resolution_status", normalized_status)
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     @property
     def found(self) -> bool:
@@ -233,13 +228,13 @@ class DirectiveContextEventRecord:
     recorded_at_unix_ms: int = 0
 
     def __post_init__(self) -> None:
-        event_id = _as_text(self.event_id)
-        context_id = _as_text(self.context_id)
-        portal_instance_id = _as_text(self.portal_instance_id)
-        tool_id = _as_text(self.tool_id)
-        event_kind = _as_text(self.event_kind)
-        subject_hyphae_hash = _as_text(self.subject_hyphae_hash)
-        subject_version_hash = _as_text(self.subject_version_hash)
+        event_id = as_text(self.event_id)
+        context_id = as_text(self.context_id)
+        portal_instance_id = as_text(self.portal_instance_id)
+        tool_id = as_text(self.tool_id)
+        event_kind = as_text(self.event_kind)
+        subject_hyphae_hash = as_text(self.subject_hyphae_hash)
+        subject_version_hash = as_text(self.subject_version_hash)
         if not event_id:
             raise ValueError("directive_context_event.event_id is required")
         if not context_id:
@@ -309,12 +304,12 @@ class DirectiveContextEventQuery:
     limit: int = 20
 
     def __post_init__(self) -> None:
-        portal_instance_id = _as_text(self.portal_instance_id)
+        portal_instance_id = as_text(self.portal_instance_id)
         if not portal_instance_id:
             raise ValueError("directive_context_event_query.portal_instance_id is required")
         object.__setattr__(self, "portal_instance_id", portal_instance_id)
-        object.__setattr__(self, "tool_id", _as_text(self.tool_id))
-        object.__setattr__(self, "context_id", _as_text(self.context_id))
+        object.__setattr__(self, "tool_id", as_text(self.tool_id))
+        object.__setattr__(self, "context_id", as_text(self.context_id))
         object.__setattr__(self, "limit", max(1, int(self.limit or 20)))
 
     def to_dict(self) -> dict[str, JsonValue]:

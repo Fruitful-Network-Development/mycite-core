@@ -13,6 +13,7 @@ from MyCiteV2.packages.ports.datum_store import (
     PublicationTenantSummaryResult,
     PublicationTenantSummarySource,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _WEBSITE_KEYS = ("public_website_url", "website_url", "website", "url")
 _EMAIL_KEYS = ("contact_email", "email")
@@ -35,14 +36,8 @@ _PROFILE_BASICS_WRITABLE_FIELDS = (
 _PROFILE_BASICS_FOCUS_DATUM_ADDRESS = "4-1-1"
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _as_lower(value: object) -> str:
-    return _as_text(value).lower()
+    return as_text(value).lower()
 
 
 def _looks_like_email(value: object) -> bool:
@@ -51,7 +46,7 @@ def _looks_like_email(value: object) -> bool:
 
 
 def _looks_like_public_website(value: object) -> bool:
-    token = _as_text(value)
+    token = as_text(value)
     return token.startswith("https://") or token.startswith("http://")
 
 
@@ -60,7 +55,7 @@ def _looks_like_domain(value: object) -> bool:
 
 
 def _normalize_optional_email(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return ""
     if not _looks_like_email(token):
@@ -69,7 +64,7 @@ def _normalize_optional_email(value: object, *, field_name: str) -> str:
 
 
 def _normalize_optional_public_website(value: object, *, field_name: str) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return ""
     if not _looks_like_public_website(token):
@@ -78,7 +73,7 @@ def _normalize_optional_public_website(value: object, *, field_name: str) -> str
 
 
 def _pretty_label(value: object, *, fallback: str) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         token = fallback
     normalized = token.replace("_", " ").replace("-", " ").strip()
@@ -101,7 +96,7 @@ def _document_names(source: PublicationTenantSummarySource) -> tuple[str, ...]:
 def _summary_text(source: PublicationTenantSummarySource) -> str:
     tenant_profile = _safe_profile(source.tenant_profile)
     public_profile = _safe_profile(source.public_profile)
-    return _as_text(
+    return as_text(
         tenant_profile.get("summary")
         or tenant_profile.get("bio")
         or public_profile.get("summary")
@@ -112,7 +107,7 @@ def _summary_text(source: PublicationTenantSummarySource) -> str:
 def _entity_type(source: PublicationTenantSummarySource) -> str:
     public_profile = _safe_profile(source.public_profile)
     tenant_profile = _safe_profile(source.tenant_profile)
-    return _as_text(public_profile.get("entity_type") or tenant_profile.get("entity_type"))
+    return as_text(public_profile.get("entity_type") or tenant_profile.get("entity_type"))
 
 
 def _display_title(source: PublicationTenantSummarySource) -> str:
@@ -140,7 +135,7 @@ def _find_contact_email(payload: dict[str, Any]) -> str:
         for entry in links:
             if not isinstance(entry, dict):
                 continue
-            href = _as_text(entry.get("href") or entry.get("url"))
+            href = as_text(entry.get("href") or entry.get("url"))
             if href.startswith("mailto:"):
                 email = href.split(":", 1)[1].strip().lower()
                 if _looks_like_email(email):
@@ -156,25 +151,25 @@ def _find_public_website(payload: dict[str, Any]) -> str:
     for key in _WEBSITE_KEYS:
         candidate = payload.get(key)
         if _looks_like_public_website(candidate):
-            return _as_text(candidate)
+            return as_text(candidate)
     options_public = payload.get("options_public")
     if isinstance(options_public, dict):
         for key in _WEBSITE_KEYS:
             candidate = options_public.get(key)
             if _looks_like_public_website(candidate):
-                return _as_text(candidate)
+                return as_text(candidate)
     links = payload.get("links")
     if isinstance(links, list):
         for entry in links:
             if not isinstance(entry, dict):
                 continue
-            href = _as_text(entry.get("href") or entry.get("url"))
+            href = as_text(entry.get("href") or entry.get("url"))
             if _looks_like_public_website(href):
                 return href
             for key in _WEBSITE_KEYS:
                 candidate = entry.get(key)
                 if _looks_like_public_website(candidate):
-                    return _as_text(candidate)
+                    return as_text(candidate)
     return ""
 
 
@@ -194,9 +189,9 @@ class PublicationTenantSummary:
 
     def __post_init__(self) -> None:
         tenant_id = _as_lower(self.tenant_id)
-        profile_title = _as_text(self.profile_title)
-        profile_resolution = _as_text(self.profile_resolution).lower()
-        publication_mode = _as_text(self.publication_mode).lower()
+        profile_title = as_text(self.profile_title)
+        profile_resolution = as_text(self.profile_resolution).lower()
+        publication_mode = as_text(self.publication_mode).lower()
         if not tenant_id:
             raise ValueError("publication_tenant_summary.tenant_id is required")
         if not profile_title:
@@ -220,8 +215,8 @@ class PublicationTenantSummary:
             ),
         )
         object.__setattr__(self, "profile_title", profile_title)
-        object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
-        object.__setattr__(self, "entity_type", _as_text(self.entity_type))
+        object.__setattr__(self, "profile_summary", as_text(self.profile_summary))
+        object.__setattr__(self, "entity_type", as_text(self.entity_type))
         object.__setattr__(
             self,
             "contact_email",
@@ -230,16 +225,16 @@ class PublicationTenantSummary:
         object.__setattr__(
             self,
             "public_website_url",
-            _as_text(self.public_website_url) if _looks_like_public_website(self.public_website_url) else "",
+            as_text(self.public_website_url) if _looks_like_public_website(self.public_website_url) else "",
         )
         object.__setattr__(
             self,
             "available_documents",
-            tuple(_as_text(item) for item in self.available_documents if _as_text(item)),
+            tuple(as_text(item) for item in self.available_documents if as_text(item)),
         )
         object.__setattr__(self, "profile_resolution", profile_resolution)
         object.__setattr__(self, "publication_mode", publication_mode)
-        object.__setattr__(self, "warnings", tuple(_as_text(item) for item in self.warnings if _as_text(item)))
+        object.__setattr__(self, "warnings", tuple(as_text(item) for item in self.warnings if as_text(item)))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -264,7 +259,7 @@ class PublicationTenantSummary:
         tenant_domain: str,
         warnings: tuple[str, ...] = (),
     ) -> "PublicationTenantSummary":
-        fallback_title = _pretty_label(tenant_id, fallback=_as_text(tenant_id) or "Tenant")
+        fallback_title = _pretty_label(tenant_id, fallback=as_text(tenant_id) or "Tenant")
         return cls(
             tenant_id=tenant_id,
             tenant_domain=tenant_domain,
@@ -352,7 +347,7 @@ class PublicationProfileBasicsCommand:
 
     def __post_init__(self) -> None:
         tenant_id = _as_lower(self.tenant_id)
-        profile_title = _as_text(self.profile_title)
+        profile_title = as_text(self.profile_title)
         if not tenant_id:
             raise ValueError("publication_profile_basics.tenant_id is required")
         if not profile_title:
@@ -367,7 +362,7 @@ class PublicationProfileBasicsCommand:
             ),
         )
         object.__setattr__(self, "profile_title", profile_title)
-        object.__setattr__(self, "profile_summary", _as_text(self.profile_summary))
+        object.__setattr__(self, "profile_summary", as_text(self.profile_summary))
         object.__setattr__(
             self,
             "contact_email",
@@ -421,7 +416,7 @@ class PublicationProfileBasicsOutcome:
     confirmed_summary: PublicationTenantSummary
 
     def __post_init__(self) -> None:
-        profile_id = _as_text(self.profile_id)
+        profile_id = as_text(self.profile_id)
         if not profile_id:
             raise ValueError("publication_profile_basics_outcome.profile_id is required")
         object.__setattr__(self, "profile_id", profile_id)

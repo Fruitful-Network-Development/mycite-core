@@ -13,25 +13,20 @@ from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter import (
     AWS_CSM_NEWSLETTER_PROFILE_SCHEMA,
     AwsCsmNewsletterService,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 RUNTIME_SECRETS_SCHEMA = "mycite.service_tool.aws_csm.newsletter_runtime_secrets.v1"
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalized_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if token.startswith("www."):
         token = token[4:]
     return token
 
 
 def _optional_email(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or token.count("@") != 1 or any(ch.isspace() for ch in token):
         return ""
     local_part, domain_part = token.split("@", 1)
@@ -85,12 +80,12 @@ def _canonical_profile_payload(
     token = _normalized_domain(domain)
     callback_url = _dispatcher_callback_url(domain=token, tenant_id=tenant_id)
     inbound_url = _inbound_callback_url(domain=token, tenant_id=tenant_id)
-    payload = dict(existing if _as_text(existing.get("schema")) == AWS_CSM_NEWSLETTER_PROFILE_SCHEMA else {})
+    payload = dict(existing if as_text(existing.get("schema")) == AWS_CSM_NEWSLETTER_PROFILE_SCHEMA else {})
     payload["schema"] = AWS_CSM_NEWSLETTER_PROFILE_SCHEMA
     payload["domain"] = token
     payload["list_address"] = f"news@{token}"
     payload["sender_address"] = f"news@{token}"
-    payload["selected_author_profile_id"] = _as_text(
+    payload["selected_author_profile_id"] = as_text(
         payload.get("selected_author_profile_id")
         or legacy.get("selected_author_profile_id")
         or legacy.get("selected_sender_profile_id")
@@ -100,17 +95,17 @@ def _canonical_profile_payload(
         or legacy.get("selected_author_address")
         or legacy.get("selected_sender_address")
     )
-    payload["delivery_mode"] = _as_text(payload.get("delivery_mode") or legacy.get("delivery_mode")) or "inbound-mail-workflow"
-    payload["aws_region"] = _as_text(payload.get("aws_region") or legacy.get("aws_region")) or "us-east-1"
-    payload["dispatch_queue_url"] = _as_text(payload.get("dispatch_queue_url") or legacy.get("dispatch_queue_url"))
-    payload["dispatch_queue_arn"] = _as_text(payload.get("dispatch_queue_arn") or legacy.get("dispatch_queue_arn"))
-    payload["dispatcher_lambda_name"] = _as_text(payload.get("dispatcher_lambda_name") or legacy.get("dispatcher_lambda_name")) or "newsletter-dispatcher"
-    payload["inbound_processor_lambda_name"] = _as_text(payload.get("inbound_processor_lambda_name")) or "newsletter-inbound-capture"
-    payload["callback_url"] = _as_text(payload.get("callback_url") or legacy.get("dispatcher_callback_url")) or callback_url
-    payload["inbound_callback_url"] = _as_text(payload.get("inbound_callback_url")) or inbound_url
-    payload["unsubscribe_secret_name"] = _as_text(payload.get("unsubscribe_secret_name")) or f"aws-cms/newsletter/unsubscribe-signing/{tenant_id}"
-    payload["dispatch_callback_secret_name"] = _as_text(payload.get("dispatch_callback_secret_name")) or f"aws-cms/newsletter/dispatch-callback/{tenant_id}"
-    payload["inbound_callback_secret_name"] = _as_text(payload.get("inbound_callback_secret_name")) or f"aws-cms/newsletter/inbound-capture/{tenant_id}"
+    payload["delivery_mode"] = as_text(payload.get("delivery_mode") or legacy.get("delivery_mode")) or "inbound-mail-workflow"
+    payload["aws_region"] = as_text(payload.get("aws_region") or legacy.get("aws_region")) or "us-east-1"
+    payload["dispatch_queue_url"] = as_text(payload.get("dispatch_queue_url") or legacy.get("dispatch_queue_url"))
+    payload["dispatch_queue_arn"] = as_text(payload.get("dispatch_queue_arn") or legacy.get("dispatch_queue_arn"))
+    payload["dispatcher_lambda_name"] = as_text(payload.get("dispatcher_lambda_name") or legacy.get("dispatcher_lambda_name")) or "newsletter-dispatcher"
+    payload["inbound_processor_lambda_name"] = as_text(payload.get("inbound_processor_lambda_name")) or "newsletter-inbound-capture"
+    payload["callback_url"] = as_text(payload.get("callback_url") or legacy.get("dispatcher_callback_url")) or callback_url
+    payload["inbound_callback_url"] = as_text(payload.get("inbound_callback_url")) or inbound_url
+    payload["unsubscribe_secret_name"] = as_text(payload.get("unsubscribe_secret_name")) or f"aws-cms/newsletter/unsubscribe-signing/{tenant_id}"
+    payload["dispatch_callback_secret_name"] = as_text(payload.get("dispatch_callback_secret_name")) or f"aws-cms/newsletter/dispatch-callback/{tenant_id}"
+    payload["inbound_callback_secret_name"] = as_text(payload.get("inbound_callback_secret_name")) or f"aws-cms/newsletter/inbound-capture/{tenant_id}"
     for key in (
         "last_inbound_message_id",
         "last_inbound_status",
@@ -124,7 +119,7 @@ def _canonical_profile_payload(
         "last_dispatch_id",
         "updated_at",
     ):
-        payload[key] = _as_text(payload.get(key) or legacy.get(key))
+        payload[key] = as_text(payload.get(key) or legacy.get(key))
     return payload
 
 
@@ -135,9 +130,9 @@ def _merge_runtime_secrets(private_dir: Path) -> dict[str, Any]:
     legacy = _read_json(legacy_path)
     merged = {
         "schema": RUNTIME_SECRETS_SCHEMA,
-        "signing_secret": _as_text(canonical.get("signing_secret") or legacy.get("signing_secret")) or secrets.token_urlsafe(32),
-        "dispatch_secret": _as_text(canonical.get("dispatch_secret") or legacy.get("dispatch_secret")) or secrets.token_urlsafe(32),
-        "inbound_secret": _as_text(canonical.get("inbound_secret")) or secrets.token_urlsafe(32),
+        "signing_secret": as_text(canonical.get("signing_secret") or legacy.get("signing_secret")) or secrets.token_urlsafe(32),
+        "dispatch_secret": as_text(canonical.get("dispatch_secret") or legacy.get("dispatch_secret")) or secrets.token_urlsafe(32),
+        "inbound_secret": as_text(canonical.get("inbound_secret")) or secrets.token_urlsafe(32),
     }
     _write_json(canonical_path, merged)
     return merged
@@ -159,7 +154,7 @@ def _legacy_domains(private_dir: Path) -> dict[str, dict[str, Any]]:
 
 
 def run(*, private_dir: Path, tenant_id: str, prune_legacy_root: bool) -> dict[str, Any]:
-    tenant_token = _as_text(tenant_id).lower() or "fnd"
+    tenant_token = as_text(tenant_id).lower() or "fnd"
     state = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
     legacy_profiles = _legacy_domains(private_dir)
     runtime_secrets = _merge_runtime_secrets(private_dir)

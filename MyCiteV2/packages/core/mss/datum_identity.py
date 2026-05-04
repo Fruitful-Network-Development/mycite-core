@@ -6,6 +6,7 @@ import re
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRow
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 MSS_VERSION_HASH_POLICY = "mos.mss_sha256_v1"
 
@@ -14,22 +15,16 @@ _RF_TOKEN_RE = re.compile(r"^rf\.([0-9]+-[0-9]+-[0-9]+)$", re.IGNORECASE)
 _NUMERIC_HYPHEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)+$")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _is_datum_address(value: object) -> bool:
-    return bool(_DATUM_ADDRESS_RE.fullmatch(_as_text(value)))
+    return bool(_DATUM_ADDRESS_RE.fullmatch(as_text(value)))
 
 
 def _is_numeric_hyphen_token(value: object) -> bool:
-    return bool(_NUMERIC_HYPHEN_RE.fullmatch(_as_text(value)))
+    return bool(_NUMERIC_HYPHEN_RE.fullmatch(as_text(value)))
 
 
 def _parse_datum_address(value: object) -> tuple[int, int, int]:
-    token = _as_text(value)
+    token = as_text(value)
     if not _is_datum_address(token):
         raise ValueError(f"invalid datum address: {token!r}")
     layer, vg, iteration = token.split("-", 2)
@@ -55,7 +50,7 @@ def _sha256_token(*, prefix: str, payload: Any) -> str:
 
 def _row_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
     if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return tuple(_as_text(item) for item in raw[0] if _as_text(item))
+        return tuple(as_text(item) for item in raw[0] if as_text(item))
     if isinstance(raw, dict):
         values = (
             raw.get("datum_address"),
@@ -63,7 +58,7 @@ def _row_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
             raw.get("relation") or raw.get("predicate"),
             raw.get("object_ref") or raw.get("object"),
         )
-        return tuple(_as_text(item) for item in values if _as_text(item))
+        return tuple(as_text(item) for item in values if as_text(item))
     return ()
 
 

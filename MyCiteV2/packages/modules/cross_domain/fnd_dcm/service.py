@@ -10,6 +10,7 @@ from MyCiteV2.packages.ports.fnd_dcm_read_only import (
     FndDcmReadOnlyPort,
     FndDcmReadOnlyRequest,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list
 
 _CANONICAL_SOCIAL_ALIASES = {
     "facebook.com": "facebook",
@@ -24,26 +25,14 @@ _CANONICAL_SOCIAL_ALIASES = {
 _SENTINEL_EMPTY_VALUES = {"", "~"}
 
 
-def _as_text(value: object) -> str:
-    return as_text(value)
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return as_dict(value)
-
-
-def _as_list(value: object) -> list[Any]:
-    return as_list(value)
-
-
 def _slugify(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     token = re.sub(r"[^a-z0-9]+", "-", token)
     return token.strip("-")
 
 
 def _clean_optional_text(value: object) -> str | None:
-    token = _as_text(value)
+    token = as_text(value)
     if token in _SENTINEL_EMPTY_VALUES:
         return None
     return token or None
@@ -51,31 +40,31 @@ def _clean_optional_text(value: object) -> str | None:
 
 def _clean_bio_lines(value: object) -> list[str]:
     lines: list[str] = []
-    for raw_item in _as_list(value):
-        token = _as_text(raw_item)
+    for raw_item in as_list(value):
+        token = as_text(raw_item)
         if token:
             lines.append(token)
     return lines
 
 
 def _canonical_social_platform(value: object) -> str:
-    token = _as_text(value).lower().replace(" ", "_").replace("-", "_")
+    token = as_text(value).lower().replace(" ", "_").replace("-", "_")
     return _CANONICAL_SOCIAL_ALIASES.get(token, token)
 
 
 def _normalize_socials(value: object) -> list[dict[str, str]]:
     normalized: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
-    for row in _as_list(value):
+    for row in as_list(value):
         platform = ""
         raw_value = ""
         if isinstance(row, dict):
-            if _as_text(row.get("platform")) and _as_text(row.get("value")):
+            if as_text(row.get("platform")) and as_text(row.get("value")):
                 platform = _canonical_social_platform(row.get("platform"))
-                raw_value = _as_text(row.get("value"))
+                raw_value = as_text(row.get("value"))
             else:
                 for key, item in row.items():
-                    token = _as_text(item)
+                    token = as_text(item)
                     if token:
                         platform = _canonical_social_platform(key)
                         raw_value = token
@@ -91,7 +80,7 @@ def _normalize_socials(value: object) -> list[dict[str, str]]:
 
 
 def normalize_board_profile(record: dict[str, Any]) -> dict[str, Any]:
-    raw = _as_dict(record)
+    raw = as_dict(record)
     summary_bio = _clean_optional_text(raw.get("summary_bio"))
     bio = _clean_bio_lines(raw.get("bio"))
     email = _clean_optional_text(raw.get("email"))
@@ -106,13 +95,13 @@ def normalize_board_profile(record: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(year_joined, int):
         year_joined = None
     tags = []
-    for item in _as_list(raw.get("tags")):
+    for item in as_list(raw.get("tags")):
         token = _slugify(item).replace("-", "_")
         if token and token not in tags:
             tags.append(token)
     canonical = {
         "id": _clean_optional_text(raw.get("id")) or _slugify(raw.get("name")) or "board-profile",
-        "name": _as_text(raw.get("name")) or "Board member",
+        "name": as_text(raw.get("name")) or "Board member",
         "image": _clean_optional_text(raw.get("image")),
         "summary_bio": summary_bio or (bio[0] if bio else None),
         "bio": list(bio),
@@ -128,7 +117,7 @@ def normalize_board_profile(record: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_board_profiles(value: object) -> list[dict[str, Any]]:
-    return [normalize_board_profile(item) for item in _as_list(value) if isinstance(item, dict)]
+    return [normalize_board_profile(item) for item in as_list(value) if isinstance(item, dict)]
 
 
 def _dedupe_issue_rows(rows: object) -> list[dict[str, Any]]:
@@ -141,9 +130,9 @@ def _dedupe_issue_rows(rows: object) -> list[dict[str, Any]]:
             continue
         issue = dict(row)
         identity = (
-            _as_text(issue.get("code")),
-            _as_text(issue.get("message")),
-            _as_text(issue.get("path")),
+            as_text(issue.get("code")),
+            as_text(issue.get("message")),
+            as_text(issue.get("path")),
         )
         if identity in seen:
             continue
@@ -176,37 +165,37 @@ class FndDcmReadOnlyService:
             )
         )
 
-        payload = _as_dict(result.source.payload) if result.source is not None else {}
-        profiles = [dict(item) for item in _as_list(payload.get("profiles")) if isinstance(item, dict)]
-        requested_site = _as_text(site).lower()
-        tenant_domain = _as_text(portal_tenant_domain).lower()
+        payload = as_dict(result.source.payload) if result.source is not None else {}
+        profiles = [dict(item) for item in as_list(payload.get("profiles")) if isinstance(item, dict)]
+        requested_site = as_text(site).lower()
+        tenant_domain = as_text(portal_tenant_domain).lower()
 
         selected_profile: dict[str, Any] | None = None
         if requested_site:
             selected_profile = next(
-                (profile for profile in profiles if _as_text(profile.get("domain")).lower() == requested_site),
+                (profile for profile in profiles if as_text(profile.get("domain")).lower() == requested_site),
                 None,
             )
         if selected_profile is None and tenant_domain:
             selected_profile = next(
-                (profile for profile in profiles if _as_text(profile.get("domain")).lower() == tenant_domain),
+                (profile for profile in profiles if as_text(profile.get("domain")).lower() == tenant_domain),
                 None,
             )
         if selected_profile is None and profiles:
             selected_profile = profiles[0]
 
         selected = dict(selected_profile or {})
-        projection = _as_dict(selected.get("projection"))
-        pages = [dict(item) for item in _as_list(projection.get("pages")) if isinstance(item, dict)]
-        collections = [dict(item) for item in _as_list(projection.get("collections")) if isinstance(item, dict)]
-        issues = _dedupe_issue_rows(_as_list(projection.get("issues")) + _as_list(selected.get("issues")))
-        view_token = _as_text(view).lower() or "overview"
+        projection = as_dict(selected.get("projection"))
+        pages = [dict(item) for item in as_list(projection.get("pages")) if isinstance(item, dict)]
+        collections = [dict(item) for item in as_list(projection.get("collections")) if isinstance(item, dict)]
+        issues = _dedupe_issue_rows(as_list(projection.get("issues")) + as_list(selected.get("issues")))
+        view_token = as_text(view).lower() or "overview"
         if view_token not in {"overview", "pages", "collections", "issues"}:
             view_token = "overview"
-        page_id = _as_text(page)
-        collection_id = _as_text(collection)
-        selected_page = next((item for item in pages if _as_text(item.get("id")) == page_id), None)
-        selected_collection = next((item for item in collections if _as_text(item.get("id")) == collection_id), None)
+        page_id = as_text(page)
+        collection_id = as_text(collection)
+        selected_page = next((item for item in pages if as_text(item.get("id")) == page_id), None)
+        selected_collection = next((item for item in collections if as_text(item.get("id")) == collection_id), None)
         if view_token != "pages":
             selected_page = None
             page_id = ""
@@ -219,7 +208,7 @@ class FndDcmReadOnlyService:
             collection_id = ""
 
         canonical_query = {
-            "site": _as_text(selected.get("domain")),
+            "site": as_text(selected.get("domain")),
             "view": view_token,
         }
         if selected_page is not None and page_id:
@@ -229,66 +218,66 @@ class FndDcmReadOnlyService:
 
         selected_collection_sources = [
             dict(item)
-            for item in _as_list(selected.get("collection_sources"))
+            for item in as_list(selected.get("collection_sources"))
             if isinstance(item, dict)
         ]
         if selected_collection is not None:
             selected_collection_sources = [
                 row
                 for row in selected_collection_sources
-                if _as_text(row.get("collection_id")) == _as_text(selected_collection.get("id"))
+                if as_text(row.get("collection_id")) == as_text(selected_collection.get("id"))
             ]
         elif selected_page is not None:
             referenced = {
-                _as_text(item)
-                for item in _as_list(selected_page.get("collection_refs"))
-                if _as_text(item)
+                as_text(item)
+                for item in as_list(selected_page.get("collection_refs"))
+                if as_text(item)
             }
             if referenced:
                 selected_collection_sources = [
                     row
                     for row in selected_collection_sources
-                    if _as_text(row.get("collection_id")) in referenced
+                    if as_text(row.get("collection_id")) in referenced
                 ]
 
         board_profile_preview = None
-        if selected_collection is not None and _as_text(selected_collection.get("id")) == "board_profiles":
+        if selected_collection is not None and as_text(selected_collection.get("id")) == "board_profiles":
             preview_payload = selected_collection.get("preview_payload")
             if isinstance(preview_payload, list):
                 normalized_profiles = normalize_board_profiles(preview_payload)
                 board_profile_preview = {
                     "count": len(normalized_profiles),
-                    "ids": [_as_text(item.get("id")) for item in normalized_profiles[:6]],
+                    "ids": [as_text(item.get("id")) for item in normalized_profiles[:6]],
                     "summary_count": sum(1 for item in normalized_profiles if _clean_optional_text(item.get("summary_bio"))),
                 }
 
-        selected_site_payload = _as_dict(projection.get("site"))
-        selected_footer = _as_dict(projection.get("footer"))
-        selected_navigation = _as_list(projection.get("navigation"))
+        selected_site_payload = as_dict(projection.get("site"))
+        selected_footer = as_dict(projection.get("footer"))
+        selected_navigation = as_list(projection.get("navigation"))
         site_cards = []
         for profile in profiles:
-            profile_projection = _as_dict(profile.get("projection"))
+            profile_projection = as_dict(profile.get("projection"))
             site_cards.append(
                 {
-                    "domain": _as_text(profile.get("domain")),
-                    "label": _as_text(profile.get("label")) or _as_text(profile_projection.get("site", {}).get("name")),
-                    "schema": _as_text(profile.get("manifest_schema")),
-                    "page_count": len(_as_list(profile_projection.get("pages"))),
-                    "collection_count": len(_as_list(profile_projection.get("collections"))),
-                    "issue_count": len(_dedupe_issue_rows(_as_list(profile_projection.get("issues")) + _as_list(profile.get("issues")))),
-                    "selected": bool(_as_text(profile.get("domain")) and _as_text(profile.get("domain")) == _as_text(selected.get("domain"))),
+                    "domain": as_text(profile.get("domain")),
+                    "label": as_text(profile.get("label")) or as_text(profile_projection.get("site", {}).get("name")),
+                    "schema": as_text(profile.get("manifest_schema")),
+                    "page_count": len(as_list(profile_projection.get("pages"))),
+                    "collection_count": len(as_list(profile_projection.get("collections"))),
+                    "issue_count": len(_dedupe_issue_rows(as_list(profile_projection.get("issues")) + as_list(profile.get("issues")))),
+                    "selected": bool(as_text(profile.get("domain")) and as_text(profile.get("domain")) == as_text(selected.get("domain"))),
                 }
             )
 
         overview = {
-            "domain": _as_text(selected.get("domain")),
-            "label": _as_text(selected.get("label")) or _as_text(selected_site_payload.get("name")),
-            "manifest_schema": _as_text(selected.get("manifest_schema")),
-            "manifest_path": _as_text(selected.get("manifest_path")),
-            "render_script_path": _as_text(selected.get("render_script_path")),
-            "site_name": _as_text(selected_site_payload.get("name")),
-            "site_description": _as_text(selected_site_payload.get("description")),
-            "homepage_href": _as_text(selected_site_payload.get("homepage_href")),
+            "domain": as_text(selected.get("domain")),
+            "label": as_text(selected.get("label")) or as_text(selected_site_payload.get("name")),
+            "manifest_schema": as_text(selected.get("manifest_schema")),
+            "manifest_path": as_text(selected.get("manifest_path")),
+            "render_script_path": as_text(selected.get("render_script_path")),
+            "site_name": as_text(selected_site_payload.get("name")),
+            "site_description": as_text(selected_site_payload.get("description")),
+            "homepage_href": as_text(selected_site_payload.get("homepage_href")),
             "navigation_count": len(selected_navigation),
             "footer_columns": int(selected_footer.get("column_count") or 0),
             "page_count": len(pages),
@@ -302,8 +291,8 @@ class FndDcmReadOnlyService:
 
         return {
             "site_cards": site_cards,
-            "selected_site": _as_text(selected.get("domain")),
-            "selected_label": _as_text(selected.get("label")) or _as_text(selected_site_payload.get("name")),
+            "selected_site": as_text(selected.get("domain")),
+            "selected_label": as_text(selected.get("label")) or as_text(selected_site_payload.get("name")),
             "view": view_token,
             "page": page_id,
             "collection": collection_id,
@@ -315,13 +304,13 @@ class FndDcmReadOnlyService:
             "selected_page": selected_page,
             "selected_collection": selected_collection,
             "selected_collection_sources": selected_collection_sources,
-            "raw_manifest_json": json.dumps(_as_dict(selected.get("raw_manifest")), indent=2, sort_keys=True),
-            "normalization_evidence": [str(item) for item in _as_list(selected.get("normalization_evidence")) if _as_text(item)],
+            "raw_manifest_json": json.dumps(as_dict(selected.get("raw_manifest")), indent=2, sort_keys=True),
+            "normalization_evidence": [str(item) for item in as_list(selected.get("normalization_evidence")) if as_text(item)],
             "board_profile_preview": board_profile_preview,
             "tool_files": {
-                "profile_file": _as_text(selected.get("profile_file")),
-                "manifest_path": _as_text(selected.get("manifest_path")),
-                "render_script_path": _as_text(selected.get("render_script_path")),
+                "profile_file": as_text(selected.get("profile_file")),
+                "manifest_path": as_text(selected.get("manifest_path")),
+                "render_script_path": as_text(selected.get("render_script_path")),
             },
             "warnings": warnings,
         }

@@ -3,17 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 from typing import Any, Protocol, runtime_checkable
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
 _YEAR_MONTH_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}$")
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
@@ -24,7 +19,7 @@ def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
     if isinstance(value, dict):
         out: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
             out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
@@ -42,7 +37,7 @@ def _normalize_payload(value: object, *, field_name: str) -> dict[str, JsonValue
 
 
 def _normalize_optional_domain(value: object, *, field_name: str) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token:
         return ""
     if "." not in token or "/" in token or "\\" in token or ".." in token:
@@ -51,7 +46,7 @@ def _normalize_optional_domain(value: object, *, field_name: str) -> str:
 
 
 def _normalize_optional_year_month(value: object, *, field_name: str) -> str:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return ""
     if not _YEAR_MONTH_PATTERN.match(token):
@@ -66,7 +61,7 @@ class FndEbiReadOnlyRequest:
     year_month: str = ""
 
     def __post_init__(self) -> None:
-        portal_tenant_id = _as_text(self.portal_tenant_id).lower()
+        portal_tenant_id = as_text(self.portal_tenant_id).lower()
         if not portal_tenant_id:
             raise ValueError("fnd_ebi_read_only_request.portal_tenant_id is required")
         object.__setattr__(self, "portal_tenant_id", portal_tenant_id)

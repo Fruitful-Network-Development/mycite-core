@@ -10,27 +10,14 @@ from ...ports.fnd_dcm_read_only import (
     FndDcmReadOnlyResult,
     FndDcmReadOnlySource,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list
 
 FND_DCM_PROFILE_SCHEMA = "mycite.service_tool.fnd_dcm.profile.v1"
 DEFAULT_WEBAPPS_ROOT = Path("/srv/webapps")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _as_dict(value: object) -> dict[str, Any]:
-    return dict(value) if isinstance(value, dict) else {}
-
-
-def _as_list(value: object) -> list[Any]:
-    return list(value) if isinstance(value, list) else []
-
-
 def _normalize_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "." not in token or "/" in token or "\\" in token or ".." in token:
         raise ValueError("fnd_dcm profile domain must be a plain domain-like value")
     return token
@@ -63,7 +50,7 @@ def _relative_path(path: Path, *, root: Path) -> str:
 
 
 def _resolve_relative_path(root: Path, relative_path: object, *, field_name: str) -> Path:
-    token = _as_text(relative_path)
+    token = as_text(relative_path)
     if not token:
         raise ValueError(f"{field_name} is required")
     raw = Path(token)
@@ -80,28 +67,28 @@ def _resolve_relative_path(root: Path, relative_path: object, *, field_name: str
 
 def _issue(*, severity: str, code: str, message: str, path: str = "", context: str = "") -> dict[str, str]:
     payload = {
-        "severity": _as_text(severity) or "warning",
-        "code": _as_text(code) or "issue",
-        "message": _as_text(message) or "Issue detected.",
+        "severity": as_text(severity) or "warning",
+        "code": as_text(code) or "issue",
+        "message": as_text(message) or "Issue detected.",
     }
-    if _as_text(path):
-        payload["path"] = _as_text(path)
-    if _as_text(context):
-        payload["context"] = _as_text(context)
+    if as_text(path):
+        payload["path"] = as_text(path)
+    if as_text(context):
+        payload["context"] = as_text(context)
     return payload
 
 
 def _navigation_items(value: object) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for item in _as_list(value):
+    for item in as_list(value):
         if not isinstance(item, dict):
             continue
         rows.append(
             {
-                "id": _as_text(item.get("id")),
-                "label": _as_text(item.get("label")),
-                "href": _as_text(item.get("href")),
-                "icon": _as_text(item.get("icon")),
+                "id": as_text(item.get("id")),
+                "label": as_text(item.get("label")),
+                "href": as_text(item.get("href")),
+                "icon": as_text(item.get("icon")),
             }
         )
     return rows
@@ -117,9 +104,9 @@ def _collect_collection_refs(
     def _visit(node: object, *, parent_key: str = "") -> None:
         if isinstance(node, dict):
             for key, item in node.items():
-                key_token = _as_text(key)
+                key_token = as_text(key)
                 if key_token == "collection" or key_token.endswith("_collection"):
-                    token = _as_text(item)
+                    token = as_text(item)
                     if token in known_collection_ids:
                         found.add(token)
                 _visit(item, parent_key=key_token)
@@ -135,14 +122,14 @@ def _collect_collection_refs(
 def _page_rows(pages_payload: dict[str, Any], *, known_collection_ids: set[str]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for page_id, raw_page in pages_payload.items():
-        page = _as_dict(raw_page)
+        page = as_dict(raw_page)
         rows.append(
             {
-                "id": _as_text(page_id),
-                "file": _as_text(page.get("file")),
-                "template": _as_text(page.get("template")),
-                "title": _as_text(page.get("title")),
-                "description": _as_text(page.get("description")),
+                "id": as_text(page_id),
+                "file": as_text(page.get("file")),
+                "template": as_text(page.get("template")),
+                "title": as_text(page.get("title")),
+                "description": as_text(page.get("description")),
                 "collection_refs": _collect_collection_refs(page, known_collection_ids=known_collection_ids),
                 "raw": page,
             }
@@ -161,7 +148,7 @@ def _collection_source_rows(
     collection_rows: list[dict[str, Any]] = []
     issues: list[dict[str, str]] = []
     if collection_type == "json_file":
-        source_token = _as_text(collection_payload.get("source"))
+        source_token = as_text(collection_payload.get("source"))
         source_path = _resolve_relative_path(
             frontend_root,
             source_token,
@@ -200,8 +187,8 @@ def _collection_source_rows(
             )
         return collection_rows, sources, issues
     if collection_type == "markdown_directory":
-        directory_token = _as_text(collection_payload.get("directory"))
-        pattern = _as_text(collection_payload.get("pattern")) or "*.md"
+        directory_token = as_text(collection_payload.get("directory"))
+        pattern = as_text(collection_payload.get("pattern")) or "*.md"
         directory_path = _resolve_relative_path(
             frontend_root,
             directory_token,
@@ -234,17 +221,17 @@ def _collection_source_rows(
                 "type": collection_type,
                 "directory": directory_token,
                 "pattern": pattern,
-                "sort_by": _as_text(collection_payload.get("sort_by")),
-                "sort_order": _as_text(collection_payload.get("sort_order")) or "asc",
+                "sort_by": as_text(collection_payload.get("sort_by")),
+                "sort_order": as_text(collection_payload.get("sort_order")) or "asc",
                 "source_files": [item["relative_path"] for item in sources],
                 "source_count": len(sources),
             }
         )
         return collection_rows, sources, issues
     if collection_type == "markdown_documents":
-        for raw_item in _as_list(collection_payload.get("items")):
-            item = _as_dict(raw_item)
-            source_token = _as_text(item.get("source"))
+        for raw_item in as_list(collection_payload.get("items")):
+            item = as_dict(raw_item)
+            source_token = as_text(item.get("source"))
             if not source_token:
                 continue
             source_path = _resolve_relative_path(
@@ -276,7 +263,7 @@ def _collection_source_rows(
                         severity="warning",
                         code="collection_source_missing",
                         message="Markdown document source file is missing.",
-                        path=_as_text(row.get("path")),
+                        path=as_text(row.get("path")),
                         context=collection_id,
                     )
                 )
@@ -301,39 +288,39 @@ def _collection_source_rows(
 
 
 def _normalize_footer(footer_payload: object) -> dict[str, Any]:
-    footer = _as_dict(footer_payload)
-    columns = [dict(item) for item in _as_list(footer.get("columns")) if isinstance(item, dict)]
+    footer = as_dict(footer_payload)
+    columns = [dict(item) for item in as_list(footer.get("columns")) if isinstance(item, dict)]
     return {
-        "copyright": _as_text(footer.get("copyright")),
+        "copyright": as_text(footer.get("copyright")),
         "column_count": len(columns),
         "column_templates": [
-            _as_text(item.get("template")) or _as_text(item.get("class_name")) or "column"
+            as_text(item.get("template")) or as_text(item.get("class_name")) or "column"
             for item in columns
         ],
     }
 
 
 def _machine_surface_summary(manifest_payload: dict[str, Any]) -> dict[str, Any]:
-    machine_payload = _as_dict(manifest_payload.get("machine"))
+    machine_payload = as_dict(manifest_payload.get("machine"))
     if not machine_payload:
-        machine_payload = _as_dict(manifest_payload.get("machine_surfaces"))
+        machine_payload = as_dict(manifest_payload.get("machine_surfaces"))
     if not machine_payload:
         return {}
 
-    inpage = _as_dict(machine_payload.get("inpage"))
-    pages = _as_dict(machine_payload.get("pages"))
-    endpoint_maps = _as_dict(machine_payload.get("endpoint_maps"))
-    blocks = [item for item in _as_list(inpage.get("blocks")) if isinstance(item, dict)]
-    endpoints = [item for item in _as_list(pages.get("endpoints")) if isinstance(item, dict)]
+    inpage = as_dict(machine_payload.get("inpage"))
+    pages = as_dict(machine_payload.get("pages"))
+    endpoint_maps = as_dict(machine_payload.get("endpoint_maps"))
+    blocks = [item for item in as_list(inpage.get("blocks")) if isinstance(item, dict)]
+    endpoints = [item for item in as_list(pages.get("endpoints")) if isinstance(item, dict)]
 
     return {
         "root_keys": sorted(machine_payload.keys()),
-        "inpage_root": _as_text(inpage.get("root")),
+        "inpage_root": as_text(inpage.get("root")),
         "inpage_block_count": len(blocks),
-        "inpage_block_ids": [_as_text(item.get("id")) for item in blocks if _as_text(item.get("id"))],
-        "pages_root": _as_text(pages.get("root")),
+        "inpage_block_ids": [as_text(item.get("id")) for item in blocks if as_text(item.get("id"))],
+        "pages_root": as_text(pages.get("root")),
         "endpoint_count": len(endpoints),
-        "endpoint_rels": [_as_text(item.get("rel")) for item in endpoints if _as_text(item.get("rel"))],
+        "endpoint_rels": [as_text(item.get("rel")) for item in endpoints if as_text(item.get("rel"))],
         "endpoint_maps": endpoint_maps,
     }
 
@@ -347,30 +334,30 @@ def _normalize_manifest(
     render_script_relative_path: str,
     frontend_root: Path,
 ) -> tuple[dict[str, Any], list[dict[str, Any]], list[dict[str, str]], list[str]]:
-    schema = _as_text(manifest_payload.get("schema"))
+    schema = as_text(manifest_payload.get("schema"))
     issues: list[dict[str, str]] = []
     evidence: list[str] = []
-    site_payload = _as_dict(manifest_payload.get("site"))
+    site_payload = as_dict(manifest_payload.get("site"))
     navigation = _navigation_items(manifest_payload.get("navigation"))
     footer = _normalize_footer(manifest_payload.get("footer"))
-    collections_payload = _as_dict(manifest_payload.get("collections"))
+    collections_payload = as_dict(manifest_payload.get("collections"))
     known_collection_ids = {str(key) for key in collections_payload.keys()}
     collection_rows: list[dict[str, Any]] = []
     collection_sources: list[dict[str, Any]] = []
     for collection_id, raw_collection in collections_payload.items():
-        collection_payload = _as_dict(raw_collection)
-        collection_type = _as_text(collection_payload.get("type"))
+        collection_payload = as_dict(raw_collection)
+        collection_type = as_text(collection_payload.get("type"))
         try:
             rows, sources, next_issues = _collection_source_rows(
                 frontend_root=frontend_root,
-                collection_id=_as_text(collection_id),
+                collection_id=as_text(collection_id),
                 collection_type=collection_type,
                 collection_payload=collection_payload,
             )
         except ValueError as exc:
             rows = [
                 {
-                    "id": _as_text(collection_id),
+                    "id": as_text(collection_id),
                     "type": collection_type,
                     "source_files": [],
                     "source_count": 0,
@@ -382,30 +369,30 @@ def _normalize_manifest(
                     severity="warning",
                     code="collection_path_invalid",
                     message=str(exc),
-                    context=_as_text(collection_id),
+                    context=as_text(collection_id),
                 )
             ]
         collection_rows.extend(rows)
         collection_sources.extend(sources)
         issues.extend(next_issues)
 
-    pages_payload = _as_dict(manifest_payload.get("pages"))
+    pages_payload = as_dict(manifest_payload.get("pages"))
     pages = _page_rows(pages_payload, known_collection_ids=known_collection_ids)
     extensions: dict[str, Any]
     if schema == "webdz.site_content.v2":
         evidence.append("Mapped webdz.site_content.v2 site shell, navigation, footer, pages, and collections into the shared read model.")
         extensions = {
             "schema": schema,
-            "site_shell": _as_dict(site_payload.get("shell")),
-            "stylesheets": [str(item) for item in _as_list(site_payload.get("stylesheets")) if _as_text(item)],
-            "scripts": [str(item) for item in _as_list(site_payload.get("scripts")) if _as_text(item)],
+            "site_shell": as_dict(site_payload.get("shell")),
+            "stylesheets": [str(item) for item in as_list(site_payload.get("stylesheets")) if as_text(item)],
+            "scripts": [str(item) for item in as_list(site_payload.get("scripts")) if as_text(item)],
         }
     elif schema == "webdz.site_content.v3":
         evidence.append("Mapped webdz.site_content.v3 site shell, icon sets, footer columns, pages, and collections into the shared read model.")
         extensions = {
             "schema": schema,
-            "site_shell": _as_dict(site_payload.get("shell")),
-            "icons": _as_dict(manifest_payload.get("icons")),
+            "site_shell": as_dict(site_payload.get("shell")),
+            "icons": as_dict(manifest_payload.get("icons")),
         }
     else:
         issues.append(
@@ -429,9 +416,9 @@ def _normalize_manifest(
             "domain": domain,
             "label": label,
             "schema": schema,
-            "name": _as_text(site_payload.get("name")),
-            "description": _as_text(site_payload.get("description")),
-            "homepage_href": _as_text(site_payload.get("homepage_href")),
+            "name": as_text(site_payload.get("name")),
+            "description": as_text(site_payload.get("description")),
+            "homepage_href": as_text(site_payload.get("homepage_href")),
             "manifest_relative_path": manifest_relative_path,
             "render_script_relative_path": render_script_relative_path,
         },
@@ -471,7 +458,7 @@ class FilesystemFndDcmReadOnlyAdapter(FndDcmReadOnlyPort):
         warnings: list[str] = []
         for profile_path in self._profile_paths():
             payload = _safe_json_object(profile_path)
-            schema = _as_text(payload.get("schema"))
+            schema = as_text(payload.get("schema"))
             if schema != FND_DCM_PROFILE_SCHEMA:
                 warnings.append(f"Skipping unsupported FND-DCM profile schema in {profile_path.name}")
                 continue
@@ -480,9 +467,9 @@ class FilesystemFndDcmReadOnlyAdapter(FndDcmReadOnlyPort):
             except ValueError:
                 warnings.append(f"Skipping invalid FND-DCM profile domain in {profile_path.name}")
                 continue
-            label = _as_text(payload.get("label")) or domain
-            manifest_relative_path = _as_text(payload.get("manifest_relative_path"))
-            render_script_relative_path = _as_text(payload.get("render_script_relative_path"))
+            label = as_text(payload.get("label")) or domain
+            manifest_relative_path = as_text(payload.get("manifest_relative_path"))
+            render_script_relative_path = as_text(payload.get("render_script_relative_path"))
             frontend_root = self._webapps_root / "clients" / domain / "frontend"
             issues: list[dict[str, str]] = []
             normalization_evidence: list[str] = []
@@ -493,7 +480,7 @@ class FilesystemFndDcmReadOnlyAdapter(FndDcmReadOnlyPort):
                     field_name="manifest_relative_path",
                 )
             except ValueError as exc:
-                manifest_path = frontend_root / _as_text(manifest_relative_path)
+                manifest_path = frontend_root / as_text(manifest_relative_path)
                 issues.append(
                     _issue(
                         severity="error",
@@ -510,7 +497,7 @@ class FilesystemFndDcmReadOnlyAdapter(FndDcmReadOnlyPort):
                     field_name="render_script_relative_path",
                 )
             except ValueError as exc:
-                render_script_path = frontend_root / _as_text(render_script_relative_path)
+                render_script_path = frontend_root / as_text(render_script_relative_path)
                 issues.append(
                     _issue(
                         severity="error",
@@ -586,21 +573,21 @@ class FilesystemFndDcmReadOnlyAdapter(FndDcmReadOnlyPort):
                     "render_script_relative_path": render_script_relative_path,
                     "manifest_path": str(manifest_path),
                     "render_script_path": str(render_script_path),
-                    "manifest_schema": _as_text(projection.get("site", {}).get("schema")),
+                    "manifest_schema": as_text(projection.get("site", {}).get("schema")),
                     "raw_manifest": raw_manifest,
                     "projection": projection,
                     "collection_sources": collection_sources,
                     "normalization_evidence": normalization_evidence,
                     "issues": issues,
                     "warnings": [
-                        _as_text(issue.get("message"))
+                        as_text(issue.get("message"))
                         for issue in issues
-                        if _as_text(issue.get("severity")).lower() == "warning"
+                        if as_text(issue.get("severity")).lower() == "warning"
                     ],
                 }
             )
 
-        profiles.sort(key=lambda item: (0 if item.get("domain") == request.site else 1, _as_text(item.get("label")).lower()))
+        profiles.sort(key=lambda item: (0 if item.get("domain") == request.site else 1, as_text(item.get("label")).lower()))
         payload = {
             "portal_tenant_id": request.portal_tenant_id,
             "profiles": profiles,

@@ -27,12 +27,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     normalize_runtime_surface_request_payload,
 )
 from MyCiteV2.packages.tools.workbench_ui import WorkbenchUiReadService
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 def _path_or_none(path: str | Path | None) -> Path | None:
     if path is None:
@@ -82,7 +77,7 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
 def _surface_query(base_query: dict[str, Any], **updates: object) -> dict[str, str]:
     merged = dict(base_query)
     for key, value in updates.items():
-        token = _as_text(value)
+        token = as_text(value)
         if token:
             merged[key] = token
         else:
@@ -114,7 +109,7 @@ def _control_entry(
         "label": label,
         "href": request["href"],
         "active": active,
-        "meta": _as_text(meta),
+        "meta": as_text(meta),
         "shell_request": request["shell_request"],
     }
 
@@ -248,7 +243,7 @@ def build_portal_workbench_ui_surface_bundle(
                 "label": label,
                 "href": item.get("href", "#"),
                 "shell_request": item.get("shell_request"),
-                "meta": _as_text(item.get("label")) or _as_text(item.get("id")) or "—",
+                "meta": as_text(item.get("label")) or as_text(item.get("id")) or "—",
             }
         )
 
@@ -259,26 +254,26 @@ def build_portal_workbench_ui_surface_bundle(
         "title": "Control Panel",
         "surface_label": "WORKBENCH UI",
         "context_items": [
-            {"label": "Document", "value": _as_text(model.get("document_id")) or "—"},
-            {"label": "Version", "value": _as_text(model.get("document_version_hash_short")) or "—"},
-            {"label": "Selected Row", "value": _as_text((model.get("selected_row") or {}).get("datum_address")) or "—"},
-            {"label": "Row Identity", "value": _as_text(model.get("selected_row_hyphae_hash_short")) or "—"},
-            {"label": "Resolved Lens", "value": _as_text((model.get("selected_row") or {}).get("resolved_lens")) or "—"},
+            {"label": "Document", "value": as_text(model.get("document_id")) or "—"},
+            {"label": "Version", "value": as_text(model.get("document_version_hash_short")) or "—"},
+            {"label": "Selected Row", "value": as_text((model.get("selected_row") or {}).get("datum_address")) or "—"},
+            {"label": "Row Identity", "value": as_text(model.get("selected_row_hyphae_hash_short")) or "—"},
+            {"label": "Resolved Lens", "value": as_text((model.get("selected_row") or {}).get("resolved_lens")) or "—"},
             {
                 "label": "Document Sort",
                 "value": (
-                    f"{_as_text(model.get('document_sort_key')) or 'version_hash'}:"
-                    f"{_as_text(model.get('document_sort_direction')) or 'asc'}"
+                    f"{as_text(model.get('document_sort_key')) or 'version_hash'}:"
+                    f"{as_text(model.get('document_sort_direction')) or 'asc'}"
                 ),
             },
             {
                 "label": "Row Sort",
-                "value": f"{_as_text(model.get('sort_key')) or 'datum_address'}:{_as_text(model.get('sort_direction')) or 'asc'}",
+                "value": f"{as_text(model.get('sort_key')) or 'datum_address'}:{as_text(model.get('sort_direction')) or 'asc'}",
             },
-            {"label": "Grouping", "value": _as_text(model.get("group_mode")) or "flat"},
-            {"label": "Lens", "value": _as_text(model.get("workbench_lens")) or "interpreted"},
-            {"label": "Source", "value": _as_text(model.get("source_visibility")) or "show"},
-            {"label": "Overlay", "value": _as_text(model.get("overlay_visibility")) or "show"},
+            {"label": "Grouping", "value": as_text(model.get("group_mode")) or "flat"},
+            {"label": "Lens", "value": as_text(model.get("workbench_lens")) or "interpreted"},
+            {"label": "Source", "value": as_text(model.get("source_visibility")) or "show"},
+            {"label": "Overlay", "value": as_text(model.get("overlay_visibility")) or "show"},
         ],
         "verb_tabs": [],
         "groups": [
@@ -286,13 +281,13 @@ def build_portal_workbench_ui_surface_bundle(
                 "title": "Documents",
                 "entries": [
                     {
-                        "label": _as_text(document.get("label")) or _as_text(document.get("document_id")) or "Document",
+                        "label": as_text(document.get("label")) or as_text(document.get("document_id")) or "Document",
                         "href": document.get("href", "#"),
                         "shell_request": document.get("shell_request"),
                         "active": bool(document.get("selected")),
                         "meta": (
-                            f"{_as_text(document.get('source_kind')) or '—'} · "
-                            f"{_as_text(document.get('version_hash_short')) or '—'} · "
+                            f"{as_text(document.get('source_kind')) or '—'} · "
+                            f"{as_text(document.get('version_hash_short')) or '—'} · "
                             f"{document.get('row_count') or 0}"
                         ),
                     }
@@ -306,7 +301,7 @@ def build_portal_workbench_ui_surface_bundle(
                         label=f"sort {sort_key}",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, document_sort=sort_key),
-                        active=_as_text(model.get("document_sort_key")) == sort_key,
+                        active=as_text(model.get("document_sort_key")) == sort_key,
                     )
                     for sort_key in ("version_hash", "document_name", "document_id", "row_count", "source_kind")
                 ],
@@ -318,13 +313,13 @@ def build_portal_workbench_ui_surface_bundle(
                         label="asc",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, document_dir="asc"),
-                        active=_as_text(model.get("document_sort_direction")) != "desc",
+                        active=as_text(model.get("document_sort_direction")) != "desc",
                     ),
                     _control_entry(
                         label="desc",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, document_dir="desc"),
-                        active=_as_text(model.get("document_sort_direction")) == "desc",
+                        active=as_text(model.get("document_sort_direction")) == "desc",
                     ),
                 ],
             },
@@ -335,7 +330,7 @@ def build_portal_workbench_ui_surface_bundle(
                         label=f"sort {sort_key}",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, sort=sort_key),
-                        active=_as_text(model.get("sort_key")) == sort_key,
+                        active=as_text(model.get("sort_key")) == sort_key,
                     )
                     for sort_key in ("datum_address", "layer", "value_group", "iteration", "labels", "relation", "object_ref", "hyphae_hash")
                 ],
@@ -347,13 +342,13 @@ def build_portal_workbench_ui_surface_bundle(
                         label="asc",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, dir="asc"),
-                        active=_as_text(model.get("sort_direction")) != "desc",
+                        active=as_text(model.get("sort_direction")) != "desc",
                     ),
                     _control_entry(
                         label="desc",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, dir="desc"),
-                        active=_as_text(model.get("sort_direction")) == "desc",
+                        active=as_text(model.get("sort_direction")) == "desc",
                     ),
                 ],
             },
@@ -364,7 +359,7 @@ def build_portal_workbench_ui_surface_bundle(
                         label=group_mode.replace("_", " "),
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, group=group_mode),
-                        active=_as_text(model.get("group_mode")) == group_mode,
+                        active=as_text(model.get("group_mode")) == group_mode,
                     )
                     for group_mode in ("flat", "layer", "layer_value_group", "layer_value_group_iteration")
                 ],
@@ -376,7 +371,7 @@ def build_portal_workbench_ui_surface_bundle(
                         label=lens,
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, workbench_lens=lens),
-                        active=_as_text(model.get("workbench_lens")) == lens,
+                        active=as_text(model.get("workbench_lens")) == lens,
                     )
                     for lens in ("interpreted", "raw")
                 ],
@@ -388,13 +383,13 @@ def build_portal_workbench_ui_surface_bundle(
                         label="show source",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, source="show"),
-                        active=_as_text(model.get("source_visibility")) != "hide",
+                        active=as_text(model.get("source_visibility")) != "hide",
                     ),
                     _control_entry(
                         label="hide source",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, source="hide"),
-                        active=_as_text(model.get("source_visibility")) == "hide",
+                        active=as_text(model.get("source_visibility")) == "hide",
                     ),
                 ],
             },
@@ -405,13 +400,13 @@ def build_portal_workbench_ui_surface_bundle(
                         label="show overlay",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, overlay="show"),
-                        active=_as_text(model.get("overlay_visibility")) != "hide",
+                        active=as_text(model.get("overlay_visibility")) != "hide",
                     ),
                     _control_entry(
                         label="hide overlay",
                         portal_scope=portal_scope,
                         surface_query=_surface_query(active_query, overlay="hide"),
-                        active=_as_text(model.get("overlay_visibility")) == "hide",
+                        active=as_text(model.get("overlay_visibility")) == "hide",
                     ),
                 ],
             },
@@ -446,7 +441,7 @@ def build_portal_workbench_ui_surface_bundle(
         "visible": True,
         "subject": {
             "level": "datum",
-            "id": _as_text((model.get("selected_row") or {}).get("datum_address")) or _as_text(model.get("document_id")),
+            "id": as_text((model.get("selected_row") or {}).get("datum_address")) or as_text(model.get("document_id")),
         },
         "sections": list(model.get("inspector_sections") or []),
         },

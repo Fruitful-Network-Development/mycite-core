@@ -378,7 +378,7 @@
             dispatchFromNode(node, event);
           }
         });
-      });
+      }
     });
   }
 
@@ -560,7 +560,17 @@
   window.PortalSystemWorkspaceRenderer = {
     render: renderWorkspace,
   };
+  console.log("[system_workspace] About to register. window.PortalSystemWorkspaceRenderer exists:", !!window.PortalSystemWorkspaceRenderer, "render callable:", typeof window.PortalSystemWorkspaceRenderer.render);
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
-    window.__MYCITE_V2_REGISTER_SHELL_MODULE("system_workspace");
+    var registered = window.__MYCITE_V2_REGISTER_SHELL_MODULE("system_workspace");
+    console.log("[system_workspace] Registration returned:", registered);
+    if (!registered) {
+      console.error("[system_workspace] Registration FAILED. Checking diagnostics...");
+      if (typeof window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS === "function") {
+        console.error("[system_workspace] Diagnostics:", window.__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS("system_workspace"));
+      }
+    }
+  } else {
+    console.error("[system_workspace] __MYCITE_V2_REGISTER_SHELL_MODULE is not a function!");
   }
 })();

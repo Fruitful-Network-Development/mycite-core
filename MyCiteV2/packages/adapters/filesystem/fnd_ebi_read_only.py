@@ -14,6 +14,7 @@ from ...ports.fnd_ebi_read_only import (
     NDJSON_KIND_COUNTS_KEY,
     classify_ndjson_log_kind,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 FND_EBI_PROFILE_SCHEMA = "mycite.service_tool.fnd_ebi.profile.v1"
 DEFAULT_WEBAPPS_ROOT = Path("/srv/webapps")
@@ -82,14 +83,8 @@ _SUSPICIOUS_PATH_TOKENS = (
 _ERROR_LEVEL_TOKENS = ("emerg", "alert", "crit", "error", "warn", "notice", "info", "debug")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_domain(value: object) -> str:
-    token = _as_text(value).lower()
+    token = as_text(value).lower()
     if not token or "." not in token or "/" in token or "\\" in token or ".." in token:
         raise ValueError("fnd_ebi profile domain must be a plain domain-like value")
     return token
@@ -121,7 +116,7 @@ def _status_bucket(status_code: int) -> str:
 
 
 def _strip_query(path_token: str) -> str:
-    value = _as_text(path_token)
+    value = as_text(path_token)
     if "?" in value:
         value = value.split("?", 1)[0]
     return value or "/"
@@ -136,21 +131,21 @@ def _is_asset_path(path_token: str) -> bool:
 
 
 def _is_bot_user_agent(user_agent: str) -> bool:
-    lower = _as_text(user_agent).lower()
+    lower = as_text(user_agent).lower()
     if not lower:
         return False
     return any(token in lower for token in _BOT_TOKENS)
 
 
 def _is_suspicious_probe(path_token: str) -> bool:
-    lower = _as_text(path_token).lower()
+    lower = as_text(path_token).lower()
     if not lower:
         return False
     return any(token in lower for token in _SUSPICIOUS_PATH_TOKENS)
 
 
 def _parse_nginx_timestamp(value: object) -> datetime | None:
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return None
     try:
@@ -172,7 +167,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             return datetime.fromtimestamp(number, tz=timezone.utc)
         except Exception:
             return None
-    token = _as_text(value)
+    token = as_text(value)
     if not token:
         return None
     if token.isdigit():
@@ -215,13 +210,13 @@ def _event_session_id(payload: dict[str, Any]) -> str:
         "request_id",
         "remote_addr",
     ):
-        token = _as_text(payload.get(key))
+        token = as_text(payload.get(key))
         if token:
             return token
     nested_payload = payload.get("payload")
     if isinstance(nested_payload, dict):
         for key in ("session_id", "sessionId", "visitor_id", "visitorId"):
-            token = _as_text(nested_payload.get(key))
+            token = as_text(nested_payload.get(key))
             if token:
                 return token
     return ""
@@ -255,17 +250,17 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
         if not match:
             parse_errors += 1
             continue
-        ip = _as_text(match.group("ip"))
+        ip = as_text(match.group("ip"))
         ts = _parse_nginx_timestamp(match.group("ts"))
-        request_line = _as_text(match.group("request"))
-        status_token = _as_text(match.group("status"))
-        referrer = _as_text(match.groupdict().get("referrer"))
-        ua = _as_text(match.groupdict().get("ua"))
+        request_line = as_text(match.group("request"))
+        status_token = as_text(match.group("status"))
+        referrer = as_text(match.groupdict().get("referrer"))
+        ua = as_text(match.groupdict().get("ua"))
         if ts is not None and (last_seen is None or ts > last_seen):
             last_seen = ts
 
         req_match = _REQUEST_RE.match(request_line)
-        path_token = _strip_query(_as_text(req_match.group("path")) if req_match else "")
+        path_token = _strip_query(as_text(req_match.group("path")) if req_match else "")
         try:
             status_code = int(status_token)
         except Exception:
@@ -503,7 +498,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
             if not isinstance(members, list):
                 continue
             for item in members:
-                token = _as_text(item)
+                token = as_text(item)
                 if not token:
                     continue
                 member_path = (root / token).resolve()
@@ -535,7 +530,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
             return None
         if not isinstance(payload, dict):
             return None
-        if _as_text(payload.get("schema")) != FND_EBI_PROFILE_SCHEMA:
+        if as_text(payload.get("schema")) != FND_EBI_PROFILE_SCHEMA:
             return None
         return payload
 
@@ -557,7 +552,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
         year_month: str,
     ) -> tuple[dict[str, Path | None], list[str]]:
         warnings: list[str] = []
-        site_root_token = _as_text(site_root)
+        site_root_token = as_text(site_root)
         if not site_root_token:
             warnings.append("site_root is missing from the FND-EBI profile")
             return {
@@ -632,7 +627,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
     ) -> dict[str, Any]:
         now_utc = self._now_utc or datetime.now(timezone.utc)
         domain = _normalize_domain(payload.get("domain"))
-        site_root = _as_text(payload.get("site_root"))
+        site_root = as_text(payload.get("site_root"))
         derived, warnings = self._derive_paths(domain=domain, site_root=site_root, year_month=year_month)
         analytics_root = derived.get("analytics_root")
         access_path = derived.get("access_log")
@@ -688,7 +683,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
             empty_state="no_events_written",
         )
 
-        warnings = list(dict.fromkeys(_as_text(item) for item in warnings if _as_text(item)))
+        warnings = list(dict.fromkeys(as_text(item) for item in warnings if as_text(item)))
         health_label = "ready" if not warnings and access_state["state"] == "ready" else "attention_required"
 
         return {
@@ -702,9 +697,9 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
             "error_log": error_state,
             "events_file": events_state,
             "freshness": {
-                "access_last_seen_utc": _as_text(access_summary.get("last_seen_utc")),
-                "error_last_seen_utc": _as_text(error_summary.get("last_seen_utc")),
-                "events_last_seen_utc": _as_text(events_summary.get("last_seen_utc")),
+                "access_last_seen_utc": as_text(access_summary.get("last_seen_utc")),
+                "error_last_seen_utc": as_text(error_summary.get("last_seen_utc")),
+                "events_last_seen_utc": as_text(events_summary.get("last_seen_utc")),
             },
             "traffic": {
                 "requests_24h": int(access_summary.get("requests_24h") or 0),

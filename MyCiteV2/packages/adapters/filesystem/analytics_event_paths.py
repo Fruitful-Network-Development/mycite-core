@@ -5,26 +5,21 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 DEFAULT_WEBAPPS_ROOT = Path("/srv/webapps")
 YEAR_MONTH_PATTERN = re.compile(r"^[0-9]{4}-[0-9]{2}$")
 
 
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
 def _normalize_domain(domain: object) -> str:
-    token = _as_text(domain).lower()
+    token = as_text(domain).lower()
     if not token or "/" in token or "\\" in token or ".." in token:
         raise ValueError("analytics domain must be a plain domain name")
     return token
 
 
 def _normalize_year_month(year_month: object) -> str:
-    token = _as_text(year_month)
+    token = as_text(year_month)
     if not YEAR_MONTH_PATTERN.match(token):
         raise ValueError("analytics year_month must use YYYY-MM")
     return token

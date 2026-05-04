@@ -4,12 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from MyCiteV2.packages.core.datum_refs import normalize_datum_ref, parse_datum_ref
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def normalize_attention(value: object, *, field_name: str = "attention") -> str:
@@ -32,10 +27,10 @@ class AitasContext:
         if self.attention:
             normalized_attention = normalize_attention(self.attention, field_name="aitas.attention")
         object.__setattr__(self, "attention", normalized_attention)
-        object.__setattr__(self, "intention", _as_text(self.intention).lower())
-        object.__setattr__(self, "time", _as_text(self.time))
-        object.__setattr__(self, "archetype", _as_text(self.archetype))
-        object.__setattr__(self, "scope", _as_text(self.scope))
+        object.__setattr__(self, "intention", as_text(self.intention).lower())
+        object.__setattr__(self, "time", as_text(self.time))
+        object.__setattr__(self, "archetype", as_text(self.archetype))
+        object.__setattr__(self, "scope", as_text(self.scope))
 
     def to_dict(self) -> dict[str, str]:
         return {

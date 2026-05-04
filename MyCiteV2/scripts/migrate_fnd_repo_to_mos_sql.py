@@ -28,12 +28,7 @@ from MyCiteV2.packages.ports.datum_store import (
 )
 from MyCiteV2.packages.ports.portal_authority import PortalAuthoritySource
 from MyCiteV2.packages.state_machine.portal_shell import build_portal_tool_registry_entries
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _read_json_object(path: Path) -> dict[str, Any]:
@@ -45,13 +40,13 @@ def _read_json_object(path: Path) -> dict[str, Any]:
 
 def _default_capabilities(portal_instance_id: str) -> list[str]:
     capabilities = ["datum_recognition", "spatial_projection"]
-    if _as_text(portal_instance_id).lower() == "fnd":
+    if as_text(portal_instance_id).lower() == "fnd":
         capabilities.extend(["fnd_peripheral_routing", "hosted_site_manifest_visibility", "hosted_site_visibility"])
     return capabilities
 
 
 def classify_data_path(relative_path: str) -> str:
-    rel = _as_text(relative_path)
+    rel = as_text(relative_path)
     if rel == "system/anthology.json":
         return "authoritative_import"
     if rel.startswith("sandbox/") and "/sources/" in rel and rel.endswith(".json"):
@@ -471,8 +466,8 @@ def main() -> int:
         data_root=Path(args.data_root),
         portal_config_path=Path(args.portal_config),
         authority_db_file=Path(args.authority_db),
-        tenant_id=_as_text(args.tenant_id).lower(),
-        tenant_domain=_as_text(args.tenant_domain).lower(),
+        tenant_id=as_text(args.tenant_id).lower(),
+        tenant_domain=as_text(args.tenant_domain).lower(),
         apply=bool(args.apply),
         directive_context_manifest=Path(args.directive_context_manifest) if args.directive_context_manifest else None,
         audit_storage_file=Path(args.audit_storage_file) if args.audit_storage_file else None,

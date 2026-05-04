@@ -61,12 +61,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     resolve_portal_shell_request,
     SYSTEM_SURFACE_IDS,
 )
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 
 def _path_or_none(path: str | Path | None) -> Path | None:
@@ -398,9 +393,9 @@ def _utilities_control_panel(
 
 def _metric_card(label: str, value: object, *, meta: object = "") -> dict[str, str]:
     return {
-        "label": _as_text(label),
-        "value": _as_text(value) or "—",
-        "meta": _as_text(meta),
+        "label": as_text(label),
+        "value": as_text(value) or "—",
+        "meta": as_text(meta),
     }
 
 
@@ -459,7 +454,7 @@ def _network_entry(
         "href": href,
         "active": active,
     }
-    meta_text = _as_text(meta)
+    meta_text = as_text(meta)
     if meta_text:
         entry["meta"] = meta_text
     if shell_request is not None:
@@ -486,10 +481,10 @@ def _network_control_panel(
     )
     event_entries = []
     for row in event_type_filters:
-        event_type_id = _as_text(row.get("event_type_id"))
+        event_type_id = as_text(row.get("event_type_id"))
         event_entries.append(
             _network_entry(
-                label=_as_text(row.get("label") or event_type_id) or "Event Type",
+                label=as_text(row.get("label") or event_type_id) or "Event Type",
                 href=f"/portal/network?view=system_logs&type={event_type_id}",
                 active=bool(row.get("active")),
                 meta=f"{int(row.get('count') or 0)} row(s)",
@@ -503,13 +498,13 @@ def _network_control_panel(
         )
     contract_entries = []
     for row in contract_filters:
-        contract_id = _as_text(row.get("contract_id"))
+        contract_id = as_text(row.get("contract_id"))
         contract_entries.append(
             _network_entry(
                 label=contract_id or "Contract",
                 href=f"/portal/network?view=system_logs&contract={contract_id}",
                 active=bool(row.get("active")),
-                meta=f"{_as_text(row.get('relationship_kind')) or 'contract'} · {int(row.get('count') or 0)} row(s)",
+                meta=f"{as_text(row.get('relationship_kind')) or 'contract'} · {int(row.get('count') or 0)} row(s)",
                 shell_request=build_portal_shell_request_payload(
                     requested_surface_id=NETWORK_ROOT_SURFACE_ID,
                     portal_scope=portal_scope,
@@ -526,8 +521,8 @@ def _network_control_panel(
         "context_items": [
             {"label": "Root", "value": "NETWORK"},
             {"label": "View", "value": "system_logs"},
-            {"label": "Contract", "value": _as_text(active_filters.get("contract_id")) or "all"},
-            {"label": "Type", "value": _as_text(active_filters.get("event_type_id")) or "all"},
+            {"label": "Contract", "value": as_text(active_filters.get("contract_id")) or "all"},
+            {"label": "Type", "value": as_text(active_filters.get("event_type_id")) or "all"},
         ],
         "verb_tabs": [],
         "groups": [
@@ -537,7 +532,7 @@ def _network_control_panel(
                     _network_entry(
                         label="System Logs",
                         href="/portal/network?view=system_logs",
-                        active=not _as_text(active_filters.get("contract_id")) and not _as_text(active_filters.get("event_type_id")),
+                        active=not as_text(active_filters.get("contract_id")) and not as_text(active_filters.get("event_type_id")),
                         meta="canonical workbench",
                         shell_request=system_log_request,
                     )
@@ -560,8 +555,8 @@ def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "network_system_log_workbench",
-        "title": _as_text(surface_payload.get("title")) or "Network",
-        "subtitle": _as_text(surface_payload.get("subtitle")),
+        "title": as_text(surface_payload.get("title")) or "Network",
+        "subtitle": as_text(surface_payload.get("subtitle")),
         "visible": True,
         "surface_payload": surface_payload,
     }
@@ -571,8 +566,8 @@ def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
     workspace = dict(surface_payload.get("workspace") or {})
     selected_record = workspace.get("selected_record")
     subject = None
-    if isinstance(selected_record, dict) and _as_text(selected_record.get("datum_address")):
-        subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
+    if isinstance(selected_record, dict) and as_text(selected_record.get("datum_address")):
+        subject = {"level": "record", "id": as_text(selected_record.get("datum_address"))}
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "summary_panel",
@@ -654,8 +649,8 @@ def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True)
     return {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "surface_payload",
-        "title": _as_text(surface_payload.get("title")) or "Surface",
-        "subtitle": _as_text(surface_payload.get("subtitle")),
+        "title": as_text(surface_payload.get("title")) or "Surface",
+        "subtitle": as_text(surface_payload.get("subtitle")),
         "visible": visible,
         "surface_payload": surface_payload,
     }
@@ -670,8 +665,8 @@ def _generic_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "summary_panel",
-        "title": _as_text(surface_payload.get("title")) or "Overview",
-        "summary": _as_text(surface_payload.get("subtitle")),
+        "title": as_text(surface_payload.get("title")) or "Overview",
+        "summary": as_text(surface_payload.get("subtitle")),
         "sections": sections,
     }
 
@@ -1009,8 +1004,8 @@ def _bundle_for_surface(
     return {
         "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
         "read_write_posture": "read-only",
-        "page_title": _as_text(surface_payload.get("title")) or "Utilities",
-        "page_subtitle": _as_text(surface_payload.get("subtitle")),
+        "page_title": as_text(surface_payload.get("title")) or "Utilities",
+        "page_subtitle": as_text(surface_payload.get("subtitle")),
         "surface_payload": surface_payload,
         "control_panel": attach_region_family_contract(
             _utilities_control_panel(
@@ -1072,9 +1067,9 @@ def run_portal_shell_entry(
         authority_db_file=authority_db_file,
         authority_mode=authority_mode,
     )
-    canonical_route = _as_text(bundle.get("canonical_route")) or selection.canonical_route
+    canonical_route = as_text(bundle.get("canonical_route")) or selection.canonical_route
     canonical_query = dict(bundle.get("canonical_query") or selection.canonical_query)
-    canonical_url = _as_text(bundle.get("canonical_url")) or build_canonical_url(
+    canonical_url = as_text(bundle.get("canonical_url")) or build_canonical_url(
         surface_id=selection.active_surface_id,
         query=canonical_query,
     )
@@ -1139,7 +1134,7 @@ def run_system_profile_basics_action(
     authority_mode: str = "sql_primary",
 ) -> dict[str, Any]:
     payload = dict(request_payload or {})
-    if _as_text(payload.get("schema")) != SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA:
+    if as_text(payload.get("schema")) != SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA:
         raise ValueError(f"request.schema must be {SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA}")
     _normalize_authority_mode(authority_mode)
     portal_scope = _portal_scope_from_request(

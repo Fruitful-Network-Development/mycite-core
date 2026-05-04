@@ -23,7 +23,14 @@ def as_dict_list(value: object) -> list[dict[str, Any]]:
     return [dict(item) for item in value if isinstance(item, dict)]
 
 
+def as_bool(value: object) -> bool:
+    if value is None:
+        return False
+    return bool(value)
+
+
 __all__ = [
+    "as_bool",
     "as_dict",
     "as_dict_list",
     "as_list",
