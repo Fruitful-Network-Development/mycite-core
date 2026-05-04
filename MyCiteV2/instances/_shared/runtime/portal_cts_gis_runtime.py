@@ -99,6 +99,7 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "insert_datum",
         "reorder_datum",
         "validate_manipulation_stage",
+        "soundness_check",
     }
 )
 
@@ -198,6 +199,16 @@ def _staged_insert_state(payload: object) -> dict[str, Any]:
         if isinstance(state.get("compiled_nimm_envelope"), dict)
         else {}
     )
+    last_error = (
+        dict(state.get("last_error"))
+        if isinstance(state.get("last_error"), dict)
+        else {}
+    )
+    soundness_report = (
+        dict(state.get("soundness_report"))
+        if isinstance(state.get("soundness_report"), dict)
+        else {}
+    )
     return {
         "schema": _as_text(state.get("schema")) or CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
         "draft_text": _as_text(state.get("draft_text")),
@@ -208,6 +219,8 @@ def _staged_insert_state(payload: object) -> dict[str, Any]:
         "last_preview": last_preview,
         "structure_operation": structure_operation,
         "compiled_nimm_envelope": compiled_nimm_envelope,
+        "last_error": last_error,
+        "soundness_report": soundness_report,
     }
 
 
@@ -950,6 +963,9 @@ def _build_source_evidence(
     administrative_payload_cache = _evidence_path_payload(administrative_cache_path)
     if administrative_payload_cache["payload"]:
         administrative_payload_cache["payload_id"] = _as_text(administrative_payload_cache["payload"].get("payload_id"))
+    sos_voterid_path = _cts_gis_source_path(data_dir, document_name="sc.3-2-3-17-77-1-6-4-1-4.sos_voterid.json")
+    sos_voterid_source = _evidence_path_payload(sos_voterid_path)
+    sos_voterid_source["document_name"] = "sc.3-2-3-17-77-1-6-4-1-4.sos_voterid.json"
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
 
     samras_seed_status = _as_text(selected_document.get("samras_seed_status"))
@@ -973,6 +989,7 @@ def _build_source_evidence(
         "registrar_payload": registrar_payload,
         "administrative_source": administrative_source,
         "administrative_payload_cache": administrative_payload_cache,
+        "sos_voterid_source": sos_voterid_source,
         "source_layout": dict(source_layout or {}),
         "payload_corpus": {
             "corpus_prefix": corpus_prefix,
@@ -2492,6 +2509,8 @@ def _cts_gis_staging_widget(
         "preview": dict(stage_state.get("last_preview") or {}),
         "compiled_nimm_envelope": dict(stage_state.get("compiled_nimm_envelope") or {}),
         "compound_directives": dict((stage_state.get("compiled_nimm_envelope") or {}).get("compound_directives") or {}),
+        "last_error": dict(stage_state.get("last_error") or {}),
+        "soundness_report": dict(stage_state.get("soundness_report") or {}),
         "action_result": dict(action_result or {}),
         "actions": {
             "stage": _tool_action("stage"),
@@ -2504,8 +2523,52 @@ def _cts_gis_staging_widget(
             "preview_apply": _tool_action("preview_apply"),
             "apply_stage": _tool_action("apply_stage"),
             "discard_stage": _tool_action("discard_stage"),
+            "soundness_check": _tool_action("soundness_check"),
         },
+        "datum_source_browser": _build_datum_source_browser(source_evidence),
         "ready": bool(document_id and selected_node_id),
+    }
+
+
+def _build_datum_source_browser(source_evidence: dict[str, Any]) -> dict[str, Any]:
+    member_files = list((source_evidence.get("tool_anchor") or {}).get("member_files") or [])
+    sos_voterid_source = dict(source_evidence.get("sos_voterid_source") or {})
+    sos_voterid_available = bool(sos_voterid_source.get("exists"))
+    voterid_section = _build_voterid_datum_section(source_evidence)
+    return {
+        "kind": "datum_source_browser",
+        "title": "Source Datum Browser",
+        "available_sources": [{"name": f, "kind": "member_file"} for f in member_files],
+        "sos_voterid_available": sos_voterid_available,
+        "voterid_datum_section": voterid_section,
+        "empty_message": "" if (member_files or sos_voterid_available) else "No datum source documents found.",
+    }
+
+
+def _build_voterid_datum_section(source_evidence: dict[str, Any]) -> dict[str, Any]:
+    sos_voterid_source = dict(source_evidence.get("sos_voterid_source") or {})
+    exists = bool(sos_voterid_source.get("exists"))
+    datum_entries: list[dict[str, Any]] = []
+    if exists:
+        payload = dict(sos_voterid_source.get("payload") or {})
+        space = dict(payload.get("datum_addressing_abstraction_space") or {})
+        for datum_key in sorted(space.keys()):
+            raw = space[datum_key]
+            if not isinstance(raw, list) or len(raw) < 2:
+                continue
+            slug = raw[1][0] if isinstance(raw[1], list) and raw[1] else ""
+            datum_entries.append({
+                "datum_address": datum_key,
+                "slug": _as_text(slug),
+            })
+    return {
+        "kind": "voterid_datum_section",
+        "title": "Voter ID Source",
+        "document_name": _as_text(sos_voterid_source.get("document_name")),
+        "exists": exists,
+        "entry_count": len(datum_entries),
+        "datum_entries": datum_entries,
+        "empty_message": "" if exists else "No voter ID source document is available.",
     }
 
 
@@ -2731,6 +2794,7 @@ def _build_cts_gis_structured_interface_body(
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
         },
+        "voterid_datum_section": _build_voterid_datum_section(source_evidence),
     }
 
 
@@ -3628,6 +3692,17 @@ def _apply_cts_gis_action(
             )
             return next_tool_state, action_result, force_live_read
 
+        if action_kind == "soundness_check":
+            report = mutation_service.soundness_check(tenant_id=tenant_id)
+            next_tool_state["staged_insert"]["soundness_report"] = report
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted" if report.get("ok") else "warning",
+                message="MOS soundness check complete." if report.get("ok") else "MOS soundness check found issues.",
+                details=report,
+            )
+            return next_tool_state, action_result, False
+
         if action_kind == "expand_structure":
             structure_operation = dict(action_payload.get("structure_operation") or {})
             if not structure_operation:
@@ -3728,6 +3803,19 @@ def _apply_cts_gis_action(
             return next_tool_state, action_result, force_live_read
 
     except CtsGisMutationError as exc:
+        if action_kind == "apply_stage":
+            next_tool_state["staged_insert"]["last_error"] = {
+                "code": exc.code,
+                "message": str(exc),
+                "details": exc.details or {},
+            }
+            _append_sql_audit(
+                authority_db_file=authority_db_file,
+                event_type="portal.cts_gis.apply_stage.failed",
+                focus_subject=_cts_gis_audit_focus_subject(tool_state),
+                shell_verb="portal.cts_gis.apply_stage",
+                details={"code": exc.code, "message": str(exc)},
+            )
         return (
             next_tool_state,
             _cts_gis_action_result(
