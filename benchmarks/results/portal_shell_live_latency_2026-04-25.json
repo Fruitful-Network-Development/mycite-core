@@ -1,0 +1,22 @@
+{
+  "schema": "mycite.benchmarks.portal_shell_live_latency.v1",
+  "generated_at_utc": "2026-04-25T04:55:00Z",
+  "endpoint": "http://127.0.0.1:6101/portal/api/v2/shell",
+  "sample_count": 8,
+  "status_code": 200,
+  "response_bytes": 355132,
+  "samples_ms": [
+    53.796,
+    29.584,
+    30.674,
+    29.154,
+    29.15,
+    34.269,
+    29.465,
+    29.987
+  ],
+  "median_ms": 29.987,
+  "p95_ms": 34.269,
+  "max_ms": 53.796,
+  "min_ms": 29.15
+}

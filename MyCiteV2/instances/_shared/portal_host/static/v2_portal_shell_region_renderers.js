@@ -4,6 +4,10 @@
 (function () {
   var api = window.PortalShellRegionRenderers || (window.PortalShellRegionRenderers = {});
 
+  function toolSurfaceAdapter() {
+    return window.PortalToolSurfaceAdapter || {};
+  }
+
   function activityIconMarkup(iconId) {
     var id = String(iconId || "generic");
     var svg = "";
@@ -173,25 +177,117 @@
     return out;
   }
 
+  function firstMatchingEntry(entries, prefix) {
+    for (var index = 0; index < entries.length; index += 1) {
+      var entry = entries[index] || {};
+      if (String(entry.label || "").indexOf(prefix) === 0) return entry;
+    }
+    return {};
+  }
+
+  function ctsGisIntentionDisplay(entry) {
+    var token = String((entry && entry.prefix) || "").trim();
+    if (token === "self") return "1";
+    if (/^\d+(?:-\d+)*-0-0$/.test(token)) return "0-0";
+    if (/^\d+(?:-\d+)*-0$/.test(token)) return "0";
+    return String((entry && entry.label) || "").replace(/^Intention\s+\u00b7\s+/, "") || "1";
+  }
+
+  function deriveCtsGisDirectiveState(region) {
+    var groups = Array.isArray(region && region.groups) ? region.groups : [];
+    var stateGroup = null;
+    for (var index = 0; index < groups.length; index += 1) {
+      var candidate = groups[index] || {};
+      if (String(candidate.title || "") === "STATE DIRECTIVE") {
+        stateGroup = candidate;
+        break;
+      }
+    }
+    var entries = Array.isArray(stateGroup && stateGroup.entries) ? stateGroup.entries : [];
+    var nimmButtons = ["NAV", "INV", "MED", "MAN"].map(function (label) {
+      var entry = firstMatchingEntry(entries, label);
+      return {
+        label: label,
+        active: !!entry.active,
+      };
+    });
+    var intentionLevels = entries
+      .filter(function (entry) {
+        return String(entry.label || "").indexOf("Intention \u00b7 ") === 0;
+      })
+      .map(function (entry) {
+        return {
+          display: ctsGisIntentionDisplay(entry),
+          shell_request: entry.shell_request || null,
+          active: !!entry.active,
+        };
+      });
+    var activeIndex = 0;
+    for (var levelIndex = 0; levelIndex < intentionLevels.length; levelIndex += 1) {
+      if (intentionLevels[levelIndex].active) {
+        activeIndex = levelIndex;
+        break;
+      }
+    }
+    var attentionEntries = entries.filter(function (entry) {
+      return String(entry.label || "").indexOf("Attention \u00b7 ") === 0;
+    });
+    var timeEntries = entries.filter(function (entry) {
+      return String(entry.label || "").indexOf("Time \u00b7 ") === 0;
+    });
+    var activeAttentionEntry = attentionEntries.filter(function (entry) {
+      return !!entry.active;
+    })[0] || attentionEntries[0] || {};
+    var activeTimeEntry = timeEntries.filter(function (entry) {
+      return !!entry.active;
+    })[0] || timeEntries[0] || {};
+    return {
+      contextItems: Array.isArray(region && region.context_items) ? region.context_items : [],
+      nimmButtons: nimmButtons,
+      aitasModes: [
+        { id: "A", label: "A" },
+        { id: "I", label: "I" },
+        { id: "T", label: "T" },
+        { id: "A2", label: "A", locked: true },
+        { id: "S", label: "S", locked: true },
+      ],
+      activeMode: "I",
+      intentionLevels: intentionLevels,
+      activeIndex: activeIndex,
+      scriptPlaceholder: "/enter...",
+      scriptHelp: "Directive script input is not active yet.",
+      attentionValue: String(activeAttentionEntry.prefix || ""),
+      timeValue: String(activeTimeEntry.prefix || ""),
+      attentionTemplate: cloneJson(activeAttentionEntry.shell_request),
+      timeTemplate: cloneJson(activeTimeEntry.shell_request),
+      nodeIdPattern: /^\d+(?:-\d+)*$/,
+      invalidAttentionMessage: "Invalid attention node id.",
+      invalidTimeMessage: "Invalid time token; use HOPS-style address id.",
+    };
+  }
+
   function renderCtsGisDirectivePanel(ctx, root, region) {
-    var compact = region.state_directive_compact || {};
-    var contextItems = region.context_items || [];
-    var nimmButtons = compact.nimm_buttons || [];
-    var aitasModes = compact.aitas_modes || [];
-    var activeMode = String(compact.active_mode || "I");
-    var intention = compact.intention || {};
-    var intentionLevels = intention.levels || [];
-    var activeIndex = Number(intention.active_index || 0);
+    var directiveState = deriveCtsGisDirectiveState(region);
+    var contextItems = directiveState.contextItems;
+    var nimmButtons = directiveState.nimmButtons;
+    var aitasModes = directiveState.aitasModes;
+    var activeMode = String(directiveState.activeMode || "I");
+    var intentionLevels = directiveState.intentionLevels;
+    var activeIndex = Number(directiveState.activeIndex || 0);
     if (activeIndex < 0 || activeIndex >= intentionLevels.length) activeIndex = 0;
     var activeLevel = intentionLevels[activeIndex] || {};
-    var scriptPlaceholder = ((compact.script_input || {}).placeholder || "/enter...").toString();
-    var scriptHelp = ((compact.script_input || {}).help || "Directive input unavailable.").toString();
-    var attentionValue = ((compact.attention || {}).value || "").toString();
-    var timeValue = ((compact.time || {}).value || "").toString();
-    var validation = compact.validation || {};
-    var nodeIdPattern = new RegExp((validation.node_id_pattern || "^\\d+(?:-\\d+)*$").toString());
-    var invalidAttentionMessage = (validation.invalid_attention_message || "Invalid attention node id.").toString();
-    var invalidTimeMessage = (validation.invalid_time_message || "Invalid time token.").toString();
+    var scriptPlaceholder = String(directiveState.scriptPlaceholder || "/enter...");
+    var scriptHelp = String(directiveState.scriptHelp || "Directive input unavailable.");
+    var attentionValue = String(directiveState.attentionValue || "");
+    var timeValue = String(directiveState.timeValue || "");
+    var nodeIdPattern = directiveState.nodeIdPattern || /^\d+(?:-\d+)*$/;
+    var invalidAttentionMessage = String(directiveState.invalidAttentionMessage || "Invalid attention node id.");
+    var invalidTimeMessage = String(directiveState.invalidTimeMessage || "Invalid time token.");
+
+    if (!intentionLevels.length) {
+      renderGenericFocusSelectionPanel(ctx, root, region);
+      return;
+    }
 
     root.innerHTML =
       '<section class="ide-controlpanel__section"><div class="ide-controlpanel__selectionPanel">' +
@@ -360,8 +456,11 @@
           setFeedback(currentMode === "A" ? invalidAttentionMessage : invalidTimeMessage, true);
           return;
         }
-        var template =
-          currentMode === "A" ? cloneJson((compact.attention || {}).shell_template) : cloneJson((compact.time || {}).shell_template);
+        var template = currentMode === "A" ? cloneJson(directiveState.attentionTemplate) : cloneJson(directiveState.timeTemplate);
+        if (!Object.keys(template).length) {
+          setFeedback("This directive action is unavailable for the current panel state.", true);
+          return;
+        }
         if (!template.tool_state) template.tool_state = {};
         if (!template.tool_state.aitas) template.tool_state.aitas = {};
         if (currentMode === "A") {
@@ -378,11 +477,7 @@
     updateValueMode();
   }
 
-  function renderFocusSelectionPanel(ctx, root, region) {
-    if (region.surface_label === "CTS-GIS" && region.state_directive_compact) {
-      renderCtsGisDirectivePanel(ctx, root, region);
-      return;
-    }
+  function renderGenericFocusSelectionPanel(ctx, root, region) {
     var contextItems = region.context_items || [];
     var verbTabs = region.verb_tabs || [];
     var groups = region.groups || [];
@@ -450,7 +545,9 @@
               return (
                 '<button type="button" class="ide-controlpanel__action ide-controlpanel__action--full" data-control-action-index="' +
                 String(index) +
-                '">' +
+                '"' +
+                (action.disabled ? " disabled" : "") +
+                ">" +
                 ctx.escapeHtml(action.label || "") +
                 "</button>"
               );
@@ -478,23 +575,24 @@
       node.addEventListener("click", function () {
         var index = Number(node.getAttribute("data-control-action-index"));
         var action = actions[index] || {};
+        if (action.disabled) return;
         if (action.action_kind === "copy_text" && action.value) {
           if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
             navigator.clipboard.writeText(String(action.value)).catch(function () {});
           }
+          return;
+        }
+        if (
+          (action.route || action.request_schema || action.action_kind) &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(action);
         }
       });
     });
   }
 
-  api.renderControlPanel = function (ctx) {
-    var region = ctx.region || {};
-    var root = ctx.target || document.getElementById("portalControlPanel");
-    if (!root) return;
-    if (region.kind === "focus_selection_panel") {
-      renderFocusSelectionPanel(ctx, root, region);
-      return;
-    }
+  function renderSectionModules(ctx, root, region) {
     var sections = region.sections || [];
     root.innerHTML =
       '<section class="ide-controlpanel__section">' +
@@ -531,6 +629,222 @@
       });
       bindSurfaceNavigation(link, flatEntries[index], ctx);
     });
+  }
+
+  function renderUnifiedDirectivePanel(ctx, root, region) {
+    var portalIdentity = region.portal_identity || {};
+    var contextConditions = region.context_conditions || [];
+    var nimmAitasControl = region.nimm_aitas_control || {};
+    var terminalControl = region.terminal_control || {};
+    var navigationGroups = region.navigation_groups || [];
+    var actions = region.actions || [];
+
+    // Build HTML
+    var html = '<section class="ide-controlpanel__section">';
+
+    // Portal Identity (compact row)
+    html +=
+      '<div class="ide-controlpanel__identity">' +
+      '<span class="ide-controlpanel__portalId">' +
+      ctx.escapeHtml(portalIdentity.portal_instance_id || "") +
+      "</span>" +
+      (portalIdentity.host_shape ? ' · ' + ctx.escapeHtml(portalIdentity.host_shape) : "") +
+      "</div>";
+
+    // Context Conditions
+    if (contextConditions.length) {
+      html += '<div class="ide-controlpanel__contextRows">';
+      contextConditions.forEach(function (cond) {
+        html +=
+          '<div class="ide-controlpanel__contextRow">' +
+          '<span class="ide-controlpanel__contextKey">' +
+          ctx.escapeHtml(cond.label || "") +
+          ':</span><span class="ide-controlpanel__contextValue">' +
+          ctx.escapeHtml(cond.value || "—") +
+          "</span></div>";
+      });
+      html += "</div>";
+    }
+
+    // NIMM-AITAS Control Section (stacked facets)
+    if (nimmAitasControl.facets && nimmAitasControl.facets.length) {
+      html +=
+        '<div class="ide-controlpanel__directiveControl">' +
+        '<header class="ide-controlpanel__sectionHeader">' +
+        ctx.escapeHtml(nimmAitasControl.title || "Directive Control") +
+        "</header>";
+
+      nimmAitasControl.facets.forEach(function (facet) {
+        html +=
+          '<div class="ide-controlpanel__facet" data-facet-id="' +
+          ctx.escapeHtml(facet.facet_id || "") +
+          '">' +
+          '<h4 class="ide-controlpanel__facetLabel">' +
+          ctx.escapeHtml(facet.label || "") +
+          "</h4>";
+
+        (facet.subsections || []).forEach(function (sub) {
+          if (sub.control_type === "tabs") {
+            // Verb tabs
+            html += '<div class="ide-controlpanel__verbTabs">';
+            (sub.shell_requests || []).forEach(function (tab) {
+              html +=
+                '<button class="ide-controlpanel__verbTab' +
+                (tab.active ? " is-active" : "") +
+                '" type="button">' +
+                ctx.escapeHtml(tab.label || "") +
+                "</button>";
+            });
+            html += "</div>";
+          } else {
+            // Simple label: value display
+            html +=
+              '<div class="ide-controlpanel__facetRow">' +
+              '<span class="ide-controlpanel__facetLabel">' +
+              ctx.escapeHtml(sub.label || "") +
+              ':</span><span class="ide-controlpanel__facetValue">' +
+              ctx.escapeHtml(sub.value || "—") +
+              "</span></div>";
+          }
+        });
+
+        html += "</div>";
+      });
+
+      html += "</div>";
+    }
+
+    // Terminal Control Interface
+    if (terminalControl.interface) {
+      html +=
+        '<div class="ide-controlpanel__terminal">' +
+        '<header class="ide-controlpanel__sectionHeader">' +
+        ctx.escapeHtml(terminalControl.title || "Terminal") +
+        "</header>" +
+        '<textarea class="ide-controlpanel__terminalInput" placeholder="' +
+        ctx.escapeHtml(terminalControl.interface.placeholder || "> inject directive...") +
+        '"></textarea>' +
+        '<div class="ide-controlpanel__terminalActions">';
+
+      (terminalControl.quick_actions || []).forEach(function (action, index) {
+        html +=
+          '<button class="ide-controlpanel__terminalAction" data-terminal-action-index="' +
+          String(index) +
+          '">' +
+          ctx.escapeHtml(action.label || "") +
+          (action.shortcut ? ' <kbd>' + ctx.escapeHtml(action.shortcut) + "</kbd>" : "") +
+          "</button>";
+      });
+
+      html += "</div></div>";
+    }
+
+    // Navigation Groups
+    navigationGroups.forEach(function (group) {
+      html +=
+        '<div class="ide-controlpanel__selectionGroup">' +
+        '<header class="ide-controlpanel__selectionGroupTitle">' +
+        ctx.escapeHtml(group.title || "") +
+        "</header>" +
+        '<div class="ide-controlpanel__selectionPanel">';
+
+      (group.entries || []).forEach(function (entry) {
+        html += renderEntry(entry, ctx.escapeHtml);
+      });
+
+      html += "</div></div>";
+    });
+
+    // Actions
+    if (actions.length) {
+      html += '<div class="ide-controlpanel__actions">';
+      actions.forEach(function (action, index) {
+        html +=
+          '<button class="ide-controlpanel__action" data-control-action-index="' +
+          String(index) +
+          '"' +
+          (action.disabled ? " disabled" : "") +
+          ">" +
+          ctx.escapeHtml(action.label || "") +
+          "</button>";
+      });
+      html += "</div>";
+    }
+
+    html += "</section>";
+
+    root.innerHTML = html;
+
+    // Bind navigation
+    var flatEntries = [];
+    navigationGroups.forEach(function (group) {
+      (group.entries || []).forEach(function (entry) {
+        flatEntries.push(entry);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__selectionEntry"), function (node, index) {
+      bindSurfaceNavigation(node, flatEntries[index], ctx);
+    });
+
+    // Bind actions
+    Array.prototype.forEach.call(root.querySelectorAll("[data-control-action-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var index = Number(node.getAttribute("data-control-action-index"));
+        var action = actions[index] || {};
+        if (action.disabled) return;
+        if (action.action_kind === "copy_text" && action.value) {
+          if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(String(action.value)).catch(function () {});
+          }
+          return;
+        }
+        if (
+          (action.route || action.request_schema || action.action_kind) &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(action);
+        }
+      });
+    });
+  }
+
+  function renderDirectivePanelHost(ctx, root, region) {
+    var adapter = toolSurfaceAdapter();
+    var mode =
+      (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
+      "sections_panel";
+
+    if (mode === "cts_gis_directive_panel") {
+      renderCtsGisDirectivePanel(ctx, root, region);
+      return;
+    }
+    if (mode === "focus_selection_panel") {
+      renderGenericFocusSelectionPanel(ctx, root, region);
+      return;
+    }
+    if (mode === "unified_directive_panel" || region.kind === "unified_directive_panel") {
+      renderUnifiedDirectivePanel(ctx, root, region);
+      return;
+    }
+    renderSectionModules(ctx, root, region);
+  }
+
+  api.renderControlPanel = function (ctx) {
+    var adapter = toolSurfaceAdapter();
+    var region = ctx.region || {};
+    var root = ctx.target || document.getElementById("portalControlPanel");
+    var family =
+      (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
+      "";
+    var directiveMode =
+      (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
+      "sections_panel";
+    if (!root) return;
+    if (family === "directive_panel" || directiveMode !== "sections_panel") {
+      renderDirectivePanelHost(ctx, root, region);
+      return;
+    }
+    renderSectionModules(ctx, root, region);
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("region_renderers");

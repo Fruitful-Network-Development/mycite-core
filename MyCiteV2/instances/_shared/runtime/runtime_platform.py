@@ -16,6 +16,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_EBI_TOOL_ENTRYPOINT_ID,
     FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
+    PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+    PAYPAL_CSM_TOOL_ROUTE,
+    PAYPAL_CSM_TOOL_SURFACE_ID,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -38,6 +41,11 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 
 PORTAL_RUNTIME_ENVELOPE_SCHEMA = "mycite.v2.portal.runtime.envelope.v1"
 PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA = "mycite.v2.portal.runtime_entrypoint_descriptor.v1"
+PORTAL_REGION_FAMILY_CONTRACT_SCHEMA = "mycite.v2.portal.region_family_contract.v1"
+
+PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE = "reflective_workspace"
+PORTAL_REGION_FAMILY_DIRECTIVE_PANEL = "directive_panel"
+PORTAL_REGION_FAMILY_PRESENTATION_SURFACE = "presentation_surface"
 
 SYSTEM_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.system.workspace.surface.v1"
 NETWORK_ROOT_SURFACE_SCHEMA = "mycite.v2.portal.network.surface.v1"
@@ -48,13 +56,17 @@ AWS_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
 FND_DCM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.surface.v1"
 FND_EBI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.surface.v1"
+PAYPAL_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.surface.v1"
 WORKBENCH_UI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.surface.v1"
 
 AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
 AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
+CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.request.v1"
 FND_DCM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
+PAYPAL_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.request.v1"
+PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.action.request.v1"
 WORKBENCH_UI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.request.v1"
 SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
 
@@ -309,6 +321,16 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             required_configuration=("data_dir",),
         ),
         PortalRuntimeEntrypointDescriptor(
+            entrypoint_id="portal.system.tools.cts_gis.actions",
+            callable_path="MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime.run_portal_cts_gis_action",
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/cts-gis/actions",
+            request_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
+            surface_schema=CTS_GIS_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=("authority_db_file",),
+        ),
+        PortalRuntimeEntrypointDescriptor(
             entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
             callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime.run_portal_fnd_dcm",
             surface_id=FND_DCM_TOOL_SURFACE_ID,
@@ -327,6 +349,26 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             surface_schema=FND_EBI_TOOL_SURFACE_SCHEMA,
             read_write_posture="read-only",
             required_configuration=("webapps_root",),
+        ),
+        PortalRuntimeEntrypointDescriptor(
+            entrypoint_id=PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.portal_paypal_runtime.run_portal_paypal_csm",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/paypal-csm",
+            request_schema=PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
+            surface_schema=PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
+        ),
+        PortalRuntimeEntrypointDescriptor(
+            entrypoint_id="portal.system.tools.paypal_csm.actions",
+            callable_path="MyCiteV2.instances._shared.runtime.portal_paypal_runtime.run_portal_paypal_csm_action",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/paypal-csm/actions",
+            request_schema=PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+            surface_schema=PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
         ),
         PortalRuntimeEntrypointDescriptor(
             entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
@@ -360,6 +402,7 @@ def surface_schema_for_surface(surface_id: str) -> str:
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_SURFACE_SCHEMA,
         FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_SURFACE_SCHEMA,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_SURFACE_SCHEMA,
+        PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_SURFACE_SCHEMA,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
@@ -376,6 +419,7 @@ def route_for_surface(surface_id: str) -> str:
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_ROUTE,
         FND_DCM_TOOL_SURFACE_ID: FND_DCM_TOOL_ROUTE,
         FND_EBI_TOOL_SURFACE_ID: FND_EBI_TOOL_ROUTE,
+        PAYPAL_CSM_TOOL_SURFACE_ID: PAYPAL_CSM_TOOL_ROUTE,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_ROUTE,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_ROUTE)
@@ -386,6 +430,50 @@ def build_portal_runtime_error(*, code: str, message: str) -> dict[str, str]:
         "code": _as_text(code) or "runtime_error",
         "message": _as_text(message) or "The portal runtime could not complete the request.",
     }
+
+
+def build_portal_region_family_contract(
+    *,
+    family: str,
+    surface_id: str = "",
+    compatibility_kind: str = "",
+    surface_payload_kind: str = "",
+    interface_body_kind: str = "",
+) -> dict[str, Any]:
+    family_token = _as_text(family)
+    if family_token not in {
+        PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    }:
+        raise ValueError("family must be reflective_workspace, directive_panel, or presentation_surface")
+    return {
+        "schema": PORTAL_REGION_FAMILY_CONTRACT_SCHEMA,
+        "family": family_token,
+        "surface_id": _as_text(surface_id),
+        "compatibility_kind": _as_text(compatibility_kind),
+        "surface_payload_kind": _as_text(surface_payload_kind),
+        "interface_body_kind": _as_text(interface_body_kind),
+    }
+
+
+def attach_region_family_contract(
+    region: dict[str, Any] | None,
+    *,
+    family: str,
+    surface_id: str = "",
+) -> dict[str, Any]:
+    normalized = dict(region or {})
+    surface_payload = normalized.get("surface_payload") if isinstance(normalized.get("surface_payload"), dict) else {}
+    interface_body = normalized.get("interface_body") if isinstance(normalized.get("interface_body"), dict) else {}
+    normalized["family_contract"] = build_portal_region_family_contract(
+        family=family,
+        surface_id=_as_text(surface_id) or _as_text(surface_payload.get("surface_id")),
+        compatibility_kind=_as_text(normalized.get("kind")),
+        surface_payload_kind=_as_text(surface_payload.get("kind")),
+        interface_body_kind=_as_text(interface_body.get("kind")),
+    )
+    return normalized
 
 
 def build_portal_runtime_envelope(
@@ -438,15 +526,21 @@ __all__ = [
     "AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA",
     "AWS_CSM_TOOL_REQUEST_SCHEMA",
     "AWS_CSM_TOOL_SURFACE_SCHEMA",
+    "CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_SURFACE_SCHEMA",
     "FND_DCM_TOOL_REQUEST_SCHEMA",
     "FND_DCM_TOOL_SURFACE_SCHEMA",
     "FND_EBI_TOOL_REQUEST_SCHEMA",
     "FND_EBI_TOOL_SURFACE_SCHEMA",
-    "WORKBENCH_UI_TOOL_REQUEST_SCHEMA",
-    "WORKBENCH_UI_TOOL_SURFACE_SCHEMA",
+    "PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA",
+    "PAYPAL_CSM_TOOL_REQUEST_SCHEMA",
+    "PAYPAL_CSM_TOOL_SURFACE_SCHEMA",
     "NETWORK_ROOT_SURFACE_SCHEMA",
+    "PORTAL_REGION_FAMILY_CONTRACT_SCHEMA",
+    "PORTAL_REGION_FAMILY_DIRECTIVE_PANEL",
+    "PORTAL_REGION_FAMILY_PRESENTATION_SURFACE",
+    "PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE",
     "PORTAL_RUNTIME_ENVELOPE_SCHEMA",
     "PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA",
     "PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS",
@@ -456,7 +550,11 @@ __all__ = [
     "UTILITIES_ROOT_SURFACE_SCHEMA",
     "UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA",
     "PortalRuntimeEntrypointDescriptor",
+    "WORKBENCH_UI_TOOL_REQUEST_SCHEMA",
+    "WORKBENCH_UI_TOOL_SURFACE_SCHEMA",
+    "attach_region_family_contract",
     "build_allow_all_tool_exposure_policy",
+    "build_portal_region_family_contract",
     "build_portal_runtime_envelope",
     "build_portal_runtime_entrypoint_catalog",
     "build_portal_runtime_error",

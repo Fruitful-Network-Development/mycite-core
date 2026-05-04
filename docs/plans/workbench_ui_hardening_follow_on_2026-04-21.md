@@ -4,8 +4,16 @@ Date: 2026-04-21
 
 Doc type: `plan`
 Normativity: `supporting`
-Lifecycle: `active`
+Lifecycle: `historical-superseded`
 Last reviewed: `2026-04-22`
+
+## Archive Note
+
+This follow-on is now governed as a bounded sub-track inside:
+`docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md`
+and tracked operationally through:
+`docs/plans/planning_audit_manifest.yaml` and
+`docs/plans/planning_task_board.yaml`.
 
 ## Canonical Contract Links
 

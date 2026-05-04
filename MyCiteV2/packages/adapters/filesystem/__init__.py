@@ -8,6 +8,7 @@ from .aws_csm_onboarding_profile_store import FilesystemAwsCsmOnboardingProfileS
 from .aws_csm_newsletter_state import FilesystemAwsCsmNewsletterStateAdapter
 from .aws_csm_tool_profile_store import AWS_CSM_DOMAIN_SCHEMA, FilesystemAwsCsmToolProfileStore
 from .fnd_dcm_read_only import FND_DCM_PROFILE_SCHEMA, FilesystemFndDcmReadOnlyAdapter
+from .fnd_ebi_donations_read_only import FilesystemFndEbiDonationsReadOnlyAdapter
 from .fnd_ebi_read_only import FND_EBI_PROFILE_SCHEMA, FilesystemFndEbiReadOnlyAdapter
 from .live_aws_profile import FilesystemLiveAwsProfileAdapter, is_live_aws_profile_file
 from .live_system_datum_store import FilesystemSystemDatumStoreAdapter
@@ -25,6 +26,7 @@ __all__ = [
     "FilesystemAwsCsmToolProfileStore",
     "AWS_CSM_DOMAIN_SCHEMA",
     "FND_DCM_PROFILE_SCHEMA",
+    "FilesystemFndEbiDonationsReadOnlyAdapter",
     "FilesystemFndEbiReadOnlyAdapter",
     "FilesystemFndDcmReadOnlyAdapter",
     "FilesystemLiveAwsProfileAdapter",

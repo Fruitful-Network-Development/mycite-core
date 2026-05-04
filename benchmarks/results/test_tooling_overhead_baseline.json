@@ -1,0 +1,120 @@
+{
+  "aggregate_import_median_ms": 335.096,
+  "aggregate_import_p95_ms": 504.945,
+  "generated_at_utc": "2026-04-27T10:37:04.924339Z",
+  "import_repetitions": 3,
+  "repeated_private_helper_name_count": 14,
+  "sampled_import_count": 5,
+  "sampled_imports": [
+    {
+      "median_ms": 246.293,
+      "module": "MyCiteV2.instances._shared.runtime.portal_shell_runtime",
+      "p95_ms": 317.882,
+      "samples_ms": [
+        242.862,
+        246.293,
+        317.882
+      ]
+    },
+    {
+      "median_ms": 335.096,
+      "module": "MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime",
+      "p95_ms": 339.566,
+      "samples_ms": [
+        339.566,
+        335.096,
+        292.172
+      ]
+    },
+    {
+      "median_ms": 342.612,
+      "module": "MyCiteV2.tests.unit.test_cts_gis_compiled_runtime",
+      "p95_ms": 363.727,
+      "samples_ms": [
+        342.612,
+        363.727,
+        335.547
+      ]
+    },
+    {
+      "median_ms": 466.77,
+      "module": "MyCiteV2.tests.unit.test_portal_workspace_runtime_behavior",
+      "p95_ms": 504.945,
+      "samples_ms": [
+        504.945,
+        419.182,
+        466.77
+      ]
+    },
+    {
+      "median_ms": 83.657,
+      "module": "MyCiteV2.tests.contracts.test_contract_docs_alignment",
+      "p95_ms": 90.517,
+      "samples_ms": [
+        90.517,
+        83.657,
+        81.448
+      ]
+    }
+  ],
+  "schema": "mycite.benchmarks.test_tooling_overhead.v1",
+  "test_file_count": 97,
+  "top_repeated_private_helpers": [
+    {
+      "definition_count": 25,
+      "helper_name": "__init__"
+    },
+    {
+      "definition_count": 17,
+      "helper_name": "_is_allowed_absolute_import"
+    },
+    {
+      "definition_count": 10,
+      "helper_name": "_write_json"
+    },
+    {
+      "definition_count": 5,
+      "helper_name": "_ascii_bits"
+    },
+    {
+      "definition_count": 3,
+      "helper_name": "_document"
+    },
+    {
+      "definition_count": 3,
+      "helper_name": "_fake_snapshot"
+    },
+    {
+      "definition_count": 3,
+      "helper_name": "_row"
+    },
+    {
+      "definition_count": 3,
+      "helper_name": "_stage_document"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_anchor_row"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_profile"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_read_text"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_reference_geojson"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_seed_db"
+    },
+    {
+      "definition_count": 2,
+      "helper_name": "_write_network_chronology_authority"
+    }
+  ]
+}

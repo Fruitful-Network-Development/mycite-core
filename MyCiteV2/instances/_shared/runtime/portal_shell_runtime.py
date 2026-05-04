@@ -1,33 +1,30 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_system_workspace_bundle
-from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import build_portal_workbench_ui_surface_bundle
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    _invalidate_workbench_projection_cache,
+    build_system_workspace_bundle,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
+    attach_region_family_contract,
     build_allow_all_tool_exposure_policy,
     build_portal_runtime_envelope,
     build_portal_runtime_error,
     surface_schema_for_surface,
-)
-from MyCiteV2.packages.adapters.filesystem import (
-    FilesystemNetworkRootReadModelAdapter,
 )
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
     SqlitePortalAuthorityAdapter,
     SqliteSystemDatumStoreAdapter,
 )
-from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
-from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
 from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
@@ -430,6 +427,9 @@ def _surface_payload_for_network(
     audit_storage_file: str | Path | None,
     surface_query: dict[str, str] | None,
 ) -> dict[str, Any]:
+    from MyCiteV2.packages.adapters.filesystem import FilesystemNetworkRootReadModelAdapter
+    from MyCiteV2.packages.modules.cross_domain.network_root import NetworkRootReadModelService
+
     service = NetworkRootReadModelService(
         FilesystemNetworkRootReadModelAdapter(
             data_dir=data_dir,
@@ -575,7 +575,7 @@ def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
         subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "network_system_log_inspector",
+        "kind": "summary_panel",
         "title": "Log Record",
         "summary": "Read-only log-record inspector.",
         "visible": subject is not None,
@@ -676,6 +676,162 @@ def _generic_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+ToolSurfaceBundleBuilder = Callable[..., dict[str, Any]]
+
+
+def _build_aws_tool_bundle(
+    *,
+    surface_id: str,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    surface_query: dict[str, str] | None,
+    private_dir: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
+
+    return build_portal_aws_surface_bundle(
+        surface_id=surface_id,
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_query=surface_query,
+        private_dir=private_dir,
+        tool_exposure_policy=tool_exposure_policy,
+    )
+
+
+def _build_cts_gis_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    request_payload: dict[str, Any] | None,
+    data_dir: str | Path | None,
+    authority_db_file: str | Path | None,
+    private_dir: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+    tool_rows: list[dict[str, Any]],
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
+
+    if shell_state is None:
+        raise ValueError("CTS-GIS shell bundle requires reducer-owned shell_state")
+    return build_portal_cts_gis_surface_bundle(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        data_dir=data_dir,
+        authority_db_file=authority_db_file,
+        private_dir=private_dir,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_rows=tool_rows,
+        request_payload=request_payload,
+    )
+
+
+def _build_fnd_dcm_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    surface_query: dict[str, str] | None,
+    webapps_root: str | Path | None,
+    private_dir: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
+
+    return build_portal_fnd_dcm_surface_bundle(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_query=surface_query,
+        webapps_root=webapps_root,
+        private_dir=private_dir,
+        tool_exposure_policy=tool_exposure_policy,
+    )
+
+
+def _build_fnd_ebi_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    webapps_root: str | Path | None,
+    private_dir: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+    tool_rows: list[dict[str, Any]],
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
+
+    if shell_state is None:
+        raise ValueError("FND-EBI shell bundle requires reducer-owned shell_state")
+    return build_portal_fnd_ebi_surface_bundle(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        webapps_root=webapps_root,
+        private_dir=private_dir,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_rows=tool_rows,
+    )
+
+
+def _build_workbench_ui_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    portal_domain: str,
+    shell_state: PortalShellState | None,
+    authority_db_file: str | Path | None,
+    tool_rows: list[dict[str, Any]],
+    surface_query: dict[str, str] | None,
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+        build_portal_workbench_ui_surface_bundle,
+    )
+
+    return build_portal_workbench_ui_surface_bundle(
+        portal_scope=portal_scope,
+        portal_domain=portal_domain,
+        shell_state=shell_state,
+        authority_db_file=authority_db_file,
+        tool_rows=tool_rows,
+        surface_query=surface_query,
+    )
+
+
+_TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
+    AWS_CSM_TOOL_SURFACE_ID: _build_aws_tool_bundle,
+    CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
+    FND_DCM_TOOL_SURFACE_ID: _build_fnd_dcm_tool_bundle,
+    FND_EBI_TOOL_SURFACE_ID: _build_fnd_ebi_tool_bundle,
+    WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
+}
+
+_RUNTIME_OWNED_TOOL_SURFACE_IDS = frozenset(
+    {
+        AWS_CSM_TOOL_SURFACE_ID,
+        FND_DCM_TOOL_SURFACE_ID,
+        WORKBENCH_UI_TOOL_SURFACE_ID,
+    }
+)
+
+
+def _tool_shell_state(
+    *,
+    surface_id: str,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+) -> PortalShellState | None:
+    if surface_id in _RUNTIME_OWNED_TOOL_SURFACE_IDS:
+        return None
+    return canonicalize_portal_shell_state(
+        shell_state,
+        active_surface_id=surface_id,
+        portal_scope=portal_scope,
+        seed_anchor_file=shell_state is None,
+    )
+
+
 def _tool_bundle_for_surface(
     *,
     surface_id: str,
@@ -691,52 +847,23 @@ def _tool_bundle_for_surface(
     portal_domain: str,
     authority_db_file: str | Path | None,
 ) -> dict[str, Any]:
-    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
-        return build_portal_aws_surface_bundle(
-            surface_id=surface_id,
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            surface_query=surface_query,
-            private_dir=private_dir,
-            tool_exposure_policy=tool_exposure_policy,
-        )
-    if surface_id == CTS_GIS_TOOL_SURFACE_ID:
-        return build_portal_cts_gis_surface_bundle(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            data_dir=data_dir,
-            private_dir=private_dir,
-            tool_exposure_policy=tool_exposure_policy,
-            tool_rows=tool_rows,
-            request_payload=request_payload,
-        )
-    if surface_id == FND_DCM_TOOL_SURFACE_ID:
-        return build_portal_fnd_dcm_surface_bundle(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            surface_query=surface_query,
-            webapps_root=webapps_root,
-            private_dir=private_dir,
-            tool_exposure_policy=tool_exposure_policy,
-        )
-    if surface_id == FND_EBI_TOOL_SURFACE_ID:
-        return build_portal_fnd_ebi_surface_bundle(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            webapps_root=webapps_root,
-            private_dir=private_dir,
-            tool_exposure_policy=tool_exposure_policy,
-            tool_rows=tool_rows,
-        )
-    if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
-        return build_portal_workbench_ui_surface_bundle(
-            portal_scope=portal_scope,
-            portal_domain=portal_domain,
-            shell_state=shell_state,
-            authority_db_file=authority_db_file,
-            tool_rows=tool_rows,
-        )
-    raise ValueError(f"Unsupported tool surface: {surface_id}")
+    builder = _TOOL_SURFACE_BUNDLE_BUILDERS.get(surface_id)
+    if builder is None:
+        raise ValueError(f"Unsupported tool surface: {surface_id}")
+    return builder(
+        surface_id=surface_id,
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        request_payload=request_payload,
+        surface_query=surface_query,
+        data_dir=data_dir,
+        private_dir=private_dir,
+        webapps_root=webapps_root,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_rows=tool_rows,
+        portal_domain=portal_domain,
+        authority_db_file=authority_db_file,
+    )
 
 
 def _bundle_for_surface(
@@ -790,27 +917,15 @@ def _bundle_for_surface(
         workspace_bundle["read_write_posture"] = "read-only"
         workspace_bundle["tool_rows"] = tool_rows
         return workspace_bundle
-    if selection_surface_id in {
-        AWS_CSM_TOOL_SURFACE_ID,
-        CTS_GIS_TOOL_SURFACE_ID,
-        FND_DCM_TOOL_SURFACE_ID,
-        FND_EBI_TOOL_SURFACE_ID,
-        WORKBENCH_UI_TOOL_SURFACE_ID,
-    }:
-        canonical_state = (
-            None
-            if selection_surface_id in {AWS_CSM_TOOL_SURFACE_ID, FND_DCM_TOOL_SURFACE_ID, WORKBENCH_UI_TOOL_SURFACE_ID}
-            else canonicalize_portal_shell_state(
-                shell_state,
-                active_surface_id=selection_surface_id,
-                portal_scope=portal_scope,
-                seed_anchor_file=shell_state is None,
-            )
-        )
+    if selection_surface_id in _TOOL_SURFACE_BUNDLE_BUILDERS:
         bundle = _tool_bundle_for_surface(
             surface_id=selection_surface_id,
             portal_scope=portal_scope,
-            shell_state=canonical_state,
+            shell_state=_tool_shell_state(
+                surface_id=selection_surface_id,
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+            ),
             request_payload=request_payload,
             surface_query=surface_query,
             data_dir=data_dir,
@@ -838,14 +953,26 @@ def _bundle_for_surface(
             "page_title": "Network",
             "page_subtitle": "Portal-instance system-log workbench.",
             "surface_payload": surface_payload,
-            "control_panel": _network_control_panel(
-                portal_scope=portal_scope,
-                shell_state=shell_state,
-                active_surface_id=selection_surface_id,
-                surface_payload=surface_payload,
+            "control_panel": attach_region_family_contract(
+                _network_control_panel(
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    active_surface_id=selection_surface_id,
+                    surface_payload=surface_payload,
+                ),
+                family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+                surface_id=selection_surface_id,
             ),
-            "workbench": _network_workbench(surface_payload),
-            "inspector": _network_inspector(surface_payload),
+            "workbench": attach_region_family_contract(
+                _network_workbench(surface_payload),
+                family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+                surface_id=selection_surface_id,
+            ),
+            "inspector": attach_region_family_contract(
+                _network_inspector(surface_payload),
+                family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+                surface_id=selection_surface_id,
+            ),
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_ROOT_SURFACE_ID:
@@ -856,11 +983,23 @@ def _bundle_for_surface(
             "page_title": "Utilities",
             "page_subtitle": "Configuration and control surfaces.",
             "surface_payload": surface_payload,
-            "control_panel": _utilities_control_panel(
-                active_surface_id=selection_surface_id,
+            "control_panel": attach_region_family_contract(
+                _utilities_control_panel(
+                    active_surface_id=selection_surface_id,
+                ),
+                family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+                surface_id=selection_surface_id,
             ),
-            "workbench": _generic_workbench(surface_payload),
-            "inspector": _generic_inspector(surface_payload),
+            "workbench": attach_region_family_contract(
+                _generic_workbench(surface_payload),
+                family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+                surface_id=selection_surface_id,
+            ),
+            "inspector": attach_region_family_contract(
+                _generic_inspector(surface_payload),
+                family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+                surface_id=selection_surface_id,
+            ),
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
@@ -873,11 +1012,23 @@ def _bundle_for_surface(
         "page_title": _as_text(surface_payload.get("title")) or "Utilities",
         "page_subtitle": _as_text(surface_payload.get("subtitle")),
         "surface_payload": surface_payload,
-        "control_panel": _utilities_control_panel(
-            active_surface_id=selection_surface_id,
+        "control_panel": attach_region_family_contract(
+            _utilities_control_panel(
+                active_surface_id=selection_surface_id,
+            ),
+            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+            surface_id=selection_surface_id,
         ),
-        "workbench": _generic_workbench(surface_payload),
-        "inspector": _generic_inspector(surface_payload),
+        "workbench": attach_region_family_contract(
+            _generic_workbench(surface_payload),
+            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+            surface_id=selection_surface_id,
+        ),
+        "inspector": attach_region_family_contract(
+            _generic_inspector(surface_payload),
+            family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+            surface_id=selection_surface_id,
+        ),
         "tool_rows": tool_rows,
     }
 
@@ -1040,6 +1191,8 @@ def run_system_profile_basics_action(
     outcome = None
     if preexisting_error is None and authority_path is not None:
         adapter = SqliteSystemDatumStoreAdapter(authority_path)
+        from MyCiteV2.packages.modules.domains.publication import PublicationProfileBasicsService
+
         outcome = PublicationProfileBasicsService(adapter).apply_write(
             {
                 "tenant_id": portal_instance_id,
@@ -1051,6 +1204,8 @@ def run_system_profile_basics_action(
             }
         )
         try:
+            from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
+
             LocalAuditService(SqliteAuditLogAdapter(authority_path)).append_record(outcome.to_local_audit_payload())
         except Exception:
             pass
@@ -1080,6 +1235,8 @@ def run_system_profile_basics_action(
     )
     if outcome is not None:
         workspace_bundle["surface_payload"]["workspace"]["profile_basics"]["confirmed_summary"] = outcome.confirmed_summary.to_dict()
+        # Ensure subsequent shell reads rebuild projection after write-side mutations.
+        _invalidate_workbench_projection_cache(authority_db_file=authority_db_file)
     composition = build_shell_composition_payload(
         active_surface_id=SYSTEM_ROOT_SURFACE_ID,
         portal_instance_id=portal_scope.scope_id,

@@ -5,7 +5,7 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `active`
-Last reviewed: `2026-04-21`
+Last reviewed: `2026-04-23`
 
 ## Purpose
 
@@ -17,6 +17,11 @@ Canonical owner contracts:
 - `docs/contracts/route_model.md`
 - `docs/contracts/surface_catalog.md`
 - `docs/contracts/tool_operating_contract.md`
+
+Closeout note:
+
+- all canonical routes now use only `directive_panel`, `reflective_workspace`, and `presentation_surface`
+- family-first shell composition is the active route contract across runtime and client hosts
 
 ## Matrix Columns
 

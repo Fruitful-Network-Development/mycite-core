@@ -1,0 +1,117 @@
+{
+  "advisory_warning_count": 0,
+  "budgets_path": "/srv/repo/mycite-core/benchmarks/budgets/optimization_budgets.json",
+  "checks": [
+    {
+      "actual": 35488,
+      "category": "asset_size",
+      "enforcement": "hard",
+      "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.initial_load_gzip_bytes_max",
+      "max": 41000,
+      "metric": "initial_load_gzip_bytes",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 64781,
+      "category": "asset_size",
+      "enforcement": "hard",
+      "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.total_gzip_bytes_max",
+      "max": 65000,
+      "metric": "total_gzip_bytes",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 29293,
+      "category": "asset_size",
+      "enforcement": "advisory",
+      "evidence": "MyCiteV2.instances._shared.portal_host.app.build_shell_asset_manifest().budget_policy.deferred_gzip_bytes_max",
+      "max": 30000,
+      "metric": "deferred_gzip_bytes",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 136.0,
+      "category": "interaction_latency",
+      "enforcement": "hard",
+      "evidence": "performance_weight_speed_report_2026-04-16.md no-regression rule (baseline 136.0ms with +5% headroom)",
+      "max": 143.0,
+      "metric": "p95_interaction_ms",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 61.0,
+      "category": "interaction_latency",
+      "enforcement": "hard",
+      "evidence": "runtime_interactions_baseline.json baseline 61.0ms with +5% headroom",
+      "max": 64.1,
+      "metric": "startup_long_task_p95_ms",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 0.086,
+      "category": "projection_cpu",
+      "enforcement": "hard",
+      "evidence": "projection_serialization_baseline.json baseline 0.105ms with +5% headroom",
+      "max": 0.111,
+      "metric": "p95_iteration_ms",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 425,
+      "category": "projection_cpu",
+      "enforcement": "advisory",
+      "evidence": "projection_serialization_baseline.json baseline 425 bytes",
+      "max": 450,
+      "metric": "average_payload_bytes",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 335.096,
+      "category": "test_tooling",
+      "enforcement": "advisory",
+      "evidence": "test_tooling_overhead reruns varied between 345.838ms and 384.0ms; threshold is staged until the import path is less noisy",
+      "max": 400.0,
+      "metric": "aggregate_import_median_ms",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 504.945,
+      "category": "test_tooling",
+      "enforcement": "advisory",
+      "evidence": "test_tooling_overhead reruns varied between 503.059ms and 632.918ms; threshold is staged until the import path is less noisy",
+      "max": 650.0,
+      "metric": "aggregate_import_p95_ms",
+      "passed": true,
+      "result": "pass"
+    },
+    {
+      "actual": 14,
+      "category": "test_tooling",
+      "enforcement": "advisory",
+      "evidence": "test_tooling_overhead_baseline.json repeated helper census",
+      "max": 14,
+      "metric": "repeated_private_helper_name_count",
+      "passed": true,
+      "result": "pass"
+    }
+  ],
+  "generated_at_utc": "2026-04-27T10:37:05.190264Z",
+  "hard_failure_count": 0,
+  "manifest_alignment": {
+    "all": true,
+    "deferred_gzip_bytes_max_matches_manifest": true,
+    "initial_load_gzip_bytes_max_matches_manifest": true,
+    "total_gzip_bytes_max_matches_manifest": true
+  },
+  "results_dir": "/srv/repo/mycite-core/benchmarks/results",
+  "schema": "mycite.benchmarks.optimization_budget_check.v1",
+  "status": "pass"
+}

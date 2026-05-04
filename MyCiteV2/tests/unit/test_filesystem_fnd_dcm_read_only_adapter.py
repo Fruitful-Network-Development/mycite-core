@@ -119,6 +119,31 @@ def _write_tff_frontend(webapps_root: Path) -> None:
                     "items": [{"source": "assets/docs/newsletters/fall-2024.md"}],
                 }
             },
+            "machine": {
+                "inpage": {
+                    "root": "machine/inpage",
+                    "blocks": [
+                        {
+                            "id": "tff-org-schema",
+                            "source": "home.organization.ld+json",
+                            "injection_pattern": "script:application/ld+json",
+                            "page": "/home.html",
+                        }
+                    ],
+                },
+                "pages": {
+                    "root": "machine/pages",
+                    "endpoints": [
+                        {"rel": "machine-index", "href": "/machine/pages/tff-machine-index.json", "format": "application/json"}
+                    ],
+                },
+                "endpoint_maps": {
+                    "machine_index": "/machine/pages/tff-machine-index.json",
+                    "page_manifest": "/machine/pages/tff-pages.manifest.json",
+                    "llm_context": "/llms.md",
+                    "organization_schema_id": "tff-org-schema",
+                },
+            },
             "pages": {
                 "home": {"file": "home.html", "template": "home_featured"},
                 "newsletter": {
@@ -175,6 +200,9 @@ class FilesystemFndDcmReadOnlyAdapterTests(unittest.TestCase):
             self.assertEqual(cvcc["projection"]["collections"][0]["id"], "board_profiles")
             self.assertEqual(tff["projection"]["collections"][0]["id"], "newsletters")
             self.assertTrue(cvcc["collection_sources"])
+            machine_summary = tff["projection"]["extensions"]["machine_surface_summary"]
+            self.assertEqual(machine_summary["inpage_block_count"], 1)
+            self.assertEqual(machine_summary["endpoint_count"], 1)
 
     def test_missing_manifest_and_render_script_are_reported(self) -> None:
         with TemporaryDirectory() as temp_dir:

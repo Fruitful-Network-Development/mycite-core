@@ -297,12 +297,14 @@
         "</strong></div>"
       );
     }
+    var primary = row.display_value || row.labels || row.primary_value_token || row.object_ref || "—";
+    var detail = row.display_summary || ((row.relation || "—") + " -> " + (row.object_ref || "—"));
     return (
       '<div class="v2-workbenchUi__primaryCell"><strong>' +
-      escapeHtml(row.labels || "—") +
+      escapeHtml(primary) +
       "</strong>" +
       '<div class="v2-workbenchUi__subvalue">' +
-      escapeHtml((row.relation || "—") + " -> " + (row.object_ref || "—")) +
+      escapeHtml(detail) +
       "</div></div>"
     );
   }
@@ -369,6 +371,18 @@
 
   function flattenDatumRows(workspace) {
     var datumGrid = asObject(workspace.datum_grid);
+    var layers = asList(datumGrid.layers);
+    if (layers.length) {
+      var matrixRows = [];
+      layers.forEach(function (layer) {
+        asList(asObject(layer).value_groups).forEach(function (valueGroup) {
+          asList(asObject(valueGroup).cells).forEach(function (row) {
+            matrixRows.push(row);
+          });
+        });
+      });
+      if (matrixRows.length) return matrixRows;
+    }
     var groups = asList(datumGrid.groups);
     if (groups.length) {
       var rows = [];
@@ -380,6 +394,67 @@
       return rows;
     }
     return asList(datumGrid.rows);
+  }
+
+  function renderDatumMatrixCell(row, globalIndex) {
+    var selection = row.selected ? "Selected · " : "";
+    var diagnostics = asList(row.diagnostic_states).join(", ");
+    var detailBits = [
+      row.display_summary || "",
+      diagnostics,
+      row.hyphae_hash_short ? "ID " + row.hyphae_hash_short : "",
+    ].filter(Boolean);
+    return (
+      '<button class="v2-workbenchUi__navButton" style="text-align:left;min-height:120px" type="button" data-workbench-row-index="' +
+      String(globalIndex) +
+      '">' +
+      '<strong>' +
+      escapeHtml(selection + "I" + String(row.iteration || 0) + " · " + (row.datum_address || "—")) +
+      "</strong>" +
+      '<small>' +
+      escapeHtml(row.display_value || row.labels || row.primary_value_token || "—") +
+      "</small>" +
+      '<small>' +
+      escapeHtml(detailBits.join(" · ") || "—") +
+      "</small></button>"
+    );
+  }
+
+  function renderDatumMatrix(layers) {
+    var offset = 0;
+    return asList(layers)
+      .map(function (layer) {
+        var valueGroupHtml = asList(asObject(layer).value_groups)
+          .map(function (valueGroup) {
+            var cells = asList(asObject(valueGroup).cells);
+            var cards = cells
+              .map(function (row, index) {
+                return renderDatumMatrixCell(row, offset + index);
+              })
+              .join("");
+            offset += cells.length;
+            return (
+              '<section class="v2-card" style="margin-top:12px"><h4>' +
+              escapeHtml(asObject(valueGroup).title || "Value Group") +
+              "</h4>" +
+              '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">' +
+              cards +
+              "</div></section>"
+            );
+          })
+          .join("");
+        return (
+          '<section class="v2-workbenchUi__group">' +
+          '<div class="v2-workbenchUi__groupHeader"><h4>' +
+          escapeHtml(asObject(layer).title || "Layer") +
+          "</h4>" +
+          (asObject(layer).summary ? "<p>" + escapeHtml(asObject(layer).summary) + "</p>" : "") +
+          "</div>" +
+          valueGroupHtml +
+          "</section>"
+        );
+      })
+      .join("");
   }
 
   function renderWorkbenchSummary(workspace) {
@@ -448,6 +523,7 @@
     var documentTable = asObject(workspace.document_table);
     var datumGrid = asObject(workspace.datum_grid);
     var groups = asList(datumGrid.groups);
+    var layers = asList(datumGrid.layers);
     var lens = asText(datumGrid.lens) || "interpreted";
     var sourceVisibility = asText(workspace.source_visibility) || "show";
     var offset = 0;
@@ -458,6 +534,7 @@
         return html;
       })
       .join("");
+    var matrixHtml = renderDatumMatrix(layers);
     var flatRows = asList(datumGrid.rows);
     return (
       renderCards(surfacePayload.cards || []) +
@@ -479,7 +556,9 @@
           : "Spreadsheet-like interpreted rows for the selected authoritative document."
       ) +
       "</p></div>" +
-      (groups.length
+      (asText(datumGrid.group_mode) === "layer_value_group_iteration" && layers.length
+        ? matrixHtml
+        : groups.length
         ? groupHtml
         : '<div class="v2-tableWrap v2-workbenchUi__tableWrap"><table class="v2-table v2-workbenchUiTable"><thead class="v2-workbenchUi__stickyHeader"><tr><th>Datum</th><th>' +
           escapeHtml(lens === "raw" ? "Raw Payload" : "Interpreted Row") +
@@ -557,162 +636,296 @@
     bindSelectableRows("tr[data-workbench-row-index]", "data-workbench-row-index", datumRows);
   }
 
+  function renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec) {
+    var adapter = toolSurfaceAdapter();
+    var spec = asObject(moduleSpec);
+    var renderer = resolveRegisteredModuleExport(spec.moduleId, spec.globalName);
+    if (renderer && typeof renderer.render === "function") {
+      renderer.render(ctx, target, surfacePayload);
+      return;
+    }
+    if (typeof window.__MYCITE_V2_LOAD_SHELL_MODULE === "function" && asText(spec.moduleId)) {
+      adapter.renderWrappedSurface(
+        target,
+        {
+          state: "loading",
+          title: region.title || surfacePayload.title || spec.label || "Workbench",
+          message: "Loading deferred renderer module…",
+          warnings: [],
+          readiness: {},
+          toolId: asText(spec.moduleId),
+        },
+        ""
+      );
+      window.__MYCITE_V2_LOAD_SHELL_MODULE(spec.moduleId, {
+        reason: "reflective_workspace:" + (asText(spec.label) || asText(spec.moduleId) || "unknown"),
+      })
+        .then(function () {
+          var resolved = resolveRegisteredModuleExport(spec.moduleId, spec.globalName);
+          if (resolved && typeof resolved.render === "function") {
+            resolved.render(ctx, target, surfacePayload);
+            return;
+          }
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: region.title || surfacePayload.title || spec.label || "Workbench",
+              unsupported: true,
+              message: buildModuleRegistrationMessage(
+                spec.label || "workspace",
+                spec.moduleId,
+                spec.globalName,
+                "render"
+              ),
+            }),
+            ""
+          );
+        })
+        .catch(function (error) {
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: region.title || surfacePayload.title || spec.label || "Workbench",
+              unsupported: true,
+              message:
+                buildModuleRegistrationMessage(
+                  spec.label || "workspace",
+                  spec.moduleId,
+                  spec.globalName,
+                  "render"
+                ) +
+                " " +
+                asText(error && error.message),
+            }),
+            ""
+          );
+        });
+      return;
+    }
+    adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: region.title || surfacePayload.title || spec.label || "Workbench",
+        unsupported: true,
+        message: buildModuleRegistrationMessage(
+          spec.label || "workspace",
+          spec.moduleId,
+          spec.globalName,
+          "render"
+        ),
+      }),
+      ""
+    );
+  }
+
+  function renderWorkbenchUiSurface(ctx, target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    if (
+      adapter.renderWrappedSurface(
+        target,
+        adapter.resolveSurfaceState({
+          region: region,
+          surfacePayload: surfacePayload,
+          title: region.title || "Workbench UI",
+          hasContent: true,
+        }),
+        renderWorkbenchSurface(surfacePayload)
+      )
+    ) {
+      bindWorkbenchNavigation(ctx, target, asObject(surfacePayload.workspace));
+    }
+  }
+
+  function renderCtsGisToolSummary(toolSummary, sourceEvidence) {
+    return '<section class="v2-card"><h3>CTS-GIS Tool Status</h3>' +
+      '<dl class="v2-surface-dl">' +
+      '<dt>Configured</dt><dd><strong>' +
+      (toolSummary.configured ? 'Yes' : 'No') +
+      '</strong></dd>' +
+      '<dt>Operational</dt><dd><strong>' +
+      (toolSummary.operational ? 'Yes' : 'No') +
+      '</strong></dd>' +
+      '<dt>Source Layout</dt><dd><strong>' +
+      escapeHtml(toolSummary.source_layout_state || '—') +
+      '</strong></dd>' +
+      '<dt>Documents</dt><dd><strong>' +
+      escapeHtml(String(toolSummary.document_count || 0)) +
+      '</strong></dd>' +
+      '<dt>Tool Spec</dt><dd><strong>' +
+      escapeHtml((sourceEvidence.tool_spec && sourceEvidence.tool_spec.file) || 'spec.json') +
+      '</strong></dd>' +
+      '<dt>Tool Anchor</dt><dd><strong>' +
+      escapeHtml((sourceEvidence.tool_anchor && sourceEvidence.tool_anchor.file) || 'tool.<msn>.cts-gis.json') +
+      '</strong></dd>' +
+      '<dt>Registrar Payload</dt><dd><strong>' +
+      escapeHtml((sourceEvidence.registrar_payload && sourceEvidence.registrar_payload.file) || 'registrar.json') +
+      '</strong></dd>' +
+      '</dl></section>';
+  }
+
+  function renderCtsGisIdleHelp(toolSummary) {
+    return '<section class="v2-card"><h3>Getting Started</h3>' +
+      '<p>' + escapeHtml(toolSummary.help_text || 'No active manipulation operation.') + '</p>' +
+      '<ul>' +
+      '<li>Use the control panel to navigate structure nodes</li>' +
+      '<li>Stage an insert operation to add new datums</li>' +
+      '<li>Preview and validate changes before applying</li>' +
+      '</ul></section>';
+  }
+
+  function renderCtsGisManipulationState(surfacePayload, sourceEvidence) {
+    var stageValidation = asObject(surfacePayload.stage_validation);
+    var stagePreview = asObject(surfacePayload.stage_preview);
+    var actionResult = asObject(surfacePayload.action_result);
+    var stagedInsert = asObject(surfacePayload.staged_insert);
+    var proposedRows = asArray(stagePreview.proposed_inserted_rows);
+    var remaps = asArray(stagePreview.remaps);
+
+    var html = '<section class="v2-card"><h3>Manipulation Evidence</h3>' +
+      '<dl class="v2-surface-dl">' +
+      '<dt>Administrative source</dt><dd><strong>' +
+      escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || '—') +
+      '</strong></dd>' +
+      '<dt>Staged document</dt><dd><strong>' +
+      escapeHtml(
+        ((stagedInsert.normalized_payload || {}).document_name) ||
+        ((stagedInsert.normalized_payload || {}).document_id) ||
+        '—'
+      ) +
+      '</strong></dd>' +
+      '<dt>Validation hash</dt><dd><strong>' +
+      escapeHtml(String(stageValidation.expected_document_version_hash || '').slice(0, 12) || '—') +
+      '</strong></dd>' +
+      '<dt>Preview rows</dt><dd><strong>' +
+      escapeHtml(String(proposedRows.length || 0)) +
+      '</strong></dd>' +
+      '<dt>Preview remaps</dt><dd><strong>' +
+      escapeHtml(String(remaps.length || 0)) +
+      '</strong></dd>' +
+      '<dt>Latest action</dt><dd><strong>' +
+      escapeHtml(actionResult.action_kind || '—') +
+      '</strong><br />' +
+      escapeHtml(actionResult.message || '') +
+      '</dd>' +
+      '</dl></section>';
+
+    if (proposedRows.length) {
+      html +=
+        '<section class="v2-card"><h3>Preview Rows</h3><ul class="v2-list">' +
+        proposedRows
+          .map(function (row) {
+            return (
+              '<li><strong>' +
+              escapeHtml(row.datum_address || '—') +
+              '</strong> · ' +
+              escapeHtml(row.target_node_address || '—') +
+              ' · ' +
+              escapeHtml(row.title || '—') +
+              '</li>'
+            );
+          })
+          .join('') +
+        '</ul></section>';
+    }
+
+    return html;
+  }
+
+  function renderSecondaryEvidenceSurface(target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    var surfaceId =
+      (adapter && typeof adapter.resolveRegionSurfaceId === "function" && adapter.resolveRegionSurfaceId(region, surfacePayload)) ||
+      "";
+    var secondaryHtml = "";
+    if (surfaceId === "system.tools.cts_gis") {
+      var workbenchMode = asText(surfacePayload.workbench_mode) || "tool_overview";
+      var sourceEvidence = asObject(surfacePayload.source_evidence);
+      var toolSummary = asObject(surfacePayload.tool_summary);
+      var readiness = asObject(sourceEvidence.readiness);
+      // Always show tool summary section
+      secondaryHtml = renderCtsGisToolSummary(toolSummary, sourceEvidence);
+
+      // Add mode-specific content
+      if (workbenchMode === "manipulation_active") {
+        secondaryHtml += renderCtsGisManipulationState(surfacePayload, sourceEvidence);
+      } else {
+        secondaryHtml += renderCtsGisIdleHelp(toolSummary);
+      }
+    } else {
+      secondaryHtml =
+        '<section class="v2-card"><h3>' +
+        escapeHtml(region.title || "Supporting Evidence") +
+        "</h3><p>" +
+        escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
+        "</p></section>";
+    }
+    adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: region.title || "Supporting Evidence",
+        hasContent: true,
+      }),
+      secondaryHtml
+    );
+  }
+
+  function renderReflectiveWorkspaceHost(ctx, target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    var mode =
+      (adapter &&
+        typeof adapter.resolveReflectiveWorkspaceMode === "function" &&
+        adapter.resolveReflectiveWorkspaceMode(region, surfacePayload)) ||
+      "generic_surface";
+    var moduleSpec =
+      (adapter &&
+        typeof adapter.resolveReflectiveWorkspaceModuleSpec === "function" &&
+        adapter.resolveReflectiveWorkspaceModuleSpec(region, surfacePayload)) ||
+      {};
+
+    if (mode === "registered_workspace" && asObject(moduleSpec).moduleId) {
+      renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec);
+      return;
+    }
+    if (mode === "workbench_ui_surface") {
+      renderWorkbenchUiSurface(ctx, target, region, surfacePayload);
+      return;
+    }
+    if (mode === "secondary_evidence") {
+      renderSecondaryEvidenceSurface(target, region, surfacePayload);
+      return;
+    }
+    renderGenericSurface(ctx, target, region, surfacePayload);
+  }
+
   window.PortalShellWorkbenchRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
       var surfacePayload = region.surface_payload || {};
       var adapter = toolSurfaceAdapter();
-      var awsRenderer = resolveRegisteredModuleExport("aws_workspace", "PortalAwsCsmWorkspaceRenderer");
-      var systemRenderer = resolveRegisteredModuleExport("system_workspace", "PortalSystemWorkspaceRenderer");
-      var networkRenderer = resolveRegisteredModuleExport("network_workspace", "PortalNetworkWorkspaceRenderer");
+      var family =
+        (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
+        "";
+      var mode =
+        (adapter &&
+          typeof adapter.resolveReflectiveWorkspaceMode === "function" &&
+          adapter.resolveReflectiveWorkspaceMode(region, surfacePayload)) ||
+        "generic_surface";
       if (!target) return;
       if (region.visible === false) {
         target.innerHTML = "";
         return;
       }
-      if (
-        awsRenderer &&
-        typeof awsRenderer.render === "function" &&
-        surfacePayload.kind === "aws_csm_workspace"
-      ) {
-        awsRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (surfacePayload.kind === "aws_csm_workspace") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "AWS-CSM",
-            unsupported: true,
-            message: buildModuleRegistrationMessage(
-              "AWS-CSM workspace",
-              "aws_workspace",
-              "PortalAwsCsmWorkspaceRenderer",
-              "render"
-            ),
-          }),
-          ""
-        );
-        return;
-      }
-      if (
-        systemRenderer &&
-        typeof systemRenderer.render === "function" &&
-        surfacePayload.kind === "system_workspace"
-      ) {
-        systemRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (surfacePayload.kind === "system_workspace") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "System",
-            unsupported: true,
-            message: buildModuleRegistrationMessage(
-              "system workspace",
-              "system_workspace",
-              "PortalSystemWorkspaceRenderer",
-              "render"
-            ),
-          }),
-          ""
-        );
-        return;
-      }
-      if (
-        networkRenderer &&
-        typeof networkRenderer.render === "function" &&
-        surfacePayload.kind === "network_system_log_workspace"
-      ) {
-        networkRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (surfacePayload.kind === "network_system_log_workspace") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "NETWORK",
-            unsupported: true,
-            message: buildModuleRegistrationMessage(
-              "NETWORK workspace",
-              "network_workspace",
-              "PortalNetworkWorkspaceRenderer",
-              "render"
-            ),
-          }),
-          ""
-        );
-        return;
-      }
-      if (surfacePayload.kind === "workbench_ui_surface") {
-        if (
-          adapter.renderWrappedSurface(
-            target,
-            adapter.resolveSurfaceState({
-              region: region,
-              surfacePayload: surfacePayload,
-              title: region.title || "Workbench UI",
-              hasContent: true,
-            }),
-            renderWorkbenchSurface(surfacePayload)
-          )
-        ) {
-          bindWorkbenchNavigation(ctx, target, asObject(surfacePayload.workspace));
-        }
-        return;
-      }
-      if (surfacePayload.kind === "tool_secondary_evidence") {
-        var secondaryHtml = "";
-        if (surfacePayload.tool_id === "cts_gis") {
-          var sourceEvidence = surfacePayload.source_evidence || {};
-          var readiness = sourceEvidence.readiness || {};
-          secondaryHtml =
-            '<section class="v2-card"><h3>' +
-            escapeHtml(region.title || "CTS-GIS Evidence") +
-            "</h3><p>" +
-            escapeHtml(region.subtitle || "Secondary evidence remains workbench-only.") +
-            '</p><dl class="v2-surface-dl">' +
-            "<dt>Readiness</dt><dd><strong>" +
-            escapeHtml(readiness.state || "pending") +
-            "</strong><br />" +
-            escapeHtml(readiness.message || "") +
-            "</dd>" +
-            "<dt>Tool spec</dt><dd><strong>" +
-            escapeHtml((sourceEvidence.tool_spec && sourceEvidence.tool_spec.file) || "spec.json") +
-            "</strong></dd>" +
-            "<dt>Tool anchor</dt><dd><strong>" +
-            escapeHtml((sourceEvidence.tool_anchor && sourceEvidence.tool_anchor.file) || "tool.<msn>.cts-gis.json") +
-            "</strong></dd>" +
-            "<dt>Registrar payload</dt><dd><strong>" +
-            escapeHtml((sourceEvidence.registrar_payload && sourceEvidence.registrar_payload.file) || "registrar.json") +
-            "</strong></dd>" +
-            "<dt>Administrative source</dt><dd><strong>" +
-            escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || "—") +
-            "</strong></dd>" +
-            "</dl></section>";
-        } else {
-          secondaryHtml =
-            '<section class="v2-card"><h3>' +
-            escapeHtml(region.title || "Supporting Evidence") +
-            "</h3><p>" +
-            escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
-            "</p></section>";
-        }
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: region.title || "Supporting Evidence",
-            hasContent: true,
-          }),
-          secondaryHtml
-        );
+      if (family === "reflective_workspace" || mode !== "generic_surface") {
+        renderReflectiveWorkspaceHost(ctx, target, region, surfacePayload);
         return;
       }
       renderGenericSurface(ctx, target, region, surfacePayload);

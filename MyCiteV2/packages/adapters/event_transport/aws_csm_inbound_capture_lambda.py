@@ -441,11 +441,26 @@ def _handle_verification_record(
     mail_source: str,
     subject: str,
     message_id: str,
-) -> list[dict[str, str]]:
+) -> dict[str, Any]:
     route_map = _verification_routes()
     tracked = [recipient for recipient in destinations if recipient in route_map]
     if not tracked:
-        return []
+        sample_recipient = _normalized_email(destinations[0]) if destinations else ""
+        return {
+            "forwarded": [],
+            "decisions": [
+                {
+                    "message_id": _text(message_id),
+                    "recipient": sample_recipient,
+                    "classification": "blocked_recipient",
+                    "reason": "recipient_not_tracked",
+                    "should_forward": False,
+                    "s3_uri": "",
+                    "handoff_provider": "",
+                    "forward_resolution_status": "",
+                }
+            ],
+        }
     recipient = tracked[0]
     domain = _recipient_domain(recipient)
     raw_bytes = b""
@@ -458,7 +473,21 @@ def _handle_verification_record(
         except Exception:  # noqa: BLE001
             continue
     if not raw_bytes:
-        raise RuntimeError(f"unable to read captured verification message for {recipient}")
+        return {
+            "forwarded": [],
+            "decisions": [
+                {
+                    "message_id": _text(message_id),
+                    "recipient": recipient,
+                    "classification": "blocked_unreadable_message",
+                    "reason": "captured_message_unavailable",
+                    "should_forward": False,
+                    "s3_uri": "",
+                    "handoff_provider": _text(route_map[recipient].get("handoff_provider")),
+                    "forward_resolution_status": _text(route_map[recipient].get("forward_resolution_status")),
+                }
+            ],
+        }
     summary = _message_summary(raw_bytes)
     resolved_sender = _text(summary.get("sender") or mail_source)
     resolved_recipient = _text(summary.get("recipient") or recipient)
@@ -471,37 +500,36 @@ def _handle_verification_record(
         raw_bytes=raw_bytes,
         handoff_provider=_text(route_map[recipient].get("handoff_provider")),
     )
-    print(
-        json.dumps(
-            {
-                "kind": "aws_csm_verification_forward_decision",
-                "message_id": message_id,
-                "recipient": resolved_recipient,
-                "classification": decision.get("classification"),
-                "reason": decision.get("reason"),
-                "s3_uri": s3_uri,
-                "handoff_provider": _text(route_map[recipient].get("handoff_provider")),
-                "forward_resolution_status": _text(route_map[recipient].get("forward_resolution_status")),
-            }
-        )
-    )
+    decision_entry = {
+        "message_id": _text(message_id),
+        "recipient": resolved_recipient,
+        "classification": _text(decision.get("classification")),
+        "reason": _text(decision.get("reason")),
+        "should_forward": bool(decision.get("should_forward")),
+        "s3_uri": s3_uri,
+        "handoff_provider": _text(route_map[recipient].get("handoff_provider")),
+        "forward_resolution_status": _text(route_map[recipient].get("forward_resolution_status")),
+    }
+    print(json.dumps({"kind": "aws_csm_verification_forward_decision", **decision_entry}))
     if not decision.get("should_forward"):
-        return []
+        return {"forwarded": [], "decisions": [decision_entry]}
     route = route_map[recipient]
-    return [
-        _send_verification_forward(
-            route=route,
-            tracked_recipient=recipient,
-            sender=resolved_sender,
-            subject=resolved_subject,
-            links=list(decision.get("links") or []),
-            s3_uri=s3_uri,
-        )
-    ]
+    dispatch = _send_verification_forward(
+        route=route,
+        tracked_recipient=recipient,
+        sender=resolved_sender,
+        subject=resolved_subject,
+        links=list(decision.get("links") or []),
+        s3_uri=s3_uri,
+    )
+    decision_entry["forwarded_to"] = _text(dispatch.get("sent_to"))
+    decision_entry["forward_message_id"] = _text(dispatch.get("message_id"))
+    return {"forwarded": [dispatch], "decisions": [decision_entry]}
 
 
 def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     forwarded: list[dict[str, str]] = []
+    verification_decisions: list[dict[str, Any]] = []
     processed_records = 0
     for record in list((event or {}).get("Records") or []):
         ses = record.get("ses") or {}
@@ -530,13 +558,18 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
                 captured_at=captured_at,
             )
         else:
-            forwarded.extend(
-                _handle_verification_record(
-                    destinations=destinations,
-                    mail_source=sender,
-                    subject=subject,
-                    message_id=message_id,
-                )
+            verification_result = _handle_verification_record(
+                destinations=destinations,
+                mail_source=sender,
+                subject=subject,
+                message_id=message_id,
             )
+            forwarded.extend(list(verification_result.get("forwarded") or []))
+            verification_decisions.extend(list(verification_result.get("decisions") or []))
         processed_records += 1
-    return {"ok": True, "processed_records": processed_records, "forwarded": forwarded}
+    return {
+        "ok": True,
+        "processed_records": processed_records,
+        "forwarded": forwarded,
+        "verification_decisions": verification_decisions,
+    }

@@ -1,5 +1,8 @@
 schema_version: "1.0"
 kind: "mos_program_index"
+lifecycle: "historical-superseded"
+canonical_successor: "docs/plans/contextual_system_manifest.yaml"
+archive_note: "Retained as historical MOS closure index; active cross-directory planning control moved to contextual_system_manifest/contextual_system_task_board."
 
 authority:
   markdown_path: "docs/plans/master_plan_mos.md"

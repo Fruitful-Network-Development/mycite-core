@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+from collections import OrderedDict
 import json
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
+    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     SYSTEM_ROOT_SURFACE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
+    attach_region_family_contract,
 )
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
@@ -51,14 +57,12 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     focus_level_for_shell_state,
     segment_id_for_level,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _DIRECTIVE_CONTEXT_TOOL_ID = "system_workspace"
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
+_WORKBENCH_PROJECTION_CACHE_LOCK = Lock()
+_WORKBENCH_PROJECTION_CACHE_MAX = 8
+_WORKBENCH_PROJECTION_CACHE: "OrderedDict[tuple[str, str, int], DatumWorkbenchProjection]" = OrderedDict()
 
 
 def _path_or_none(value: str | Path | None) -> Path | None:
@@ -66,6 +70,43 @@ def _path_or_none(value: str | Path | None) -> Path | None:
         return None
     return Path(value)
 
+
+def _workbench_cache_key(*, tenant_id: str, authority_db_file: str | Path | None) -> tuple[str, str, int] | None:
+    authority_path = _path_or_none(authority_db_file)
+    if authority_path is None:
+        return None
+    try:
+        mtime_ns = authority_path.stat().st_mtime_ns
+    except OSError:
+        return None
+    return (tenant_id, str(authority_path.resolve()), int(mtime_ns))
+
+
+def _cache_get_workbench_projection(cache_key: tuple[str, str, int]) -> DatumWorkbenchProjection | None:
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        projection = _WORKBENCH_PROJECTION_CACHE.get(cache_key)
+        if projection is not None:
+            _WORKBENCH_PROJECTION_CACHE.move_to_end(cache_key)
+        return projection
+
+
+def _cache_set_workbench_projection(cache_key: tuple[str, str, int], projection: DatumWorkbenchProjection) -> None:
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        _WORKBENCH_PROJECTION_CACHE[cache_key] = projection
+        _WORKBENCH_PROJECTION_CACHE.move_to_end(cache_key)
+        while len(_WORKBENCH_PROJECTION_CACHE) > _WORKBENCH_PROJECTION_CACHE_MAX:
+            _WORKBENCH_PROJECTION_CACHE.popitem(last=False)
+
+
+def _invalidate_workbench_projection_cache(*, authority_db_file: str | Path | None = None) -> None:
+    authority_path = _path_or_none(authority_db_file)
+    with _WORKBENCH_PROJECTION_CACHE_LOCK:
+        if authority_path is None:
+            _WORKBENCH_PROJECTION_CACHE.clear()
+            return
+        needle = str(authority_path.resolve())
+        for key in [key for key in _WORKBENCH_PROJECTION_CACHE if key[1] == needle]:
+            _WORKBENCH_PROJECTION_CACHE.pop(key, None)
 
 def _normalize_authority_mode(value: object) -> str:
     del value
@@ -191,7 +232,15 @@ def read_system_workbench_projection(
             readiness_status={"authoritative_catalog": "missing", "sql_authority": "uninitialized"},
             warnings=("sql_authority_uninitialized",),
         )
-    return DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
+    cache_key = _workbench_cache_key(tenant_id=portal_scope.scope_id, authority_db_file=authority_db_file)
+    if cache_key is not None:
+        cached = _cache_get_workbench_projection(cache_key)
+        if cached is not None:
+            return cached
+    projection = DatumWorkbenchService(store).read_workbench(portal_scope.scope_id)
+    if cache_key is not None:
+        _cache_set_workbench_projection(cache_key, projection)
+    return projection
 
 
 def _directive_context_adapter(
@@ -207,7 +256,7 @@ def _directive_context_adapter(
 
 
 def _directive_state_summary(value: dict[str, Any]) -> str:
-    bits = [f"{_as_text(key)}={_as_text(item)}" for key, item in value.items() if _as_text(key) and _as_text(item)]
+    bits = [f"{as_text(key)}={as_text(item)}" for key, item in value.items() if as_text(key) and as_text(item)]
     return ", ".join(bits[:4])
 
 
@@ -224,7 +273,7 @@ def _workspace_directive_context(
         authority_mode=authority_mode,
     )
     authority_path = _path_or_none(authority_db_file)
-    document_id = _as_text(getattr(active_document, "document_id", "")) if active_document is not None else ""
+    document_id = as_text(getattr(active_document, "document_id", "")) if active_document is not None else ""
     if adapter is None or authority_path is None or not document_id:
         return None
     datum_store = SqliteSystemDatumStoreAdapter(authority_path)
@@ -243,7 +292,7 @@ def _workspace_directive_context(
             "warnings": ["sql_document_version_identity_missing"],
             "overlay": None,
         }
-    datum_id = _as_text(getattr(selected_datum, "datum_address", "")) if selected_datum is not None else ""
+    datum_id = as_text(getattr(selected_datum, "datum_address", "")) if selected_datum is not None else ""
     datum_identity = None
     subject_level = "document"
     if datum_id:
@@ -257,7 +306,7 @@ def _workspace_directive_context(
     request = DirectiveContextRequest(
         portal_instance_id=portal_scope.scope_id,
         tool_id=_DIRECTIVE_CONTEXT_TOOL_ID,
-        subject_hyphae_hash=_as_text((datum_identity or {}).get("hyphae_hash")),
+        subject_hyphae_hash=as_text((datum_identity or {}).get("hyphae_hash")),
         subject_version_hash=document_identity["version_hash"],
     )
     result = adapter.read_directive_context(request)
@@ -283,7 +332,7 @@ def _workspace_directive_context(
         "document_id": document_id,
         "datum_id": datum_id,
         "subject_version_hash": document_identity["version_hash"],
-        "subject_hyphae_hash": _as_text((datum_identity or {}).get("hyphae_hash")),
+        "subject_hyphae_hash": as_text((datum_identity or {}).get("hyphae_hash")),
         "resolution_status": dict(result.resolution_status),
         "warnings": warnings,
         "overlay": overlay,
@@ -293,10 +342,10 @@ def _workspace_directive_context(
 def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, Any]:
     overlay = directive_context.get("overlay") if isinstance(directive_context.get("overlay"), dict) else None
     rows = [
-        {"label": "subject level", "value": _as_text(directive_context.get("subject_level")) or "document"},
+        {"label": "subject level", "value": as_text(directive_context.get("subject_level")) or "document"},
         {"label": "overlay", "value": "loaded" if overlay is not None else "missing"},
-        {"label": "version hash", "value": _as_text(directive_context.get("subject_version_hash")) or "—"},
-        {"label": "hyphae hash", "value": _as_text(directive_context.get("subject_hyphae_hash")) or "—"},
+        {"label": "version hash", "value": as_text(directive_context.get("subject_version_hash")) or "—"},
+        {"label": "hyphae hash", "value": as_text(directive_context.get("subject_hyphae_hash")) or "—"},
     ]
     if overlay is not None:
         rows.append(
@@ -314,7 +363,7 @@ def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, A
         rows.append(
             {
                 "label": "provenance",
-                "value": _directive_state_summary(dict(overlay.get("provenance") or {})) or _as_text(overlay.get("context_id")),
+                "value": _directive_state_summary(dict(overlay.get("provenance") or {})) or as_text(overlay.get("context_id")),
             }
         )
     return {"title": "Directive context", "rows": rows}
@@ -323,25 +372,25 @@ def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, A
 def _document_label(document: Any) -> str:
     if getattr(document, "document_id", "") == "system:anthology":
         return "Anthology"
-    name = _as_text(getattr(document, "document_name", ""))
-    tool_id = _as_text(getattr(document, "tool_id", ""))
+    name = as_text(getattr(document, "document_name", ""))
+    tool_id = as_text(getattr(document, "tool_id", ""))
     if tool_id and name:
         return f"{tool_id}: {name}"
-    return name or _as_text(getattr(document, "document_id", "")) or "Document"
+    return name or as_text(getattr(document, "document_id", "")) or "Document"
 
 
 def _document_file_key(document: Any) -> str:
     if getattr(document, "document_id", "") == "system:anthology":
         return SYSTEM_ANCHOR_FILE_KEY
-    return _as_text(getattr(document, "document_id", ""))
+    return as_text(getattr(document, "document_id", ""))
 
 
 def _document_detail(document: Any) -> str:
     detail_bits = []
-    source_kind = _as_text(getattr(document, "source_kind", ""))
+    source_kind = as_text(getattr(document, "source_kind", ""))
     if source_kind:
         detail_bits.append(source_kind.replace("_", " "))
-    relative_path = _as_text(getattr(document, "relative_path", ""))
+    relative_path = as_text(getattr(document, "relative_path", ""))
     if relative_path:
         detail_bits.append(relative_path)
     return " · ".join(detail_bits)
@@ -409,17 +458,17 @@ def _selected_document(projection: DatumWorkbenchProjection, *, file_key: str) -
 def _row_label(row: Any) -> str:
     labels = list(getattr(row, "labels", ()) or ())
     if labels:
-        return _as_text(labels[0])
-    return _as_text(getattr(row, "datum_address", "")) or "Datum"
+        return as_text(labels[0])
+    return as_text(getattr(row, "datum_address", "")) or "Datum"
 
 
 def _row_diagnostics(row: Any) -> str:
-    diagnostics = [item for item in list(getattr(row, "diagnostic_states", ()) or ()) if _as_text(item)]
+    diagnostics = [item for item in list(getattr(row, "diagnostic_states", ()) or ()) if as_text(item)]
     return ", ".join(diagnostics) if diagnostics else "ok"
 
 
 def _datum_coordinates(datum_id: object) -> dict[str, int] | None:
-    token = _as_text(datum_id)
+    token = as_text(datum_id)
     parts = token.split("-")
     if len(parts) != 3 or any(not part.isdigit() for part in parts):
         return None
@@ -435,18 +484,18 @@ def _row_reference_bindings(row: Any) -> list[dict[str, Any]]:
     for binding in list(getattr(row, "reference_bindings", ()) or ()):
         bindings.append(
             {
-                "label": _as_text(getattr(binding, "anchor_label", "")) or _as_text(getattr(binding, "anchor_address", "")),
-                "object_id": _as_text(getattr(binding, "anchor_address", "")) or _as_text(getattr(binding, "normalized_reference_form", "")),
-                "reference_form": _as_text(getattr(binding, "reference_form", "")),
-                "resolution_state": _as_text(getattr(binding, "resolution_state", "")),
-                "value_token": _as_text(getattr(binding, "value_token", "")),
+                "label": as_text(getattr(binding, "anchor_label", "")) or as_text(getattr(binding, "anchor_address", "")),
+                "object_id": as_text(getattr(binding, "anchor_address", "")) or as_text(getattr(binding, "normalized_reference_form", "")),
+                "reference_form": as_text(getattr(binding, "reference_form", "")),
+                "resolution_state": as_text(getattr(binding, "resolution_state", "")),
+                "value_token": as_text(getattr(binding, "value_token", "")),
             }
         )
     return bindings
 
 
 def _row_item(row: Any, *, selected_datum_id: str) -> dict[str, Any]:
-    datum_id = _as_text(getattr(row, "datum_address", ""))
+    datum_id = as_text(getattr(row, "datum_address", ""))
     diagnostics = list(getattr(row, "diagnostic_states", ()) or ())
     return {
         "datum_id": datum_id,
@@ -455,25 +504,25 @@ def _row_item(row: Any, *, selected_datum_id: str) -> dict[str, Any]:
         "diagnostics": diagnostics,
         "selected": datum_id == selected_datum_id,
         "coordinates": _datum_coordinates(datum_id),
-        "primary_value_token": _as_text(getattr(row, "primary_value_token", "")),
-        "recognized_family": _as_text(getattr(row, "recognized_family", "")),
-        "recognized_anchor": _as_text(getattr(row, "recognized_anchor", "")),
+        "primary_value_token": as_text(getattr(row, "primary_value_token", "")),
+        "recognized_family": as_text(getattr(row, "recognized_family", "")),
+        "recognized_anchor": as_text(getattr(row, "recognized_anchor", "")),
     }
 
 
 def _selected_datum_payload(row: Any | None) -> dict[str, Any] | None:
     if row is None:
         return None
-    datum_id = _as_text(getattr(row, "datum_address", ""))
+    datum_id = as_text(getattr(row, "datum_address", ""))
     return {
         "datum_id": datum_id,
         "label": _row_label(row),
         "labels": list(getattr(row, "labels", ()) or ()),
         "coordinates": _datum_coordinates(datum_id),
         "diagnostic_states": list(getattr(row, "diagnostic_states", ()) or ()),
-        "primary_value_token": _as_text(getattr(row, "primary_value_token", "")),
-        "recognized_family": _as_text(getattr(row, "recognized_family", "")),
-        "recognized_anchor": _as_text(getattr(row, "recognized_anchor", "")),
+        "primary_value_token": as_text(getattr(row, "primary_value_token", "")),
+        "recognized_family": as_text(getattr(row, "recognized_family", "")),
+        "recognized_anchor": as_text(getattr(row, "recognized_anchor", "")),
         "reference_bindings": _row_reference_bindings(row),
         "raw": getattr(row, "raw", None),
         "render_hints": dict(getattr(row, "render_hints", {}) or {}),
@@ -558,7 +607,7 @@ def _anthology_layer_groups(document: Any, *, selected_datum_id: str) -> list[di
 def _document_row_items(document: Any, *, selected_datum_id: str) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for row in list(getattr(document, "rows", ()) or ())[:80]:
-        datum_id = _as_text(getattr(row, "datum_address", ""))
+        datum_id = as_text(getattr(row, "datum_address", ""))
         if not datum_id:
             continue
         items.append(_row_item(row, selected_datum_id=selected_datum_id))
@@ -569,7 +618,7 @@ def _selected_datum(document: Any | None, *, datum_id: str) -> Any | None:
     if document is None or not datum_id:
         return None
     for row in list(getattr(document, "rows", ()) or ()):
-        if _as_text(getattr(row, "datum_address", "")) == datum_id:
+        if as_text(getattr(row, "datum_address", "")) == datum_id:
             return row
     return None
 
@@ -579,18 +628,18 @@ def _object_items(row: Any | None, *, selected_object_id: str) -> list[dict[str,
         return []
     entries = []
     for binding in list(getattr(row, "reference_bindings", ()) or ()):
-        object_id = _as_text(getattr(binding, "anchor_address", "")) or _as_text(getattr(binding, "normalized_reference_form", ""))
+        object_id = as_text(getattr(binding, "anchor_address", "")) or as_text(getattr(binding, "normalized_reference_form", ""))
         if not object_id:
             continue
         entries.append(
             {
                 "object_id": object_id,
-                "label": _as_text(getattr(binding, "anchor_label", "")) or object_id,
-                "detail": _as_text(getattr(binding, "resolution_state", "")) or "reference",
+                "label": as_text(getattr(binding, "anchor_label", "")) or object_id,
+                "detail": as_text(getattr(binding, "resolution_state", "")) or "reference",
                 "selected": object_id == selected_object_id,
             }
         )
-    primary_value = _as_text(getattr(row, "primary_value_token", ""))
+    primary_value = as_text(getattr(row, "primary_value_token", ""))
     if primary_value:
         entries.append(
             {
@@ -637,14 +686,14 @@ def _panel_entry(
     prefix: str = "",
 ) -> dict[str, Any]:
     entry = {
-        "label": _as_text(label),
+        "label": as_text(label),
         "active": bool(active),
-        "prefix": _as_text(prefix),
+        "prefix": as_text(prefix),
     }
-    meta_text = _as_text(meta)
+    meta_text = as_text(meta)
     if meta_text:
         entry["meta"] = meta_text
-    href_text = _as_text(href)
+    href_text = as_text(href)
     if href_text:
         entry["href"] = href_text
     if shell_request is not None:
@@ -654,9 +703,9 @@ def _panel_entry(
 
 def _panel_action(*, label: str, action_kind: str, value: object = "") -> dict[str, Any]:
     return {
-        "label": _as_text(label),
-        "action_kind": _as_text(action_kind),
-        "value": _as_text(value),
+        "label": as_text(label),
+        "action_kind": as_text(action_kind),
+        "value": as_text(value),
     }
 
 
@@ -689,7 +738,7 @@ def _verb_tab_entries(
 
 def _file_value_for_panel(*, active_file_key: str, active_document: Any | None) -> str:
     if active_document is not None:
-        relative_path = _as_text(getattr(active_document, "relative_path", ""))
+        relative_path = as_text(getattr(active_document, "relative_path", ""))
         if relative_path:
             return Path(relative_path).name
         document_name = _document_label(active_document)
@@ -720,13 +769,13 @@ def _system_context_items(
         items.append(
             {
                 "label": "Datum",
-                "value": _row_label(selected_datum) or _as_text(getattr(selected_datum, "datum_address", "")),
+                "value": _row_label(selected_datum) or as_text(getattr(selected_datum, "datum_address", "")),
             }
         )
     if selected_object is not None:
-        items.append({"label": "Object", "value": _as_text(selected_object.get("label")) or _as_text(selected_object.get("object_id"))})
+        items.append({"label": "Object", "value": as_text(selected_object.get("label")) or as_text(selected_object.get("object_id"))})
     elif shell_state.verb == VERB_MEDIATE:
-        subject = _as_text((shell_state.mediation_subject or {}).get("id"))
+        subject = as_text((shell_state.mediation_subject or {}).get("id"))
         if subject:
             items.append({"label": "Mediation", "value": subject})
     return items
@@ -740,14 +789,14 @@ def _system_file_groups(
 ) -> list[dict[str, Any]]:
     entries = [
         _panel_entry(
-            label=_as_text(entry.get("label")) or _as_text(entry.get("file_key")),
-            meta=_as_text(entry.get("detail")),
+            label=as_text(entry.get("label")) or as_text(entry.get("file_key")),
+            meta=as_text(entry.get("detail")),
             active=bool(entry.get("active")),
             href=SYSTEM_ROOT_ROUTE,
             shell_request=_entry_shell_request(
                 portal_scope=portal_scope,
                 shell_state=shell_state,
-                transition={"kind": TRANSITION_FOCUS_FILE, "file_key": _as_text(entry.get("file_key"))},
+                transition={"kind": TRANSITION_FOCUS_FILE, "file_key": as_text(entry.get("file_key"))},
                 requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
             ),
         )
@@ -763,7 +812,7 @@ def _row_meta_from_item(item: dict[str, Any]) -> str:
         bits.append(f"VG {coordinates['value_group']}")
     if isinstance(coordinates.get("iteration"), int):
         bits.append(f"I {coordinates['iteration']}")
-    diagnostics = ", ".join([_as_text(token) for token in list(item.get("diagnostics") or []) if _as_text(token)])
+    diagnostics = ", ".join([as_text(token) for token in list(item.get("diagnostics") or []) if as_text(token)])
     if diagnostics:
         bits.append(diagnostics)
     return " | ".join(bits)
@@ -777,7 +826,7 @@ def _system_document_groups(
     active_document: Any,
     selected_datum_id: str,
 ) -> list[dict[str, Any]]:
-    if _as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+    if as_text(getattr(active_document, "document_id", "")) == "system:anthology":
         groups: list[dict[str, Any]] = []
         for layer_group in _anthology_layer_groups(active_document, selected_datum_id=selected_datum_id):
             entries = []
@@ -785,7 +834,7 @@ def _system_document_groups(
                 for item in list(value_group.get("rows") or []):
                     entries.append(
                         _panel_entry(
-                            label=_as_text(item.get("label")) or _as_text(item.get("datum_id")) or "Datum",
+                            label=as_text(item.get("label")) or as_text(item.get("datum_id")) or "Datum",
                             meta=_row_meta_from_item(item),
                             active=bool(item.get("selected")),
                             href=SYSTEM_ROOT_ROUTE,
@@ -795,21 +844,21 @@ def _system_document_groups(
                                 transition={
                                     "kind": TRANSITION_FOCUS_DATUM,
                                     "file_key": active_file_key,
-                                    "datum_id": _as_text(item.get("datum_id")),
+                                    "datum_id": as_text(item.get("datum_id")),
                                 },
                                 requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
                             ),
                         )
                     )
             if entries:
-                groups.append({"title": _as_text(layer_group.get("label")) or "Layer", "entries": entries})
+                groups.append({"title": as_text(layer_group.get("label")) or "Layer", "entries": entries})
         return groups
 
     rows = _document_row_items(active_document, selected_datum_id=selected_datum_id)
     entries = [
         _panel_entry(
-            label=_as_text(item.get("label")) or _as_text(item.get("datum_id")) or "Datum",
-            meta=_row_meta_from_item(item) or _as_text(item.get("detail")),
+            label=as_text(item.get("label")) or as_text(item.get("datum_id")) or "Datum",
+            meta=_row_meta_from_item(item) or as_text(item.get("detail")),
             active=bool(item.get("selected")),
             href=SYSTEM_ROOT_ROUTE,
             shell_request=_entry_shell_request(
@@ -818,7 +867,7 @@ def _system_document_groups(
                 transition={
                     "kind": TRANSITION_FOCUS_DATUM,
                     "file_key": active_file_key,
-                    "datum_id": _as_text(item.get("datum_id")),
+                    "datum_id": as_text(item.get("datum_id")),
                 },
                 requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
             ),
@@ -831,8 +880,8 @@ def _system_document_groups(
 def _system_activity_groups(activity_projection: Any) -> list[dict[str, Any]]:
     entries = [
         _panel_entry(
-            label=_as_text(getattr(record, "event_type", "")) or "activity",
-            meta=_as_text(getattr(record, "recorded_at_unix_ms", "")),
+            label=as_text(getattr(record, "event_type", "")) or "activity",
+            meta=as_text(getattr(record, "recorded_at_unix_ms", "")),
         )
         for record in list(getattr(activity_projection, "records", ()) or ())[:12]
     ]
@@ -849,7 +898,7 @@ def _system_profile_groups(profile_summary: PublicationTenantSummary) -> list[di
     entries = [
         _panel_entry(label=label, meta=value or "unset")
         for label, value in fields
-        if _as_text(label)
+        if as_text(label)
     ]
     return [{"title": "Profile Fields", "entries": entries}] if entries else []
 
@@ -882,11 +931,11 @@ def _system_selection_groups(
         )
     if selected_datum is not None:
         entries = []
-        for item in _object_items(selected_datum, selected_object_id=_as_text((selected_object or {}).get("object_id"))):
+        for item in _object_items(selected_datum, selected_object_id=as_text((selected_object or {}).get("object_id"))):
             entries.append(
                 _panel_entry(
-                    label=_as_text(item.get("label")) or _as_text(item.get("object_id")) or "Aspect",
-                    meta=_as_text(item.get("detail")),
+                    label=as_text(item.get("label")) or as_text(item.get("object_id")) or "Aspect",
+                    meta=as_text(item.get("detail")),
                     active=bool(item.get("selected")),
                     href=SYSTEM_ROOT_ROUTE,
                     shell_request=_entry_shell_request(
@@ -895,8 +944,8 @@ def _system_selection_groups(
                         transition={
                             "kind": TRANSITION_FOCUS_OBJECT,
                             "file_key": active_file_key,
-                            "datum_id": _as_text(getattr(selected_datum, "datum_address", "")),
-                            "object_id": _as_text(item.get("object_id")),
+                            "datum_id": as_text(getattr(selected_datum, "datum_address", "")),
+                            "object_id": as_text(item.get("object_id")),
                         },
                         requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
                     ),
@@ -933,7 +982,7 @@ def _tool_collection_payload(tool_root: Path, *, tool_slug: str) -> tuple[str, l
         payload = _safe_json_object(candidate)
         raw_members = payload.get("member_files")
         if isinstance(raw_members, list):
-            member_files = [_as_text(item) for item in raw_members if _as_text(item)]
+            member_files = [as_text(item) for item in raw_members if as_text(item)]
         collection_path = candidate.name
         break
     if not member_files:
@@ -952,7 +1001,7 @@ def _aws_csm_domain_groups(tool_root: Path) -> list[dict[str, Any]]:
         return groups
     for profile_path in sorted(newsletter_root.glob("newsletter.*.profile.json")):
         profile = _safe_json_object(profile_path)
-        domain = _as_text(profile.get("domain")) or profile_path.name
+        domain = as_text(profile.get("domain")) or profile_path.name
         entries: list[dict[str, Any]] = []
         seen: set[str] = set()
         for candidate in (
@@ -960,7 +1009,7 @@ def _aws_csm_domain_groups(tool_root: Path) -> list[dict[str, Any]]:
             profile.get("list_address"),
             profile.get("sender_address"),
         ):
-            token = _as_text(candidate).lower()
+            token = as_text(candidate).lower()
             if token and token not in seen:
                 seen.add(token)
                 entries.append(_panel_entry(label=token, prefix="->"))
@@ -969,7 +1018,7 @@ def _aws_csm_domain_groups(tool_root: Path) -> list[dict[str, Any]]:
         for contact in list(contacts.get("contacts") or []):
             if not isinstance(contact, dict):
                 continue
-            token = _as_text(contact.get("email")).lower()
+            token = as_text(contact.get("email")).lower()
             if token and token not in seen:
                 seen.add(token)
                 entries.append(_panel_entry(label=token, prefix="->"))
@@ -984,10 +1033,10 @@ def _fnd_ebi_groups(tool_root: Path) -> list[dict[str, Any]]:
     entries = []
     for path in sorted(tool_root.glob("fnd-ebi.*.json")):
         payload = _safe_json_object(path)
-        domain = _as_text(payload.get("domain"))
+        domain = as_text(payload.get("domain"))
         if not domain:
             continue
-        entries.append(_panel_entry(label=domain, meta=_as_text(payload.get("site_root"))))
+        entries.append(_panel_entry(label=domain, meta=as_text(payload.get("site_root"))))
     return [{"title": "Profiles", "entries": entries}] if entries else []
 
 
@@ -1024,7 +1073,7 @@ def build_system_control_panel(
     active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
     selected_datum_payload = _selected_datum_payload(selected_datum)
     actions: list[dict[str, Any]] = []
-    if isinstance(selected_datum_payload, dict) and _as_text(selected_datum_payload.get("primary_value_token")):
+    if isinstance(selected_datum_payload, dict) and as_text(selected_datum_payload.get("primary_value_token")):
         actions.append(
             _panel_action(
                 label="Copy Hyphae Value",
@@ -1032,7 +1081,8 @@ def build_system_control_panel(
                 value=selected_datum_payload.get("primary_value_token"),
             )
         )
-    return {
+    return attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
         "title": "Control Panel",
@@ -1060,7 +1110,10 @@ def build_system_control_panel(
             profile_summary=profile_summary,
         ),
         "actions": actions,
-    }
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
 
 
 def build_tool_control_panel(
@@ -1099,7 +1152,8 @@ def build_tool_control_panel(
         context_items.append({"label": "File", "value": collection_file})
     if active_member:
         context_items.append({"label": "Mediation", "value": active_member})
-    return {
+    return attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
         "title": "Control Panel",
@@ -1118,7 +1172,347 @@ def build_tool_control_panel(
             active_member=active_member,
         ) if tool_slug else [],
         "actions": [],
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=surface_id,
+    )
+
+
+def _build_context_conditions(
+    *,
+    shell_state: PortalShellState,
+    surface_label: str,
+    active_document: Any | None,
+    selected_datum: Any | None,
+) -> list[dict[str, Any]]:
+    """Build context condition rows showing current focus state."""
+    conditions = [
+        {
+            "level": "page",
+            "label": "Page",
+            "value": surface_label,
+            "state": "active",
+        }
+    ]
+
+    # Add sandbox if tool context
+    if surface_label not in {"SYSTEM", "NETWORK", "UTILITIES"}:
+        conditions.append({
+            "level": "sandbox",
+            "label": "Sandbox",
+            "value": surface_label,
+            "state": "active",
+        })
+
+    # Add document if focused
+    if active_document is not None:
+        conditions.append({
+            "level": "document",
+            "label": "Document",
+            "value": _document_label(active_document),
+            "state": "focused",
+            "metadata": {
+                "source_kind": as_text(getattr(active_document, "source_kind", "")),
+                "relative_path": as_text(getattr(active_document, "relative_path", "")),
+            },
+        })
+
+    # Add datum if selected
+    if selected_datum is not None:
+        datum_id = as_text(getattr(selected_datum, "datum_address", ""))
+        coordinates = _datum_coordinates(datum_id)
+        conditions.append({
+            "level": "datum",
+            "label": "Datum",
+            "value": _row_label(selected_datum),
+            "state": "selected",
+            "coordinates": coordinates,
+        })
+
+    return conditions
+
+
+def _build_nimm_aitas_control_section(
+    *,
+    shell_state: PortalShellState,
+    directive_context: dict[str, Any] | None,
+    nimm_directive: str | None,
+    aitas_state: dict[str, Any] | None,
+    portal_scope: PortalScope,
+    surface_id: str,
+) -> dict[str, Any]:
+    """Build unified NIMM-AITAS control section with stacked facets."""
+
+    context = dict(directive_context or {})
+    overlay = dict(context.get("overlay") or {})
+    nimm_state = dict(overlay.get("nimm_state") or {})
+    aitas_state_overlay = dict(overlay.get("aitas_state") or aitas_state or {})
+
+    return {
+        "title": "Directive Control",
+        "collapsible": True,
+        "default_state": "expanded",
+        "facets": [
+            {
+                "facet_id": "nimm_directive",
+                "label": "NIMM Directive",
+                "subsections": [
+                    {
+                        "label": "Verb",
+                        "value": shell_state.verb,
+                        "editable": True,
+                        "control_type": "tabs",
+                        "options": [VERB_NAVIGATE, VERB_INVESTIGATE, VERB_MEDIATE, VERB_MANIPULATE],
+                        "shell_requests": _verb_tab_entries(
+                            portal_scope=portal_scope,
+                            shell_state=shell_state,
+                            requested_surface_id=surface_id,
+                        ),
+                    },
+                    {
+                        "label": "Operation",
+                        "value": as_text(nimm_state.get("operation")) or "—",
+                        "editable": False,
+                        "control_type": "display",
+                    },
+                    {
+                        "label": "Target",
+                        "value": as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id,
+                        "editable": False,
+                        "control_type": "display",
+                    },
+                ],
+            },
+            {
+                "facet_id": "aitas_state",
+                "label": "AITAS State",
+                "subsections": [
+                    {
+                        "label": "Intention Token",
+                        "value": as_text(aitas_state_overlay.get("intention_rule_id") or aitas_state_overlay.get("intention_token")),
+                        "editable": True,
+                        "control_type": "select",
+                        "options": [],  # Runtime-provided
+                    },
+                    {
+                        "label": "Time Directive",
+                        "value": as_text(aitas_state_overlay.get("time_directive")),
+                        "editable": True,
+                        "control_type": "input",
+                    },
+                    {
+                        "label": "Archetype Family",
+                        "value": as_text(aitas_state_overlay.get("archetype_family_id")),
+                        "editable": True,
+                        "control_type": "select",
+                        "options": [],
+                    },
+                    {
+                        "label": "Attention Node",
+                        "value": as_text(aitas_state_overlay.get("attention_node_id")),
+                        "editable": True,
+                        "control_type": "input",
+                    },
+                ],
+            },
+            {
+                "facet_id": "envelope_state",
+                "label": "Directive Context",
+                "subsections": [
+                    {
+                        "label": "Context ID",
+                        "value": as_text(overlay.get("context_id")),
+                        "editable": False,
+                        "control_type": "display",
+                    },
+                    {
+                        "label": "Subject Level",
+                        "value": as_text(context.get("subject_level")),
+                        "editable": False,
+                        "control_type": "display",
+                    },
+                    {
+                        "label": "Version Hash",
+                        "value": as_text(context.get("subject_version_hash")),
+                        "editable": False,
+                        "control_type": "display",
+                        "copyable": True,
+                    },
+                    {
+                        "label": "Hyphae Hash",
+                        "value": as_text(context.get("subject_hyphae_hash")),
+                        "editable": False,
+                        "control_type": "display",
+                        "copyable": True,
+                    },
+                    {
+                        "label": "Overlay Status",
+                        "value": "loaded" if overlay else "missing",
+                        "editable": False,
+                        "control_type": "badge",
+                    },
+                ],
+            },
+        ],
     }
+
+
+def _build_terminal_control_interface(
+    *,
+    shell_state: PortalShellState,
+    directive_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build terminal-style directive injection interface."""
+    return {
+        "title": "Directive Terminal",
+        "collapsible": True,
+        "default_state": "expanded",
+        "interface": {
+            "mode": "command",
+            "placeholder": "> inject directive...",
+            "help_text": "Enter NIMM directive or AITAS control command",
+        },
+        "quick_actions": [
+            {"action_id": "inject_directive", "label": "Inject", "shortcut": "Ctrl+Enter"},
+            {"action_id": "validate_context", "label": "Validate", "shortcut": "Ctrl+K"},
+            {"action_id": "clear_overlay", "label": "Clear Overlay"},
+            {"action_id": "export_envelope", "label": "Export Envelope"},
+        ],
+        "history": {
+            "show": True,
+            "max_items": 10,
+            "items": [],  # Populated from session/audit
+        },
+    }
+
+
+def _file_entries_to_navigation_groups(
+    *,
+    file_entries: list[dict[str, Any]],
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+) -> list[dict[str, Any]]:
+    """Convert file entries to navigation groups format."""
+    entries = [
+        _panel_entry(
+            label=as_text(entry.get("label")) or as_text(entry.get("file_key")),
+            meta=as_text(entry.get("detail")),
+            active=bool(entry.get("active")),
+            href=entry.get("href") or "",
+            shell_request=entry.get("shell_request"),
+        )
+        for entry in file_entries
+    ]
+    return [{"title": "Files", "entries": entries}] if entries else []
+
+
+def build_unified_control_panel(
+    *,
+    # Identity
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    # Surface
+    surface_id: str,
+    surface_label: str,
+    # Context state
+    active_document: Any | None = None,
+    selected_datum: Any | None = None,
+    selected_object: dict[str, Any] | None = None,
+    # NIMM-AITAS state
+    directive_context: dict[str, Any] | None = None,
+    nimm_directive: str | None = None,
+    aitas_state: dict[str, Any] | None = None,
+    # Navigation
+    file_entries: list[dict[str, Any]] | None = None,
+    navigation_groups: list[dict[str, Any]] | None = None,
+    # Actions
+    actions: list[dict[str, Any]] | None = None,
+    # Tool-specific extensions
+    tool_extensions: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """
+    Build unified control panel following canonical contract v2.
+
+    Replaces:
+    - build_system_control_panel()
+    - build_tool_control_panel()
+    - AWS _build_control_panel()
+    - CTS-GIS _cts_gis_control_panel()
+
+    Returns control panel payload with:
+    - Portal identity section
+    - Context conditions (page → sandbox → document → datum)
+    - NIMM-AITAS unified control section (stacked facets)
+    - Terminal control interface
+    - Navigation groups
+    - Action buttons
+    """
+
+    # 1. Portal Identity Section
+    portal_identity = {
+        "portal_instance_id": portal_scope.scope_id,
+        "portal_domain": getattr(portal_scope, 'scope_domain', '') or "",
+        "tenant_id": portal_scope.scope_id,
+        "build_id": getattr(portal_scope, 'build_id', '') or "",
+        "host_shape": getattr(portal_scope, 'host_shape', '') or "local",
+    }
+
+    # 2. Context Conditions
+    context_conditions = _build_context_conditions(
+        shell_state=shell_state,
+        surface_label=surface_label,
+        active_document=active_document,
+        selected_datum=selected_datum,
+    )
+
+    # 3. NIMM-AITAS Unified Control Section
+    nimm_aitas_control = _build_nimm_aitas_control_section(
+        shell_state=shell_state,
+        directive_context=directive_context,
+        nimm_directive=nimm_directive,
+        aitas_state=aitas_state,
+        portal_scope=portal_scope,
+        surface_id=surface_id,
+    )
+
+    # 4. Terminal Control Interface
+    terminal_control = _build_terminal_control_interface(
+        shell_state=shell_state,
+        directive_context=directive_context,
+    )
+
+    # 5. Navigation Groups
+    resolved_navigation_groups = navigation_groups or []
+    if file_entries and not navigation_groups:
+        # Auto-convert file_entries to navigation groups
+        resolved_navigation_groups = _file_entries_to_navigation_groups(
+            file_entries=file_entries,
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+        )
+
+    # 6. Merge tool extensions
+    extensions = dict(tool_extensions or {})
+
+    return attach_region_family_contract(
+        {
+        "schema": "mycite.v2.portal.shell.region.control_panel.v2",
+        "kind": "unified_directive_panel",
+        "title": "Control Panel",
+        "surface_label": surface_label,
+        "portal_identity": portal_identity,
+        "context_conditions": context_conditions,
+        "nimm_aitas_control": nimm_aitas_control,
+        "terminal_control": terminal_control,
+        "navigation_groups": resolved_navigation_groups,
+        "actions": list(actions or []),
+        **extensions,  # Tool-specific additions
+        },
+        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        surface_id=surface_id,
+    )
+
+
 def build_system_workspace_bundle(
     *,
     portal_scope: PortalScope,
@@ -1240,7 +1634,7 @@ def build_system_workspace_bundle(
         }
     elif active_document is not None:
         document_payload = {
-            "document_id": _as_text(getattr(active_document, "document_id", "")),
+            "document_id": as_text(getattr(active_document, "document_id", "")),
             "label": _document_label(active_document),
             "detail": _document_detail(active_document),
             "diagnostic_totals": dict(getattr(active_document, "diagnostic_totals", {}) or {}),
@@ -1248,7 +1642,7 @@ def build_system_workspace_bundle(
             "selected_datum": _selected_datum_payload(selected_datum),
             "selected_object": selected_object,
         }
-        if _as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+        if as_text(getattr(active_document, "document_id", "")) == "system:anthology":
             document_payload["presentation"] = "anthology_layered_table"
             document_payload["summary"] = "Canonical system anchor file rendered as a layered datum table."
             document_payload["inspector_hint"] = (
@@ -1269,17 +1663,33 @@ def build_system_workspace_bundle(
         "subtitle": "Datum-file workbench for the system sandbox.",
         "workspace": workspace,
     }
-    control_panel = build_system_control_panel(
+    # Build actions list
+    actions: list[dict[str, Any]] = []
+    selected_datum_payload = _selected_datum_payload(selected_datum)
+    if isinstance(selected_datum_payload, dict) and as_text(selected_datum_payload.get("primary_value_token")):
+        actions.append(
+            _panel_action(
+                label="Copy Hyphae Value",
+                action_kind="copy_text",
+                value=selected_datum_payload.get("primary_value_token"),
+            )
+        )
+
+    # Use unified control panel builder
+    control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
-        file_entries=file_entries,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+        surface_label="SYSTEM",
         active_document=active_document,
         selected_datum=selected_datum,
         selected_object=selected_object,
-        activity_projection=activity_projection,
-        profile_summary=profile_summary,
+        directive_context=directive_context,
+        file_entries=file_entries,
+        actions=actions,
     )
-    inspector = {
+    inspector = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
@@ -1292,7 +1702,7 @@ def build_system_workspace_bundle(
                 "rows": [
                     {"label": "verb", "value": shell_state.verb},
                     {"label": "focus level", "value": focus_level},
-                    {"label": "focus subject", "value": _as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id},
+                    {"label": "focus subject", "value": as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id},
                 ],
             },
             {
@@ -1307,17 +1717,24 @@ def build_system_workspace_bundle(
                 ],
             },
         ],
-    }
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
     if directive_context is not None:
         inspector["sections"].append(_directive_context_section(directive_context))
-    workbench = {
+    workbench = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
         "kind": "system_workspace",
         "title": "System",
         "subtitle": "Datum-file workbench for the system sandbox.",
         "visible": True,
         "surface_payload": surface_payload,
-    }
+        },
+        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        surface_id=SYSTEM_ROOT_SURFACE_ID,
+    )
     return {
         "page_title": "System",
         "page_subtitle": "Datum-file workbench for the system sandbox.",
@@ -1336,6 +1753,8 @@ def build_system_workspace_bundle(
 __all__ = [
     "build_system_workspace_bundle",
     "build_tool_control_panel",
+    "build_unified_control_panel",
     "build_workspace_file_entries",
     "read_system_workbench_projection",
+    "_invalidate_workbench_projection_cache",
 ]

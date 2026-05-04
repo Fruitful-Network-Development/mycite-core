@@ -79,3 +79,15 @@ Source plan: `docs/plans/desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` (a
 2. **Scoped persistence mediation risk**: shell chrome/theme state still relies on browser-local storage semantics and lacks explicit desktop window/session conflict policy.
 3. **Accelerator collision risk**: duplicate shortcut bindings between web JS and native menu can trigger conflicting shell actions.
 4. **Operational false-positive risk**: path-existence integration checks may claim tools are healthy even when backing process/services are unavailable.
+
+### Contextual planning status update (2026-04-23)
+
+- `TASK-DESKTOP-DM02-001` and `TASK-DESKTOP-DM04-001` remain blocked.
+- Blocker id: `BLOCKER-DESKTOP-HOST-INTEGRATION-001`.
+- Blocking condition:
+  - desktop startup bootstrap injection contract and parity fixtures are not yet
+    present in the repo-owned harnesses for deterministic DM-02 verification
+  - desktop session/window identity primitives required for DM-04 scoped
+    persistence conflict-policy verification are not yet exposed in the active
+    integration harness
+- Next unblocked task in priority order: `TASK-DOC-IA-001` (completed in this pass).

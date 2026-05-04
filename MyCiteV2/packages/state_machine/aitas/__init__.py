@@ -1,8 +1,9 @@
-"""Minimal AITAS contracts for the phase-03 MVP shell surface."""
+"""AITAS context contracts and merge utilities."""
 
-from .context import AitasContext, normalize_attention
+from .context import AitasContext, merge_aitas_context, normalize_attention
 
 __all__ = [
     "AitasContext",
+    "merge_aitas_context",
     "normalize_attention",
 ]
