@@ -5,56 +5,12 @@ Date: 2026-04-21
 Doc type: `plan`
 Normativity: `supporting`
 Lifecycle: `completed`
-Last reviewed: `2026-04-22`
+Last reviewed: `2026-04-23`
 
-## Purpose
+## Completion Note
 
-Audit MOS post-cutover posture for premorice (state-memory continuity and
-predictable carry-forward context) and modularization boundaries across shell,
-tool runtimes, and adapters. This plan is completed by
+Execution closed on 2026-04-22 by:
 `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`.
 
-## Scope
-
-- `MyCiteV2/packages/state_machine/portal_shell/shell.py`
-- `MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py`
-- `MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py`
-- `MyCiteV2/instances/_shared/runtime/portal_workbench_ui_runtime.py`
-- `MyCiteV2/packages/ports/**`
-- `MyCiteV2/packages/adapters/**`
-
-## Canonical Contract Links
-
-- `docs/contracts/portal_shell_contract.md`
-- `docs/contracts/surface_catalog.md`
-- `docs/contracts/route_model.md`
-- `docs/contracts/portal_vocabulary_glossary.md`
-
-## Workstreams
-
-### 1) Premorice continuity checks
-
-- shell-state continuity across reducer-owned vs runtime-owned surfaces
-- focus-path canonicalization and back-out behavior
-- tool-local state carry without widening shared shell schema
-
-### 2) Modular boundary checks
-
-- port-first access between runtime and persistence layers
-- adapter containment and no runtime reach-through into private internals
-- shared helper reuse vs repeated local forks
-
-### 3) Performance-sensitive boundary checks
-
-- repeated payload-building hotspots
-- repeated authority reads per request
-- diagnostics parity across surfaces for drift detection
-
-## Exit Criteria
-
-- Published drift matrix now lives in
-  `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`.
-- The shell-module registry/self-registration contract provides the concrete
-  patch path for the named reflectivity boundary drift.
-- Ongoing diagnostics/test hooks are named and implemented for regression
-  prevention.
+Historical archival copy remains at:
+`docs/audits/archive/mos_premorice_and_modularization_posture_audit_plan_2026-04-21.md`.

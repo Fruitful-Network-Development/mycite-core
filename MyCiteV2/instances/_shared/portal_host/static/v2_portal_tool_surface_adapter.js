@@ -66,6 +66,149 @@
     );
   }
 
+  function resolveRegionFamilyContract(region) {
+    return asObject(region && region.family_contract);
+  }
+
+  function resolveRegionFamily(region) {
+    return asText(resolveRegionFamilyContract(region).family);
+  }
+
+  function resolveSurfacePayloadKind(region, surfacePayload) {
+    var familyContract = resolveRegionFamilyContract(region);
+    return asText(familyContract.surface_payload_kind) || asText(surfacePayload && surfacePayload.kind);
+  }
+
+  function resolveRegionSurfaceId(region, surfacePayload) {
+    var familyContract = resolveRegionFamilyContract(region);
+    return (
+      asText(familyContract.surface_id) ||
+      asText(surfacePayload && surfacePayload.surface_id) ||
+      asText(region && region.surface_id)
+    );
+  }
+
+  function hasSecondaryEvidencePayload(surfacePayload) {
+    var payload = asObject(surfacePayload);
+    return (
+      Object.keys(asObject(payload.source_evidence)).length > 0 ||
+      Object.keys(asObject(payload.diagnostic_summary)).length > 0 ||
+      Object.keys(asObject(payload.webapps_summary)).length > 0
+    );
+  }
+
+  function resolveDirectivePanelMode(region) {
+    var family = resolveRegionFamily(region);
+    var surfaceId = resolveRegionSurfaceId(region);
+    var kind = asText(region && region.kind);
+
+    if (family === "directive_panel") {
+      if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
+      if (kind === "focus_selection_panel") return "focus_selection_panel";
+      return "sections_panel";
+    }
+    if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
+    if (kind === "focus_selection_panel") return "focus_selection_panel";
+    return "sections_panel";
+  }
+
+  function resolveReflectiveWorkspaceModuleSpec(region, surfacePayload) {
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
+    var moduleSpecs = {
+      "system.root": {
+        moduleId: "system_workspace",
+        globalName: "PortalSystemWorkspaceRenderer",
+        label: "system workspace",
+      },
+      "network.root": {
+        moduleId: "network_workspace",
+        globalName: "PortalNetworkWorkspaceRenderer",
+        label: "NETWORK workspace",
+      },
+      "system.tools.aws_csm": {
+        moduleId: "aws_workspace",
+        globalName: "PortalAwsCsmWorkspaceRenderer",
+        label: "AWS-CSM workspace",
+      },
+      "system.tools.paypal_csm": {
+        moduleId: "paypal_workspace",
+        globalName: "PortalPaypalCsmWorkspaceRenderer",
+        label: "PayPal-CSM workspace",
+      },
+    };
+
+    return moduleSpecs[surfaceId] || {};
+  }
+
+  function resolveReflectiveWorkspaceMode(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
+    var moduleSpec = resolveReflectiveWorkspaceModuleSpec(region, surfacePayload);
+
+    if (family === "reflective_workspace") {
+      if (moduleSpec.moduleId) return "registered_workspace";
+      if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+      if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
+      return "generic_surface";
+    }
+    if (moduleSpec.moduleId) return "registered_workspace";
+    if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+    if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
+    return "generic_surface";
+  }
+
+  function resolvePresentationSurfaceModuleSpec(region, surfacePayload) {
+    var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
+    var moduleSpecs = {
+      "system.tools.cts_gis": {
+        moduleId: "cts_gis_surface",
+        globalName: "PortalCtsGisInspectorRenderer",
+        label: "CTS-GIS interface panel",
+      },
+      "network.root": {
+        moduleId: "network_workspace",
+        globalName: "PortalNetworkInspectorRenderer",
+        label: "NETWORK detail",
+      },
+      "system.tools.aws_csm": {
+        moduleId: "aws_workspace",
+        globalName: "PortalAwsCsmInspectorRenderer",
+        label: "AWS-CSM interface panel",
+      },
+      // "system.tools.fnd_ebi": deferred — renderer module v2_portal_fnd_ebi_workspace.js not yet created
+      "system.tools.paypal_csm": {
+        moduleId: "paypal_workspace",
+        globalName: "PortalPaypalCsmInspectorRenderer",
+        label: "PayPal-CSM interface panel",
+      },
+    };
+
+    return moduleSpecs[surfaceId] || {};
+  }
+
+  function resolvePresentationSurfaceMode(region, surfacePayload) {
+    var family = resolveRegionFamily(region);
+    var interfaceBody = asObject(region && region.interface_body);
+    var moduleSpec = resolvePresentationSurfaceModuleSpec(region, surfacePayload);
+    var hasStructuredProjectionContract =
+      (Object.keys(asObject(interfaceBody.navigation_canvas)).length > 0 &&
+        Object.keys(asObject(interfaceBody.garland_split_projection)).length > 0) ||
+      (asText(interfaceBody.layout) === "diktataograph_garland_split" &&
+        asText(interfaceBody.narrow_layout) === "diktataograph_garland_stack");
+    var hasInterfaceBody = Object.keys(interfaceBody).length > 0;
+
+    if (family === "presentation_surface") {
+      if (moduleSpec.moduleId) return "registered_surface";
+      if (hasStructuredProjectionContract) return "structured_interface_body";
+      if (hasInterfaceBody) return "unsupported_interface_body";
+      return "summary_surface";
+    }
+    if (moduleSpec.moduleId) return "registered_surface";
+    if (hasStructuredProjectionContract) return "structured_interface_body";
+    if (hasInterfaceBody) return "unsupported_interface_body";
+    return "summary_surface";
+  }
+
   function hasGenericContent(surfacePayload) {
     return (
       asList(surfacePayload && surfacePayload.cards).length > 0 ||
@@ -245,6 +388,15 @@
     buildDirectSurfaceRequest: buildDirectSurfaceRequest,
     collectWarnings: collectWarnings,
     hasGenericContent: hasGenericContent,
+    resolveDirectivePanelMode: resolveDirectivePanelMode,
+    resolvePresentationSurfaceMode: resolvePresentationSurfaceMode,
+    resolvePresentationSurfaceModuleSpec: resolvePresentationSurfaceModuleSpec,
+    resolveReflectiveWorkspaceMode: resolveReflectiveWorkspaceMode,
+    resolveReflectiveWorkspaceModuleSpec: resolveReflectiveWorkspaceModuleSpec,
+    resolveRegionFamily: resolveRegionFamily,
+    resolveRegionFamilyContract: resolveRegionFamilyContract,
+    resolveRegionSurfaceId: resolveRegionSurfaceId,
+    resolveSurfacePayloadKind: resolveSurfacePayloadKind,
     renderStateHtml: renderStateHtml,
     renderWrappedSurface: renderWrappedSurface,
     resolveReadiness: resolveReadiness,

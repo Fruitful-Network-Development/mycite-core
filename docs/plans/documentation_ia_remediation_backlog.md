@@ -13,6 +13,20 @@ Track and prioritize remediation work from the documentation + agent-yaml optimi
 
 Active documentation under `docs/audits` and `docs/plans`, and guided agent YAML standards under `docs/standards`.
 
+## Status Note — 2026-05-01
+
+The 2026-05-01 responsibility-alignment pass keeps this file as the broad doc-IA
+backlog, but moves the lossless separation/responsibility follow-on work into:
+
+- `docs/plans/documentation_responsibility_alignment_backlog_2026-05-01.md`
+
+That newer backlog is the canonical pointer for:
+
+- repo-family orientation improvements
+- personal-note promotion targets
+- deferred FND-EBI documentation/peripheral split work
+- deferred portal host capability bootstrap clarification
+
 ## Status Note — 2026-04-22
 
 The MOS final cut-over pass updated the active plan/audit/contract/runtime documentation
@@ -61,6 +75,12 @@ Current repo state:
    - Require new guided-task YAML artifacts to follow `docs/standards/agent_yaml_schema.md`
      and expand validation coverage for standards/doc linkage presence where practical.
    - Risk reduced: non-deterministic execution and weak traceability.
+
+5. **P2 - Responsibility-Family Orientation**
+   - Keep `documentation_ia_remediation_backlog.md` as the broad IA backlog and use
+     `documentation_responsibility_alignment_backlog_2026-05-01.md` for the focused
+     separation/responsibility stream.
+   - Risk reduced: duplicated backlog intent and weak doc-family assignment.
 
 ## Exit Criteria
 

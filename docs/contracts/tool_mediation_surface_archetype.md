@@ -23,7 +23,7 @@ For tools in this class, the public posture is:
 - `tool_mediation_surface`
 - `interface-panel-led`
 - `workbench.visible=false` by default
-- `tool_secondary_evidence` only when the runtime explicitly projects supporting evidence
+- supporting-evidence workbench content only when the runtime explicitly projects it
 
 ## Tool-Local State
 
@@ -37,18 +37,18 @@ The stable pattern is:
 
 ## Interface Body
 
-A mediation tool should project one tool-local interface body inside the dominant `tool_mediation_panel`.
+A mediation tool should project one tool-local interface body inside the dominant `presentation_surface` region.
 
 Recommended structure:
 
-- one dominant structural or directive section
-- one or more correlated evidence sections driven by the current tool-local selection
-- narrow posture may stack the same sections vertically without changing their semantic contract
+- one dominant structural or directive tab
+- one or more correlated evidence tabs or panels driven by the current tool-local selection
+- narrow posture may stack the same tab-local panels vertically without changing their semantic contract
 
 CTS-GIS is the reference example:
 
-- `Diktataograph` drives tool-local structural navigation
-- `Garland` projects correlated profile and geospatial evidence for the current node
+- `Diktataograph` is one shared-host Interface Panel tab that drives tool-local structural navigation
+- `Garland` is one shared-host Interface Panel tab that projects correlated profile and geospatial evidence for the current node
 - these are two projections of one mediation posture, not separate mediations
 
 ## Decoder Placement

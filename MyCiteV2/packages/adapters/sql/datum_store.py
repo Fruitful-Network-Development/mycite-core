@@ -15,6 +15,7 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentMutationPort,
     AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
     PublicationProfileBasicsWritePort,
@@ -53,7 +54,7 @@ def _workbench_from_payload(payload: dict[str, object]) -> SystemDatumWorkbenchR
 
 class SqliteSystemDatumStoreAdapter(
     SystemDatumStorePort,
-    AuthoritativeDatumDocumentPort,
+    AuthoritativeDatumDocumentMutationPort,
     PublicationTenantSummaryPort,
     PublicationProfileBasicsWritePort,
 ):
@@ -418,6 +419,26 @@ class SqliteSystemDatumStoreAdapter(
         )
         self.store_authoritative_catalog(next_catalog)
         return self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+
+    def replace_authoritative_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+        updated_document: AuthoritativeDatumDocument,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        normalized_document = (
+            updated_document
+            if isinstance(updated_document, AuthoritativeDatumDocument)
+            else AuthoritativeDatumDocument.from_dict(updated_document)
+        )
+        if normalized_document.document_id != _as_text(document_id):
+            raise ValueError("updated_document.document_id must match document_id")
+        return self._persist_updated_document(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            updated_document=normalized_document,
+        )
 
     def preview_document_insert(
         self,

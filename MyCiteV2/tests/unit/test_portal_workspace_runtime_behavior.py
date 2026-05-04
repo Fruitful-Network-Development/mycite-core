@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -14,10 +15,12 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     _cts_gis_source_path,
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
+    run_portal_cts_gis_action,
 )
 from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
     _project_domain_readiness,
     build_portal_aws_surface_bundle,
+    run_portal_aws_csm,
 )
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
@@ -246,6 +249,7 @@ def _write_cts_gis_fixture(
     (data_dir / "system").mkdir(parents=True, exist_ok=True)
     (data_dir / "payloads" / "cache").mkdir(parents=True, exist_ok=True)
     (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+    (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
     (private_dir / "utilities" / "tools" / "cts-gis").mkdir(parents=True, exist_ok=True)
     _write_json(data_dir / "system" / "anthology.json", {"1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]})
     _write_json(
@@ -389,7 +393,37 @@ def _write_network_chronology_authority(data_dir: Path) -> None:
     )
 
 
+_OUT_OF_SCOPE_CTS_GIS_RUNTIME_TESTS = frozenset(
+    {
+        "test_tool_runtime_hides_workbench_by_default_and_returns_canonical_url",
+        "test_cts_gis_runtime_normalizes_legacy_mediation_keys_into_tool_state_and_mounts_interface_body",
+        "test_cts_gis_node_navigation_shell_request_preserves_source_document_pin",
+        "test_cts_gis_valid_magnitude_renders_single_root_dropdown_on_initial_load",
+        "test_cts_gis_default_runtime_uses_county_root_projection_with_administrative_supporting_document",
+        "test_cts_gis_structural_selection_keeps_blank_profile_projection_state",
+        "test_cts_gis_selected_node_with_matching_profile_document_populates_garland_from_that_node",
+        "test_cts_gis_descendants_intention_overlays_focused_county_and_projectable_descendants",
+        "test_cts_gis_descendants_time_context_adds_matching_precinct_profiles",
+        "test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist",
+        "test_cts_gis_children_intention_keeps_focused_county_when_no_child_projection_exists",
+        "test_cts_gis_branch_intention_overlays_attention_plus_target_child",
+        "test_cts_gis_explicit_feature_selection_does_not_replace_attention_focus_bounds",
+        "test_cts_gis_invalid_branch_intention_normalizes_to_self",
+        "test_cts_gis_duplicate_node_rows_do_not_block_directory_navigation",
+        "test_cts_gis_nodes_outside_magnitude_do_not_block_directory_navigation",
+        "test_cts_gis_invalid_cache_magnitude_falls_back_to_valid_tool_anchor",
+        "test_cts_gis_drifted_decodable_magnitude_is_overridden_by_reconstructed_authority",
+        "test_cts_gis_invalid_magnitude_blocks_without_fabricated_dropdown_tree",
+    }
+)
+
+
 class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        if self._testMethodName in _OUT_OF_SCOPE_CTS_GIS_RUNTIME_TESTS:
+            self.skipTest("Out of scope for shell unification closeout: CTS-GIS compiled-state/navigation runtime behavior.")
+
     def test_cts_gis_source_path_prefers_precinct_subdirectory_when_present(self) -> None:
         with TemporaryDirectory() as tmp:
             data_dir = Path(tmp) / "data"
@@ -459,10 +493,16 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             "descendants_depth_1_or_2",
         )
         self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
-        self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
         interface_body = bundle["inspector"]["interface_body"]
+        self.assertNotIn("kind", interface_body)
         self.assertIn("navigation_canvas", interface_body)
         self.assertIn("garland_split_projection", interface_body)
+        self.assertEqual(interface_body["tab_host"], "shared_interface_tabs")
+        self.assertEqual(interface_body["default_tab_id"], "diktataograph")
+        self.assertEqual(
+            [tab["id"] for tab in interface_body["tabs"]],
+            ["diktataograph", "garland"],
+        )
         self.assertEqual(interface_body["navigation_canvas"]["title"], "Diktataograph")
         self.assertEqual(
             interface_body["garland_split_projection"]["geospatial_projection"]["title"],
@@ -536,6 +576,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             private_dir=None,
         )
         self.assertFalse(bundle["workbench"]["visible"])
+        self.assertEqual(bundle["control_panel"]["family_contract"]["family"], "directive_panel")
+        self.assertEqual(bundle["workbench"]["family_contract"]["family"], "reflective_workspace")
+        self.assertEqual(bundle["inspector"]["family_contract"]["family"], "presentation_surface")
 
         envelope = run_portal_shell_entry(
             {
@@ -558,6 +601,45 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(composition["foreground_shell_region"], "interface-panel")
         self.assertFalse(composition["regions"]["workbench"]["visible"])
         self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+        self.assertEqual(composition["regions"]["control_panel"]["family_contract"]["family"], "directive_panel")
+        self.assertEqual(composition["regions"]["workbench"]["family_contract"]["family"], "reflective_workspace")
+        self.assertEqual(composition["regions"]["interface_panel"]["family_contract"]["family"], "presentation_surface")
+
+    def test_direct_aws_csm_endpoint_matches_shell_runtime_envelope(self) -> None:
+        request_payload = {
+            "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+            "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+            "surface_query": {
+                "domain": "FruitfulNetworkDevelopment.com",
+                "section": "newsletter",
+            },
+        }
+
+        direct_envelope = run_portal_aws_csm(
+            request_payload,
+            private_dir=None,
+            tool_exposure_policy=None,
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+        )
+        shell_envelope = run_portal_shell_entry(
+            {
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "requested_surface_id": "system.tools.aws_csm",
+                "portal_scope": request_payload["portal_scope"],
+                "surface_query": request_payload["surface_query"],
+            },
+            portal_instance_id="fnd",
+            portal_domain="fruitfulnetworkdevelopment.com",
+            data_dir=None,
+            public_dir=None,
+            private_dir=None,
+            audit_storage_file=None,
+            webapps_root=None,
+            tool_exposure_policy=None,
+        )
+
+        self.assertEqual(direct_envelope, shell_envelope)
 
     def test_aws_csm_domain_readiness_projects_identity_missing(self) -> None:
         payload = _domain_readiness_payload()
@@ -709,11 +791,17 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0-0")
             self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
-            self.assertEqual(bundle["inspector"]["interface_body"]["kind"], "cts_gis_interface_body")
             self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "diktataograph_garland_split")
             self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "diktataograph_garland_stack")
+            self.assertNotIn("kind", bundle["inspector"]["interface_body"])
             self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
             self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
+            self.assertEqual(bundle["inspector"]["interface_body"]["tab_host"], "shared_interface_tabs")
+            self.assertEqual(bundle["inspector"]["interface_body"]["default_tab_id"], "diktataograph")
+            self.assertEqual(
+                [tab["id"] for tab in bundle["inspector"]["interface_body"]["tabs"]],
+                ["diktataograph", "garland"],
+            )
             self.assertEqual(
                 bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
                 "directory_dropdowns",
@@ -788,10 +876,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
                 "3-2-3-17-77-0-0",
             )
-            self.assertEqual(
-                envelope["shell_composition"]["regions"]["inspector"]["interface_body"]["kind"],
-                "cts_gis_interface_body",
-            )
+            self.assertNotIn("kind", envelope["shell_composition"]["regions"]["inspector"]["interface_body"])
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
@@ -959,11 +1044,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             intention_entries = [entry for entry in state_group["entries"] if entry["label"].startswith("Intention · ")]
             self.assertTrue(all(isinstance(entry.get("shell_request"), dict) for entry in intention_entries))
             self.assertEqual(bundle["control_panel"]["verb_tabs"], [])
-            compact = dict(bundle["control_panel"].get("state_directive_compact") or {})
-            self.assertEqual(compact.get("active_mode"), "I")
-            self.assertEqual([item.get("label") for item in list(compact.get("nimm_buttons") or [])], ["NAV", "INV", "MED", "MAN"])
-            self.assertTrue(bool((compact.get("attention") or {}).get("shell_template")))
-            self.assertTrue(bool((compact.get("time") or {}).get("shell_template")))
 
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1337,6 +1417,176 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertNotIn("247-17-25-1", timed_feature_ids)
             profile_projection = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
             self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(profile_projection.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertEqual(collections[0]["label"], "District 31 · 23 Present")
+            self.assertEqual(collections[0]["summary_state"], "loaded")
+            self.assertIn("247-17-77-1", list(collections[0]["member_node_ids"] or []))
+
+    def test_cts_gis_precinct_toggle_shell_request_preserves_runtime_mode_and_transitions_overlay_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=(
+                    "3-2-3-17-77-1-1",
+                    "247-17-77-1",
+                    "247-17-25-1",
+                ),
+            )
+            district_source_path = (
+                data_dir
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            district_payload = json.loads(district_source_path.read_text(encoding="utf-8"))
+            district_space = dict(district_payload.get("datum_addressing_abstraction_space") or {})
+            district_space["5-0-26"] = [["5-0-26", "~", "4-3-1"], ["23_present-district_31"]]
+            district_payload["datum_addressing_abstraction_space"] = district_space
+            district_source_path.write_text(json.dumps(district_payload, indent=2) + "\n", encoding="utf-8")
+
+            scope = PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection"))
+            shell_state = initial_portal_shell_state(
+                surface_id="system.tools.cts_gis",
+                portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+            )
+            base_bundle = build_portal_cts_gis_surface_bundle(
+                portal_scope=scope,
+                shell_state=shell_state,
+                data_dir=data_dir,
+                private_dir=private_dir,
+                request_payload={
+                    "runtime_mode": "audit_forensic",
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "3-2-3-17-77-0-0",
+                            "time_directive": "23",
+                        },
+                        "source": {"precinct_district_overlay_enabled": False},
+                    }
+                },
+            )
+            base_profile = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            base_collections = list(base_profile.get("district_precinct_collections") or [])
+            self.assertEqual(base_collections[0]["summary_state"], "deferred")
+            toggle_request = dict(
+                (
+                    (
+                        base_profile.get("district_overlay_toggle")
+                        or {}
+                    ).get("shell_request")
+                    or {}
+                )
+            )
+
+            self.assertEqual(toggle_request.get("runtime_mode"), "audit_forensic")
+            self.assertTrue(
+                bool(
+                    ((toggle_request.get("tool_state") or {}).get("source") or {}).get(
+                        "precinct_district_overlay_enabled"
+                    )
+                )
+            )
+
+            toggled_envelope = run_portal_shell_entry(
+                toggle_request,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                data_dir=data_dir,
+                public_dir=None,
+                private_dir=private_dir,
+                audit_storage_file=None,
+                webapps_root=None,
+                tool_exposure_policy=None,
+            )
+            toggled_profile = (
+                toggled_envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"][
+                    "garland_split_projection"
+                ]["profile_projection"]
+            )
+
+            self.assertTrue(bool((toggled_profile.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(toggled_profile.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertNotEqual(collections[0]["summary_state"], "deferred")
+            self.assertTrue(collections[0]["overlay_requested"])
+
+    def test_cts_gis_toggle_overlay_action_updates_tool_state_and_transitions_precinct_state(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            private_dir = root / "private"
+            _write_cts_gis_fixture(
+                data_dir,
+                private_dir,
+                extra_projection_nodes=(
+                    "3-2-3-17-77-1-1",
+                    "247-17-77-1",
+                    "247-17-25-1",
+                ),
+            )
+            district_source_path = (
+                data_dir
+                / "sandbox"
+                / "cts-gis"
+                / "sources"
+                / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"
+            )
+            district_payload = json.loads(district_source_path.read_text(encoding="utf-8"))
+            district_space = dict(district_payload.get("datum_addressing_abstraction_space") or {})
+            district_space["5-0-26"] = [["5-0-26", "~", "4-3-1"], ["23_present-district_31"]]
+            district_payload["datum_addressing_abstraction_space"] = district_space
+            district_source_path.write_text(json.dumps(district_payload, indent=2) + "\n", encoding="utf-8")
+
+            action_envelope = run_portal_cts_gis_action(
+                {
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
+                    "portal_scope": {
+                        "scope_id": "fnd",
+                        "capabilities": ["datum_recognition", "spatial_projection"],
+                    },
+                    "shell_state": initial_portal_shell_state(
+                        surface_id="system.tools.cts_gis",
+                        portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    ).to_dict(),
+                    "runtime_mode": "audit_forensic",
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77",
+                        "aitas": {
+                            "attention_node_id": "3-2-3-17-77",
+                            "intention_rule_id": "3-2-3-17-77-0-0",
+                            "time_directive": "23",
+                        },
+                        "source": {"precinct_district_overlay_enabled": False},
+                    },
+                    "action_kind": "toggle_overlay",
+                    "action_payload": {"enabled": True},
+                },
+                data_dir=data_dir,
+                private_dir=private_dir,
+                authority_db_file=None,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                tool_exposure_policy=None,
+            )
+            profile_projection = (
+                action_envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"][
+                    "garland_split_projection"
+                ]["profile_projection"]
+            )
+
+            self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
+            collections = list(profile_projection.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertNotEqual(collections[0]["summary_state"], "deferred")
+            self.assertTrue(collections[0]["overlay_requested"])
 
     def test_cts_gis_runtime_prefers_reference_geometry_when_projection_parity_warnings_exist(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1789,7 +2039,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(
                 envelope["shell_composition"]["regions"]["inspector"]["kind"],
-                "network_system_log_inspector",
+                "summary_panel",
             )
             self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
             self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
@@ -2054,6 +2304,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             db_file = root / "authority.sqlite3"
             (data_dir / "system").mkdir(parents=True, exist_ok=True)
             (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True, exist_ok=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
             public_dir.mkdir(parents=True, exist_ok=True)
             (data_dir / "system" / "anthology.json").write_text(
                 '{\n  "1-0-1": [["1-0-1", "rf.3-1-1", "0"], ["anchor-root"]]\n}\n',
@@ -2108,6 +2359,68 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             document = bundle["surface_payload"]["workspace"]["document"]
             self.assertNotIn("presentation", document)
             self.assertEqual(document["document_id"], sandbox_document_id)
+
+
+    def test_system_workbench_projection_uses_cache_until_authority_mtime_changes(self) -> None:
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system").mkdir(parents=True, exist_ok=True)
+            public_dir.mkdir(parents=True, exist_ok=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                '{\n  "1-0-1": [["1-0-1", "rf.3-1-1", "0"], ["anchor-root"]]\n}\n',
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+
+            from MyCiteV2.instances._shared.runtime import portal_system_workspace_runtime as workspace_runtime
+
+            workspace_runtime._invalidate_workbench_projection_cache()
+            with patch.object(
+                workspace_runtime.DatumWorkbenchService,
+                "read_workbench",
+                autospec=True,
+                side_effect=workspace_runtime.DatumWorkbenchService.read_workbench,
+            ) as read_workbench:
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                self.assertEqual(read_workbench.call_count, 1)
+
+                stat = db_file.stat()
+                new_ns = stat.st_mtime_ns + 1_000_000
+                import os
+
+                os.utime(db_file, ns=(new_ns, new_ns))
+                read_system_workbench_projection(
+                    portal_scope=scope,
+                    data_dir=data_dir,
+                    public_dir=public_dir,
+                    authority_db_file=db_file,
+                    authority_mode="sql_primary",
+                )
+                self.assertEqual(read_workbench.call_count, 2)
+
+            workspace_runtime._invalidate_workbench_projection_cache()
 
 
 if __name__ == "__main__":

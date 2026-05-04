@@ -10,6 +10,140 @@
       .replace(/"/g, "&quot;");
   }
 
+  function asObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  }
+
+  function asText(value) {
+    return String(value == null ? "" : value).trim();
+  }
+
+  function normalizePresentationTabs(tabs, fallbackTabs, defaultTabId) {
+    var candidates = Array.isArray(tabs) && tabs.length ? tabs : Array.isArray(fallbackTabs) ? fallbackTabs : [];
+    var normalized = candidates
+      .map(function (tab, index) {
+        var source = asObject(tab);
+        var id = asText(source.id) || asText(source.tab_id) || "tab-" + String(index + 1);
+        if (!id) return null;
+        return {
+          id: id,
+          label: asText(source.label) || asText(source.title) || id,
+          summary: asText(source.summary),
+          active: source.active === true,
+        };
+      })
+      .filter(function (tab) {
+        return !!tab;
+      });
+    if (!normalized.length) return [];
+    var requestedDefault = asText(defaultTabId);
+    var activeId = "";
+    normalized.forEach(function (tab) {
+      if (!activeId && tab.active) activeId = tab.id;
+    });
+    if (!activeId) {
+      activeId = normalized.some(function (tab) {
+        return tab.id === requestedDefault;
+      })
+        ? requestedDefault
+        : normalized[0].id;
+    }
+    return normalized.map(function (tab) {
+      return Object.assign({}, tab, { active: tab.id === activeId });
+    });
+  }
+
+  function activePresentationTabId(tabs, fallbackId) {
+    var normalized = Array.isArray(tabs) ? tabs : [];
+    for (var index = 0; index < normalized.length; index += 1) {
+      if (normalized[index] && normalized[index].active) return normalized[index].id;
+    }
+    return normalized.length ? normalized[0].id : asText(fallbackId);
+  }
+
+  function renderPresentationTabs(tabs) {
+    if (!tabs || !tabs.length) return "";
+    return (
+      '<div class="v2-surfaceTabs" role="tablist" aria-label="Interface tabs">' +
+      tabs
+        .map(function (tab) {
+          return (
+            '<button type="button" class="v2-surfaceTabs__tab' +
+            (tab.active ? " is-active" : "") +
+            '" data-interface-tab="' +
+            escapeHtml(tab.id) +
+            '" role="tab" aria-selected="' +
+            (tab.active ? "true" : "false") +
+            '">' +
+            escapeHtml(tab.label || tab.id) +
+            "</button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderPresentationTabPanel(tabId, activeTabId, contentHtml, className) {
+    var panelClass = "v2-surfaceTabPanel" + (className ? " " + className : "");
+    var active = !asText(tabId) || asText(tabId) === asText(activeTabId);
+    return (
+      '<div class="' +
+      escapeHtml(panelClass + (active ? " is-active" : "")) +
+      '" data-interface-tab-panel="' +
+      escapeHtml(tabId || "") +
+      '" role="tabpanel"' +
+      (active ? "" : ' hidden="hidden"') +
+      ">" +
+      String(contentHtml || "") +
+      "</div>"
+    );
+  }
+
+  function bindPresentationTabs(target) {
+    if (!target) return;
+    var buttons = Array.prototype.slice.call(target.querySelectorAll("[data-interface-tab]"));
+    var panels = Array.prototype.slice.call(target.querySelectorAll("[data-interface-tab-panel]"));
+    if (!buttons.length || !panels.length) return;
+
+    function activate(tabId) {
+      buttons.forEach(function (button) {
+        var active = String(button.getAttribute("data-interface-tab") || "") === tabId;
+        button.classList.toggle("is-active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      panels.forEach(function (panel) {
+        var active = String(panel.getAttribute("data-interface-tab-panel") || "") === tabId;
+        panel.hidden = !active;
+        panel.classList.toggle("is-active", active);
+      });
+    }
+
+    var initialTabId = activePresentationTabId(
+      buttons.map(function (button) {
+        return {
+          id: String(button.getAttribute("data-interface-tab") || ""),
+          active: button.classList.contains("is-active"),
+        };
+      }),
+      String(buttons[0].getAttribute("data-interface-tab") || "")
+    );
+    activate(initialTabId);
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        activate(String(button.getAttribute("data-interface-tab") || ""));
+      });
+    });
+  }
+
+  window.__MYCITE_V2_INTERFACE_TAB_HOST = {
+    normalizeTabs: normalizePresentationTabs,
+    activeTabId: activePresentationTabId,
+    renderTabs: renderPresentationTabs,
+    renderTabPanel: renderPresentationTabPanel,
+    bindTabs: bindPresentationTabs,
+  };
+
   function renderRows(rows) {
     if (!rows || !rows.length) {
       return '<p class="ide-controlpanel__empty">No interface panel details.</p>';
@@ -598,27 +732,44 @@
     ];
   }
 
-  function projectPoint(point, bounds, width, height, pad) {
-    if (!Array.isArray(point) || point.length < 2) return null;
+  function buildProjectionViewport(bounds, width, height, pad) {
     var minX = Number(bounds[0] || 0);
     var minY = Number(bounds[1] || 0);
     var maxX = Number(bounds[2] || minX + 1);
     var maxY = Number(bounds[3] || minY + 1);
     var safeWidth = Math.max(0.0001, maxX - minX);
     var safeHeight = Math.max(0.0001, maxY - minY);
-    var usableWidth = width - pad * 2;
-    var usableHeight = height - pad * 2;
+    var usableWidth = Math.max(1, width - pad * 2);
+    var usableHeight = Math.max(1, height - pad * 2);
+    var scale = Math.min(usableWidth / safeWidth, usableHeight / safeHeight);
+    if (!Number.isFinite(scale) || scale <= 0) {
+      scale = 1;
+    }
+    return {
+      minX: minX,
+      minY: minY,
+      width: width,
+      height: height,
+      scale: scale,
+      offsetX: pad + (usableWidth - safeWidth * scale) / 2,
+      offsetY: pad + (usableHeight - safeHeight * scale) / 2,
+    };
+  }
+
+  function projectPoint(point, viewport) {
+    if (!Array.isArray(point) || point.length < 2) return null;
+    var stage = viewport || {};
     var px = Number(point[0]);
     var py = Number(point[1]);
     if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
-    var x = pad + ((px - minX) / safeWidth) * usableWidth;
-    var y = height - pad - ((py - minY) / safeHeight) * usableHeight;
+    var x = Number(stage.offsetX || 0) + (px - Number(stage.minX || 0)) * Number(stage.scale || 1);
+    var y = Number(stage.height || 0) - Number(stage.offsetY || 0) - (py - Number(stage.minY || 0)) * Number(stage.scale || 1);
     return [x, y];
   }
 
-  function ringPathData(ring, bounds, width, height, pad) {
+  function ringPathData(ring, viewport) {
     var projected = (ring || []).map(function (point) {
-      var xy = projectPoint(point, bounds, width, height, pad);
+      var xy = projectPoint(point, viewport);
       if (!xy) return "";
       return String(xy[0]) + " " + String(xy[1]);
     }).filter(Boolean);
@@ -626,12 +777,12 @@
     return "M " + projected.join(" L ") + " Z";
   }
 
-  function polygonPathData(polygons, bounds, width, height, pad) {
+  function polygonPathData(polygons, viewport) {
     return (polygons || [])
       .map(function (polygon) {
         return (polygon || [])
           .map(function (ring) {
-            return ringPathData(ring, bounds, width, height, pad);
+            return ringPathData(ring, viewport);
           })
           .filter(Boolean)
           .join(" ");
@@ -640,12 +791,12 @@
       .join(" ");
   }
 
-  function renderFeatureShape(feature, bounds, width, height, pad) {
+  function renderFeatureShape(feature, viewport) {
     var geometry = (feature || {}).geometry || {};
     var featureId = escapeHtml(feature.feature_id || feature.id || "");
     var className = "cts-gis-mapStage__shape" + (feature.selected ? " is-selected" : "");
     if (geometry.type === "Point") {
-      var point = projectPoint(geometry.coordinates || [], bounds, width, height, pad);
+      var point = projectPoint(geometry.coordinates || [], viewport);
       if (!point) return "";
       return (
         '<circle class="' +
@@ -664,10 +815,7 @@
     if (geometry.type === "Polygon" || geometry.type === "MultiPolygon") {
       var pathData = polygonPathData(
         geometry.type === "Polygon" ? [geometry.coordinates || []] : geometry.coordinates || [],
-        bounds,
-        width,
-        height,
-        pad
+        viewport
       );
       if (!pathData) return "";
       return (
@@ -694,9 +842,9 @@
         "</p></div>"
       );
     }
-    var width = 560;
-    var height = 360;
-    var pad = 24;
+    var width = 960;
+    var height = 720;
+    var pad = 36;
     var bounds = normalizeFeatureBounds((geospatialProjection || {}).collection_bounds || collection.bounds || [], features);
     var focusBounds = normalizeFeatureBounds((geospatialProjection || {}).focus_bounds || [], []);
     var selectedBounds = normalizeFeatureBounds((geospatialProjection || {}).selected_feature_bounds || [], []);
@@ -710,7 +858,7 @@
     var globalArea = boundsArea(bounds);
     var focusArea = boundsArea(focusBounds);
     var selectedArea = boundsArea(selectedBounds);
-    if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 200)) {
+    if (focusArea > 0 && (globalArea <= 0 || globalArea / focusArea > 50)) {
       bounds = focusBounds;
     } else if (
       selectedArea > 0 &&
@@ -719,6 +867,7 @@
     ) {
       bounds = selectedBounds;
     }
+    var viewport = buildProjectionViewport(bounds, width, height, pad);
     var selectedFeatureId = String((geospatialProjection || {}).selected_feature_id || "");
     var selectedFeature = features.find(function (feature) {
       if (selectedFeatureId && String(feature.id || feature.feature_id || "") === selectedFeatureId) return true;
@@ -731,7 +880,7 @@
       String(width) +
       " " +
       String(height) +
-      '" role="img" aria-label="CTS-GIS geospatial projection">' +
+      '" preserveAspectRatio="xMidYMid meet" role="img" aria-label="CTS-GIS geospatial projection">' +
       '<rect class="cts-gis-mapStage__backdrop" x="0" y="0" width="' +
       String(width) +
       '" height="' +
@@ -739,10 +888,14 @@
       '"></rect>' +
       features
         .map(function (feature) {
-          return renderFeatureShape(feature, bounds, width, height, pad);
+          return renderFeatureShape(feature, viewport);
         })
         .join("") +
       "</svg></div>" +
+      '<div class="cts-gis-mapStage__controls">' +
+      '<button type="button" class="cts-gis-mapZoom" data-cts-gis-zoom="fit" title="Fit all features">⊞</button>' +
+      '<button type="button" class="cts-gis-mapZoom' + (focusArea > 0 ? "" : " is-disabled") + '" data-cts-gis-zoom="focus" title="Zoom to focus area">⊕</button>' +
+      '</div>' +
       '<div class="cts-gis-mapStage__caption">' +
       '<span class="cts-gis-mapStage__eyebrow">Projection Focus</span>' +
       "<strong>" +
@@ -775,6 +928,81 @@
             '<span class="cts-gis-profileHierarchy__meta">' +
             escapeHtml(entry.node_id || "") +
             "</span></button>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function renderDistrictPrecinctCollections(collections) {
+    if (!collections || !collections.length) {
+      return '<p class="ide-controlpanel__empty">No district precinct collections are defined for this profile.</p>';
+    }
+    return (
+      '<div class="cts-gis-collectionCards">' +
+      collections
+        .map(function (collection) {
+          var previewSource = (collection.member_labels && collection.member_labels.length)
+            ? collection.member_labels
+            : (collection.member_node_ids || []);
+          var previewItems = previewSource.slice(0, 8);
+          var overflowCount = Math.max(previewSource.length - previewItems.length, 0);
+          var statusText = collection.summary_state || (collection.overlay_active ? "loaded" : "deferred");
+          var countText = collection.precinct_count_known
+            ? String(collection.precinct_count || 0) + " precincts"
+            : "members deferred";
+          return (
+            '<article class="cts-gis-collectionCard' +
+            (collection.overlay_active ? " is-active" : "") +
+            '">' +
+            '<div class="cts-gis-collectionCard__header">' +
+            "<strong>" +
+            escapeHtml(collection.label || collection.timeframe_token || "District precinct collection") +
+            "</strong>" +
+            '<span class="cts-gis-collectionCard__meta">' +
+            escapeHtml(collection.timeframe_token || "") +
+            "</span></div>" +
+            '<div class="cts-gis-collectionCard__badges">' +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(statusText) +
+            "</span>" +
+            (collection.scope_kind
+              ? '<span class="cts-gis-collectionBadge">' + escapeHtml(collection.scope_kind) + "</span>"
+              : "") +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(collection.timeframe_match ? "timeframe match" : "timeframe scoped") +
+            "</span>" +
+            '<span class="cts-gis-collectionBadge">' +
+            escapeHtml(countText) +
+            "</span></div>" +
+            '<p class="cts-gis-collectionCard__detail">' +
+            escapeHtml(
+              collection.precinct_count_known
+                ? "Precinct members were loaded from the canonical precinct cohort overlay."
+                : "Compiled precinct members stay deferred until overlay is enabled so Garland keeps the load light."
+            ) +
+            "</p>" +
+            (previewItems.length
+              ? '<div class="cts-gis-collectionCard__members">' +
+                previewItems
+                  .map(function (item) {
+                    return '<span class="cts-gis-collectionMember">' + escapeHtml(item || "") + "</span>";
+                  })
+                  .join("") +
+                (overflowCount > 0
+                  ? '<span class="cts-gis-collectionMember cts-gis-collectionMember--overflow">+' +
+                    escapeHtml(String(overflowCount)) +
+                    " more</span>"
+                  : "") +
+                "</div>"
+              : "") +
+            ((collection.gate_failures || []).length && statusText === "blocked"
+              ? '<p class="cts-gis-collectionCard__detail cts-gis-collectionCard__detail--warn">blocked: ' +
+                escapeHtml((collection.gate_failures || []).join(", ")) +
+                "</p>"
+              : "") +
+            "</article>"
           );
         })
         .join("") +
@@ -865,6 +1093,10 @@
 
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
+    var fallbackTabs = [
+      { id: "diktataograph", label: "Diktataograph", active: true },
+      { id: "garland", label: "Garland" },
+    ];
     if (body.navigation_canvas && body.garland_split_projection) {
       var navCanvas = body.navigation_canvas || {};
       body.navigation_canvas = Object.assign({}, navCanvas, {
@@ -894,14 +1126,35 @@
       body.garland_split_projection.profile_projection = Object.assign(
         {
           has_profile_state: false,
+          district_precinct_collections: [],
         },
         body.garland_split_projection.profile_projection || {}
       );
+      body.staging_widget = Object.assign(
+        {
+          title: "Staged Insert",
+          summary: "",
+          draft_text: "",
+          draft_format: "yaml",
+          placeholder_title_requested: false,
+          validation: {},
+          preview: {},
+          action_result: {},
+          actions: {},
+          ready: false,
+        },
+        body.staging_widget || {}
+      );
+      body.tabs = normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph");
+      body.default_tab_id = activePresentationTabId(body.tabs, "diktataograph");
+      body.tab_host = asText(body.tab_host) || "shared_interface_tabs";
       return body;
     }
     var garland = body.garland || {};
     return {
-      kind: body.kind || "cts_gis_interface_body",
+      tab_host: "shared_interface_tabs",
+      tabs: normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph"),
+      default_tab_id: asText(body.default_tab_id) || "diktataograph",
       layout: body.layout || "diktataograph_garland_split",
       narrow_layout: body.narrow_layout || "diktataograph_garland_stack",
       feature_flags: body.feature_flags || {},
@@ -916,6 +1169,18 @@
         dropdowns: [],
         active_path: [],
         active_node_id: "",
+      },
+      staging_widget: {
+        title: "Staged Insert",
+        summary: "",
+        draft_text: "",
+        draft_format: "yaml",
+        placeholder_title_requested: false,
+        validation: {},
+        preview: {},
+        action_result: {},
+        actions: {},
+        ready: false,
       },
       garland_split_projection: {
         kind: "garland_split_projection",
@@ -965,6 +1230,7 @@
             child_count: 0,
           },
           hierarchy: [],
+          district_precinct_collections: [],
           summary_rows: garland.summary_rows || [],
           warnings: garland.warnings || [],
           empty_message: "No projected profile is available until the active path resolves real CTS-GIS evidence.",
@@ -973,6 +1239,108 @@
         },
       },
     };
+  }
+
+  function renderCtsGisStagingWidget(widget) {
+    var validation = widget.validation || {};
+    var preview = widget.preview || {};
+    var actionResult = widget.action_result || {};
+    var compiledNimm = widget.compiled_nimm_envelope || {};
+    var compoundDirectives = widget.compound_directives || {};
+    var proposedRows = preview.proposed_inserted_rows || [];
+    var warnings = []
+      .concat(validation.warnings || [])
+      .concat(preview.warnings || [])
+      .concat(actionResult.warnings || []);
+    return (
+      '<section class="cts-gis-stageWidget">' +
+      '<header class="cts-gis-stageWidget__header"><h4>' +
+      escapeHtml(widget.title || "Staged Insert") +
+      "</h4><p>" +
+      escapeHtml(widget.summary || "") +
+      "</p></header>" +
+      '<div class="cts-gis-stageWidget__meta">' +
+      '<span class="cts-gis-stageWidget__metaItem">document: ' +
+      escapeHtml(widget.document_name || widget.document_id || "—") +
+      "</span>" +
+      '<span class="cts-gis-stageWidget__metaItem">node: ' +
+      escapeHtml(widget.selected_node_id || "—") +
+      "</span>" +
+      "</div>" +
+      '<label class="cts-gis-stageWidget__label" for="cts-gis-stage-textarea">Stage YAML</label>' +
+      '<textarea id="cts-gis-stage-textarea" class="cts-gis-stageWidget__textarea" data-cts-gis-stage-input="yaml">' +
+      escapeHtml(widget.draft_text || "") +
+      "</textarea>" +
+      '<label class="cts-gis-stageWidget__toggle">' +
+      '<input type="checkbox" data-cts-gis-stage-placeholder' +
+      (widget.placeholder_title_requested ? " checked" : "") +
+      " />" +
+      "<span>Allow placeholder title warnings</span>" +
+      "</label>" +
+      '<div class="cts-gis-stageWidget__actions">' +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="stage_insert_yaml">Stage</button>' +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="validate_stage"' +
+      (widget.ready ? "" : " disabled") +
+      ">Validate</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="preview_apply"' +
+      (widget.ready ? "" : " disabled") +
+      ">Preview</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="apply_stage"' +
+      (proposedRows.length ? "" : " disabled") +
+      ">Apply</button>" +
+      '<button type="button" class="cts-gis-entryButton" data-cts-gis-stage-action="discard_stage"' +
+      ((widget.draft_text || widget.document_id) ? "" : " disabled") +
+      ">Discard</button>" +
+      "</div>" +
+      ((actionResult.message || "")
+        ? '<p class="cts-gis-stageWidget__status"><strong>' +
+          escapeHtml(actionResult.status || "pending") +
+          ":</strong> " +
+          escapeHtml(actionResult.message || "") +
+          "</p>"
+        : "") +
+      ((validation.expected_document_version_hash || "")
+        ? '<p class="cts-gis-stageWidget__status">validation hash: ' +
+          escapeHtml(String(validation.expected_document_version_hash || "").slice(0, 12)) +
+          "</p>"
+        : "") +
+      ((compiledNimm.schema || "")
+        ? '<p class="cts-gis-stageWidget__status">nimm envelope: ' +
+          escapeHtml(String(compiledNimm.schema)) +
+          "</p>"
+        : "") +
+      ((compoundDirectives.schema || "")
+        ? '<p class="cts-gis-stageWidget__status">compound directives: ' +
+          escapeHtml(String((compoundDirectives.steps || []).length)) +
+          "</p>"
+        : "") +
+      (proposedRows.length
+        ? '<p class="cts-gis-stageWidget__status">preview rows: ' +
+          escapeHtml(String(proposedRows.length)) +
+          "</p>"
+        : "") +
+      renderWarningList(warnings) +
+      "</section>"
+    );
+  }
+
+  function bindCtsGisStagingWidget(target, ctx, widget) {
+    var actions = widget.actions || {};
+    var textarea = target.querySelector("[data-cts-gis-stage-input='yaml']");
+    var placeholderToggle = target.querySelector("[data-cts-gis-stage-placeholder]");
+    Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-stage-action]"), function (node) {
+      node.addEventListener("click", function () {
+        if (node.hasAttribute("disabled") || typeof ctx.dispatchToolAction !== "function") return;
+        var kind = node.getAttribute("data-cts-gis-stage-action") || "";
+        var action = actions[kind] || {};
+        var extraPayload = {};
+        if (kind === "stage_insert_yaml") {
+          extraPayload.stage_text = textarea ? textarea.value : "";
+          extraPayload.placeholder_title_requested = !!(placeholderToggle && placeholderToggle.checked);
+        }
+        ctx.dispatchToolAction(action, { action_payload: extraPayload });
+      });
+    });
   }
 
   function loadCtsGisEntry(ctx, entry) {
@@ -996,7 +1364,15 @@
         var index = Number(node.getAttribute("data-cts-gis-entry-index"));
         var entries = entriesByKind[kind] || [];
         var entry = entries[index] || {};
-        loadCtsGisEntry(ctx, entry);
+        if (
+          (kind === "district_toggle" || kind === "overlay_toggle") &&
+          entry.action &&
+          typeof ctx.dispatchToolAction === "function"
+        ) {
+          ctx.dispatchToolAction(entry.action);
+        } else {
+          loadCtsGisEntry(ctx, entry);
+        }
       });
     });
   }
@@ -1228,14 +1604,74 @@
     });
   }
 
+  function renderGarlandSummaryObject(activeProfile, geospatialProjection) {
+    var profile = activeProfile || {};
+    var overlayLayers = Array.isArray((geospatialProjection || {}).overlay_layers)
+      ? (geospatialProjection || {}).overlay_layers
+      : [];
+    return (
+      '<section class="cts-gis-garlandSummary">' +
+      '<div class="cts-gis-garlandSummary__identity">' +
+      '<strong class="cts-gis-garlandSummary__label">' + escapeHtml(profile.label || "Active profile") + '</strong>' +
+      '<span class="cts-gis-garlandSummary__meta">' + escapeHtml(profile.node_id || "") + '</span>' +
+      '<span class="cts-gis-garlandSummary__stats">' +
+      escapeHtml(String(profile.feature_count || 0) + " features \xb7 " + String(profile.child_count || 0) + " children") +
+      '</span></div>' +
+      (overlayLayers.length
+        ? '<div class="cts-gis-garlandSummary__overlays">' +
+          overlayLayers.map(function (layer) {
+            return (
+              '<button type="button" class="cts-gis-overlayToggle' + (layer.visible ? " is-active" : "") + '"' +
+              ' data-cts-gis-entry-kind="overlay_toggle"' +
+              ' data-cts-gis-entry-index="' + escapeHtml(String(overlayLayers.indexOf(layer))) + '">' +
+              '<span class="cts-gis-overlayToggle__label">' + escapeHtml(layer.label || layer.layer_id || "Layer") + '</span>' +
+              '</button>'
+            );
+          }).join("") +
+          '</div>'
+        : '') +
+      '</section>'
+    );
+  }
+
+  function bindGeospatialZoomControls(target, ctx, geospatialProjection) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-cts-gis-zoom]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var mode = btn.getAttribute("data-cts-gis-zoom") || "fit";
+        if (mode === "focus" && (geospatialProjection || {}).focus_action) {
+          ctx.dispatchToolAction(geospatialProjection.focus_action);
+        } else if (mode === "fit" && (geospatialProjection || {}).fit_action) {
+          ctx.dispatchToolAction(geospatialProjection.fit_action);
+        } else {
+          if (typeof ctx.loadShell === "function" && (geospatialProjection || {}).fit_request) {
+            ctx.loadShell(geospatialProjection.fit_request);
+          }
+        }
+      });
+    });
+  }
+
   function renderCtsGisInspector(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var navigationCanvas = interfaceBody.navigation_canvas || {};
+    var stagingWidget = interfaceBody.staging_widget || {};
     var navMode = navigationCanvas.mode || "directory_dropdowns";
     var garlandSplit = interfaceBody.garland_split_projection || {};
+    var interfaceTabs = normalizePresentationTabs(
+      interfaceBody.tabs,
+      [
+        { id: "diktataograph", label: navigationCanvas.title || "Diktataograph", active: true },
+        { id: "garland", label: garlandSplit.title || "Garland" },
+      ],
+      interfaceBody.default_tab_id || "diktataograph"
+    );
+    var activeTabId = activePresentationTabId(interfaceTabs, "diktataograph");
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
+    var districtCollections = profileProjection.has_real_projection
+      ? (profileProjection.district_precinct_collections || [])
+      : [];
     var hasDistrictToggleRequest = !!(
       (districtToggle.shell_request && districtToggle.shell_request.tool_state) ||
       districtToggle.action
@@ -1252,10 +1688,12 @@
       navMode === "directory_dropdowns"
         ? renderDirectoryDropdownCanvas(navigationCanvas)
         : renderProjectionPlaceholder("This CTS-GIS navigation mode is no longer supported.", "cts-gis-directoryCanvas__empty");
+    var overlayLayers = geospatialProjection.overlay_layers || [];
     var entriesByKind = {
       path: activePathEntries,
       feature: geospatialProjection.features || [],
       district_toggle: hasDistrictToggleRequest ? [districtToggle] : [],
+      overlay_toggle: overlayLayers.filter(function (l) { return !!l.action; }),
     };
     var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
     var hasRealProfileProjection = !!profileProjection.has_real_projection;
@@ -1333,7 +1771,7 @@
         (hasDistrictToggleRequest ? "" : " disabled") +
         ">" +
         '<span class="cts-gis-entryButton__title">' +
-        escapeHtml(districtToggle.enabled ? "Enabled" : "Disabled") +
+        escapeHtml(districtToggle.enabled ? "Hide compiled precincts" : "Load compiled precincts") +
         "</span>" +
         '<span class="cts-gis-entryButton__meta">time: ' +
         escapeHtml(districtToggle.time_token || "inactive") +
@@ -1343,27 +1781,12 @@
         escapeHtml(districtToggle.overlay_active ? "overlay active" : "overlay inactive") +
         "</span>" +
         "</button>" +
-        ((districtToggle.timeframe_tokens || []).length
-          ? '<p class="cts-gis-mapCanvas__meta">timeframes: ' +
-            escapeHtml((districtToggle.timeframe_tokens || []).join(", ")) +
-            "</p>"
-          : "") +
+        renderDistrictPrecinctCollections(districtCollections) +
         "</section>" +
         '<section class="cts-gis-garlandSplit__profileBlock"><h5>Hierarchy</h5>' +
         renderProfileHierarchy(profileProjection.hierarchy || []) +
         "</section>" +
-        '<section class="cts-gis-garlandSplit__profileBlock"><h5>Current Profile</h5>' +
-        '<article class="cts-gis-profileSummary cts-gis-profileSummary--active">' +
-        "<strong>" +
-        escapeHtml(activeProfile.label || "Active profile") +
-        "</strong>" +
-        '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml(activeProfile.node_id || "") +
-        "</span>" +
-        '<span class="cts-gis-profileSummary__meta">' +
-        escapeHtml(activeProfileCounts) +
-        "</span>" +
-        "</article></section>" +
+        renderGarlandSummaryObject(activeProfile, geospatialProjection) +
         ((profileProjection.summary_rows || []).length ? renderRows(profileProjection.summary_rows || []) : "") +
         ((profileProjection.warnings || []).length
           ? '<section class="cts-gis-garlandSplit__profileBlock"><h5>Warnings</h5>' +
@@ -1376,13 +1799,7 @@
           "cts-gis-profileProjection cts-gis-profileProjection--empty"
         );
 
-    target.innerHTML =
-      '<div class="system-tool-interface cts-gis-interface">' +
-      '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
-      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
-      '" data-cts-gis-narrow-layout="' +
-      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
-      '">' +
+    var diktataographPanel =
       '<section class="v2-card cts-gis-pane cts-gis-pane--diktataograph">' +
       '<header class="cts-gis-pane__header"><h3>' +
       escapeHtml(navigationCanvas.title || "Diktataograph") +
@@ -1397,14 +1814,16 @@
       "</div>" +
       renderNavigationDiagnostics(navigationCanvas.diagnostics || []) +
       "</section>" +
-      "</section>" +
+      renderCtsGisStagingWidget(stagingWidget) +
+      "</section>";
+    var garlandPanel =
       '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
       '<header class="cts-gis-pane__header"><h3>' +
       escapeHtml(garlandSplit.title || "Garland") +
       "</h3><p>" +
       escapeHtml(garlandSplit.summary || "") +
       "</p></header>" +
-      '<div class="cts-gis-garlandSplit">' +
+      '<div class="cts-gis-garlandSplit cts-gis-garlandSplit--stacked">' +
       '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
       escapeHtml(geospatialProjection.title || "Geospatial Projection") +
       "</h4>" +
@@ -1416,127 +1835,248 @@
       profileMarkup +
       "</section>" +
       "</div>" +
-      "</section>" +
+      "</section>";
+    var isSplitLayout = (interfaceBody.layout === "diktataograph_garland_split");
+    target.innerHTML =
+      '<div class="system-tool-interface cts-gis-interface' +
+      (isSplitLayout ? " cts-gis-interface--split" : "") + '">' +
+      renderPresentationTabs(interfaceTabs) +
+      '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
+      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
+      '" data-cts-gis-narrow-layout="' +
+      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
+      '">' +
+      (isSplitLayout
+        ? '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--diktataograph">' + diktataographPanel + '</div>' +
+          '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--garland">' + garlandPanel + '</div>'
+        : renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
+          renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel")) +
       "</div>" +
       "</div>";
+    if (!isSplitLayout) bindPresentationTabs(target);
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
+    bindNavigationCanvasEnhancement(target, navMode === "directory_dropdowns");
+    bindOrderedHierarchyEnhancement(target);
+    bindStagedDiktataographEnhancement(target);
+    bindCtsGisStagingWidget(target, ctx, stagingWidget);
+    bindGeospatialZoomControls(target, ctx, geospatialProjection);
   }
 
-  window.PortalShellInspectorRenderer = {
-    render: function (ctx) {
-      var target = ctx.target;
-      var region = ctx.region || {};
-      var sections = region.sections || [];
-      var surfacePayload = region.surface_payload || {};
-      var adapter = toolSurfaceAdapter();
-      var awsInspectorRenderer = resolveRegisteredModuleExport("aws_workspace", "PortalAwsCsmInspectorRenderer");
-      var networkInspectorRenderer = resolveRegisteredModuleExport("network_workspace", "PortalNetworkInspectorRenderer");
-      if (!target) return;
-      if (region.visible === false) {
-        target.innerHTML = "";
-        return;
-      }
-      if (
-        awsInspectorRenderer &&
-        typeof awsInspectorRenderer.render === "function" &&
-        region.kind === "aws_csm_inspector"
-      ) {
-        awsInspectorRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (region.kind === "aws_csm_inspector") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "AWS-CSM Interface Panel",
-            unsupported: true,
-            message: "The AWS-CSM interface renderer is unavailable.",
-          }),
-          ""
+  function renderGenericInspectorSurface(target, region, surfacePayload) {
+    var sections = region.sections || [];
+    var interfaceBody = asObject(region.interface_body);
+    var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], interfaceBody.default_tab_id);
+    var adapter = toolSurfaceAdapter();
+    var rendered = adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: region.title || "Interface Panel",
+        hasContent: !!region.subject || !!sections.length,
+        message: region.summary || "Select an item to load interface panel content.",
+      }),
+      (function () {
+        function renderSectionCards(sectionList) {
+          return (sectionList || [])
+            .map(function (section) {
+              return (
+                '<section class="v2-card" style="margin-top:12px"><h3>' +
+                escapeHtml(section.title || "Section") +
+                "</h3>" +
+                renderRows(section.rows || []) +
+                "</section>"
+              );
+            })
+            .join("");
+        }
+
+        function renderTabbedSections(tabs, sectionList) {
+          if (!tabs.length) return renderSectionCards(sectionList);
+          var activeTabId = activePresentationTabId(tabs, tabs[0].id);
+          var sectionsByTab = {};
+          tabs.forEach(function (tab) {
+            sectionsByTab[tab.id] = [];
+          });
+          (sectionList || []).forEach(function (section) {
+            var tabId = asText(section && section.tab_id);
+            if (!tabId || !sectionsByTab[tabId]) tabId = tabs[0].id;
+            sectionsByTab[tabId].push(section);
+          });
+          return (
+            renderPresentationTabs(tabs) +
+            tabs
+              .map(function (tab) {
+                var tabSections = sectionsByTab[tab.id] || [];
+                var panelHtml =
+                  renderSectionCards(tabSections) ||
+                  ('<section class="v2-card" style="margin-top:12px"><h3>' +
+                    escapeHtml(tab.label || tab.id) +
+                    "</h3><p>No interface panel details.</p></section>");
+                return renderPresentationTabPanel(tab.id, activeTabId, panelHtml);
+              })
+              .join("")
+          );
+        }
+
+        return (
+          '<div class="v2-inspector-stack">' +
+          (region.subject
+            ? '<section class="v2-card"><h3>Subject</h3>' +
+              renderRows([
+                {
+                  label: region.subject.level || "level",
+                  value: region.subject.id || "—",
+                },
+              ]) +
+              "</section>"
+            : "") +
+          (!region.subject && !sections.length
+            ? '<section class="v2-card"><h3>Interface Panel</h3><p>' +
+              escapeHtml(region.summary || "Select an item to load interface panel content.") +
+              "</p></section>"
+            : "") +
+          renderTabbedSections(interfaceTabs, sections) +
+          "</div>"
         );
-        return;
-      }
-      if (
-        networkInspectorRenderer &&
-        typeof networkInspectorRenderer.render === "function" &&
-        region.kind === "network_system_log_inspector"
-      ) {
-        networkInspectorRenderer.render(ctx, target, surfacePayload);
-        return;
-      } else if (region.kind === "network_system_log_inspector") {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: "NETWORK Detail",
-            unsupported: true,
-            message: "The NETWORK detail renderer is unavailable.",
-          }),
-          ""
-        );
-        return;
-      }
-      if (region.kind === "tool_mediation_panel" && region.interface_body && region.interface_body.kind === "cts_gis_interface_body") {
-        renderCtsGisInspector(ctx, target, region);
-        return;
-      } else if (region.kind === "tool_mediation_panel" && region.interface_body) {
-        adapter.renderWrappedSurface(
-          target,
-          adapter.resolveSurfaceState({
-            region: region,
-            surfacePayload: surfacePayload,
-            title: region.title || "Tool Interface Panel",
-            unsupported: true,
-            message: "This tool interface is not supported by the current renderer set.",
-          }),
-          ""
-        );
-        return;
-      }
+      })()
+    );
+    if (rendered && interfaceTabs.length) bindPresentationTabs(target);
+  }
+
+  function renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, spec) {
+    var moduleSpec = asObject(spec);
+    var adapter = toolSurfaceAdapter();
+    var renderer = resolveRegisteredModuleExport(moduleSpec.moduleId, moduleSpec.globalName);
+
+    if (renderer && typeof renderer.render === "function") {
+      renderer.render(ctx, target, surfacePayload);
+      return;
+    }
+    if (typeof window.__MYCITE_V2_LOAD_SHELL_MODULE === "function" && asText(moduleSpec.moduleId)) {
+      adapter.renderWrappedSurface(
+        target,
+        {
+          state: "loading",
+          title: asText(moduleSpec.label) || region.title || "Interface Panel",
+          message: "Loading deferred interface renderer module…",
+          warnings: [],
+          readiness: {},
+          toolId: asText(moduleSpec.moduleId),
+        },
+        ""
+      );
+      window.__MYCITE_V2_LOAD_SHELL_MODULE(moduleSpec.moduleId, {
+        reason: "presentation_surface:" + (asText(moduleSpec.label) || asText(moduleSpec.moduleId) || "unknown"),
+      })
+        .then(function () {
+          var resolved = resolveRegisteredModuleExport(moduleSpec.moduleId, moduleSpec.globalName);
+          if (resolved && typeof resolved.render === "function") {
+            resolved.render(ctx, target, surfacePayload);
+            return;
+          }
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: asText(moduleSpec.label) || region.title || "Interface Panel",
+              unsupported: true,
+              message:
+                "The " +
+                (asText(moduleSpec.label) || "interface panel") +
+                " renderer is unavailable.",
+            }),
+            ""
+          );
+        })
+        .catch(function (error) {
+          adapter.renderWrappedSurface(
+            target,
+            adapter.resolveSurfaceState({
+              region: region,
+              surfacePayload: surfacePayload,
+              title: asText(moduleSpec.label) || region.title || "Interface Panel",
+              unsupported: true,
+              message:
+                "The " +
+                (asText(moduleSpec.label) || "interface panel") +
+                " renderer is unavailable. " +
+                asText(error && error.message),
+            }),
+            ""
+          );
+        });
+      return;
+    }
+    adapter.renderWrappedSurface(
+      target,
+      adapter.resolveSurfaceState({
+        region: region,
+        surfacePayload: surfacePayload,
+        title: asText(moduleSpec.label) || region.title || "Interface Panel",
+        unsupported: true,
+        message:
+          "The " +
+          (asText(moduleSpec.label) || "interface panel") +
+          " renderer is unavailable.",
+      }),
+      ""
+    );
+  }
+
+  function renderPresentationSurfaceHost(ctx, target, region, surfacePayload) {
+    var adapter = toolSurfaceAdapter();
+    var mode =
+      (adapter &&
+        typeof adapter.resolvePresentationSurfaceMode === "function" &&
+        adapter.resolvePresentationSurfaceMode(region, surfacePayload)) ||
+      "summary_surface";
+    var moduleSpec =
+      (adapter &&
+        typeof adapter.resolvePresentationSurfaceModuleSpec === "function" &&
+        adapter.resolvePresentationSurfaceModuleSpec(region, surfacePayload)) ||
+      {};
+
+    if (mode === "registered_surface" && asObject(moduleSpec).moduleId) {
+      renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, moduleSpec);
+      return;
+    }
+    if (mode === "structured_interface_body") {
+      renderCtsGisInspector(ctx, target, region);
+      return;
+    }
+    if (mode === "unsupported_interface_body") {
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
           region: region,
           surfacePayload: surfacePayload,
-          title: region.title || "Interface Panel",
-          hasContent: !!region.subject || !!sections.length,
-          message: region.summary || "Select an item to load interface panel content.",
+          title: region.title || "Tool Interface Panel",
+          unsupported: true,
+          message: "This tool interface is not supported by the current renderer set.",
         }),
-        '<div class="v2-inspector-stack">' +
-        (region.subject
-          ? '<section class="v2-card"><h3>Subject</h3>' +
-            renderRows([
-              {
-                label: region.subject.level || "level",
-                value: region.subject.id || "—",
-              },
-            ]) +
-            "</section>"
-          : "") +
-        (!region.subject && !sections.length
-          ? '<section class="v2-card"><h3>Interface Panel</h3><p>' +
-            escapeHtml(region.summary || "Select an item to load interface panel content.") +
-            "</p></section>"
-          : "") +
-        sections
-          .map(function (section) {
-            return (
-              '<section class="v2-card" style="margin-top:12px"><h3>' +
-              escapeHtml(section.title || "Section") +
-              "</h3>" +
-              renderRows(section.rows || []) +
-              "</section>"
-            );
-          })
-          .join("") +
-        "</div>"
+        ""
       );
+      return;
+    }
+    renderGenericInspectorSurface(target, region, surfacePayload);
+  }
+
+  window.PortalCtsGisInspectorRenderer = {
+    render: function (ctx) {
+      var target = ctx.target;
+      var region = ctx.region || {};
+      if (!target) return;
+      if (region.visible === false) {
+        target.innerHTML = "";
+        return;
+      }
+      renderCtsGisInspector(ctx, target, region);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
-    window.__MYCITE_V2_REGISTER_SHELL_MODULE("inspector_renderers");
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("cts_gis_surface");
   }
 })();

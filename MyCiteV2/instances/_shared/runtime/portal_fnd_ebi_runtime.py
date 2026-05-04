@@ -7,32 +7,30 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import b
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_EBI_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_SURFACE_SCHEMA,
-    build_portal_runtime_envelope,
+    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    attach_region_family_contract,
     tool_exposure_configured,
     tool_exposure_enabled,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_ENTRYPOINT_ID,
     FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+    PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
     PortalShellState,
-    UTILITIES_ROOT_SURFACE_ID,
-    activity_icon_id_for_surface,
-    build_canonical_url,
-    build_portal_activity_dispatch_bodies,
-    build_portal_surface_catalog,
-    build_shell_composition_payload,
-    canonical_query_for_shell_state,
-    canonicalize_portal_shell_state,
+    normalize_runtime_shell_surface_request_payload,
     resolve_portal_tool_registry_entry,
 )
+from MyCiteV2.packages.adapters.filesystem import (
+    FilesystemFndEbiReadOnlyAdapter,
+    FilesystemFndEbiDonationsReadOnlyAdapter,
+)
+from MyCiteV2.packages.modules.cross_domain.fnd_ebi.service import FndEbiReadOnlyService
+from MyCiteV2.packages.modules.cross_domain.fnd_ebi_donations.service import FndEbiDonationsReadOnlyService
 
 
 def _as_text(value: object) -> str:
@@ -41,28 +39,11 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
-_VISIBLE_ACTIVITY_SURFACE_IDS = (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
-    NETWORK_ROOT_SURFACE_ID,
-    UTILITIES_ROOT_SURFACE_ID,
-)
-
-
 def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
-    normalized_payload = payload if isinstance(payload, dict) else {}
-    if normalized_payload.get("schema") in {None, ""}:
-        normalized_payload = {"schema": FND_EBI_TOOL_REQUEST_SCHEMA, **normalized_payload}
-    if _as_text(normalized_payload.get("schema")) != FND_EBI_TOOL_REQUEST_SCHEMA:
-        raise ValueError(f"request.schema must be {FND_EBI_TOOL_REQUEST_SCHEMA}")
-    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
-    shell_state = canonicalize_portal_shell_state(
-        normalized_payload.get("shell_state"),
-        active_surface_id=FND_EBI_TOOL_SURFACE_ID,
-        portal_scope=portal_scope,
-        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    portal_scope, shell_state, normalized_payload = normalize_runtime_shell_surface_request_payload(
+        payload,
+        expected_schema=FND_EBI_TOOL_REQUEST_SCHEMA,
+        surface_id=FND_EBI_TOOL_SURFACE_ID,
     )
     return portal_scope, shell_state, normalized_payload
 
@@ -81,38 +62,6 @@ def _webapps_summary(webapps_root: str | Path | None) -> dict[str, Any]:
         "root": str(resolved),
         "entry_count": len(list(resolved.iterdir())) if resolved.exists() and resolved.is_dir() else 0,
     }
-
-
-def _activity_items(*, portal_scope: PortalScope, active_surface_id: str, shell_state: PortalShellState) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-    )
-    items: list[dict[str, Any]] = []
-    for entry in build_portal_surface_catalog():
-        if entry.surface_id not in _VISIBLE_ACTIVITY_SURFACE_IDS:
-            continue
-        items.append(
-            {
-                "item_id": entry.surface_id,
-                "label": entry.label,
-                "icon_id": activity_icon_id_for_surface(entry.surface_id),
-                "href": entry.route,
-                "active": entry.surface_id == active_surface_id,
-                "nav_kind": "surface",
-                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
-            }
-        )
-    return items
-
-
-def _control_panel_collapsed(shell_state: PortalShellState | dict[str, Any] | None) -> bool:
-    if isinstance(shell_state, dict):
-        chrome = shell_state.get("chrome")
-        return bool(chrome.get("control_panel_collapsed")) if isinstance(chrome, dict) else False
-    chrome = getattr(shell_state, "chrome", None)
-    return bool(getattr(chrome, "control_panel_collapsed", False))
 
 
 def build_portal_fnd_ebi_surface_bundle(
@@ -163,6 +112,60 @@ def build_portal_fnd_ebi_surface_bundle(
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
         },
     }
+    # --- Analytics surface ---
+    selected_domain = _as_text(dict(shell_state.focus_subject or {}).get("domain"))
+    analytics_surface: dict[str, Any] = {}
+    if private_dir is not None:
+        try:
+            analytics_service = FndEbiReadOnlyService(
+                FilesystemFndEbiReadOnlyAdapter(
+                    private_dir,
+                    webapps_root=webapps_root or "/srv/webapps",
+                )
+            )
+            analytics_surface = analytics_service.read_surface(
+                portal_tenant_id=portal_scope.scope_id or "fnd",
+                selected_domain=selected_domain,
+            )
+        except Exception:
+            analytics_surface = {}
+
+    # --- Donations surface ---
+    donations_surface: dict[str, Any] = {}
+    if private_dir is not None:
+        try:
+            donations_service = FndEbiDonationsReadOnlyService(
+                FilesystemFndEbiDonationsReadOnlyAdapter(
+                    private_dir,
+                    webapps_root=webapps_root or "/srv/webapps",
+                )
+            )
+            donations_surface = donations_service.read_donations_surface(
+                portal_tenant_id=portal_scope.scope_id or "fnd",
+                selected_domain=selected_domain,
+            )
+        except Exception:
+            donations_surface = {}
+
+    # --- Workbench visibility gate ---
+    # Visible when at least one data section (analytics or donations) has state == "ready".
+    analytics_access_state = _as_text(
+        dict(analytics_surface.get("files") or {})
+        .get("access_log", {})
+        .get("state")
+    )
+    donations_log_state = _as_text(
+        dict(donations_surface.get("donations_log") or {}).get("state")
+    )
+    workbench_visible = analytics_access_state == "ready" or donations_log_state == "ready"
+
+    donations_payload = {
+        "enabled": bool(donations_surface.get("donations_enabled", False)),
+        "log": dict(donations_surface.get("donations_log") or {}),
+        "summary": dict(donations_surface.get("donations_summary") or {}),
+        "warnings": list(donations_surface.get("warnings") or []),
+    }
+
     control_panel = build_tool_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -176,21 +179,32 @@ def build_portal_fnd_ebi_surface_bundle(
         tool_rows=list(tool_rows or []),
         title="FND-EBI",
     )
-    workbench = {
+    workbench = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "tool_secondary_evidence",
+        "kind": "surface_payload",
         "title": "FND-EBI Evidence",
         "subtitle": "Workbench remains hidden until the runtime requests supporting evidence.",
-        "visible": False,
+        "visible": workbench_visible,
         "surface_payload": {
-            "kind": "tool_secondary_evidence",
+            "kind": "surface_payload",
             "surface_id": FND_EBI_TOOL_SURFACE_ID,
             "webapps_summary": webapps_summary,
+            "overview": dict(analytics_surface.get("overview") or {}),
+            "traffic": dict(analytics_surface.get("traffic") or {}),
+            "events_summary": dict(analytics_surface.get("events_summary") or {}),
+            "errors_noise": dict(analytics_surface.get("errors_noise") or {}),
+            "files": dict(analytics_surface.get("files") or {}),
+            "donations": donations_payload,
         },
-    }
-    inspector = {
+        },
+        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        surface_id=FND_EBI_TOOL_SURFACE_ID,
+    )
+    inspector = attach_region_family_contract(
+        {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
-        "kind": "tool_mediation_panel",
+        "kind": "summary_panel",
         "title": "FND-EBI",
         "summary": "Shared hosted visibility posture.",
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
@@ -211,7 +225,10 @@ def build_portal_fnd_ebi_surface_bundle(
                 ],
             }
         ],
-    }
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=FND_EBI_TOOL_SURFACE_ID,
+    )
     return {
         "entrypoint_id": FND_EBI_TOOL_ENTRYPOINT_ID,
         "read_write_posture": tool_entry.read_write_posture,
@@ -230,47 +247,30 @@ def run_portal_fnd_ebi(
     request_payload: dict[str, Any] | None,
     *,
     webapps_root: str | Path | None,
+    private_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
+    portal_instance_id: str | None = None,
+    portal_domain: str = "",
 ) -> dict[str, Any]:
     portal_scope, shell_state, _ = _normalize_request(request_payload)
-    bundle = build_portal_fnd_ebi_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
+    resolved_portal_instance_id = _as_text(portal_instance_id) or portal_scope.scope_id
+    if not portal_scope.scope_id:
+        portal_scope = PortalScope(scope_id=resolved_portal_instance_id, capabilities=portal_scope.capabilities)
+    shell_request = {
+        "schema": PORTAL_SHELL_REQUEST_SCHEMA,
+        "requested_surface_id": FND_EBI_TOOL_SURFACE_ID,
+        "portal_scope": portal_scope.to_dict(),
+        "shell_state": shell_state.to_dict(),
+    }
+    from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
+
+    return run_portal_shell_entry(
+        shell_request,
+        portal_instance_id=resolved_portal_instance_id,
+        portal_domain=portal_domain,
         webapps_root=webapps_root,
+        private_dir=private_dir,
         tool_exposure_policy=tool_exposure_policy,
-    )
-    canonical_query = canonical_query_for_shell_state(shell_state, surface_id=FND_EBI_TOOL_SURFACE_ID)
-    composition = build_shell_composition_payload(
-        active_surface_id=FND_EBI_TOOL_SURFACE_ID,
-        portal_instance_id=portal_scope.scope_id,
-        page_title=_as_text(bundle.get("page_title")) or "FND-EBI",
-        page_subtitle=_as_text(bundle.get("page_subtitle")),
-        activity_items=_activity_items(
-            portal_scope=portal_scope,
-            active_surface_id=FND_EBI_TOOL_SURFACE_ID,
-            shell_state=shell_state,
-        ),
-        control_panel=dict(bundle.get("control_panel") or {}),
-        workbench=dict(bundle.get("workbench") or {}),
-        inspector=dict(bundle.get("inspector") or {}),
-        shell_state=shell_state,
-        control_panel_collapsed=_control_panel_collapsed(shell_state),
-    )
-    return build_portal_runtime_envelope(
-        portal_scope=portal_scope.to_dict(),
-        requested_surface_id=FND_EBI_TOOL_SURFACE_ID,
-        surface_id=FND_EBI_TOOL_SURFACE_ID,
-        entrypoint_id=bundle["entrypoint_id"],
-        read_write_posture=bundle["read_write_posture"],
-        reducer_owned=True,
-        canonical_route=bundle["route"],
-        canonical_query=canonical_query,
-        canonical_url=build_canonical_url(surface_id=FND_EBI_TOOL_SURFACE_ID, query=canonical_query),
-        shell_state=shell_state.to_dict(),
-        surface_payload=bundle["surface_payload"],
-        shell_composition=composition,
-        warnings=[],
-        error=None,
     )
 
 

@@ -14,6 +14,8 @@ is the code that serves and verifies that shell.
   Ports, adapters, state-machine logic, and cross-domain services.
 - `tests/`
   Contract, integration, and architecture checks that keep the single-shell model stable.
+- `scripts/`
+  Operational entrypoints, including CTS-GIS compile/validate/deploy helpers.
 
 ## Working assumptions
 
@@ -30,3 +32,14 @@ is the code that serves and verifies that shell.
 - [../docs/contracts/portal_shell_contract.md](../docs/contracts/portal_shell_contract.md)
 - [../docs/contracts/route_model.md](../docs/contracts/route_model.md)
 - [../docs/contracts/surface_catalog.md](../docs/contracts/surface_catalog.md)
+
+## CTS-GIS Operations
+
+- `scripts/compile_cts_gis_artifact.py`
+  Rebuilds the compiled CTS-GIS artifact used by `production_strict`.
+- `scripts/validate_cts_gis_sources.py`
+  Validates the live `sources/` plus `sources/precincts/` layout and can require
+  compiled-artifact fingerprint match.
+- `scripts/deploy_portal_update.sh`
+  Enforces compile-before-restart posture for FND unless explicitly skipped for
+  diagnostic workflows.

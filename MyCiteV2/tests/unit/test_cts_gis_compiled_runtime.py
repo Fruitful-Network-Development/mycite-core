@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -10,9 +11,21 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
-from MyCiteV2.packages.modules.cross_domain.cts_gis import compiled_artifact_path, write_compiled_artifact
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.modules.cross_domain.cts_gis import (
+    build_compiled_artifact,
+    build_cts_gis_source_layout_summary,
+    compiled_artifact_path,
+    write_compiled_artifact,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.compiled_artifact import validate_compiled_artifact
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import CTS_GIS_COMPILED_ARTIFACT_SCHEMA
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentRow,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     PortalScope,
@@ -20,9 +33,75 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 )
 
 
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+
+def _valid_source_layout(*, fingerprint: str = "fixture-fingerprint") -> dict[str, object]:
+    return {
+        "schema": "mycite.v2.portal.system.tools.cts_gis.source_layout.v1",
+        "source_root": "/tmp/sandbox/cts-gis/sources",
+        "precinct_root": "/tmp/sandbox/cts-gis/sources/precincts",
+        "root_exists": True,
+        "precinct_root_exists": True,
+        "top_level_file_count": 1,
+        "precinct_file_count": 1,
+        "total_file_count": 2,
+        "sample_relative_paths": ["sc.example.json", "precincts/sc.example.precinct.json"],
+        "fingerprint": fingerprint,
+    }
+
+
+_LIVE_INVALID_MSN_SAMRAS = (
+    "000000000010000000000110011011100000000100000000010100000010010000001111"
+    "000001000100000100100000010011000001011100000110000000011011000001110000"
+    "00011110000010000100001000100000100011000010010000001001"
+)
+
+
 class CtsGisCompiledRuntimeTests(unittest.TestCase):
     def _scope(self) -> PortalScope:
         return PortalScope(scope_id="fnd", capabilities=("datum_recognition", "spatial_projection"))
+
+    def test_production_strict_hydrates_requested_state_overlay_projection_from_authoritative_surface(self) -> None:
+        data_dir = REPO_ROOT / "deployed" / "fnd" / "data"
+        private_dir = REPO_ROOT / "deployed" / "fnd" / "private"
+        compiled_path = compiled_artifact_path(data_dir, portal_scope_id="fnd")
+        if compiled_path is None or not compiled_path.exists():
+            self.skipTest("deployed CTS-GIS compiled artifact is unavailable")
+
+        scope = self._scope()
+        shell_state = initial_portal_shell_state(surface_id=CTS_GIS_TOOL_SURFACE_ID, portal_scope=scope)
+        bundle = build_portal_cts_gis_surface_bundle(
+            portal_scope=scope,
+            shell_state=shell_state,
+            data_dir=data_dir,
+            private_dir=private_dir,
+            request_payload={
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {"time_directive": "23_present-district_31"},
+                    "source": {"precinct_district_overlay_enabled": True},
+                },
+            },
+        )
+
+        garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+        geo = garland["geospatial_projection"]
+        profile = garland["profile_projection"]
+        toggle = dict(profile.get("district_overlay_toggle") or {})
+
+        self.assertEqual(profile["active_profile"]["node_id"], "3-2-3-17")
+        self.assertTrue(toggle.get("enabled"))
+        self.assertTrue(toggle.get("overlay_active"))
+        self.assertEqual(toggle.get("time_token"), "23_present-district_31")
+        self.assertEqual(geo["projection_state"], "projectable_degraded")
+        feature_ids = [feature["node_id"] for feature in geo["features"]]
+        self.assertIn("3-2-3-17", feature_ids)
+        self.assertIn("247-17-77-1", feature_ids)
 
     def test_production_strict_fails_fast_when_compiled_artifact_missing(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -43,6 +122,15 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
     def test_production_strict_uses_compiled_artifact_models(self) -> None:
         with TemporaryDirectory() as tmp:
             scope = self._scope()
+            _write_json(
+                Path(tmp) / "sandbox" / "cts-gis" / "sources" / "sc.example.json",
+                {"datum_addressing_abstraction_space": {"1-0-1": [["1-0-1", "~", "0-0-0"], ["root"]]}},
+            )
+            _write_json(
+                Path(tmp) / "sandbox" / "cts-gis" / "sources" / "precincts" / "sc.example.precinct.json",
+                {"datum_addressing_abstraction_space": {"1-0-2": [["1-0-2", "~", "0-0-0"], ["precinct"]]}},
+            )
+            source_layout = build_cts_gis_source_layout_summary(tmp)
             compiled_path = compiled_artifact_path(tmp, portal_scope_id=scope.scope_id)
             self.assertIsNotNone(compiled_path)
             write_compiled_artifact(
@@ -54,6 +142,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                     "portal_scope_id": "fnd",
                     "build_mode": "audit_forensic",
                     "default_runtime_mode": "production_strict",
+                    "source_layout": source_layout,
                     "default_tool_state": {
                         "nimm_directive": "mediate",
                         "active_path": ["3", "3-2"],
@@ -84,6 +173,37 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                         "feature_collection": {"type": "FeatureCollection", "features": [], "bounds": [-1, -1, 1, 1]},
                         "selected_feature": {},
                         "profile_summary": {"node_id": "3-2", "label": "us", "feature_count": 0, "child_count": 0, "document_id": "sandbox:cts_gis:doc.json"},
+                        "contextual_references": {
+                            "district_precincts": {
+                                "enabled": False,
+                                "overlay_active": False,
+                                "time_token": "23_present-district_31",
+                                "timeframe_tokens": ["23_present-district_31"],
+                                "timeframe_match": True,
+                                "collection_count": 1,
+                                "collections": [
+                                    {
+                                        "collection_id": "23_present-district_31",
+                                        "label": "District 31 · 23 Present",
+                                        "timeframe_token": "23_present-district_31",
+                                        "time_context_active": True,
+                                        "timeframe_match": True,
+                                        "overlay_requested": False,
+                                        "overlay_active": False,
+                                        "overlay_toggle_available": True,
+                                        "scope_node_id": "247-17-77",
+                                        "scope_kind": "district_set_collection",
+                                        "precinct_count": 0,
+                                        "precinct_count_known": False,
+                                        "member_node_ids": [],
+                                        "member_labels": [],
+                                        "gate_failures": [],
+                                        "summary_state": "deferred",
+                                    }
+                                ],
+                                "gate_failures": [],
+                            }
+                        },
                     },
                     "evidence_model": {"source_evidence": {"readiness": {"state": "ready"}}, "diagnostic_summary": {}, "warnings": []},
                     "invariants": {"valid": True, "issues": []},
@@ -107,14 +227,22 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             )
             payload = bundle["surface_payload"]
             nav = payload["navigation_model"]
+            profile = bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            toggle = dict(profile.get("district_overlay_toggle") or {})
             self.assertEqual(payload["runtime_mode"], "production_strict")
             self.assertEqual(nav["decode_state"], "ready")
             self.assertTrue(nav["dropdowns"][0]["options"][0]["action"]["kind"] == "select_node")
+            self.assertEqual(toggle.get("time_token"), "23_present-district_31")
+            self.assertEqual(toggle.get("shell_request", {}).get("runtime_mode"), "production_strict")
+            collections = list(profile.get("district_precinct_collections") or [])
+            self.assertEqual(len(collections), 1)
+            self.assertEqual(collections[0]["summary_state"], "deferred")
 
     def test_validate_compiled_artifact_rejects_multi_authority_strict_invariant(self) -> None:
         valid, issues = validate_compiled_artifact(
             {
                 "schema": CTS_GIS_COMPILED_ARTIFACT_SCHEMA,
+                "source_layout": _valid_source_layout(),
                 "navigation_model": {},
                 "projection_model": {},
                 "invariants": {"valid": True, "issues": []},
@@ -130,6 +258,235 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
         )
         self.assertFalse(valid)
         self.assertIn("strict_one_authority_failed", issues)
+
+    def test_build_compiled_artifact_accepts_multi_root_catalog_with_single_active_lineage(self) -> None:
+        artifact = build_compiled_artifact(
+            portal_scope_id="fnd",
+            source_evidence={
+                "readiness": {"state": "ready"},
+                "administrative_payload_cache": {
+                    "payload": {
+                        "datum_addressing_abstraction_space": {
+                            "1-1-1": [["1-1-1", "0-0-5", "bits"], ["msn-SAMRAS"]],
+                        }
+                    }
+                },
+            },
+            service_surface={
+                "map_projection": {
+                    "projection_state": "projectable",
+                    "projection_source": "hops",
+                    "projection_health": {"state": "ok", "reason_codes": []},
+                    "feature_collection": {"type": "FeatureCollection", "features": []},
+                },
+                "attention_profile": {"node_id": "3-2", "profile_label": "usa"},
+            },
+            navigation_canvas={
+                "decode_state": "ready",
+                "source_authority": "samras_magnitude",
+                "active_node_id": "3-2",
+                "active_path": [
+                    {"node_id": "3", "title": "nwh", "display_label": "3 nwh", "selected": False},
+                    {"node_id": "3-2", "title": "usa", "display_label": "3-2 usa", "selected": True},
+                ],
+                "dropdowns": [
+                    {
+                        "depth": 1,
+                        "parent_node_id": "",
+                        "selected_node_id": "3",
+                        "options": [
+                            {"node_id": "1", "title": "neg", "display_label": "1 neg", "selected": False},
+                            {"node_id": "2", "title": "neh", "display_label": "2 neh", "selected": False},
+                            {"node_id": "3", "title": "nwh", "display_label": "3 nwh", "selected": True},
+                            {"node_id": "4", "title": "nwg", "display_label": "4 nwg", "selected": False},
+                        ],
+                    },
+                    {
+                        "depth": 2,
+                        "parent_node_id": "3",
+                        "selected_node_id": "3-2",
+                        "options": [
+                            {"node_id": "3-1", "title": "uk", "display_label": "3-1 uk", "selected": False},
+                            {"node_id": "3-2", "title": "usa", "display_label": "3-2 usa", "selected": True},
+                        ],
+                    },
+                ],
+            },
+            default_tool_state={
+                "active_path": ["3", "3-2"],
+                "selected_node_id": "3-2",
+            },
+            source_layout=_valid_source_layout(),
+        )
+        self.assertTrue(artifact["strict_invariants"]["valid"])
+        self.assertEqual(artifact["strict_invariants"]["namespace_roots"], ["3"])
+
+    def test_apply_stage_rebuilds_compiled_artifact_from_sql_authority(self) -> None:
+        def ascii_bits(value: str, width: int = 256) -> str:
+            bitstream = "".join(format(ord(char), "08b") for char in value)
+            return bitstream.ljust(width, "0")
+
+        def row(datum_address: str, node_address: str, title: str) -> AuthoritativeDatumDocumentRow:
+            return AuthoritativeDatumDocumentRow(
+                datum_address=datum_address,
+                raw=[
+                    [datum_address, "rf.3-1-2", node_address, "rf.3-1-3", ascii_bits(title)],
+                    [title.replace(" ", "_")],
+                ],
+            )
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_dir = root / "data"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources" / "precincts").mkdir(parents=True, exist_ok=True)
+            source_rows = {
+                "4-1-1": [["4-1-1", "rf.3-1-1", "3-76-11-40-92-20-21-92-51-75-26-64-11-48-77-78-73"], ["polygon_1"]],
+                "4-2-1": row("4-2-1", "3-2-3-17-77-1", "ALPHA STREET").raw,
+                "4-2-2": row("4-2-2", "3-2-3-17-77-2", "BETA STREET").raw,
+                "4-2-3": row("4-2-3", "3-2-3-17-77-2", "GAMMA STREET").raw,
+                "5-0-1": [["5-0-1", "~", "4-1-1"], ["summit_boundary"]],
+                "7-3-1": [[
+                    "7-3-1",
+                    "rf.3-1-2",
+                    "3-2-3-17-77",
+                    "rf.3-1-3",
+                    ascii_bits("SUMMIT COUNTY"),
+                    "5-0-1",
+                    "1",
+                ], ["summit_county"]],
+            }
+            _write_json(
+                data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json",
+                {"datum_addressing_abstraction_space": source_rows},
+            )
+            _write_json(
+                data_dir / "payloads" / "cache" / "sc.example.registrar.json",
+                {
+                    "payload_id": "sc.example.registrar",
+                    "target_mss_anchor_datum": "5-0-1",
+                },
+            )
+            _write_json(
+                data_dir / "sandbox" / "cts-gis" / "tool.fnd.cts-gis.json",
+                {
+                    "datum_addressing_abstraction_space": {
+                        "1-1-1": [["1-1-1", "0-0-5", _LIVE_INVALID_MSN_SAMRAS], ["msn-SAMRAS"]],
+                        "2-0-2": [["2-0-2", "~", "1-1-1"], ["SAMRAS-space-msn"]],
+                        "3-1-1": [["3-1-1", "2-0-2", "0"], ["HOPS-babelette-coordinate"]],
+                        "3-1-2": [["3-1-2", "2-0-2", "0"], ["SAMRAS-babelette-msn_id"]],
+                        "3-1-3": [["3-1-3", "2-0-2", "0"], ["title-babelette"]],
+                    }
+                },
+            )
+            SqliteSystemDatumStoreAdapter(db_file).store_authoritative_catalog(
+                AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id="fnd",
+                    documents=(
+                        AuthoritativeDatumDocument(
+                            document_id="sandbox:cts_gis:sc.example.json",
+                            source_kind="sandbox_source",
+                            document_name="sc.example.json",
+                            relative_path="sandbox/cts-gis/sources/sc.example.json",
+                            tool_id="cts_gis",
+                            rows=(
+                                AuthoritativeDatumDocumentRow(
+                                    datum_address="4-1-1",
+                                    raw=source_rows["4-1-1"],
+                                ),
+                                row("4-2-1", "3-2-3-17-77-1", "ALPHA STREET"),
+                                row("4-2-2", "3-2-3-17-77-2", "BETA STREET"),
+                                row("4-2-3", "3-2-3-17-77-2", "GAMMA STREET"),
+                                AuthoritativeDatumDocumentRow(
+                                    datum_address="5-0-1",
+                                    raw=source_rows["5-0-1"],
+                                ),
+                                AuthoritativeDatumDocumentRow(
+                                    datum_address="7-3-1",
+                                    raw=source_rows["7-3-1"],
+                                ),
+                            ),
+                        ),
+                    ),
+                    source_files={"sandbox/cts-gis/sources/sc.example.json": {"exists": True}},
+                    readiness_status={"authoritative_catalog": "loaded"},
+                )
+            )
+
+            staged = run_portal_cts_gis_action(
+                {
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    "tool_state": {
+                        "selected_node_id": "3-2-3-17-77-1",
+                        "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
+                    },
+                    "action_kind": "stage_insert_yaml",
+                    "action_payload": {
+                        "stage_document": {
+                            "schema": "mycite.v2.cts_gis.stage_insert.v1",
+                            "document_id": "sandbox:cts_gis:sc.example.json",
+                            "document_name": "sc.example.json",
+                            "operation": "insert_datums",
+                            "datums": [
+                                {
+                                    "family": "administrative_street",
+                                    "valueGroup": 2,
+                                    "targetNodeAddress": "3-2-3-17-77-1",
+                                    "title": "MAIN STREET",
+                                    "references": [
+                                        {"type": "title", "text": "MAIN STREET"},
+                                        {"type": "msn-samras", "nodeAddress": "3-2-3-17-77-1"},
+                                    ],
+                                }
+                            ],
+                        }
+                    },
+                },
+                data_dir=data_dir,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            preview = run_portal_cts_gis_action(
+                {
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    "tool_state": staged["surface_payload"]["tool_state"],
+                    "action_kind": "preview_apply",
+                    "action_payload": {},
+                },
+                data_dir=data_dir,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            run_portal_cts_gis_action(
+                {
+                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                    "tool_state": preview["surface_payload"]["tool_state"],
+                    "action_kind": "apply_stage",
+                    "action_payload": {},
+                },
+                data_dir=data_dir,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+
+            compiled_path = compiled_artifact_path(data_dir, portal_scope_id="fnd")
+            self.assertIsNotNone(compiled_path)
+            self.assertTrue(compiled_path.exists())
+            compiled_artifact = json.loads(compiled_path.read_text(encoding="utf-8"))
+            self.assertEqual(compiled_artifact["schema"], CTS_GIS_COMPILED_ARTIFACT_SCHEMA)
+            self.assertEqual(compiled_artifact["default_tool_state"]["source"]["attention_document_id"], "sandbox:cts_gis:sc.example.json")
+            self.assertEqual(compiled_artifact["navigation_model"]["decode_state"], "ready")
+            self.assertTrue(compiled_artifact["strict_invariants"]["valid"])
+            self.assertNotIn("strict_one_namespace_failed", compiled_artifact["strict_invariants"]["issues"])
+            self.assertTrue(compiled_artifact["evidence_model"]["source_evidence"]["tool_anchor"]["exists"])
+            self.assertTrue(compiled_artifact["evidence_model"]["source_evidence"]["registrar_payload"]["exists"])
 
 
 if __name__ == "__main__":

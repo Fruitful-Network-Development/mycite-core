@@ -107,7 +107,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its document table is keyed by `version_hash`, while its selected-document row grid is keyed by `hyphae_hash`.
 - Fresh entry deliberately prefers the first available CTS-GIS authoritative document in the current document ordering and falls back to the first available authoritative document when no CTS-GIS document is present.
 - Its document and datum panes both carry sticky-header intent and explicit selected-document / selected-datum-row markers.
-- Its datum grid may be grouped as `flat`, `layer`, or `layer_value_group` while preserving canonical structural order inside each group.
+- Its datum grid may be grouped as `flat`, `layer`, `layer_value_group`, or `layer_value_group_iteration`, with the last mode materializing a layer/value-group/iteration cell matrix while preserving canonical structural order.
 - Its source and overlay visibility remain query-driven.
 - Its keyboard navigation stays query-driven through runtime-owned document/row selection actions rather than new canonical navigation keys.
 - It is read-only in v1.
@@ -122,11 +122,17 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
-- Its workbench is `tool_secondary_evidence` and stays hidden by default until secondary evidence is explicitly shown.
-- Its dominant `Interface Panel` mounts one CTS-GIS-local body with:
-  - `Diktataograph`
-  - `Garland` geospatial pane
-  - `Garland` profile pane
+- Its workbench is a hidden reflective-workspace supporting-evidence surface and stays hidden by default until secondary evidence is explicitly shown.
+- Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body on the shared tab host.
+- `tab_host=shared_interface_tabs`.
+- `tabs` currently materialize as `diktataograph` and `garland`.
+- `default_tab_id=diktataograph`.
+- The `Diktataograph` tab hosts:
+  - the CTS-GIS structural navigation canvas
+  - the staged insert widget
+- The `Garland` tab hosts:
+  - the correlated geospatial pane
+  - the correlated profile pane
 - `Diktataograph` is the CTS-GIS structural navigation canvas (`navigation_canvas`).
 - `navigation_canvas.mode` defaults to `directory_dropdowns`.
 - `navigation_canvas.source_authority` is `samras_magnitude`.
@@ -143,19 +149,22 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
+- CTS-GIS staged insert state is carried in `tool_state.staged_insert`.
+- CTS-GIS staged mutation requests run through `POST /portal/api/v2/system/tools/cts-gis/actions`, not through renderer-owned SQL or filesystem writes.
+- The canonical staged insert contract is YAML-first with JSON-equivalent support via `mycite.v2.cts_gis.stage_insert.v1`.
+- The `Control Panel` holds CTS-GIS-local directive, `AITAS`, source-evidence controls, and staged insert recap/actions.
+- The workbench remains diagnostic or preview/apply evidence rather than a duplicate of Garland.
 - CTS-GIS mode is explicit via `runtime_mode`:
-  - `production_strict` consumes compiled-only state and fails fast when invalid.
+  - `production_strict` consumes a compiled navigation/evidence baseline, hydrates non-default Garland projection contexts from authoritative CTS-GIS projection documents, and fails fast when compiled state is invalid.
   - `audit_forensic` exposes richer evidence and compatibility diagnostics.
 - CTS-GIS runtime also emits compact model partitions for universal shell tooling:
   - `navigation_model`
   - `projection_model`
   - `evidence_model`
 - When a selected node is present and no explicit tool-local intention is supplied, CTS-GIS normalizes `Intention` to `self` so Garland reflects the current node.
-- The `Control Panel` holds CTS-GIS-local directive, `AITAS`, and source-evidence controls.
 - Node-focused Intention actions live inside `AITAS`; `Projection Rules` is shown only for sandbox-wide attention without a selected node.
-- The workbench remains diagnostic or raw supporting evidence rather than a duplicate of Garland.
 - v2.5.4 phase-B is canonical-only for CTS-GIS identifiers and storage anchors.
-- Legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
+- Legacy CTS-GIS `maps` identifiers are rejected at `POST /portal/api/v2/system/tools/cts-gis` with `400 legacy_maps_alias_unsupported`.
 - Compiled artifact authority schema is `mycite.v2.portal.system.tools.cts_gis.compiled.v1`.
 
 ## FND-DCM
@@ -219,11 +228,16 @@ The top menubar is the only shell header.
 ## Tool Posture
 
 - Tool work pages stay under `SYSTEM`.
+- Tool regions participate only through the canonical shell families:
+  - `directive_panel`
+  - `reflective_workspace`
+  - `presentation_surface`
 - Tool registry defaults are interface-panel-led.
 - `workbench_ui` is the approved workbench-primary exception.
 - Tool registry posture metadata is descriptive only; shell composition remains authoritative for first-load tool posture.
 - Tool workbench visibility defaults to `false`.
 - `workbench_ui` defaults to `true` because its primary surface is the SQL-backed datum grid.
+- Retired scoped fallback keys are not part of the active surface catalog or tool posture contract.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.
 - Double-clicking either tool toggle enables route-scoped lock mode that allows both panels to remain visible together.
 - Tool lock is non-persistent and clears when leaving the current tool route or composition.

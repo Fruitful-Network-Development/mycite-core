@@ -31,6 +31,19 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function asDisplayText(value) {
+    if (Array.isArray(value)) {
+      return value
+        .map(function (item) {
+          return typeof item === "object" ? "" : asText(item);
+        })
+        .filter(Boolean)
+        .join(", ");
+    }
+    if (value && typeof value === "object") return "";
+    return asText(value);
+  }
+
   function prettifyKey(value) {
     return asText(value)
       .replace(/_/g, " ")
@@ -41,6 +54,49 @@
 
   function toolSurfaceAdapter() {
     return window.PortalToolSurfaceAdapter || {};
+  }
+
+  function interfaceTabHost() {
+    return window.__MYCITE_V2_INTERFACE_TAB_HOST || {};
+  }
+
+  function normalizeInspectorTabs(tabs, fallbackTabs, defaultTabId) {
+    var host = interfaceTabHost();
+    if (host && typeof host.normalizeTabs === "function") {
+      return host.normalizeTabs(tabs, fallbackTabs, defaultTabId);
+    }
+    return Array.isArray(fallbackTabs) ? fallbackTabs.slice() : [];
+  }
+
+  function activeInspectorTabId(tabs, fallbackId) {
+    var host = interfaceTabHost();
+    if (host && typeof host.activeTabId === "function") {
+      return host.activeTabId(tabs, fallbackId);
+    }
+    return (tabs && tabs[0] && tabs[0].id) || fallbackId || "";
+  }
+
+  function renderInspectorTabs(tabs) {
+    var host = interfaceTabHost();
+    if (host && typeof host.renderTabs === "function") {
+      return host.renderTabs(tabs);
+    }
+    return "";
+  }
+
+  function renderInspectorTabPanel(tabId, activeTabId, contentHtml, className) {
+    var host = interfaceTabHost();
+    if (host && typeof host.renderTabPanel === "function") {
+      return host.renderTabPanel(tabId, activeTabId, contentHtml, className);
+    }
+    return String(contentHtml || "");
+  }
+
+  function bindInspectorTabs(target) {
+    var host = interfaceTabHost();
+    if (host && typeof host.bindTabs === "function") {
+      host.bindTabs(target);
+    }
   }
 
   function buildSurfaceRequest(ctx, workspace, overrides) {
@@ -123,14 +179,14 @@
     var seen = {};
     var rows = [];
     (preferredOrder || []).forEach(function (key) {
-      var value = asText(payload[key]);
+      var value = asDisplayText(payload[key]);
       if (!value) return;
       rows.push({ label: prettifyKey(key), value: value });
       seen[key] = true;
     });
     Object.keys(payload).forEach(function (key) {
       if (seen[key]) return;
-      var value = asText(payload[key]);
+      var value = asDisplayText(payload[key]);
       if (!value) return;
       rows.push({ label: prettifyKey(key), value: value });
     });
@@ -210,29 +266,6 @@
     );
   }
 
-  function renderSectionButtons(workspace) {
-    var rows = workspace.section_rows || [];
-    if (!rows.length) return "";
-    return (
-      '<div class="aws-csm-flowForm__actions">' +
-      '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-section-clear>All</button>' +
-      rows
-        .map(function (row) {
-          return (
-            '<button type="button" class="ide-sessionAction ide-sessionAction--button' +
-            (row.active ? " is-active" : "") +
-            '" data-aws-section="' +
-            escapeHtml((row.label || "").toLowerCase()) +
-            '">' +
-            escapeHtml(row.label || "") +
-            "</button>"
-          );
-        })
-        .join("") +
-      "</div>"
-    );
-  }
-
   function renderMailboxGallery(workspace) {
     var rows = workspace.mailbox_rows || [];
     if (!rows.length) {
@@ -253,12 +286,16 @@
             '</span><span class="aws-csm-profileCard__meta">' +
             escapeHtml((row.user_email || "no linked user") + " · " + (row.role || "mailbox")) +
             '</span><span class="aws-csm-profileCard__stats">' +
-            "<span>workflow: " +
+            "<span>onboarding: " +
+            escapeHtml(row.onboarding_state || "—") +
+            "</span><span>workflow: " +
             escapeHtml(row.workflow_state || "—") +
             "</span><span>verification: " +
             escapeHtml(row.verification_state || "—") +
             "</span><span>provider: " +
             escapeHtml(row.provider_state || "—") +
+            "</span><span>correction: " +
+            escapeHtml(row.handoff_correction_status || "—") +
             "</span><span>inbound: " +
             escapeHtml(row.inbound_state || "—") +
             "</span></span></button>"
@@ -373,6 +410,10 @@
           "region",
           "hosted_zone_id",
           "readiness_state",
+          "mailbox_count",
+          "handoff_correction_required_count",
+          "handoff_correction_completed_count",
+          "current_handoff_template_version",
           "last_checked_at",
           "registrar_nameservers",
           "hosted_zone_nameservers",
@@ -409,13 +450,23 @@
     var handoff = asObject(onboarding && onboarding.handoff);
     if (!asText(handoff.send_as_email)) return "";
     return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Handoff</h3><p>Split-secret Gmail handoff keeps the SMTP password out of stored profile state and instruction emails.</p>' +
+      '<section class="v2-card" style="margin-top:12px"><h3>Handoff</h3><p>Portal handoff sends a minimal SMTP credential set while keeping the password out of stored profile JSON.</p>' +
       renderInfoRows(
         renderKeyValueRows(handoff, [
           "send_as_email",
           "single_user_email",
           "operator_inbox_target",
           "forward_target",
+          "handoff_email_sent_to",
+          "handoff_email_message_id",
+          "handoff_email_sent_at",
+          "handoff_template_version",
+          "current_handoff_template_version",
+          "handoff_correction_required",
+          "handoff_correction_status",
+          "handoff_correction_sent_to",
+          "handoff_correction_message_id",
+          "handoff_correction_sent_at",
           "smtp_host",
           "smtp_port",
           "smtp_username",
@@ -426,6 +477,71 @@
         ])
       ) +
       "</section>"
+    );
+  }
+
+  function renderHandoffProviderOptions(selectedValue) {
+    var selected = asText(selectedValue).toLowerCase();
+    return ["gmail", "outlook", "yahoo", "proofpoint", "generic_manual"]
+      .map(function (value) {
+        return (
+          '<option value="' +
+          escapeHtml(value) +
+          '"' +
+          (selected === value ? ' selected="selected"' : "") +
+          ">" +
+          escapeHtml(prettifyKey(value)) +
+          "</option>"
+        );
+      })
+      .join("");
+  }
+
+  function renderProfileEditorCard(profile) {
+    var raw = asObject(profile && profile.raw);
+    var identity = asObject(raw.identity);
+    var smtp = asObject(raw.smtp);
+    var provider = asObject(raw.provider);
+    var currentForward = smtp.forward_to_email || identity.operator_inbox_target || identity.single_user_email || "";
+    var currentProvider =
+      provider.handoff_provider || identity.handoff_provider || smtp.handoff_provider || "generic_manual";
+    if (!asText(profile && profile.profile_id)) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>User Configuration</h3><p>Update the mailbox alias, linked personal email, or forwarding target for the selected AWS-CSM user.</p>' +
+      '<form data-aws-update-profile-form style="margin-top:12px">' +
+      '<label class="v2-formField"><span>Mailbox Local Part</span><input type="text" name="mailbox_local_part" value="' +
+      escapeHtml(identity.mailbox_local_part || profile.mailbox_local_part || "") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Single User Email</span><input type="email" name="single_user_email" value="' +
+      escapeHtml(identity.single_user_email || profile.user_email || "") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Forwarded Operator Inbox</span><input type="email" name="operator_inbox_target" value="' +
+      escapeHtml(currentForward) +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Role</span><input type="text" name="role" value="' +
+      escapeHtml(identity.role || profile.role || "operator") +
+      '" required /></label>' +
+      '<label class="v2-formField"><span>Handoff Provider</span><select name="handoff_provider">' +
+      renderHandoffProviderOptions(currentProvider) +
+      "</select></label>" +
+      '<div class="aws-csm-flowForm__actions" style="margin-top:12px">' +
+      '<button type="submit" class="ide-sessionAction ide-sessionAction--button">Save User Configuration</button>' +
+      '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-delete-profile>Delete User</button>' +
+      "</div>" +
+      "</form></section>"
+    );
+  }
+
+  function renderRawPayloadCard(workspace) {
+    var profile = workspace.selected_profile || null;
+    var newsletter = workspace.selected_newsletter || null;
+    var domainRaw = asObject(workspace.selected_domain_record).raw;
+    var payload = (profile && profile.raw) || domainRaw || (newsletter && newsletter.raw) || null;
+    if (!payload) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
+      escapeHtml(compactJson(payload)) +
+      "</pre></section>"
     );
   }
 
@@ -442,8 +558,11 @@
       "send_as_email",
       "single_user_email",
       "operator_inbox_target",
+      "corrected_profiles",
+      "correction_count",
       "sent_to",
       "message_id",
+      "template_version",
       "secret_name",
       "state",
     ]);
@@ -454,6 +573,7 @@
       "smtp_host",
       "smtp_port",
       "message_id",
+      "template_version",
       "state",
     ]);
     var secretRows = renderKeyValueRows(result.ephemeral_secret, [
@@ -501,8 +621,14 @@
         renderInfoRows(profileFactRows(selected)) +
         renderInfoRows(
           renderKeyValueRows(onboarding, [
+            "onboarding_state",
+            "onboarding_summary",
             "workflow_state",
             "handoff_status",
+            "handoff_template_version",
+            "handoff_correction_status",
+            "handoff_correction_required",
+            "handoff_correction_sent_at",
             "verification_state",
             "email_received_at",
             "verified_at",
@@ -531,9 +657,11 @@
             '<article class="aws-csm-domainSection aws-csm-domainSection--compact"><div class="aws-csm-domainSection__header"><span class="aws-csm-domainSection__title">' +
             escapeHtml(row.title || row.profile_id || "") +
             '</span><span class="aws-csm-domainSection__count">' +
-            escapeHtml(row.workflow_state || "unknown") +
+            escapeHtml(row.onboarding_state || "unknown") +
             "</span></div>" +
             renderInfoRows([
+              { label: "Onboarding", value: row.onboarding_summary || row.onboarding_state || "—" },
+              { label: "Correction", value: row.handoff_correction_status || "—" },
               { label: "Verification", value: row.verification_state || "—" },
               { label: "Provider", value: row.provider_state || "—" },
               { label: "Inbound", value: row.inbound_state || "—" },
@@ -567,24 +695,42 @@
     );
   }
 
+  function renderSectionBar(workspace) {
+    var sectionRows = asList(workspace.section_rows);
+    if (!sectionRows.length) return "";
+    return (
+      '<nav class="aws-csm-sectionBar" style="margin-top:12px">' +
+      sectionRows.map(function (row) {
+        return (
+          '<button type="button" class="aws-csm-sectionBar__tab' +
+          (row.active ? " is-active" : "") +
+          '" data-aws-section="' +
+          escapeHtml(row.label || "") +
+          '" data-aws-section-request=\'' +
+          escapeHtml(JSON.stringify(row.shell_request || {})) +
+          "'>" +
+          escapeHtml(row.label || "") +
+          "</button>"
+        );
+      }).join("") +
+      "</nav>"
+    );
+  }
+
   function renderSelectedDomain(workspace, surfacePayload) {
     var domain = workspace.selected_domain || "";
     if (!domain) return "";
-    var section = (workspace.active_filters && workspace.active_filters.section) || "";
-    var showUsers = !section || section === "users";
-    var showOnboarding = !section || section === "onboarding";
-    var showNewsletter = !section || section === "newsletter";
     return (
       '<section class="v2-card aws-csm-overviewIntro" style="margin-top:12px"><h3>' +
       escapeHtml(domain) +
-      "</h3><p>Unified AWS-CSM domain gallery for mailbox state, onboarding posture, and newsletter readiness.</p>" +
-      renderSectionButtons(workspace) +
+      "</h3><p>Unified AWS-CSM domain gallery for mailbox management and onboarding posture.</p>" +
       '<div class="aws-csm-flowForm__actions"><button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-domain-clear>Back to Domain Gallery</button></div>' +
       "</section>" +
+      renderSectionBar(workspace) +
       renderActionResult(surfacePayload) +
-      (showUsers ? renderCreateProfileCard(workspace) + renderMailboxGallery(workspace) : "") +
-      (showOnboarding ? renderOnboardingSection(workspace) : "") +
-      (showNewsletter ? renderNewsletterSection(workspace) : "")
+      renderCreateProfileCard(workspace) +
+      renderMailboxGallery(workspace) +
+      renderOnboardingSection(workspace)
     );
   }
 
@@ -601,60 +747,329 @@
     );
   }
 
-  function bindCreateProfileForm(target, ctx, workspace, surfacePayload) {
-    var form = target.querySelector("[data-aws-create-profile-form]");
-    if (!form) return;
-    form.addEventListener("submit", function (event) {
+  function renderToolPostureCard(tool) {
+    return (
+      '<section class="v2-card"><h3>Tool Posture</h3>' +
+      renderInfoRows([
+        { label: "Configured", value: tool.configured ? "yes" : "no" },
+        { label: "Enabled", value: tool.enabled ? "yes" : "no" },
+        { label: "Operational", value: tool.operational ? "yes" : "no" },
+        { label: "Missing Capability", value: (tool.missing_capabilities || []).join(", ") || "none" },
+      ]) +
+      "</section>"
+    );
+  }
+
+  function renderInspectorSelectionCard(workspace) {
+    if (asText(workspace.selected_domain)) return "";
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Selection</h3><p>Select a domain to organize mailbox management and onboarding from the same interface panel.</p></section>' +
+      renderDomainGallery(workspace)
+    );
+  }
+
+  function renderInspectorUsersTab(workspace, surfacePayload) {
+    var profile = workspace.selected_profile || null;
+    var selectedDomain = asText(workspace.selected_domain);
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    return (
+      renderActionResult(surfacePayload) +
+      renderCreateProfileCard(workspace) +
+      renderMailboxGallery(workspace) +
+      (profile
+        ? renderProfileEditorCard(profile) +
+          renderRawPayloadCard(workspace)
+        : '<section class="v2-card" style="margin-top:12px"><h3>User Management</h3><p>Select a user email from the gallery to edit or delete that staged mailbox.</p></section>')
+    );
+  }
+
+  function renderInspectorOnboardingTab(workspace, surfacePayload) {
+    var profile = workspace.selected_profile || null;
+    var selectedDomain = asText(workspace.selected_domain);
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    return (
+      renderActionResult(surfacePayload) +
+      (!profile ? renderDomainOnboardingCard(workspace) : "") +
+      renderOnboardingSection(workspace)
+    );
+  }
+
+  function renderInspectorDomainInfraTab(workspace, surfacePayload) {
+    var domainOnboarding = asObject(workspace.selected_domain_onboarding);
+    var selectedDomain = asText(workspace.selected_domain);
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    return (
+      renderActionResult(surfacePayload) +
+      '<section class="v2-card" style="margin-top:12px"><h3>Domain Infrastructure</h3>' +
+      renderInfoRows(
+        renderKeyValueRows(domainOnboarding, [
+          "tenant_id",
+          "domain",
+          "region",
+          "hosted_zone_id",
+          "readiness_state",
+          "readiness_summary",
+          "ses_identity_exists",
+          "ses_identity_status",
+          "dkim_status",
+          "dkim_token_count",
+          "dkim_records_present",
+          "mx_record_present",
+          "mx_record_values",
+          "receipt_rule_status",
+          "receipt_rule_name",
+          "receipt_rule_recipient",
+          "receipt_rule_bucket",
+          "nameserver_match",
+          "last_checked_at",
+        ])
+      ) +
+      renderDomainActions(domainOnboarding) +
+      "</section>"
+    );
+  }
+
+  function renderInspectorNewsletterTab(workspace, surfacePayload) {
+    var selectedDomain = asText(workspace.selected_domain);
+    var newsletter = workspace.selected_newsletter || null;
+    if (!selectedDomain) {
+      return renderInspectorSelectionCard(workspace);
+    }
+    if (!newsletter) {
+      return (
+        renderActionResult(surfacePayload) +
+        '<section class="v2-card" style="margin-top:12px"><h3>Newsletter</h3><p>No newsletter profile is configured for this domain.</p></section>'
+      );
+    }
+    var mailboxRows = asList(workspace.mailbox_rows);
+    var senderProfileId = asText(newsletter.sender_profile_id) || asText(newsletter.author_profile_id) || "";
+    var senderRow = null;
+    for (var i = 0; i < mailboxRows.length; i++) {
+      if (mailboxRows[i].profile_id === senderProfileId) {
+        senderRow = mailboxRows[i];
+        break;
+      }
+    }
+    var senderConfirmed = senderRow && (
+      senderRow.onboarding_state === "send_as_confirmed" ||
+      senderRow.onboarding_state === "onboard"
+    );
+    var subscribedCount = typeof newsletter.subscribed_count === "number"
+      ? newsletter.subscribed_count
+      : parseInt(newsletter.subscribed_count, 10) || 0;
+
+    var confirmableMailboxes = mailboxRows.filter(function (r) {
+      return r.onboarding_state === "send_as_confirmed" || r.onboarding_state === "onboard";
+    });
+
+    var senderAssignmentCard = (
+      '<section class="v2-card" style="margin-top:12px"><h3>Newsletter Sender</h3>' +
+      '<p>Current sender: <strong>' + escapeHtml(asText(newsletter.sender_address) || asText(newsletter.author_address) || "—") + "</strong>" +
+      (senderRow ? ' <span class="aws-csm-badge">' + escapeHtml(senderRow.onboarding_state || "unknown") + "</span>" : "") +
+      "</p>" +
+      (confirmableMailboxes.length > 0
+        ? '<form data-aws-assign-newsletter-sender-form style="margin-top:12px">' +
+          '<input type="hidden" name="domain" value="' + escapeHtml(selectedDomain) + '" />' +
+          '<label class="v2-formField"><span>Assign Sender</span><select name="sender_profile_id">' +
+          confirmableMailboxes.map(function (r) {
+            return (
+              '<option value="' + escapeHtml(r.profile_id || "") + '"' +
+              (r.profile_id === senderProfileId ? ' selected="selected"' : "") +
+              ">" + escapeHtml((r.send_as_email || r.profile_id || "") + " (" + (r.onboarding_state || "unknown") + ")") + "</option>"
+            );
+          }).join("") +
+          "</select></label>" +
+          '<div style="margin-top:12px"><button type="submit" class="ide-sessionAction ide-sessionAction--button">Assign Sender</button></div>' +
+          "</form>"
+        : '<p class="ide-controlpanel__empty">No mailbox in this domain has completed send-as confirmation.</p>') +
+      "</section>"
+    );
+
+    var dispatchGateCard = (
+      '<section class="v2-card" style="margin-top:12px"><h3>Send Newsletter</h3>' +
+      (senderConfirmed && subscribedCount > 0
+        ? '<p>Ready to dispatch to <strong>' + escapeHtml(String(subscribedCount)) + '</strong> subscriber(s).</p>' +
+          '<p><em>Each subscriber will receive a personalized message with an unsubscribe link.</em></p>' +
+          '<button type="button" class="ide-sessionAction ide-sessionAction--button" data-aws-action-kind="dispatch_newsletter" data-aws-action-payload=\'' +
+          escapeHtml(JSON.stringify({ domain: selectedDomain })) +
+          "'>Send Newsletter to " + escapeHtml(String(subscribedCount)) + " subscriber(s)</button>"
+        : (!senderConfirmed
+          ? '<button type="button" class="ide-sessionAction ide-sessionAction--button" disabled="disabled" title="Sender must complete send-as confirmation before dispatching.">Send Newsletter</button>'
+          : '<button type="button" class="ide-sessionAction ide-sessionAction--button" disabled="disabled" title="No active subscribers.">Send Newsletter</button>')) +
+      "</section>"
+    );
+
+    return (
+      renderActionResult(surfacePayload) +
+      renderNewsletterSection(workspace) +
+      senderAssignmentCard +
+      dispatchGateCard
+    );
+  }
+
+  function renderInspectorDomainTab(workspace, surfacePayload) {
+    return renderInspectorDomainInfraTab(workspace, surfacePayload);
+  }
+
+  function hasWorkspaceContent(workspace, surfacePayload) {
+    if (asList(surfacePayload && surfacePayload.cards).length) return true;
+    if (asList(workspace && workspace.domain_rows).length) return true;
+    if (asText(workspace && workspace.selected_domain)) return true;
+    if (asText(asObject(surfacePayload && surfacePayload.action_result).message)) return true;
+    return false;
+  }
+
+  function collectFormPayload(form) {
+    var payload = {};
+    Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
+      if (!field.name) return;
+      var value = field.value;
+      if (value == null || value === "") return;
+      payload[field.name] = value;
+    });
+    return payload;
+  }
+
+  function bindDelegatedWorkspaceEvents(target) {
+    if (!target || target.__awsCsmDelegatedBindings) return;
+    target.__awsCsmDelegatedBindings = true;
+    target.addEventListener("submit", function (event) {
+      var form = event.target && event.target.closest
+        ? event.target.closest("[data-aws-create-profile-form], [data-aws-create-domain-form], [data-aws-update-profile-form], [data-aws-assign-newsletter-sender-form]")
+        : null;
+      var state = target.__awsCsmRenderState || {};
+      if (!form || !target.contains(form) || !state.ctx) return;
       event.preventDefault();
-      var payload = {};
-      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
-        if (!field.name) return;
-        var value = field.value;
-        if (value == null || value === "") return;
-        payload[field.name] = value;
-      });
-      submitAction(ctx, workspace, surfacePayload, "create_profile", payload);
+      if (form.hasAttribute("data-aws-create-profile-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "create_profile",
+          collectFormPayload(form)
+        );
+        return;
+      }
+      if (form.hasAttribute("data-aws-update-profile-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "update_profile",
+          collectFormPayload(form)
+        );
+        return;
+      }
+      if (form.hasAttribute("data-aws-create-domain-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "create_domain",
+          collectFormPayload(form)
+        );
+        return;
+      }
+      if (form.hasAttribute("data-aws-assign-newsletter-sender-form")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "assign_newsletter_sender",
+          collectFormPayload(form)
+        );
+      }
     });
-  }
-
-  function bindCreateDomainForm(target, ctx, workspace, surfacePayload) {
-    var form = target.querySelector("[data-aws-create-domain-form]");
-    if (!form) return;
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var payload = {};
-      Array.prototype.forEach.call(form.querySelectorAll("input, textarea, select"), function (field) {
-        if (!field.name) return;
-        var value = field.value;
-        if (value == null || value === "") return;
-        payload[field.name] = value;
-      });
-      submitAction(ctx, workspace, surfacePayload, "create_domain", payload);
-    });
-  }
-
-  function bindOnboardingActions(target, ctx, workspace, surfacePayload) {
-    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-action-kind]"), function (button) {
-      if (button.disabled) return;
-      button.addEventListener("click", function () {
-        var kind = button.getAttribute("data-aws-action-kind") || "";
-        var selected = asObject(workspace.selected_profile);
-        submitAction(ctx, workspace, surfacePayload, kind, {
-          profile_id: selected.profile_id || "",
-        });
-      });
-    });
-  }
-
-  function bindDomainActions(target, ctx, workspace, surfacePayload) {
-    Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain-action-kind]"), function (button) {
-      if (button.disabled) return;
-      button.addEventListener("click", function () {
-        var kind = button.getAttribute("data-aws-domain-action-kind") || "";
-        submitAction(ctx, workspace, surfacePayload, kind, {
-          domain: workspace.selected_domain || "",
-        });
-      });
+    target.addEventListener("click", function (event) {
+      var button = event.target && event.target.closest
+        ? event.target.closest(
+            "[data-aws-action-kind], [data-aws-domain-action-kind], [data-aws-domain], [data-aws-profile], [data-aws-domain-clear], [data-aws-delete-profile], [data-aws-section]"
+          )
+        : null;
+      var state = target.__awsCsmRenderState || {};
+      if (!button || !target.contains(button) || !state.ctx || button.disabled) return;
+      if (button.hasAttribute("data-aws-action-kind")) {
+        var explicitPayload = null;
+        try {
+          var rawPayload = button.getAttribute("data-aws-action-payload");
+          if (rawPayload) {
+            explicitPayload = JSON.parse(rawPayload);
+          }
+        } catch (_) {
+          explicitPayload = null;
+        }
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          button.getAttribute("data-aws-action-kind") || "",
+          explicitPayload || { profile_id: asObject(state.workspace.selected_profile).profile_id || "" }
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain-action-kind")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          button.getAttribute("data-aws-domain-action-kind") || "",
+          { domain: state.workspace.selected_domain || "" }
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, {
+            domain: button.getAttribute("data-aws-domain") || "",
+            profile: null,
+            section: null,
+          })
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-profile")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, {
+            profile: button.getAttribute("data-aws-profile") || "",
+            section: null,
+          })
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-domain-clear")) {
+        state.ctx.loadShell(
+          buildSurfaceRequest(state.ctx, state.workspace, { domain: null, profile: null, section: null })
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-delete-profile")) {
+        submitAction(
+          state.ctx,
+          state.workspace,
+          state.surfacePayload,
+          "delete_profile",
+          { profile_id: asObject(state.workspace.selected_profile).profile_id || "" }
+        );
+        return;
+      }
+      if (button.hasAttribute("data-aws-section")) {
+        var sectionRequestRaw = button.getAttribute("data-aws-section-request");
+        var sectionRequest = null;
+        try {
+          sectionRequest = sectionRequestRaw ? JSON.parse(sectionRequestRaw) : null;
+        } catch (_) {
+          sectionRequest = null;
+        }
+        if (sectionRequest && state.ctx && state.ctx.loadShell) {
+          state.ctx.loadShell(sectionRequest);
+        }
+      }
     });
   }
 
@@ -663,13 +1078,17 @@
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var adapter = toolSurfaceAdapter();
       if (!target) return;
+      var contentReady = hasWorkspaceContent(workspace, surfacePayload);
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
           region: ctx.region,
           surfacePayload: surfacePayload,
           title: "AWS-CSM",
-          hasContent: true,
+          hasContent: contentReady,
+          message: contentReady
+            ? ""
+            : "No AWS-CSM domains or actions are available in this workspace state yet.",
         }),
         renderCards(surfacePayload.cards || []) +
           renderCreateDomainCard(workspace) +
@@ -677,41 +1096,12 @@
           renderSelectedDomain(workspace, surfacePayload) +
           renderNotes(surfacePayload.notes || [])
       );
-
-      bindCreateDomainForm(target, ctx, workspace, surfacePayload);
-      bindCreateProfileForm(target, ctx, workspace, surfacePayload);
-      bindOnboardingActions(target, ctx, workspace, surfacePayload);
-      bindDomainActions(target, ctx, workspace, surfacePayload);
-
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain]"), function (button) {
-        button.addEventListener("click", function () {
-          var domain = button.getAttribute("data-aws-domain") || "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { domain: domain, profile: null, section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-profile]"), function (button) {
-        button.addEventListener("click", function () {
-          var profile = button.getAttribute("data-aws-profile") || "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { profile: profile, section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-section]"), function (button) {
-        button.addEventListener("click", function () {
-          var label = (button.getAttribute("data-aws-section") || "").toLowerCase();
-          var section = label === "users" || label === "onboarding" || label === "newsletter" ? label : "";
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { section: section }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-section-clear]"), function (button) {
-        button.addEventListener("click", function () {
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { section: null }));
-        });
-      });
-      Array.prototype.forEach.call(target.querySelectorAll("[data-aws-domain-clear]"), function (button) {
-        button.addEventListener("click", function () {
-          ctx.loadShell(buildSurfaceRequest(ctx, workspace, { domain: null, profile: null, section: null }));
-        });
-      });
+      target.__awsCsmRenderState = {
+        ctx: ctx,
+        workspace: workspace,
+        surfacePayload: surfacePayload,
+      };
+      bindDelegatedWorkspaceEvents(target);
     },
   };
 
@@ -719,73 +1109,53 @@
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var tool = (surfacePayload && surfacePayload.tool) || {};
-      var domainOnboarding = asObject(workspace.selected_domain_onboarding);
-      var profile = workspace.selected_profile || null;
-      var newsletter = workspace.selected_newsletter || null;
       var actionResult = asObject(surfacePayload && surfacePayload.action_result);
       var adapter = toolSurfaceAdapter();
       if (!target) return;
+      var inspectorHasContent = !!(
+        asList(workspace.domain_rows).length ||
+        asText(workspace.selected_domain) ||
+        workspace.selected_profile ||
+        workspace.selected_newsletter ||
+        asText(actionResult.message)
+      );
+      var hasNewsletter = !!(workspace.selected_newsletter);
+      var allTabs = [
+        { id: "users", label: "Users", active: true },
+        { id: "onboarding", label: "Onboarding", active: true },
+        { id: "domain", label: "Domain", active: true },
+        { id: "newsletter", label: "Newsletter", active: hasNewsletter },
+      ];
+      var tabs = normalizeInspectorTabs(allTabs, allTabs, "users");
+      var activeTabId = activeInspectorTabId(tabs, "users");
       adapter.renderWrappedSurface(
         target,
         adapter.resolveSurfaceState({
           region: ctx.region,
           surfacePayload: surfacePayload,
           title: "AWS-CSM Interface Panel",
-          hasContent: true,
+          hasContent: inspectorHasContent,
+          message: inspectorHasContent
+            ? ""
+            : "Select a domain or mailbox profile to inspect AWS-CSM tool posture.",
         }),
-        '<div class="v2-inspector-stack"><section class="v2-card"><h3>Tool Posture</h3>' +
-        renderInfoRows([
-          { label: "Configured", value: tool.configured ? "yes" : "no" },
-          { label: "Enabled", value: tool.enabled ? "yes" : "no" },
-          { label: "Operational", value: tool.operational ? "yes" : "no" },
-          { label: "Missing Capability", value: (tool.missing_capabilities || []).join(", ") || "none" },
-        ]) +
-        "</section>" +
-        (profile
-          ? '<section class="v2-card" style="margin-top:12px"><h3>Selected User Email</h3>' +
-            renderInfoRows(profileFactRows(profile)) +
-            "</section>"
-          : asText(domainOnboarding.domain)
-            ? '<section class="v2-card" style="margin-top:12px"><h3>Selected Domain</h3>' +
-              renderInfoRows(
-                renderKeyValueRows(domainOnboarding, [
-                  "tenant_id",
-                  "domain",
-                  "region",
-                  "hosted_zone_id",
-                  "readiness_state",
-                  "ses_identity_status",
-                  "dkim_status",
-                  "receipt_rule_status",
-                ])
-              ) +
-              "</section>"
-          : newsletter
-            ? '<section class="v2-card" style="margin-top:12px"><h3>Selected Newsletter</h3>' +
-              renderInfoRows(newsletterRows(newsletter)) +
-              "</section>"
-            : '<section class="v2-card" style="margin-top:12px"><h3>Selection</h3><p>Select a domain or user email to inspect AWS-CSM state without leaving the unified tool surface.</p></section>') +
-        (asText(actionResult.message)
-          ? '<section class="v2-card" style="margin-top:12px"><h3>Latest Action</h3>' +
-            renderInfoRows(
-              renderKeyValueRows(
-                {
-                  action_kind: actionResult.action_kind,
-                  status: actionResult.status,
-                  message: actionResult.message,
-                },
-                ["action_kind", "status", "message"]
-              )
-            ) +
-            "</section>"
-          : "") +
-        ((profile && profile.raw) || (newsletter && newsletter.raw) || asObject(workspace.selected_domain_record).raw
-          ? '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
-            escapeHtml(compactJson((profile && profile.raw) || asObject(workspace.selected_domain_record).raw || (newsletter && newsletter.raw) || {})) +
-            "</pre></section>"
-          : "") +
-        "</div>"
+        '<div class="v2-inspector-stack aws-csm-interfacePanel">' +
+        renderToolPostureCard(tool) +
+        renderInspectorTabs(tabs) +
+        '<div class="aws-csm-interfacePanel__body">' +
+        renderInspectorTabPanel("users", activeTabId, renderInspectorUsersTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("onboarding", activeTabId, renderInspectorOnboardingTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("domain", activeTabId, renderInspectorDomainInfraTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        renderInspectorTabPanel("newsletter", activeTabId, renderInspectorNewsletterTab(workspace, surfacePayload), "aws-csm-interfacePanel__tabPanel") +
+        "</div></div>"
       );
+      target.__awsCsmRenderState = {
+        ctx: ctx,
+        workspace: workspace,
+        surfacePayload: surfacePayload,
+      };
+      bindDelegatedWorkspaceEvents(target);
+      bindInspectorTabs(target);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {

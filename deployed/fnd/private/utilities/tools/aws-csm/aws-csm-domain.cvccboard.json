@@ -26,38 +26,50 @@
     "mx_record_values": [
       "10 inbound-smtp.us-east-1.amazonaws.com"
     ],
-    "dkim_records_present": false,
-    "dkim_record_values": []
+    "dkim_records_present": true,
+    "dkim_record_values": [
+      "6irk4f2tzdcisafqcgue4zfxnaz4xteo.dkim.amazonses.com",
+      "j42pfskhvsbzx4uexhic22odn4t3d4ee.dkim.amazonses.com",
+      "ohoiis6wkyk3cegjjhelwlvwdfg4guym.dkim.amazonses.com"
+    ]
   },
   "ses": {
-    "identity_exists": false,
-    "identity_status": "not_started",
-    "verified_for_sending_status": false,
-    "dkim_status": "not_started",
-    "dkim_tokens": []
+    "identity_exists": true,
+    "identity_status": "verified",
+    "verified_for_sending_status": true,
+    "dkim_status": "success",
+    "dkim_tokens": [
+      "ohoiis6wkyk3cegjjhelwlvwdfg4guym",
+      "j42pfskhvsbzx4uexhic22odn4t3d4ee",
+      "6irk4f2tzdcisafqcgue4zfxnaz4xteo"
+    ]
   },
   "receipt": {
-    "status": "not_ready",
+    "status": "ok",
     "rule_name": "portal-capture-cvccboard-org",
     "expected_recipient": "cvccboard.org",
     "expected_lambda_name": "newsletter-inbound-capture",
     "bucket": "ses-inbound-fnd-mail",
     "prefix": "inbound/cvccboard.org/",
-    "matching_rules": []
+    "matching_rules": [
+      {
+        "rule_name": "portal-capture-cvccboard-org",
+        "s3_bucket": "ses-inbound-fnd-mail",
+        "s3_prefix": "inbound/cvccboard.org/"
+      }
+    ]
   },
   "observation": {
-    "last_checked_at": "2026-04-18T00:00:00+00:00",
+    "last_checked_at": "2026-04-23T22:41:00+00:00",
     "account": "065948377733",
     "role_arn": "arn:aws:iam::065948377733:role/EC2-AWSCMS-Admin"
   },
   "readiness": {
     "schema": "mycite.service_tool.aws_csm.domain_readiness.v1",
-    "state": "identity_missing",
-    "summary": "Create the SES domain identity to obtain DKIM tokens.",
-    "blockers": [
-      "SES domain identity has not been created yet."
-    ],
-    "last_checked_at": "2026-04-18T00:00:00+00:00",
+    "state": "ready_for_mailboxes",
+    "summary": "Domain onboarding is ready for mailbox creation.",
+    "blockers": [],
+    "last_checked_at": "2026-04-23T22:41:00+00:00",
     "domain": "cvccboard.org"
   }
 }

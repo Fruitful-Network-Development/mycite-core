@@ -1,61 +1,102 @@
 # Plans
 
-The active implementation plan is the one-shell portal model:
+This directory now runs as part of one unified planning/audit system.
 
-- one shell contract
-- one surface catalog
-- one runtime envelope model
-- root surfaces `SYSTEM`, `NETWORK`, and `UTILITIES`
-- tool work pages under `SYSTEM`
-- tool configuration and exposure under `UTILITIES`
+Active shell refactor records preserve the family-only shell closeout posture.
 
-Active one-shell stabilization execution plan:
+## Start Here
 
-- `one_shell_portal_refactor.md` is the aggressive drift-removal execution sequence for shell authority, normalization unification, region-family unification, and widget-host stabilization.
-- `one_shell_stabilization_matrix.md` is the required shell-boundary route matrix used as the stabilization regression gate.
+- Operating guide: `docs/plans/planning_audit_operating_system.md`
+- Context manifest (canonical cross-directory map): `docs/plans/contextual_system_manifest.yaml`
+- Context task board (organization and closure work): `docs/plans/contextual_system_task_board.yaml`
+- Compatibility initiative/task surfaces:
+  - `docs/plans/planning_audit_manifest.yaml`
+  - `docs/plans/planning_task_board.yaml`
 
-Documentation IA + guided-task YAML program:
+## Canonical Plan Set
 
-- `documentation_ia_remediation_backlog.md` tracks the remaining documentation optimization work after the lifecycle-metadata retrofit, with active focus now on contract-link coverage, rationale/terminology cleanup, and YAML/CI enforcement.
+- `documentation_ia_remediation_backlog.md`
+- `documentation_responsibility_alignment_backlog_2026-05-01.md`
+- `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` (active)
+- `aws_csm_operational_recovery_plan_2026-04-24.md` (active)
+- `portal_nimm_aitas_unification_plan_2026-04-24.md` (completed)
+- `mos_post_closure_consolidation_plan_2026-04-21.md` (completed)
+- `portal_legacy_boundary_sql_mos_convergence_plan_2026-04-23.md` (completed)
+- `code_bloat_deep_audit_program_plan_2026-04-24.md` (completed planning foundation)
+- `code_bloat_remediation_execution_plan_2026-04-25.md` (active)
+- `one_shell_portal_refactor.md`
+- `one_shell_stabilization_matrix.md`
+- `mos_novelty_positioning_follow_on_2026-04-21.md` (positioning/spec context only)
+- `refinement.md` (completed foundation for NIMM/AITAS/lens/staging)
 
-MOS SQL core program:
+`portal_nimm_aitas_unification_plan_2026-04-24.md` is the canonical completed
+plan for cross-tool NIMM/AITAS/lens/stage unification across CTS-GIS and
+AWS-CSM. The completed refinement stream remains foundation history, not a
+second plan for this follow-on work.
 
-- `master_plan_mos.md` remains the single authoritative MOS program document and now records the completed Track A `Phase 6` through `Phase 8` cut-over pass.
-- `master_plan_mos.index.yaml` is the lightweight companion index for completed phases, dependencies, gates, and evidence links.
-- `mos_semantic_gate_register_2026-04-21.md` records the closed Track B semantic gates and their retained evidence.
-- `mos_sg1_version_identity_policy_2026-04-21.md` through `mos_sg4_standard_closure_policy_2026-04-21.md` retain the dedicated Track B closure artifacts.
-- `mos_directive_context_design_track_2026-04-21.md` retains the Track C directive-context design posture, including the non-inference migration rule and approved SQL-backed read surfaces.
+`aws_csm_operational_recovery_plan_2026-04-24.md` is the canonical active
+recovery plan for deployed-FND AWS-CSM operability (per-domain onboarding,
+personal-email confirmation forwarding, onboard-state visibility, performance,
+and residual JSON-path retirement).
 
-MOS closure evidence:
+`code_bloat_deep_audit_program_plan_2026-04-24.md` is the completed planning
+foundation that produced seven deep audit tracks from
+`docs/audits/reports/code_bloat_diagnosis.md`.
 
-- `docs/audits/reports/mos_program_closure_audit_checklist_2026-04-21.md`
-- `docs/audits/reports/mos_fnd_sql_ingestion_coverage_report_2026-04-21.md`
-- `docs/audits/reports/mos_sql_only_authority_activation_and_legacy_retirement_2026-04-21.md`
-- `docs/audits/reports/mos_directive_context_non_inference_validation_2026-04-21.md`
-- `docs/audits/reports/mos_documentation_alignment_and_cleanup_2026-04-21.md`
-- `docs/audits/reports/mos_program_closure_report_2026-04-21.md`
+`code_bloat_remediation_execution_plan_2026-04-25.md` is the canonical active
+corrective execution plan for implementing the diagnosis-derived fixes with
+stable remediation task IDs.
+
+`documentation_responsibility_alignment_backlog_2026-05-01.md` is the canonical
+lossless follow-on backlog for:
+
+- documentation family alignment
+- personal-note promotion/extraction
+- FND-EBI peripheral split
+- host capability bootstrap clarification
+
+Deferred agentic task anchors for that stream:
+
+- `FND-EBI-Peripheral-Split-2026-05-01`
+- `Portal-Host-Capability-Bootstrap-2026-05-01`
+
+## Completed And Historical Support Set
+
+- Shell-unification closeout set is `Lifecycle: completed`:
+  - `portal_shell_boundary_map_and_system_workbench_split_2026-04-23.md`
+  - `portal_shell_runtime_bundle_unification_2026-04-23.md`
+  - `portal_shell_region_family_renderer_migration_2026-04-23.md`
+  - `portal_shell_unification_execution_plan_2026-04-23.md`
+  - `portal_shell_unification_plan_index_2026-04-23.md`
+- MOS closure support artifacts are retained as `historical-superseded`:
+  - `mos_semantic_gate_register_2026-04-21.md`
+  - `mos_sg1_version_identity_policy_2026-04-21.md`
+  - `mos_sg2_hyphae_derivation_policy_2026-04-21.md`
+  - `mos_sg3_edit_remap_policy_2026-04-21.md`
+  - `mos_sg4_standard_closure_policy_2026-04-21.md`
+  - `mos_directive_context_design_track_2026-04-21.md`
+- `archive/` retains superseded historical plan artifacts.
+- Legacy index artifact `master_plan_mos.index.yaml` is retained as
+  `historical-superseded` with canonical replacement pointer to
+  `contextual_system_manifest.yaml` + `contextual_system_task_board.yaml`.
+
+## Contextual System Rule
+
+- Every active stream should have one canonical active plan and one canonical active report.
+- Dated/dispersed adjunct plans should be marked `historical-superseded` with canonical pointers.
+- Cross-directory test analysis closure should reference at least one unit, integration, and contract/architecture suite from `contextual_system_manifest.yaml`.
+
+## MOS Post-Closure Evidence Links
+
 - `docs/audits/reports/cts_gis_sql_authority_assurance_report_2026-04-21.md`
 - `docs/audits/reports/mos_system_surface_visualization_reflectivity_report_2026-04-22.md`
 - `docs/audits/reports/mos_cutover_intent_integrity_report_2026-04-22.md`
 - `docs/audits/reports/mos_premorice_and_modularization_posture_report_2026-04-22.md`
+- `docs/plans/mos_post_closure_consolidation_plan_2026-04-21.md`
+- `docs/plans/mos_novelty_positioning_follow_on_2026-04-21.md`
+- `docs/plans/workbench_ui_hardening_follow_on_2026-04-21.md`
 
-MOS post-closure follow-on plans:
+## Rule
 
-- `mos_post_closure_consolidation_plan_2026-04-21.md` constrains post-closure MOS work to documentation canonicalization, retained exception scope planning, and `workbench_ui` SQL authority inspector hardening after the `/portal/system` reflectivity closure package published on `2026-04-22`.
-- `mos_novelty_positioning_follow_on_2026-04-21.md` carries internal novelty/positioning language separately from operational cut-over docs.
-- `workbench_ui_hardening_follow_on_2026-04-21.md` now records the shipped navigation/grouping/lens/visibility hardening baseline for `workbench_ui`, leaving only optional simple saved-query follow-on work under `SYSTEM`.
-
-Desktop reconciliation program:
-
-- `desktop_dm02_dm04_reconciliation_plan_2026-04-20.md` is the active comprehensive implementation plan for desktop deep-link startup translation (`DM-02`) and scoped shell-state persistence policy (`DM-04`).
-
-Historical archive:
-
-- `archive/mos_track_c_directive_context_overlay_closure_2026-04-21.md` retains the approved additive SQL overlay implementation pass for Track C as superseded historical evidence.
-
-Canonical contract anchors for plan documents:
-
-- `docs/contracts/portal_shell_contract.md`
-- `docs/contracts/route_model.md`
-- `docs/contracts/surface_catalog.md`
-- `docs/contracts/portal_vocabulary_glossary.md`
+Use YAML manifest + task board as first authority for status and closure; use markdown
+plans for narrative implementation detail and deep rationale.

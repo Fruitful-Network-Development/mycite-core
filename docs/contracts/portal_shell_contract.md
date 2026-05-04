@@ -17,6 +17,8 @@ The shell state is reducer-owned only for:
 - `system.root`
 - reducer-owned `SYSTEM` child tool surfaces such as `system.tools.cts_gis` and `system.tools.fnd_ebi`
 
+Shell requests may optionally carry a normalized `nimm_envelope` payload to project directive intent metadata through runtime without granting shell mutation authority.
+
 `AWS-CSM` is a `SYSTEM` child tool surface, but it is runtime-owned and query-driven rather than reducer-owned.
 
 `FND-DCM` is also a runtime-owned `SYSTEM` child tool surface. Its canonical query is manifest-driven rather than reducer-driven.
@@ -44,7 +46,7 @@ Authoritative invariants:
 - request/query normalization is centralized; drift-prone per-surface normalization branches are non-canonical
 - CTS-GIS tool-local navigation and AITAS/NIMM state stay body-carried and must not widen shared shell query
 
-The detailed cross-tool operating contract and migration program are documented in `docs/contracts/tool_operating_contract.md`.
+The detailed cross-tool operating contract and unification closeout record are documented in `docs/contracts/tool_operating_contract.md`.
 
 ## Ordered Focus Stack
 
@@ -148,13 +150,32 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - The control panel is the canonical textual navigation surface for current context and lower-focus selections.
 - Shell static assets are versioned by `portal_build_id` through one embedded shell asset manifest.
 
-### Shell Composition Compatibility
+## Active Shell Topology
+
+- `/portal` is only a public redirect and must resolve to `/portal/system`.
+- `/portal/api/v2/shell` is the sole shell-composition runtime endpoint.
+- `portal.html` embeds one shell asset manifest and loads one public shell boot
+  chain.
+- `v2_portal_shell.js` is the sole shell bootstrap loader.
+- `v2_portal_shell_core.js` is the sole client module that may fetch the shell
+  endpoint or own `loadShell()` / `loadRuntimeView()`.
+- `portal.js` is a chrome/layout helper only. It may own theme, splitter, and
+  shell-layout persistence, but it must not become a parallel shell bootstrap or
+  shell-network dispatcher.
+- `portal.css` is the shared shell chrome stylesheet and not a distinct shell
+  pathway.
+- Historical split-shell artifacts and non-canonical public shell routes remain
+  retired; reintroducing them violates the one-shell contract.
+
+### Shell Composition Aliases
 
 - `shell_composition.inspector_collapsed` remains valid as the compatibility alias for the public `Interface Panel`.
 - `shell_composition.interface_panel_collapsed` mirrors `inspector_collapsed`.
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
-- `shell_composition.regions.inspector` remains valid during the compatibility phase.
+- `shell_composition.regions.inspector` remains valid as the public compatibility alias for `regions.interface_panel`.
 - `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
+- `shell_composition.regions.control_panel`, `regions.workbench`, and `regions.interface_panel` remain governed by the canonical `directive_panel`, `reflective_workspace`, and `presentation_surface` family contracts.
+- Retired scoped fallback keys are outside the active shell composition contract and must not reappear in runtime emission or client dispatch.
 - Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
 - On the first V2 shell hydration, server composition wins over any stored workbench-open preference; stored layout state only resumes after hydration and user interaction.
 - Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
@@ -175,7 +196,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
 - `Workbench UI` uses runtime-owned query keys: `document`, `document_filter`, `document_sort`, `document_dir`, `filter`, `sort`, `dir`, `group`, `workbench_lens`, `source`, `overlay`, `row`.
 - `CTS-GIS` does not widen shell query. Its tool-local navigation and projection state is body-carried in the tool request/runtime payload.
 - `CTS-GIS` runtime mode is explicit and body-carried (`runtime_mode`):
-  - `production_strict` (compiled artifact only, fail-fast on invalid compiled state)
+  - `production_strict` (compiled navigation/evidence baseline, fail-fast on invalid compiled state)
   - `audit_forensic` (expanded diagnostics and source forensics)
 - `CTS-GIS` production runtime emits compact hot-path models:
   - `navigation_model`
@@ -200,7 +221,7 @@ Query state mirrors runtime-owned state. Runtime computes canonical next state a
   - `Overlay: <active overlay visibility>`
 - `CTS-GIS` control-panel context is file-backed and projects:
   - `Sandbox: CTS-GIS`
-  - `File: tool.<msn>.cts-gis.json` when the canonical anchor exists, otherwise the active compatibility anchor file
+  - `File: tool.<msn>.cts-gis.json`
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
 - Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; approved posture exceptions must be named explicitly in the contract.
@@ -249,7 +270,7 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - `tool_state.source.attention_document_id`
   - `tool_state.selection.selected_row_address`
   - `tool_state.selection.selected_feature_id`
-- Legacy compatibility inputs remain accepted during the compatibility phase:
+- Legacy request-body field aliases remain confined to request-normalization compatibility and do not widen shell-region contracts:
   - `mediation_state.attention_node_id`
   - `mediation_state.intention_token`
   - top-level `selected_row_address`
@@ -271,10 +292,21 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 
 ### CTS-GIS Interface Body
 
-- The dominant `tool_mediation_panel` mounts one CTS-GIS-local interface body.
+- The dominant `presentation_surface` region mounts one CTS-GIS-local interface body.
+- The CTS-GIS interface body stays on the shared Interface Panel host and does not create extra shell regions.
+- `tab_host` is `shared_interface_tabs`.
+- `tabs` currently materialize as:
+  - `diktataograph`
+  - `garland`
+- `default_tab_id` is `diktataograph`.
 - The CTS-GIS interface body is magnitude-first and role-shaped.
-- The frame always renders:
-  - `Diktataograph` pane
+- The shared tab host renders:
+  - `Diktataograph` tab
+  - `Garland` tab
+- The `Diktataograph` tab hosts:
+  - `navigation_canvas`
+  - the staged insert widget
+- The `Garland` tab hosts:
   - `Garland` geospatial pane (`geospatial_projection`)
   - `Garland` profile pane (`profile_projection`)
 - `Diktataograph` is emitted through `navigation_canvas`.
@@ -309,7 +341,8 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
 - explicit source-document selection may still pin row/detail evidence, and changing Intention preserves that pin unless the user explicitly switches source documents.
 - when a request supplies `selected_node_id` or tool-local `Attention` without an explicit `Intention`, CTS-GIS normalizes `tool_state.aitas.intention_rule_id` to `self` so Garland reflects the current selected node rather than a descendant render set.
 - when node-focused intention is explicit, CTS-GIS returns the canonical token as one of `self`, `<attention_node_id>-0`, `<attention_node_id>-0-0`, or `branch:<node_id>`.
-- In narrow posture, the same regions may stack vertically while preserving the same contract.
+- Historical `layout` / `narrow_layout` fields remain compatibility metadata for CTS-GIS-local panel composition, but the canonical outer host is the shared tab frame.
+- In narrow posture, the same regions may stack vertically within their active tab while preserving the same contract.
 
 ### CTS-GIS Evidence Precedence
 
@@ -324,7 +357,26 @@ Default tool posture is interface-panel-led; `Workbench UI` is the approved work
   - route/storage slug: `cts-gis`
   - document ids: `sandbox:cts_gis:*`
   - tool anchor pattern: `tool.<msn>.cts-gis.json`
-- Requests that provide legacy CTS-GIS aliases are rejected at `POST /portal/api/v2/system/tools/cts-gis` with:
+- Requests that provide legacy CTS-GIS `maps` identifiers are rejected at `POST /portal/api/v2/system/tools/cts-gis` with:
   - HTTP `400`
   - `error.code=legacy_maps_alias_unsupported`
 - Compiled artifact authority for strict mode is `mycite.v2.portal.system.tools.cts_gis.compiled.v1` at `data/payloads/compiled/cts_gis.<scope_id>.compiled.json`.
+
+
+## Runtime Latency Guardrail
+
+`POST /portal/api/v2/shell` must avoid recomputing full datum-recognition
+workbench projections for unchanged authority state on every request.
+
+Canonical runtime guardrail:
+
+- system workbench projection may be cached in-process when keyed by:
+  - portal instance id
+  - authority DB path
+  - authority DB `mtime`
+- cache must be invalidated when authority state mutates (write paths) or when
+  authority DB `mtime` changes
+- host startup may prewarm this projection so the first interactive shell load
+  does not pay full datum-recognition cost
+
+Evidence anchor: `benchmarks/results/portal_shell_latency_hotfix_2026-04-25.json`.

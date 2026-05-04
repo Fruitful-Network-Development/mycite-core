@@ -1,33 +1,87 @@
 # MyCite V2 Portal Docs
 
-This repository now describes one portal shell only.
+## Start Here
+
+This repository describes one portal shell and one application authority model.
 
 - Canonical public entry: `/portal` -> `/portal/system`
-- Root surfaces: `SYSTEM`, `NETWORK`, `UTILITIES`
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
-- Canonical two-pane SQL-backed spreadsheet tool: `/portal/system/tools/workbench-ui`
-- `SYSTEM` remains the anthology-centered datum-file workbench at `/portal/system`
-- `workbench_ui` remains a separate SQL authority inspector for authoritative documents only; it does not manage all deployed files
-- Canonical AWS service tool: `/portal/system/tools/aws-csm`
-- Canonical CTS-GIS tool: `/portal/system/tools/cts-gis`
-- Canonical FND-DCM tool: `/portal/system/tools/fnd-dcm`
-- Migrated `SYSTEM` authority surfaces are SQL-backed and fail closed without the per-instance MOS authority database
-- Canonical CTS-GIS storage contract: `private/utilities/tools/cts-gis/spec.json` + `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
-- Canonical FND-DCM docs: `docs/contracts/fnd_dcm_tool_contract.md`, `docs/contracts/fnd_dcm_manifest_conventions.md`
-- Canonical universal tool operating contract: `docs/contracts/tool_operating_contract.md`
-- Canonical CTS-GIS SAMRAS addressing contract: `docs/contracts/cts_gis_samras_addressing.md`
-- Canonical mediation-tool archetype note: `docs/contracts/tool_mediation_surface_archetype.md`
-- Canonical SAMRAS structural docs: `docs/contracts/samras_structural_model.md`, `docs/contracts/samras_validity_and_mutation.md`, `docs/contracts/samras_engine_ui_boundary.md`
-- CTS-GIS phase-B (v2.5.4) is canonical-only: legacy CTS-GIS aliases are no longer accepted
-- Operator migration note: remove or ignore stale pre-v2.5.4 CTS-GIS legacy roots before or during rollout
-- `NETWORK` is the read-only portal-instance system-log workbench over `data/system/system_log.json`
-- `NETWORK` remains a derived-materialization surface outside SQL datum authority in the completed MOS cut-over
-- retained host-bound/private assets also remain outside the `workbench_ui` SQL corpus unless separately ported
-- `UTILITIES` owns configuration, exposure, integrations, and control surfaces
-- The top menubar is the only shell header; `ide-body` is the peer-region window for the `Activity Bar`, `Control Panel`, `Workbench`, and `Interface Panel`
-- Shell static assets are versioned through one embedded shell asset manifest
-- CTS-GIS keeps the shared shell contract unchanged while projecting a CTS-GIS-local Interface Panel body with magnitude-derived `Diktataograph` navigation and a selection-aligned `Garland`
-- Canonical term mapping and compatibility aliases are documented in `docs/contracts/portal_vocabulary_glossary.md`
-- Documentation IA and guided-task YAML standards are maintained under `docs/standards/`
-- One-shell refactor guardrails are maintained in `docs/standards/portal_shell_refactor_guardrails.md`
+- SQL-backed authority is the expected posture for migrated `SYSTEM` surfaces
+
+If you are orienting to repo responsibility first, read:
+
+1. [`docs/wiki/separation_and_responsibility.md`](wiki/separation_and_responsibility.md)
+2. [`docs/contracts/README.md`](contracts/README.md)
+3. [`docs/plans/README.md`](plans/README.md)
+
+## Documentation Families
+
+This repo uses multiple documentation families on purpose:
+
+- code-adjacent package docs:
+  `MyCiteV2/**/README.md`, `module_contract.md`, `allowed_dependencies.md`,
+  `forbidden_dependencies.md`, `testing_strategy.md`
+- canonical cross-cutting contracts:
+  [`docs/contracts/`](contracts/)
+- explanatory orientation and responsibility maps:
+  [`docs/wiki/`](wiki/)
+- execution plans and backlog streams:
+  [`docs/plans/`](plans/)
+- audits, reports, and evidence:
+  [`docs/audits/`](audits/)
+- preserved non-canonical idea material:
+  [`docs/personal_notes/`](personal_notes/)
+- standards and authoring rules:
+  [`docs/standards/`](standards/)
+
+Code-adjacent docs should own bounded package responsibility. Repo-wide docs
+should own cross-package, cross-tool, or cross-repo meaning.
+
+## Responsibility Boundary
+
+`mycite-core` owns:
+
+- portal authority and capability semantics
+- runtime contracts and tool mediation
+- cross-domain semantic services
+- SQL-backed authority posture
+- narrow audited write seams where explicitly approved
+
+`mycite-core` does not own:
+
+- NGINX, Keycloak, oauth2-proxy, Redis, or Docker/compose host topology
+- live instance state as an authoring surface
+- hosted frontend assets as a source repo
+
+Related repos and roots:
+
+- `srv-infra` owns host/runtime topology and deployment operations
+- `/srv/webapps` owns hosted frontend assets plus analytics corpora
+- `/srv/mycite-state` owns mutable per-instance runtime state
+
+## Canonical Current Truth
+
+- universal shell/tool posture:
+  [`docs/contracts/tool_operating_contract.md`](contracts/tool_operating_contract.md)
+- shell composition and routes:
+  [`docs/contracts/portal_shell_contract.md`](contracts/portal_shell_contract.md),
+  [`docs/contracts/route_model.md`](contracts/route_model.md),
+  [`docs/contracts/surface_catalog.md`](contracts/surface_catalog.md)
+- vocabulary:
+  [`docs/contracts/portal_vocabulary_glossary.md`](contracts/portal_vocabulary_glossary.md)
+- structural and mutation posture:
+  [`docs/contracts/samras_structural_model.md`](contracts/samras_structural_model.md),
+  [`docs/contracts/samras_validity_and_mutation.md`](contracts/samras_validity_and_mutation.md),
+  [`docs/contracts/mutation_contract.md`](contracts/mutation_contract.md)
+- planning system posture:
+  [`docs/plans/README.md`](plans/README.md)
+
+## Preservation Rule
+
+This alignment pass is intentionally lossless:
+
+- personal notes stay preserved
+- audits and reports stay preserved
+- historical plans stay preserved
+- new indexes and wiki/orientation pages reduce drift without deleting source material

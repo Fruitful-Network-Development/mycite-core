@@ -1,0 +1,105 @@
+{
+  "schema": "mycite.benchmarks.cts_gis.production_strict_probe.v1",
+  "runtime_mode": "production_strict",
+  "readiness": {
+    "state": "ready",
+    "message": "CTS-GIS evidence is ready.",
+    "samras_seed_status": "ready"
+  },
+  "warnings": [],
+  "compiled_artifact_valid": true,
+  "compiled_artifact_issues": [],
+  "source_layout_fingerprint": "56df73413996d516d774ac05c9729f5ae8b4c74a3feabf00d03ad8dc4bab3c4e",
+  "garland_overlay_toggle": {
+    "enabled": false,
+    "overlay_active": false,
+    "time_token": "4-447-751-507-819",
+    "timeframe_tokens": [],
+    "timeframe_match": false,
+    "shell_request": {
+      "schema": "mycite.v2.portal.shell.request.v1",
+      "requested_surface_id": "system.tools.cts_gis",
+      "portal_scope": {
+        "scope_id": "fnd",
+        "capabilities": [
+          "datum_recognition",
+          "spatial_projection"
+        ]
+      },
+      "shell_state": {
+        "schema": "mycite.v2.portal.shell.state.v1",
+        "active_surface_id": "system.tools.cts_gis",
+        "focus_path": [
+          {
+            "level": "sandbox",
+            "id": "fnd"
+          },
+          {
+            "level": "file",
+            "id": "anthology"
+          }
+        ],
+        "focus_subject": {
+          "level": "file",
+          "id": "anthology"
+        },
+        "mediation_subject": {
+          "level": "file",
+          "id": "anthology"
+        },
+        "verb": "mediate",
+        "chrome": {
+          "control_panel_collapsed": false,
+          "interface_panel_open": true
+        }
+      },
+      "runtime_mode": "production_strict",
+      "tool_state": {
+        "nimm_directive": "mediate",
+        "active_path": [
+          "3",
+          "3-2",
+          "3-2-3",
+          "3-2-3-17",
+          "3-2-3-17-77"
+        ],
+        "selected_node_id": "3-2-3-17-77",
+        "aitas": {
+          "attention_node_id": "3-2-3-17-77",
+          "intention_rule_id": "self",
+          "time_directive": "4-447-751-507-819",
+          "archetype_family_id": "samras_nominal"
+        },
+        "source": {
+          "attention_document_id": "",
+          "precinct_district_overlay_enabled": true,
+          "requested_active_path_raw": [],
+          "requested_selected_node_id_raw": ""
+        },
+        "selection": {
+          "selected_row_address": "",
+          "selected_feature_id": "",
+          "selected_row_explicit": false,
+          "selected_feature_explicit": false
+        },
+        "staged_insert": {
+          "schema": "mycite.v2.cts_gis.staged_insert.state.v1",
+          "draft_text": "",
+          "draft_format": "yaml",
+          "normalized_payload": {},
+          "placeholder_title_requested": false,
+          "last_validation": {},
+          "last_preview": {},
+          "structure_operation": {},
+          "compiled_nimm_envelope": {}
+        }
+      }
+    },
+    "action": {
+      "kind": "toggle_overlay",
+      "payload": {
+        "enabled": true
+      }
+    }
+  }
+}

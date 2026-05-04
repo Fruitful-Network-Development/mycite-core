@@ -163,6 +163,54 @@ class FilesystemAwsCsmToolProfileStoreTests(unittest.TestCase):
             self.assertEqual(saved["workflow"]["handoff_status"], "ready_for_gmail_handoff")
             self.assertEqual(saved["smtp"]["username"], "SMTPUSER")
 
+    def test_replace_profile_renames_file_and_collection_entry(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            tool_root = Path(temp_dir)
+            _write_json(
+                tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json",
+                {"schema": "mycite.portal.tool_collection.v1", "member_files": ["aws-csm.fnd.dylan.json"]},
+            )
+            _write_json(tool_root / "aws-csm.fnd.dylan.json", _seed_profile())
+            adapter = FilesystemAwsCsmToolProfileStore(tool_root)
+
+            payload = adapter.load_profile(tenant_scope_id="fnd", profile_id="aws-csm.fnd.dylan")
+            payload["identity"]["profile_id"] = "aws-csm.fnd.alex"
+            payload["identity"]["mailbox_local_part"] = "alex"
+            payload["identity"]["send_as_email"] = "alex@fruitfulnetworkdevelopment.com"
+            payload["smtp"]["local_part"] = "alex"
+            payload["smtp"]["send_as_email"] = "alex@fruitfulnetworkdevelopment.com"
+            replaced = adapter.replace_profile(
+                tenant_scope_id="fnd",
+                profile_id="aws-csm.fnd.dylan",
+                payload=payload,
+            )
+
+            self.assertEqual(replaced["identity"]["profile_id"], "aws-csm.fnd.alex")
+            self.assertFalse((tool_root / "aws-csm.fnd.dylan.json").exists())
+            self.assertTrue((tool_root / "aws-csm.fnd.alex.json").exists())
+            collection_payload = json.loads(
+                (tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(collection_payload["member_files"], ["aws-csm.fnd.alex.json"])
+
+    def test_delete_profile_removes_file_and_collection_entry(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            tool_root = Path(temp_dir)
+            _write_json(
+                tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json",
+                {"schema": "mycite.portal.tool_collection.v1", "member_files": ["aws-csm.fnd.dylan.json"]},
+            )
+            _write_json(tool_root / "aws-csm.fnd.dylan.json", _seed_profile())
+            adapter = FilesystemAwsCsmToolProfileStore(tool_root)
+
+            adapter.delete_profile(tenant_scope_id="fnd", profile_id="aws-csm.fnd.dylan")
+
+            self.assertIsNone(adapter.load_profile(tenant_scope_id="fnd", profile_id="aws-csm.fnd.dylan"))
+            collection_payload = json.loads(
+                (tool_root / "tool.3-2-3-17-77-1-6-4-1-4.aws-csm.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(collection_payload["member_files"], [])
+
     def test_domain_creation_updates_collection_and_loads_by_domain(self) -> None:
         with TemporaryDirectory() as temp_dir:
             tool_root = Path(temp_dir)

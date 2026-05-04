@@ -32,8 +32,17 @@ Direct APIs:
 - `POST /portal/api/v2/system/tools/aws-csm`
 - `POST /portal/api/v2/system/tools/aws-csm/actions`
 - `POST /portal/api/v2/system/tools/cts-gis`
+- `POST /portal/api/v2/system/tools/cts-gis/actions`
 - `POST /portal/api/v2/system/tools/fnd-dcm`
 - `POST /portal/api/v2/system/tools/fnd-ebi`
+
+Canonical shared mutation lifecycle APIs:
+
+- `POST /portal/api/v2/mutations/stage`
+- `POST /portal/api/v2/mutations/validate`
+- `POST /portal/api/v2/mutations/preview`
+- `POST /portal/api/v2/mutations/apply`
+- `POST /portal/api/v2/mutations/discard`
 
 Reducer-owned query projection keys:
 
@@ -58,6 +67,8 @@ AWS-CSM tool query projection keys:
 - `domain`
 - `profile`
 - `section`
+- `user_group`
+- `user`
 
 AWS-CSM canonical query rules:
 
@@ -65,6 +76,10 @@ AWS-CSM canonical query rules:
 - `domain=<domain>` focuses one domain gallery row
 - `profile=<profile_id>` focuses one mailbox profile inside the selected domain
 - `section=<users|onboarding|newsletter>` narrows the selected domain to one section
+- `view=users` switches to cross-domain grouped user mode
+- `user_group=<group_id>` selects one cross-domain grouping bucket (`all`,
+  `unassigned`, `provider:<provider_id>`, or `domain:<domain>`)
+- `user=<user_key>` focuses one grouped user row in `view=users`
 
 AWS-CSM internal action route:
 
@@ -84,6 +99,21 @@ AWS-CSM internal action route:
   - `refresh_provider_status`
   - `capture_verification`
   - `confirm_verified`
+
+AWS-CSM canonical NIMM/AITAS envelope mapping (contract draft):
+
+- optional body field: `nimm_envelope`
+- schema: `mycite.v2.nimm.envelope.v1`
+- canonical `directive.verb`: `manipulate`
+- canonical `directive.target_authority`: `aws_csm`
+- canonical `directive.payload.action_kind`: one of cataloged AWS-CSM action kinds
+- canonical `directive.payload.action_payload`: action input payload
+- canonical `aitas` fields:
+  - `attention`: focused domain/profile/user subject token
+  - `intention`: `manipulate`
+  - `time`: operation window marker (`immediate` default)
+  - `archetype`: `aws_csm_onboarding`
+  - `scope`: `portal/system/tools/aws-csm`
 
 `AWS-CSM` is one `SYSTEM` child service tool surface, not four separate tool pages. The canonical public route is `/portal/system/tools/aws-csm`.
 
@@ -132,7 +162,7 @@ Workbench UI canonical query rules:
 - `filter=<text>` narrows the selected-document row grid, including `hyphae_hash`
 - `sort=<datum_address|layer|value_group|iteration|labels|relation|object_ref|hyphae_hash>` changes flat row-grid ordering
 - `dir=<asc|desc>` changes row-grid order direction
-- `group=<flat|layer|layer_value_group>` switches the datum grid between flat and structural grouping modes while grouped sections preserve canonical structural order
+- `group=<flat|layer|layer_value_group|layer_value_group_iteration>` switches the datum grid between flat, grouped, and layer/value-group/iteration matrix modes while preserving canonical structural order
 - `workbench_lens=<interpreted|raw>` switches the workbench between the interpreted row summary and the raw canonical payload lens
 - `source=<show|hide>` toggles source metadata columns and sections without changing authoritative rows
 - `row=<datum_address>` focuses one selected row in the read-only Interface Panel detail view
@@ -159,31 +189,59 @@ CTS-GIS request body contract:
   - `tool_state.source.attention_document_id`
   - `tool_state.selection.selected_row_address`
   - `tool_state.selection.selected_feature_id`
-- compatibility aliases remain accepted during the transition:
+- legacy request-body field aliases remain confined to request normalization during retirement:
   - `mediation_state.attention_node_id`
   - `mediation_state.intention_token`
   - `selected_row_address`
   - `selected_feature_id`
 
+CTS-GIS internal action route:
+
+- `POST /portal/api/v2/system/tools/cts-gis/actions`
+- request schema: `mycite.v2.portal.system.tools.cts_gis.action.request.v1`
+- body fields:
+  - `portal_scope`
+  - optional `shell_state`
+  - `tool_state`
+  - `action_kind`
+  - `action_payload`
+- cataloged action kinds:
+  - `stage_insert_yaml`
+  - `validate_stage`
+  - `preview_apply`
+  - `apply_stage`
+  - `discard_stage`
+- staged insert payload schema:
+  - `mycite.v2.cts_gis.stage_insert.v1`
+- staged insert state schema:
+  - `mycite.v2.cts_gis.staged_insert.state.v1`
+
 CTS-GIS runtime/body rules:
 
 - CTS-GIS is the `system.tools.cts_gis` tool_mediation_surface under `SYSTEM`
 - its default posture is interface-panel-led
-- the dominant Interface Panel mounts one CTS-GIS-local body with `Diktataograph` and `Garland`
+- the dominant Interface Panel mounts one CTS-GIS-local body on the shared tab host
+- `tab_host=shared_interface_tabs`
+- `tabs` currently materialize as `diktataograph` and `garland`
+- `default_tab_id=diktataograph`
 - tool menubar toggles are single-click exclusive by default (`Workbench` or `Interface Panel`), with a route-scoped double-click lock that allows both
 - `Diktataograph` is projected through `navigation_canvas`
+- the `Diktataograph` tab also hosts the CTS-GIS staging widget; no new shell region is introduced
 - `navigation_canvas.mode` defaults to `directory_dropdowns`
 - `navigation_canvas.source_authority=samras_magnitude`
 - `navigation_canvas.decode_state` is fail-closed when CTS-GIS cannot recover a valid SAMRAS structure from authority rows or legacy row reconstruction
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth
 - `navigation_canvas.active_path` carries the resolved lineage
-- `Garland` is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
+- the `Garland` tab is projected through `garland_split_projection`, where dominant `geospatial_projection` and secondary `profile_projection` update for that navigation root
+- staged insert recap and legal mutation verbs stay in the `directive_panel`
+- preview/apply evidence stays in the reflective workbench; renderer code does not write SQL or files directly
 - strict runtime also emits compact canonical models:
   - `navigation_model`
   - `projection_model`
   - `evidence_model`
 - these are CTS-GIS-local projections of one mediation posture, not two separate shell mediations
 - title fallback is blank-only when ASCII decoding is unavailable
+- historical `layout` / `narrow_layout` fields remain compatibility metadata for CTS-GIS-local panel composition; the canonical outer host is the shared tab frame
 - CTS-GIS supporting evidence precedence is:
   - `private/utilities/tools/cts-gis/spec.json`
   - `data/sandbox/cts-gis/tool.<msn>.cts-gis.json`
@@ -191,8 +249,8 @@ CTS-GIS runtime/body rules:
   - `data/sandbox/cts-gis/sources/<corpus>.msn-administrative.json` for ASCII title overlays
   - GeoJSON lens or equivalent runtime cache for spatial projection
 - v2.5.4 phase-B is canonical-only; CTS-GIS accepts only `cts_gis` / `cts-gis` / `sandbox:cts_gis:*` and `tool.<msn>.cts-gis.json`
-- legacy CTS-GIS aliases are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
-- `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback
+- legacy CTS-GIS `maps` identifiers are rejected at the CTS-GIS tool endpoint with `400 legacy_maps_alias_unsupported`
+- `production_strict` runtime refuses missing/invalid compiled artifacts and returns `compiled_cts_gis_state_invalid` without request-time repair fallback; when compiled state is valid, non-default Garland selection/time/overlay requests may hydrate from authoritative CTS-GIS projection documents
 
 CTS-GIS canonical defaults:
 

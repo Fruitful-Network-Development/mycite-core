@@ -62,6 +62,22 @@ class _Cloud:
 
 
 class AwsCsmOnboardingServiceTests(unittest.TestCase):
+    def test_begin_onboarding_records_initiated_timestamp(self) -> None:
+        store = _Store(_profile())
+        service = AwsCsmOnboardingService(profile_store=store, cloud=_Cloud(evidence=False))
+        outcome = service.apply(
+            {
+                "tenant_scope": {"scope_id": "cvcc"},
+                "focus_subject": "3-2-3-17-77-1-6-4-1-4.4-1-77",
+                "profile_id": "aws-csm.cvcc.admin",
+                "onboarding_action": "begin_onboarding",
+            }
+        )
+        saved = outcome.saved_profile
+        self.assertEqual(saved["workflow"]["initiated"], True)
+        self.assertTrue(saved["workflow"]["initiated_at"])
+        self.assertEqual(outcome.updated_sections, ("workflow",))
+
     def test_confirm_verified_requires_evidence(self) -> None:
         service = AwsCsmOnboardingService(
             profile_store=_Store(_profile()),

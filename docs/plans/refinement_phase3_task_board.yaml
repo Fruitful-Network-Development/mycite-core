@@ -1,0 +1,83 @@
+schema_version: "1.0"
+kind: "refinement_phase_task_board"
+board:
+  id: "REFINEMENT-PHASE3-TASK-BOARD-2026-04-23"
+  title: "Refinement phase 3 implementation refactor"
+  lifecycle: "active"
+  phase: "phase_3_refactor_implementation"
+  last_reviewed: "2026-04-23"
+  canonical_plan: "docs/plans/refinement.md"
+
+tasks:
+  - id: "TASK-REFINE-P3-001"
+    title: "Refactor portal shell to recognize NIMM envelope requests"
+    status: "done"
+    priority: "p1"
+    owner_role: "shell-runtime-engineer"
+    acceptance:
+      - "Portal shell request supports optional NIMM envelope payload."
+      - "Shell verb normalization is tied to canonical NIMM verb validation."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/portal_shell/shell.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P3-002"
+    title: "Add NIMM non-navigation verb handlers with deferred stubs"
+    status: "done"
+    priority: "p1"
+    owner_role: "state-machine-engineer"
+    acceptance:
+      - "Investigate/mediate/manipulate handlers exist and validate verb payloads."
+      - "Deferred semantics are explicit through NotImplemented stubs."
+    evidence_targets:
+      - "MyCiteV2/packages/state_machine/nimm/directives.py"
+      - "MyCiteV2/tests/unit/test_nimm_phase2_foundations.py"
+
+  - id: "TASK-REFINE-P3-003"
+    title: "Compile CTS-GIS stage values into NIMM envelopes in runtime path"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-engineer"
+    acceptance:
+      - "Stage/validate/preview action flow stores compiled NIMM envelope metadata."
+      - "Runtime surface payload exposes compiled envelope for reflectivity."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+
+  - id: "TASK-REFINE-P3-004"
+    title: "Reflect compiled NIMM/compound directives in CTS-GIS staging UI"
+    status: "done"
+    priority: "p1"
+    owner_role: "interface-engineer"
+    acceptance:
+      - "Staging widget includes compiled NIMM envelope status."
+      - "Compound directive summary renders when structure operation metadata exists."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/portal_host/static/v2_portal_inspector_renderers.js"
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+
+  - id: "TASK-REFINE-P3-005"
+    title: "Add compound directive metadata support for SAMRAS structure operations"
+    status: "done"
+    priority: "p1"
+    owner_role: "cts-gis-runtime-engineer"
+    acceptance:
+      - "Staged action payload accepts optional structure operation metadata."
+      - "Compiled NIMM envelope can include a two-step compound directive plan."
+    evidence_targets:
+      - "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py"
+      - "MyCiteV2/tests/unit/test_portal_cts_gis_actions.py"
+
+  - id: "TASK-REFINE-P3-006"
+    title: "Publish phase 3 completion report and normalize contract language"
+    status: "done"
+    priority: "p1"
+    owner_role: "doc-author"
+    acceptance:
+      - "Phase 3 report maps implementation to objectives and validation evidence."
+      - "Contract docs describe NIMM envelope and mutation reflectivity posture."
+    evidence_targets:
+      - "docs/audits/reports/refinement_phase3_implementation_report_2026-04-23.md"
+      - "docs/contracts/portal_shell_contract.md"
+      - "docs/contracts/mutation_contract.md"

@@ -5,6 +5,12 @@ from typing import Any, Mapping
 from urllib.parse import urlencode
 
 from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
+from MyCiteV2.packages.state_machine.nimm import (
+    NimmDirective,
+    NimmDirectiveEnvelope,
+    NimmTargetAddress,
+    normalize_nimm_verb,
+)
 
 PORTAL_SHELL_REQUEST_SCHEMA = "mycite.v2.portal.shell.request.v1"
 PORTAL_SHELL_STATE_SCHEMA = "mycite.v2.portal.shell.state.v1"
@@ -26,6 +32,7 @@ AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_DCM_TOOL_SURFACE_ID = "system.tools.fnd_dcm"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
+PAYPAL_CSM_TOOL_SURFACE_ID = "system.tools.paypal_csm"
 WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
@@ -33,6 +40,7 @@ AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_DCM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_dcm"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
+PAYPAL_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.paypal_csm"
 WORKBENCH_UI_TOOL_ENTRYPOINT_ID = "portal.system.tools.workbench_ui"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
@@ -45,6 +53,7 @@ AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_DCM_TOOL_ROUTE = "/portal/system/tools/fnd-dcm"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
+PAYPAL_CSM_TOOL_ROUTE = "/portal/system/tools/paypal-csm"
 WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
@@ -115,6 +124,7 @@ TOOL_SURFACE_IDS = frozenset(
         CTS_GIS_TOOL_SURFACE_ID,
         FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
+        PAYPAL_CSM_TOOL_SURFACE_ID,
         WORKBENCH_UI_TOOL_SURFACE_ID,
     }
 )
@@ -341,8 +351,7 @@ class PortalShellState:
 
     def __post_init__(self) -> None:
         active_surface_id = _as_text(self.active_surface_id) or SYSTEM_ROOT_SURFACE_ID
-        if self.verb not in PORTAL_SHELL_VERBS:
-            raise ValueError("portal_shell_state.verb is invalid")
+        verb = normalize_nimm_verb(self.verb, field_name="portal_shell_state.verb")
         chrome = self.chrome if isinstance(self.chrome, PortalShellChrome) else PortalShellChrome.from_value(self.chrome)
         scope_id = PORTAL_SCOPE_DEFAULT_ID
         if self.focus_path:
@@ -360,6 +369,7 @@ class PortalShellState:
         object.__setattr__(self, "focus_path", focus_path)
         object.__setattr__(self, "focus_subject", focus_subject)
         object.__setattr__(self, "mediation_subject", mediation_subject)
+        object.__setattr__(self, "verb", verb)
         object.__setattr__(self, "chrome", chrome)
 
     def to_dict(self) -> dict[str, Any]:
@@ -415,8 +425,8 @@ class PortalShellTransition:
         verb = _normalize_slug(self.verb)
         if kind not in PORTAL_SHELL_TRANSITIONS:
             raise ValueError("portal_shell_transition.kind is invalid")
-        if verb and verb not in PORTAL_SHELL_VERBS:
-            raise ValueError("portal_shell_transition.verb is invalid")
+        if verb:
+            verb = normalize_nimm_verb(verb, field_name="portal_shell_transition.verb")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "surface_id", _as_text(self.surface_id))
         object.__setattr__(self, "file_key", _as_text(self.file_key))
@@ -462,6 +472,7 @@ class PortalShellRequest:
     portal_scope: PortalScope = field(default_factory=PortalScope)
     shell_state: PortalShellState | None = None
     transition: PortalShellTransition | None = None
+    nimm_envelope: NimmDirectiveEnvelope | None = None
     surface_query: dict[str, str] = field(default_factory=dict)
     schema: str = field(default=PORTAL_SHELL_REQUEST_SCHEMA, init=False)
 
@@ -478,6 +489,11 @@ class PortalShellRequest:
             if isinstance(self.transition, PortalShellTransition) or self.transition is None
             else PortalShellTransition.from_value(self.transition)
         )
+        nimm_envelope = (
+            self.nimm_envelope
+            if isinstance(self.nimm_envelope, NimmDirectiveEnvelope) or self.nimm_envelope is None
+            else NimmDirectiveEnvelope.from_dict(self.nimm_envelope)
+        )
         surface_query = _normalize_surface_query(
             self.surface_query,
             field_name="portal_shell_request.surface_query",
@@ -486,6 +502,7 @@ class PortalShellRequest:
         object.__setattr__(self, "portal_scope", portal_scope)
         object.__setattr__(self, "shell_state", shell_state)
         object.__setattr__(self, "transition", transition)
+        object.__setattr__(self, "nimm_envelope", nimm_envelope)
         object.__setattr__(self, "surface_query", surface_query)
 
     def to_dict(self) -> dict[str, Any]:
@@ -498,6 +515,8 @@ class PortalShellRequest:
             payload["shell_state"] = self.shell_state.to_dict()
         if self.transition is not None:
             payload["transition"] = self.transition.to_dict()
+        if self.nimm_envelope is not None:
+            payload["nimm_envelope"] = self.nimm_envelope.to_dict()
         if self.surface_query:
             payload["surface_query"] = dict(self.surface_query)
         return payload
@@ -522,6 +541,9 @@ class PortalShellRequest:
             if payload.get("shell_state") is not None
             else None,
             transition=PortalShellTransition.from_value(payload.get("transition")),
+            nimm_envelope=NimmDirectiveEnvelope.from_dict(payload.get("nimm_envelope"))
+            if payload.get("nimm_envelope") is not None
+            else None,
             surface_query=_normalize_surface_query(
                 payload.get("surface_query"),
                 field_name="portal_shell_request.surface_query",
@@ -718,6 +740,15 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             tool_id="fnd_ebi",
         ),
         PortalSurfaceCatalogEntry(
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            label="PayPal-CSM",
+            route=PAYPAL_CSM_TOOL_ROUTE,
+            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_kind="tool_surface",
+            page_owner="system",
+            tool_id="paypal_csm",
+        ),
+        PortalSurfaceCatalogEntry(
             surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             label="Workbench UI",
             route=WORKBENCH_UI_TOOL_ROUTE,
@@ -751,9 +782,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             route=CTS_GIS_TOOL_ROUTE,
             tool_kind=TOOL_KIND_GENERAL,
             surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
+            read_write_posture="write",
             required_capabilities=("datum_recognition", "spatial_projection"),
-            summary="Spatial mediation and read-only diagnostics.",
+            summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
         ),
         PortalToolRegistryEntry(
             tool_id="fnd_dcm",
@@ -778,6 +809,18 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             read_write_posture="read-only",
             required_capabilities=("hosted_site_visibility", "fnd_peripheral_routing"),
             summary="Hosted site operational visibility.",
+        ),
+        PortalToolRegistryEntry(
+            tool_id="paypal_csm",
+            label="PayPal-CSM",
+            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+            entrypoint_id=PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
+            route=PAYPAL_CSM_TOOL_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+            read_write_posture="write",
+            required_capabilities=("fnd_peripheral_routing",),
+            summary="PayPal order mediation and donation profile management.",
         ),
         PortalToolRegistryEntry(
             tool_id="workbench_ui",
@@ -1223,7 +1266,7 @@ def canonical_query_for_surface_query(
         if sort_direction in {"asc", "desc"}:
             query["dir"] = sort_direction
         group_mode = _as_text(normalized.get("group")).lower()
-        if group_mode in {"flat", "layer", "layer_value_group"}:
+        if group_mode in {"flat", "layer", "layer_value_group", "layer_value_group_iteration"}:
             query["group"] = group_mode
         workbench_lens = _as_text(normalized.get("workbench_lens")).lower()
         if workbench_lens in {"interpreted", "raw"}:
@@ -1265,6 +1308,91 @@ def canonical_query_for_runtime_request_payload(
         surface_query,
         surface_id=surface_id,
     )
+
+
+def _normalize_runtime_payload_schema(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+) -> dict[str, Any]:
+    normalized_payload = dict(payload or {})
+    if normalized_payload.get("schema") in {None, ""}:
+        normalized_payload = {"schema": expected_schema, **normalized_payload}
+    if _as_text(normalized_payload.get("schema")) != expected_schema:
+        raise ValueError(f"request.schema must be {expected_schema}")
+    return normalized_payload
+
+
+def normalize_runtime_surface_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+    legacy_query_keys: tuple[str, ...] = (),
+) -> tuple[PortalScope, dict[str, Any], dict[str, str]]:
+    normalized_payload = _normalize_runtime_payload_schema(payload, expected_schema=expected_schema)
+    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
+    surface_query = canonical_query_for_runtime_request_payload(
+        normalized_payload,
+        surface_id=surface_id,
+        legacy_query_keys=legacy_query_keys,
+    )
+    return portal_scope, normalized_payload, surface_query
+
+
+def normalize_runtime_surface_action_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+    legacy_query_keys: tuple[str, ...] = (),
+) -> tuple[PortalScope, dict[str, Any], dict[str, str], dict[str, Any] | None, str, dict[str, Any]]:
+    portal_scope, normalized_payload, surface_query = normalize_runtime_surface_request_payload(
+        payload,
+        expected_schema=expected_schema,
+        surface_id=surface_id,
+        legacy_query_keys=legacy_query_keys,
+    )
+    raw_shell_state = normalized_payload.get("shell_state")
+    shell_state = dict(raw_shell_state) if isinstance(raw_shell_state, dict) else None
+    action_kind = _as_text(normalized_payload.get("action_kind"))
+    raw_action_payload = normalized_payload.get("action_payload")
+    action_payload = dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {}
+    return portal_scope, normalized_payload, surface_query, shell_state, action_kind, action_payload
+
+
+def normalize_runtime_shell_surface_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+) -> tuple[PortalScope, PortalShellState, dict[str, Any]]:
+    normalized_payload = _normalize_runtime_payload_schema(payload, expected_schema=expected_schema)
+    portal_scope = PortalScope.from_value(normalized_payload.get("portal_scope"))
+    shell_state = canonicalize_portal_shell_state(
+        normalized_payload.get("shell_state"),
+        active_surface_id=surface_id,
+        portal_scope=portal_scope,
+        seed_anchor_file=normalized_payload.get("shell_state") is None,
+    )
+    return portal_scope, shell_state, normalized_payload
+
+
+def normalize_runtime_shell_action_request_payload(
+    payload: Mapping[str, Any] | None,
+    *,
+    expected_schema: str,
+    surface_id: str,
+) -> tuple[PortalScope, PortalShellState, dict[str, Any], str, dict[str, Any]]:
+    portal_scope, shell_state, normalized_payload = normalize_runtime_shell_surface_request_payload(
+        payload,
+        expected_schema=expected_schema,
+        surface_id=surface_id,
+    )
+    action_kind = _as_text(normalized_payload.get("action_kind"))
+    raw_action_payload = normalized_payload.get("action_payload")
+    action_payload = dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {}
+    return portal_scope, shell_state, normalized_payload, action_kind, action_payload
 
 
 def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = None) -> str:
@@ -1334,6 +1462,7 @@ def build_portal_shell_request_payload(
     portal_scope: PortalScope | dict[str, Any] | None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     transition: PortalShellTransition | dict[str, Any] | None = None,
+    nimm_envelope: NimmDirectiveEnvelope | dict[str, Any] | None = None,
     surface_query: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
@@ -1347,16 +1476,52 @@ def build_portal_shell_request_payload(
         if isinstance(transition, PortalShellTransition) or transition is None
         else PortalShellTransition.from_value(transition)
     )
+    normalized_nimm_envelope = (
+        nimm_envelope
+        if isinstance(nimm_envelope, NimmDirectiveEnvelope) or nimm_envelope is None
+        else NimmDirectiveEnvelope.from_dict(nimm_envelope)
+    )
     return PortalShellRequest(
         requested_surface_id=requested_surface_id,
         portal_scope=scope,
         shell_state=state,
         transition=normalized_transition,
+        nimm_envelope=normalized_nimm_envelope,
         surface_query=_normalize_surface_query(
             surface_query,
             field_name="portal_shell_request.surface_query",
         ),
     ).to_dict()
+
+
+def build_nimm_envelope_for_shell_state(
+    *,
+    shell_state: PortalShellState | dict[str, Any],
+    target_authority: str,
+    document_id: str = "",
+    aitas_defaults: dict[str, Any] | None = None,
+    aitas_overrides: dict[str, Any] | None = None,
+) -> NimmDirectiveEnvelope:
+    state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
+    focus_targets = [
+        NimmTargetAddress(
+            file_key=segment_id_for_level(state, level=FOCUS_LEVEL_FILE) or SYSTEM_SANDBOX_QUERY_FILE_TOKEN,
+            datum_address=segment_id_for_level(state, level=FOCUS_LEVEL_DATUM),
+            object_ref=segment_id_for_level(state, level=FOCUS_LEVEL_OBJECT),
+        )
+    ]
+    directive = NimmDirective(
+        verb=state.verb,
+        target_authority=target_authority,
+        document_id=document_id,
+        targets=tuple(focus_targets),
+        payload={"source": "portal_shell_state"},
+    )
+    return NimmDirectiveEnvelope.with_merged_aitas(
+        directive=directive,
+        defaults=aitas_defaults,
+        overrides=aitas_overrides,
+    )
 
 
 def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | None) -> PortalShellResolution:
@@ -1448,6 +1613,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "fnd_dcm"
     if normalized_surface_id == FND_EBI_TOOL_SURFACE_ID:
         return "fnd_ebi"
+    if normalized_surface_id == PAYPAL_CSM_TOOL_SURFACE_ID:
+        return "paypal_csm"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         return "workbench_ui"
     return "generic"
@@ -1556,18 +1723,21 @@ def build_shell_composition_payload(
         workbench_region.get("visible"),
         default=default_workbench_visible_for_surface(active_surface_id),
     )
+    force_workbench_visible = workbench_region.get("forced_visible") is True
+    requested_workbench_visible = workbench_region.get("visible") is True or force_workbench_visible
     interface_open = bool(tool_surface)
     if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
     requested_inspector_visible = inspector_region.get("visible") is True
     if tool_surface:
         # First-load tool posture is composition-owned. Runtime payload visibility
-        # hints are treated as content metadata, not posture authority.
+        # hints are treated as content metadata, not posture authority, except for
+        # explicit forced-visible diagnostic workbench flows such as staged preview/apply.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            workbench_visible = False
+            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
             inspector_visible = True
         else:
-            workbench_visible = default_workbench_visible_for_surface(active_surface_id)
+            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
             inspector_visible = True
     else:
         inspector_visible = bool(interface_open or requested_inspector_visible)
@@ -1638,6 +1808,9 @@ __all__ = [
     "FND_EBI_TOOL_ENTRYPOINT_ID",
     "FND_EBI_TOOL_ROUTE",
     "FND_EBI_TOOL_SURFACE_ID",
+    "PAYPAL_CSM_TOOL_ENTRYPOINT_ID",
+    "PAYPAL_CSM_TOOL_ROUTE",
+    "PAYPAL_CSM_TOOL_SURFACE_ID",
     "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
     "WORKBENCH_UI_TOOL_ROUTE",
     "WORKBENCH_UI_TOOL_SURFACE_ID",
@@ -1701,6 +1874,7 @@ __all__ = [
     "activity_icon_id_for_surface",
     "apply_surface_posture_to_composition",
     "build_canonical_url",
+    "build_nimm_envelope_for_shell_state",
     "build_portal_activity_dispatch_bodies",
     "build_portal_shell_request_payload",
     "build_portal_shell_state_from_query",
@@ -1719,6 +1893,10 @@ __all__ = [
     "initial_portal_shell_state",
     "is_tool_surface",
     "map_surface_to_active_service",
+    "normalize_runtime_shell_action_request_payload",
+    "normalize_runtime_shell_surface_request_payload",
+    "normalize_runtime_surface_action_request_payload",
+    "normalize_runtime_surface_request_payload",
     "reduce_portal_shell_state",
     "requires_shell_state_machine",
     "resolve_portal_shell_request",

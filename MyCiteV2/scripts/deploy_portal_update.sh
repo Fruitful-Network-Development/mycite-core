@@ -34,6 +34,9 @@ Options:
   --skip-restart           Do not restart portal service
   --skip-health            Do not hit /portal/healthz
   --skip-verify           Skip post-sync rsync verification checks.
+  --skip-cts-gis-compile-check
+                           Skip the FND CTS-GIS compile+validate step that normally
+                           runs before portal restart when CTS-GIS sources are present.
 
   --dry-run                Show actions without changing files or services
   --help                   Show this help text
@@ -214,6 +217,42 @@ run_health_check() {
   fail "Health endpoint did not become ready at ${url} within ${attempts}s"
 }
 
+should_enforce_cts_gis_compile() {
+  [[ "$SKIP_CTS_GIS_COMPILE_CHECK" != "1" ]] || return 1
+  [[ "$INSTANCE" == "fnd" ]] || return 1
+  [[ "$DO_DATA" == "1" || "$DO_PRIVATE" == "1" || "$DO_CODE" == "1" ]] || return 1
+  [[ -d "${LIVE_ROOT}/data/sandbox/cts-gis/sources" ]] || return 1
+  return 0
+}
+
+compile_and_validate_cts_gis() {
+  local data_dir="${LIVE_ROOT}/data"
+  local private_dir="${LIVE_ROOT}/private"
+  local compile_cmd=(
+    python3
+    "${REPO_ROOT}/MyCiteV2/scripts/compile_cts_gis_artifact.py"
+    --data-dir
+    "${data_dir}"
+    --private-dir
+    "${private_dir}"
+    --scope-id
+    "${INSTANCE}"
+  )
+  local validate_cmd=(
+    python3
+    "${REPO_ROOT}/MyCiteV2/scripts/validate_cts_gis_sources.py"
+    --data-dir
+    "${data_dir}"
+    --scope-id
+    "${INSTANCE}"
+    --require-compiled-match
+  )
+  log "Compiling CTS-GIS artifact for ${INSTANCE} before deploy"
+  run_or_echo "${compile_cmd[@]}"
+  log "Validating CTS-GIS compiled freshness for ${INSTANCE}"
+  run_or_echo "${validate_cmd[@]}"
+}
+
 INSTANCE="fnd"
 DO_DATA="0"
 DO_PUBLIC="0"
@@ -227,6 +266,7 @@ SKIP_HEALTH="0"
 DRY_RUN="0"
 INCLUDE_TOOL_STATE="0"
 SKIP_VERIFY="0"
+SKIP_CTS_GIS_COMPILE_CHECK="0"
 TOOLS=()
 
 while [[ $# -gt 0 ]]; do
@@ -291,6 +331,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-verify)
       SKIP_VERIFY="1"
+      shift
+      ;;
+    --skip-cts-gis-compile-check)
+      SKIP_CTS_GIS_COMPILE_CHECK="1"
       shift
       ;;
     --dry-run)
@@ -362,6 +406,10 @@ if [[ "$DO_TOOLS_ONLY" == "1" ]]; then
     log "Delegating tool sync for ${tool_slug} to deploy_portal_sync.sh"
     run_or_echo "${cmd[@]}"
   done
+fi
+
+if should_enforce_cts_gis_compile; then
+  compile_and_validate_cts_gis
 fi
 
 if [[ "$DO_CODE" == "1" ]]; then
