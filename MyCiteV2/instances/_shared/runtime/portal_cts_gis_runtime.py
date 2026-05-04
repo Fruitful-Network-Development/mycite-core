@@ -3424,10 +3424,32 @@ def build_portal_cts_gis_surface_bundle(
     stage_state_public = _staged_insert_state(resolved_tool_state.get("staged_insert"))
     stage_preview_public = dict(stage_state_public.get("last_preview") or {})
     stage_validation_public = dict(stage_state_public.get("last_validation") or {})
-    show_workbench = bool(stage_preview_public) or _as_text(action_result.get("action_kind")) in {
+
+    # Determine workbench mode: active manipulation or idle tool overview
+    has_active_manipulation = bool(stage_preview_public) or _as_text(action_result.get("action_kind")) in {
         "preview_apply",
         "apply_stage",
+        "validate_manipulation_stage",
+        "stage_insert_yaml",
+        "validate_stage",
     }
+    workbench_mode = "manipulation_active" if has_active_manipulation else "tool_overview"
+
+    # Always show workbench with appropriate content
+    show_workbench = True
+    forced_visible = has_active_manipulation  # Force visible only during manipulation
+
+    # Build tool summary for idle state
+    tool_summary = {
+        "tool_id": tool_entry.tool_id,
+        "configured": tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id),
+        "operational": operational,
+        "source_layout_state": _as_text((source_evidence_public.get("readiness") or {}).get("state")) or "pending",
+        "document_count": len(list(service_surface.get("documents") or [])),
+        "active_document_id": _as_text((resolved_tool_state.get("source") or {}).get("attention_document_id")),
+        "help_text": "Load a structure or stage an insert operation to begin." if not has_active_manipulation else "",
+    }
+
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -3435,11 +3457,13 @@ def build_portal_cts_gis_surface_bundle(
         "title": "CTS-GIS Evidence",
         "subtitle": "Raw registrar, source, and cache evidence stays secondary to the Garland projection.",
         "visible": show_workbench,
-        "forced_visible": show_workbench,
+        "forced_visible": forced_visible,
         "surface_payload": {
             "kind": "surface_payload",
             "tool_id": tool_entry.tool_id,
             "surface_id": CTS_GIS_TOOL_SURFACE_ID,
+            "workbench_mode": workbench_mode,
+            "tool_summary": tool_summary,
             "datum_summary": datum_summary,
             "tool_state": resolved_tool_state,
             "staged_insert": stage_state_public,
