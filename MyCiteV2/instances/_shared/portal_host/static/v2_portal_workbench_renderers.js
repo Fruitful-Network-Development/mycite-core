@@ -742,141 +742,6 @@
     }
   }
 
-  function renderCtsGisToolSummary(toolSummary, sourceEvidence) {
-    return '<section class="v2-card"><h3>CTS-GIS Tool Status</h3>' +
-      '<dl class="v2-surface-dl">' +
-      '<dt>Configured</dt><dd><strong>' +
-      (toolSummary.configured ? 'Yes' : 'No') +
-      '</strong></dd>' +
-      '<dt>Operational</dt><dd><strong>' +
-      (toolSummary.operational ? 'Yes' : 'No') +
-      '</strong></dd>' +
-      '<dt>Source Layout</dt><dd><strong>' +
-      escapeHtml(toolSummary.source_layout_state || '—') +
-      '</strong></dd>' +
-      '<dt>Documents</dt><dd><strong>' +
-      escapeHtml(String(toolSummary.document_count || 0)) +
-      '</strong></dd>' +
-      '<dt>Tool Spec</dt><dd><strong>' +
-      escapeHtml((sourceEvidence.tool_spec && sourceEvidence.tool_spec.file) || 'spec.json') +
-      '</strong></dd>' +
-      '<dt>Tool Anchor</dt><dd><strong>' +
-      escapeHtml((sourceEvidence.tool_anchor && sourceEvidence.tool_anchor.file) || 'tool.<msn>.cts-gis.json') +
-      '</strong></dd>' +
-      '<dt>Registrar Payload</dt><dd><strong>' +
-      escapeHtml((sourceEvidence.registrar_payload && sourceEvidence.registrar_payload.file) || 'registrar.json') +
-      '</strong></dd>' +
-      '</dl></section>';
-  }
-
-  function renderCtsGisIdleHelp(toolSummary) {
-    return '<section class="v2-card"><h3>Getting Started</h3>' +
-      '<p>' + escapeHtml(toolSummary.help_text || 'No active manipulation operation.') + '</p>' +
-      '<ul>' +
-      '<li>Use the control panel to navigate structure nodes</li>' +
-      '<li>Stage an insert operation to add new datums</li>' +
-      '<li>Preview and validate changes before applying</li>' +
-      '</ul></section>';
-  }
-
-  function renderCtsGisManipulationState(surfacePayload, sourceEvidence) {
-    var stageValidation = asObject(surfacePayload.stage_validation);
-    var stagePreview = asObject(surfacePayload.stage_preview);
-    var actionResult = asObject(surfacePayload.action_result);
-    var stagedInsert = asObject(surfacePayload.staged_insert);
-    var proposedRows = asList(stagePreview.proposed_inserted_rows);
-    var remaps = asList(stagePreview.remaps);
-
-    var html = '<section class="v2-card"><h3>Manipulation Evidence</h3>' +
-      '<dl class="v2-surface-dl">' +
-      '<dt>Administrative source</dt><dd><strong>' +
-      escapeHtml((sourceEvidence.administrative_source && sourceEvidence.administrative_source.document_name) || '—') +
-      '</strong></dd>' +
-      '<dt>Staged document</dt><dd><strong>' +
-      escapeHtml(
-        ((stagedInsert.normalized_payload || {}).document_name) ||
-        ((stagedInsert.normalized_payload || {}).document_id) ||
-        '—'
-      ) +
-      '</strong></dd>' +
-      '<dt>Validation hash</dt><dd><strong>' +
-      escapeHtml(String(stageValidation.expected_document_version_hash || '').slice(0, 12) || '—') +
-      '</strong></dd>' +
-      '<dt>Preview rows</dt><dd><strong>' +
-      escapeHtml(String(proposedRows.length || 0)) +
-      '</strong></dd>' +
-      '<dt>Preview remaps</dt><dd><strong>' +
-      escapeHtml(String(remaps.length || 0)) +
-      '</strong></dd>' +
-      '<dt>Latest action</dt><dd><strong>' +
-      escapeHtml(actionResult.action_kind || '—') +
-      '</strong><br />' +
-      escapeHtml(actionResult.message || '') +
-      '</dd>' +
-      '</dl></section>';
-
-    if (proposedRows.length) {
-      html +=
-        '<section class="v2-card"><h3>Preview Rows</h3><ul class="v2-list">' +
-        proposedRows
-          .map(function (row) {
-            return (
-              '<li><strong>' +
-              escapeHtml(row.datum_address || '—') +
-              '</strong> · ' +
-              escapeHtml(row.target_node_address || '—') +
-              ' · ' +
-              escapeHtml(row.title || '—') +
-              '</li>'
-            );
-          })
-          .join('') +
-        '</ul></section>';
-    }
-
-    return html;
-  }
-
-  function renderSecondaryEvidenceSurface(target, region, surfacePayload) {
-    var adapter = toolSurfaceAdapter();
-    var surfaceId =
-      (adapter && typeof adapter.resolveRegionSurfaceId === "function" && adapter.resolveRegionSurfaceId(region, surfacePayload)) ||
-      "";
-    var secondaryHtml = "";
-    if (surfaceId === "system.tools.cts_gis") {
-      var workbenchMode = asText(surfacePayload.workbench_mode) || "tool_overview";
-      var sourceEvidence = asObject(surfacePayload.source_evidence);
-      var toolSummary = asObject(surfacePayload.tool_summary);
-      var readiness = asObject(sourceEvidence.readiness);
-      // Always show tool summary section
-      secondaryHtml = renderCtsGisToolSummary(toolSummary, sourceEvidence);
-
-      // Add mode-specific content
-      if (workbenchMode === "manipulation_active") {
-        secondaryHtml += renderCtsGisManipulationState(surfacePayload, sourceEvidence);
-      } else {
-        secondaryHtml += renderCtsGisIdleHelp(toolSummary);
-      }
-    } else {
-      secondaryHtml =
-        '<section class="v2-card"><h3>' +
-        escapeHtml(region.title || "Supporting Evidence") +
-        "</h3><p>" +
-        escapeHtml(region.subtitle || "This tool is currently leading through the interface panel.") +
-        "</p></section>";
-    }
-    adapter.renderWrappedSurface(
-      target,
-      adapter.resolveSurfaceState({
-        region: region,
-        surfacePayload: surfacePayload,
-        title: region.title || "Supporting Evidence",
-        hasContent: true,
-      }),
-      secondaryHtml
-    );
-  }
-
   function renderReflectiveWorkspaceHost(ctx, target, region, surfacePayload) {
     var adapter = toolSurfaceAdapter();
     var mode =
@@ -908,10 +773,6 @@
       renderWorkbenchUiSurface(ctx, target, region, surfacePayload);
       return;
     }
-    if (mode === "secondary_evidence") {
-      renderSecondaryEvidenceSurface(target, region, surfacePayload);
-      return;
-    }
 
     // Fallback for tools without specific workbench
     if (mode === "generic_surface" && !region.sections && !region.cards && !region.rows) {
@@ -927,11 +788,182 @@
     renderGenericSurface(ctx, target, region, surfacePayload);
   }
 
+  function renderDatumFileWorkbenchHeader(region) {
+    var sandbox = asObject(region && region.sandbox);
+    var sandboxLabel = asText(sandbox.label) || asText(sandbox.id) || "Sandbox";
+    var subtitle = asText(region && region.subtitle);
+    return (
+      '<header class="v2-card" style="margin-bottom:12px">' +
+      '<h2 style="margin:0">' +
+      escapeHtml(asText(region && region.title) || "Datum File Workbench") +
+      "</h2>" +
+      '<p style="margin:4px 0 0 0"><small>Sandbox: ' +
+      escapeHtml(sandboxLabel) +
+      "</small>" +
+      (subtitle ? "<br /><small>" + escapeHtml(subtitle) + "</small>" : "") +
+      "</p>" +
+      "</header>"
+    );
+  }
+
+  function renderLayeredDatumTable(region) {
+    var table = asObject(region && region.layered_datum_table);
+    var doc = asObject(table.document);
+    var layerGroups = asList(table.layer_groups);
+    var rows = asList(table.rows);
+    var heading =
+      '<header class="v2-card" style="margin-bottom:12px">' +
+      "<h3>" +
+      escapeHtml(asText(doc.document_name) || asText(doc.document_id) || "Datum file") +
+      "</h3>" +
+      (asText(doc.document_id)
+        ? '<small>' + escapeHtml(asText(doc.document_id)) + "</small>"
+        : "") +
+      "</header>";
+    if (layerGroups.length) {
+      return (
+        heading +
+        layerGroups
+          .map(function (layer) {
+            var valueGroups = asList(layer.value_groups);
+            return (
+              '<details class="v2-card" open style="margin-top:12px"><summary>' +
+              escapeHtml(
+                asText(layer.label) +
+                  " (" +
+                  String(asList(layer.rows).length || layer.row_count || 0) +
+                  " rows)"
+              ) +
+              "</summary>" +
+              valueGroups
+                .map(function (vg) {
+                  var vgRows = asList(vg.rows);
+                  return (
+                    '<details class="v2-card" open style="margin-top:12px"><summary>' +
+                    escapeHtml(
+                      asText(vg.label) +
+                        " (" +
+                        String(vgRows.length || vg.row_count || 0) +
+                        " rows)"
+                    ) +
+                    "</summary>" +
+                    '<div class="v2-tableWrap"><table class="v2-table"><thead><tr><th>Iter</th><th>Datum</th><th>Value</th></tr></thead><tbody>' +
+                    vgRows
+                      .map(function (row) {
+                        var coords = asObject(row.coordinates);
+                        return (
+                          "<tr><td>" +
+                          escapeHtml(coords.iteration != null ? String(coords.iteration) : "—") +
+                          "</td><td>" +
+                          escapeHtml(asText(row.label) || asText(row.datum_id) || "Datum") +
+                          "</td><td>" +
+                          escapeHtml(asText(row.display_value) || asText(row.primary_value_token) || "—") +
+                          "</td></tr>"
+                        );
+                      })
+                      .join("") +
+                    "</tbody></table></div></details>"
+                  );
+                })
+                .join("") +
+              "</details>"
+            );
+          })
+          .join("")
+      );
+    }
+    if (!rows.length) {
+      return (
+        heading +
+        '<section class="v2-card" style="margin-top:12px">' +
+        '<p>No datum rows are currently projected for this document.</p>' +
+        "</section>"
+      );
+    }
+    return (
+      heading +
+      '<section class="v2-card" style="margin-top:12px"><div class="v2-tableWrap">' +
+      '<table class="v2-table"><thead><tr><th>Datum</th><th>Value</th></tr></thead><tbody>' +
+      rows
+        .map(function (row) {
+          var rowObj = asObject(row);
+          return (
+            "<tr><td>" +
+            escapeHtml(asText(rowObj.label) || asText(rowObj.datum_id) || "Datum") +
+            "</td><td>" +
+            escapeHtml(asText(rowObj.display_value) || asText(rowObj.primary_value_token) || "—") +
+            "</td></tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
+  function renderSandboxDocumentGallery(region) {
+    var gallery = asObject(region && region.gallery);
+    var documents = asList(gallery.documents);
+    if (!documents.length) {
+      return (
+        '<section class="v2-card" style="margin-top:12px">' +
+        '<h3>Sandbox Document Gallery</h3>' +
+        "<p>No datum documents are owned by this sandbox yet.</p>" +
+        "</section>"
+      );
+    }
+    return (
+      '<section class="v2-card" style="margin-top:12px"><h3>Sandbox Document Gallery</h3>' +
+      '<div class="v2-card-grid">' +
+      documents
+        .map(function (card) {
+          var cardObj = asObject(card);
+          var documentId = asText(cardObj.document_id);
+          return (
+            '<article class="v2-card' +
+            (cardObj.selected ? " is-selected" : "") +
+            (cardObj.is_anchor ? " is-anchor" : "") +
+            '" tabindex="0" data-shell-transition-kind="focus_file" data-shell-file-key="' +
+            escapeHtml(documentId) +
+            '">' +
+            "<h3>" +
+            escapeHtml(asText(cardObj.document_name) || documentId || "Document") +
+            (cardObj.is_anchor ? ' <small>(anchor)</small>' : "") +
+            "</h3>" +
+            "<p><small>" +
+            escapeHtml(documentId) +
+            "</small></p>" +
+            "<p>Rows: " +
+            escapeHtml(String(cardObj.row_count || 0)) +
+            "</p>" +
+            "</article>"
+          );
+        })
+        .join("") +
+      "</div></section>"
+    );
+  }
+
+  function renderDatumFileWorkbench(ctx, target, region) {
+    var mode = asText(region && region.mode) || "anchor";
+    var body;
+    if (mode === "gallery") {
+      body = renderSandboxDocumentGallery(region);
+    } else {
+      body = renderLayeredDatumTable(region);
+    }
+    target.innerHTML = renderDatumFileWorkbenchHeader(region) + body;
+  }
+
   window.PortalShellWorkbenchRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
       var surfacePayload = region.surface_payload || {};
+      if (!target) return;
+      if (asText(region.kind) === "datum_file_workbench") {
+        renderDatumFileWorkbench(ctx, target, region);
+        return;
+      }
       var adapter = toolSurfaceAdapter();
       var family =
         (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
@@ -941,7 +973,6 @@
           typeof adapter.resolveReflectiveWorkspaceMode === "function" &&
           adapter.resolveReflectiveWorkspaceMode(region, surfacePayload)) ||
         "generic_surface";
-      if (!target) return;
       if (family === "reflective_workspace" || mode !== "generic_surface") {
         renderReflectiveWorkspaceHost(ctx, target, region, surfacePayload);
         return;

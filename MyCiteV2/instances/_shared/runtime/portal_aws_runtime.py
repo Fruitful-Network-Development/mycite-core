@@ -13,6 +13,12 @@ import re
 import uuid
 from typing import Any, Mapping
 
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    build_unified_control_panel,
+)
+from MyCiteV2.instances._shared.runtime.portal_workbench import (
+    build_datum_file_workbench,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     AWS_CSM_TOOL_REQUEST_SCHEMA,
@@ -1322,35 +1328,36 @@ def _facts_rows(pairs: list[tuple[str, object]]) -> list[dict[str, str]]:
     return rows
 
 
-def _build_control_panel(
+def _build_aws_csm_directive_panel(
     *,
     portal_scope: PortalScope,
+    shell_state: object | None,
     workspace: dict[str, Any],
 ) -> dict[str, Any]:
     collection_file = _as_text(workspace.get("collection_file"))
     mediation_file = _as_text(workspace.get("mediation_file"))
-    groups = [
-        {
-            "title": "Domains",
-            "entries": [
-                {
-                    "label": _as_text(row.get("label")) or _as_text(row.get("domain")),
-                    "meta": (
-                        f"{int(row.get('profile_count') or 0)} mailbox"
-                        + ("" if int(row.get("profile_count") or 0) == 1 else "es")
-                        + (" · newsletter" if row.get("newsletter_configured") else "")
-                    ),
-                    "active": bool(row.get("active")),
-                    "href": _as_text(row.get("href")),
-                    "shell_request": row.get("shell_request"),
-                }
-                for row in list(workspace.get("domain_rows") or [])
-            ],
-        }
-    ]
+    domain_rows = list(workspace.get("domain_rows") or [])
     mailbox_rows = list(workspace.get("mailbox_rows") or [])
+
+    domain_selector_entries = [
+        {
+            "label": _as_text(row.get("label")) or _as_text(row.get("domain")),
+            "meta": (
+                f"{int(row.get('profile_count') or 0)} mailbox"
+                + ("" if int(row.get("profile_count") or 0) == 1 else "es")
+                + (" · newsletter" if row.get("newsletter_configured") else "")
+            ),
+            "active": bool(row.get("active")),
+            "href": _as_text(row.get("href")),
+            "shell_request": row.get("shell_request"),
+        }
+        for row in domain_rows
+    ]
+    navigation_groups: list[dict[str, Any]] = []
+    if domain_selector_entries:
+        navigation_groups.append({"title": "Domains", "entries": domain_selector_entries})
     if mailbox_rows:
-        groups.append(
+        navigation_groups.append(
             {
                 "title": "User Emails",
                 "entries": [
@@ -1367,20 +1374,33 @@ def _build_control_panel(
                 ],
             }
         )
-    return {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "focus_selection_panel",
-        "title": "Control Panel",
-        "surface_label": "AWS-CSM",
-        "context_items": [
-            {"label": "Sandbox", "value": "AWS-CSM"},
-            {"label": "File", "value": collection_file or "tool.aws-csm.json"},
-            {"label": "Mediation", "value": mediation_file or "spec.json"},
-        ],
-        "verb_tabs": [],
-        "groups": groups,
-        "actions": [],
-    }
+
+    panel = build_unified_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        surface_label="AWS-CSM",
+        navigation_groups=navigation_groups,
+        actions=[],
+        tool_extensions={
+            "aws_csm_domain_selector": domain_selector_entries,
+        },
+    )
+    panel_context = list(panel.get("context_conditions") or [])
+    aws_file_value = collection_file or "tool.aws-csm.json"
+    file_row_replaced = False
+    for row in panel_context:
+        if row.get("label") == "File":
+            row["value"] = aws_file_value
+            file_row_replaced = True
+            break
+    if not file_row_replaced:
+        panel_context.append({"level": "file", "label": "File", "value": aws_file_value, "state": "active"})
+    panel_context.append(
+        {"level": "mediation", "label": "Mediation", "value": mediation_file or "spec.json", "state": "active"}
+    )
+    panel["context_conditions"] = panel_context
+    return panel
 
 
 def _build_inspector(
@@ -1673,22 +1693,22 @@ def build_portal_aws_surface_bundle(
         "page_title": "AWS-CSM",
         "page_subtitle": "Unified domain gallery and FND-routed service-tool posture.",
         "surface_payload": surface_payload,
-        "control_panel": attach_region_family_contract(
-            _build_control_panel(portal_scope=portal_scope, workspace=enriched_workspace),
-            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
-            surface_id=AWS_CSM_TOOL_SURFACE_ID,
+        "control_panel": _build_aws_csm_directive_panel(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            workspace=enriched_workspace,
         ),
-        "workbench": attach_region_family_contract(
-            {
-                "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-                "kind": "aws_csm_workbench",
-                "title": "AWS-CSM",
-                "subtitle": "Domain gallery, user email gallery, onboarding, and newsletter state.",
-                "visible": False,
-                "surface_payload": surface_payload,
-            },
-            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        "workbench": build_datum_file_workbench(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
             surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            sandbox_id="aws-csm",
+            sandbox_label="AWS-CSM",
+            anchor_document=None,
+            sandbox_documents=[],
+            title="AWS-CSM Datum Workbench",
+            subtitle="Layered datum table for the active AWS-CSM sandbox file.",
+            visible=False,
         ),
         "inspector": attach_region_family_contract(
             inspector,

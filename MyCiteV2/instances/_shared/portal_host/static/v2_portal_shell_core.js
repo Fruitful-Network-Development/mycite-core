@@ -521,6 +521,28 @@
       });
     }
 
+    function reassertAnchorFocusIfNeeded(envelope) {
+      if (!envelope || !envelope.reducer_owned) return;
+      var composition =
+        (envelope.shell_composition && envelope.shell_composition) ||
+        (envelope.composition && envelope.composition) ||
+        {};
+      var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
+      var workbenchMode =
+        (workbenchRegion && workbenchRegion.mode) ||
+        (workbenchRegion.surface_payload && workbenchRegion.surface_payload.mode) ||
+        "";
+      if (workbenchMode === "anchor" || !workbenchMode) return;
+      var sandbox = (workbenchRegion && workbenchRegion.sandbox) || {};
+      var sandboxId =
+        (sandbox && sandbox.id) ||
+        (workbenchRegion && workbenchRegion.sandbox_id) ||
+        (workbenchRegion.surface_payload && workbenchRegion.surface_payload.sandbox_id) ||
+        "";
+      if (!sandboxId) return;
+      dispatchTransition({ kind: "focus_sandbox", sandbox_id: sandboxId });
+    }
+
     function handleInterfacePanelToggle() {
       var shell = qs(".ide-shell");
       if (!shell) return;
@@ -537,6 +559,9 @@
         return;
       }
       var isOpen = envelope.shell_state && envelope.shell_state.chrome && envelope.shell_state.chrome.interface_panel_open;
+      if (!isOpen) {
+        reassertAnchorFocusIfNeeded(envelope);
+      }
       dispatchTransition({ kind: isOpen ? "close_interface_panel" : "open_interface_panel" });
     }
 

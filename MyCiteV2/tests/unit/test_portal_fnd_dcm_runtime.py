@@ -133,7 +133,7 @@ class PortalFndDcmRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["canonical_query"], {"site": "cuyahogavalleycountrysideconservancy.org", "view": "collections"})
             self.assertEqual(envelope["surface_payload"]["tool"]["operational"], False)
             self.assertIn("webapps_root", envelope["surface_payload"]["tool"]["missing_integrations"])
-            self.assertEqual(envelope["shell_composition"]["regions"]["workbench"]["kind"], "fnd_dcm_workbench")
+            self.assertEqual(envelope["shell_composition"]["regions"]["workbench"]["kind"], "datum_file_workbench")
 
     def test_direct_fnd_dcm_endpoint_matches_shell_runtime_envelope(self) -> None:
         with TemporaryDirectory() as temp_dir:

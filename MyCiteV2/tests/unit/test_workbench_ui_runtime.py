@@ -164,8 +164,13 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 self.assertNotIn(key, envelope["canonical_query"])
 
             control_panel = envelope["shell_composition"]["regions"]["control_panel"]
+            workbench_ui_labels = [
+                item["label"]
+                for item in control_panel.get("context_conditions") or []
+                if item.get("label") in {"Document", "Version", "Selected Row", "Row Identity", "Resolved Lens", "Document Sort"}
+            ]
             self.assertEqual(
-                [item["label"] for item in control_panel["context_items"][:6]],
+                workbench_ui_labels,
                 ["Document", "Version", "Selected Row", "Row Identity", "Resolved Lens", "Document Sort"],
             )
             self.assertEqual(control_panel["surface_label"], "WORKBENCH UI")

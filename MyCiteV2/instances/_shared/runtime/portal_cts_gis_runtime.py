@@ -5,8 +5,10 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
-    build_tool_control_panel,
     build_unified_control_panel,
+)
+from MyCiteV2.instances._shared.runtime.portal_workbench import (
+    build_datum_file_workbench,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
@@ -1398,7 +1400,7 @@ def _context_items_from_base_panel(base_panel: dict[str, Any], source_evidence: 
     return items
 
 
-def _cts_gis_control_panel(
+def _build_cts_gis_directive_panel(
     *,
     portal_scope: PortalScope,
     shell_state: PortalShellState,
@@ -1411,19 +1413,7 @@ def _cts_gis_control_panel(
     action_result: dict[str, Any],
     base_shell_request: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    base_panel = build_tool_control_panel(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        data_dir=data_dir,
-        public_dir=None,
-        private_dir=private_dir,
-        surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        active_document=None,
-        selected_datum=None,
-        selected_object=None,
-        tool_rows=list(tool_rows or []),
-        title="CTS-GIS",
-    )
+    del data_dir, private_dir, tool_rows
     staged_selected_node_id = _as_text(resolved_tool_state.get("selected_node_id"))
     has_staged_selection = bool(staged_selected_node_id)
     attention_profile = dict(service_surface.get("attention_profile") or {}) if has_staged_selection else {}
@@ -1608,13 +1598,57 @@ def _cts_gis_control_panel(
         *time_entries,
         *locked_entries,
     ]
-    return {
-        **base_panel,
-        "context_items": _context_items_from_base_panel(base_panel, source_evidence),
-        "verb_tabs": [],
-        "groups": [{"title": "STATE DIRECTIVE", "entries": state_directive_entries}, *stage_groups],
-        "actions": stage_actions,
+    base_navigation_groups = [
+        {"title": "STATE DIRECTIVE", "entries": state_directive_entries},
+        *stage_groups,
+    ]
+    aitas_overlay = dict(resolved_tool_state.get("aitas") or {})
+    tool_extensions: dict[str, Any] = {
+        "cts_gis_attention": attention_entries,
+        "cts_gis_intention": intention_entries,
+        "cts_gis_time": time_entries,
+        "cts_gis_archetype": [
+            {
+                "label": "Archetype",
+                "meta": _as_text(aitas_overlay.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
+                "active": False,
+            }
+        ],
     }
+    if stage_payload:
+        tool_extensions["cts_gis_staged_insert"] = {
+            "document_name": _as_text(stage_payload.get("document_name")),
+            "document_id": _as_text(stage_payload.get("document_id")),
+            "datum_count": len(stage_datums),
+            "validation_hash": _as_text(stage_validation.get("expected_document_version_hash")),
+            "preview_row_count": len(list(stage_preview.get("proposed_inserted_rows") or [])),
+            "compiled_envelope_ready": bool(compiled_nimm_envelope),
+            "latest_action_kind": _as_text(action_result.get("action_kind")),
+        }
+
+    panel = build_unified_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        surface_label="CTS-GIS",
+        directive_context=None,
+        nimm_directive=_as_text(resolved_tool_state.get("nimm_directive")),
+        aitas_state=aitas_overlay,
+        navigation_groups=base_navigation_groups,
+        actions=stage_actions,
+        tool_extensions=tool_extensions,
+    )
+
+    panel_context = list(panel.get("context_conditions") or [])
+    tool_anchor_file = _as_text((source_evidence.get("tool_anchor") or {}).get("file"))
+    if tool_anchor_file:
+        for row in panel_context:
+            if row.get("label") == "File":
+                row["value"] = tool_anchor_file
+                break
+    panel["context_conditions"] = panel_context
+
+    return panel
 
 
 def _node_depth(node_id: object) -> int:
@@ -3375,7 +3409,7 @@ def build_portal_cts_gis_surface_bundle(
         "service_surface": service_surface_public,
     }
     control_panel = attach_region_family_contract(
-        _cts_gis_control_panel(
+        _build_cts_gis_directive_panel(
             portal_scope=portal_scope,
             shell_state=shell_state,
             data_dir=data_dir,
@@ -3453,33 +3487,39 @@ def build_portal_cts_gis_surface_bundle(
         "help_text": "Load a structure or stage an insert operation to begin." if not has_active_manipulation else "",
     }
 
-    workbench = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "surface_payload",
-        "title": "CTS-GIS Evidence",
-        "subtitle": "Raw registrar, source, and cache evidence stays secondary to the Garland projection.",
-        "visible": show_workbench,
-        "forced_visible": forced_visible,
-        "surface_payload": {
-            "kind": "surface_payload",
-            "tool_id": tool_entry.tool_id,
-            "surface_id": CTS_GIS_TOOL_SURFACE_ID,
-            "workbench_mode": workbench_mode,
-            "tool_summary": tool_summary,
-            "datum_summary": datum_summary,
-            "tool_state": resolved_tool_state,
-            "staged_insert": stage_state_public,
-            "stage_validation": stage_validation_public,
-            "stage_preview": stage_preview_public,
-            "action_result": action_result,
-            "source_evidence": source_evidence_public,
-            "diagnostic_summary": dict(service_surface.get("diagnostic_summary") or {}),
-            "warnings": list(service_surface.get("warnings") or []),
-        },
-        },
-        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    cts_gis_sandbox_documents = list(service_surface.get("documents") or [])
+    cts_gis_anchor_document = None
+    cts_gis_selected_document = None
+    cts_gis_active_document_id = _as_text((resolved_tool_state.get("source") or {}).get("attention_document_id"))
+    for document in cts_gis_sandbox_documents:
+        document_id = (
+            getattr(document, "document_id", None)
+            if not isinstance(document, dict)
+            else document.get("document_id")
+        )
+        is_anchor = bool(
+            getattr(document, "is_anchor", False)
+            if not isinstance(document, dict)
+            else document.get("is_anchor")
+        )
+        if is_anchor and cts_gis_anchor_document is None:
+            cts_gis_anchor_document = document
+        if cts_gis_active_document_id and document_id == cts_gis_active_document_id:
+            cts_gis_selected_document = document
+
+    workbench = build_datum_file_workbench(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
         surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        sandbox_id="cts-gis",
+        sandbox_label="CTS-GIS",
+        anchor_document=cts_gis_anchor_document,
+        selected_document=cts_gis_selected_document,
+        sandbox_documents=cts_gis_sandbox_documents,
+        title="CTS-GIS Datum Workbench",
+        subtitle="Layered datum table for the active CTS-GIS sandbox file.",
+        visible=show_workbench,
+        extra_payload={"forced_visible": forced_visible},
     )
     inspector = attach_region_family_contract(
         {

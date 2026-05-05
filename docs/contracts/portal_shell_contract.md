@@ -72,6 +72,42 @@ The contract-level anchor-file invariant is:
 
 Query state mirrors runtime-owned state. Runtime computes canonical next state and canonical next route/query. The URL is a projection of canonical state, not the source of truth.
 
+## Workbench State Machine
+
+The `Workbench` (the center region of `ide-body`) is a shared state machine driven by
+the focus stack, identical in shape across SYSTEM and every tool surface. The shared
+renderer is `datum_file_workbench`, region kind
+`mycite.v2.portal.shell.region.workbench.v2`.
+
+Tri-state on every datum-file workbench:
+
+1. `mode = anchor` — the layered datum table for the sandbox's anchor document. This
+   is the default mode whenever a sandbox is focused without a non-anchor file
+   selection. Activity-bar tool clicks dispatch `focus_sandbox`, which seeds
+   `focus.file = anchor(<sandbox>)` and renders the anchor's layered datum table in
+   the workbench.
+2. `mode = gallery` — a card grid of every `lv.<msn>.<sandbox>.*` document owned by
+   the focused sandbox. Reached by `back_out` from the anchor (or from a selected
+   document). Selecting a card re-enters `mode=selected_document`.
+3. `mode = selected_document` — the layered datum table for a non-anchor sandbox
+   source. Reached by clicking a card in `mode=gallery` or by directly selecting a
+   document from the control panel's file list.
+
+Authoritative invariants:
+
+- Tool surfaces (CTS-GIS, AWS-CSM, FND-EBI, FND-DCM, PayPal-CSM) emit
+  `region.kind = datum_file_workbench`. Tool-specific UI (Diktataograph, Garland,
+  Staged Insert, Domain Gallery, Manifest tree, Analytics body, PayPal body) lives in
+  the `Interface Panel` only. The workbench is never replaced by tool chrome.
+- `Workbench UI` is the documented `workbench_primary` exception: it keeps the SQL
+  row grid as workbench-primary content (region kind `workbench_ui_surface`).
+  Documented in `surface_catalog.md`.
+- Toggling the `Interface Panel` open while `workbench.mode != anchor` re-asserts
+  `focus.file = anchor(<sandbox>)` so directive scripts running in the IP can assume
+  the documented "anchor + msn-SAMRAS" frame.
+- Activity-bar tool clicks dispatch the `focus_sandbox` transition; the URL is still a
+  projection of canonical state.
+
 ## SYSTEM Workspace
 
 `SYSTEM` is the core datum-file workbench for the system sandbox.

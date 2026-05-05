@@ -3,6 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    build_unified_control_panel,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
     PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
@@ -173,7 +176,7 @@ def build_portal_workbench_ui_surface_bundle(
     tool_rows: list[dict[str, Any]] | None = None,
     surface_query: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    del shell_state, tool_rows
+    del tool_rows
     runtime_error = _workbench_sql_runtime_error(
         portal_instance_id=portal_scope.scope_id,
         authority_db_file=authority_db_file,
@@ -252,36 +255,11 @@ def build_portal_workbench_ui_surface_bundle(
             }
         )
 
-    control_panel = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "focus_selection_panel",
-        "title": "Control Panel",
-        "surface_label": "WORKBENCH UI",
-        "context_items": [
-            {"label": "Document", "value": _as_text(model.get("document_id")) or "—"},
-            {"label": "Version", "value": _as_text(model.get("document_version_hash_short")) or "—"},
-            {"label": "Selected Row", "value": _as_text((model.get("selected_row") or {}).get("datum_address")) or "—"},
-            {"label": "Row Identity", "value": _as_text(model.get("selected_row_hyphae_hash_short")) or "—"},
-            {"label": "Resolved Lens", "value": _as_text((model.get("selected_row") or {}).get("resolved_lens")) or "—"},
-            {
-                "label": "Document Sort",
-                "value": (
-                    f"{_as_text(model.get('document_sort_key')) or 'version_hash'}:"
-                    f"{_as_text(model.get('document_sort_direction')) or 'asc'}"
-                ),
-            },
-            {
-                "label": "Row Sort",
-                "value": f"{_as_text(model.get('sort_key')) or 'datum_address'}:{_as_text(model.get('sort_direction')) or 'asc'}",
-            },
-            {"label": "Grouping", "value": _as_text(model.get("group_mode")) or "flat"},
-            {"label": "Lens", "value": _as_text(model.get("workbench_lens")) or "interpreted"},
-            {"label": "Source", "value": _as_text(model.get("source_visibility")) or "show"},
-            {"label": "Overlay", "value": _as_text(model.get("overlay_visibility")) or "show"},
-        ],
-        "verb_tabs": [],
-        "groups": [
+    workbench_ui_extensions = {
+        "workbench_ui_document_filter": _as_text(model.get("document_filter")),
+        "workbench_ui_lens": _as_text(model.get("workbench_lens")) or "interpreted",
+    }
+    workbench_ui_navigation_groups = [
             {
                 "title": "Documents",
                 "entries": [
@@ -419,12 +397,41 @@ def build_portal_workbench_ui_surface_bundle(
                 "title": "Navigation",
                 "entries": navigation_entries,
             },
-        ],
-        "actions": [],
-        },
-        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+        ]
+    selected_row_address = _as_text((model.get("selected_row") or {}).get("datum_address"))
+    workbench_ui_workbench_state = {
+        "mode": "selected_document" if selected_row_address else "anchor",
+        "anchor_document_id": _as_text(model.get("document_id")),
+        "selected_document_id": _as_text(model.get("document_id")) if selected_row_address else "",
+    }
+    control_panel = build_unified_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+        surface_label="WORKBENCH UI",
+        navigation_groups=workbench_ui_navigation_groups,
+        actions=[],
+        workbench_state=workbench_ui_workbench_state,
+        tool_extensions=workbench_ui_extensions,
     )
+    document_sort_value = _as_text(model.get("document_sort")) or "document_id"
+    document_dir_value = _as_text(model.get("document_dir")) or "asc"
+    panel_context = list(control_panel.get("context_conditions") or [])
+    panel_context.extend(
+        [
+            {"level": "document", "label": "Document", "value": _as_text(model.get("document_id")) or "—", "state": "active"},
+            {"level": "version", "label": "Version", "value": _as_text(model.get("document_version_hash_short")) or "—", "state": "active"},
+            {"level": "datum", "label": "Selected Row", "value": _as_text((model.get("selected_row") or {}).get("datum_address")) or "—", "state": "selected" if selected_row_address else "default"},
+            {"level": "datum", "label": "Row Identity", "value": _as_text(model.get("selected_row_hyphae_hash_short")) or "—", "state": "default"},
+            {"level": "datum", "label": "Resolved Lens", "value": _as_text((model.get("selected_row") or {}).get("resolved_lens")) or "—", "state": "default"},
+            {"level": "view", "label": "Document Sort", "value": f"{document_sort_value} {document_dir_value}", "state": "active"},
+            {"level": "view", "label": "Grouping", "value": _as_text(model.get("group_mode")) or "flat", "state": "active"},
+            {"level": "view", "label": "Lens", "value": _as_text(model.get("workbench_lens")) or "interpreted", "state": "active"},
+            {"level": "view", "label": "Source", "value": _as_text(model.get("source_visibility")) or "show", "state": "active"},
+            {"level": "view", "label": "Overlay", "value": _as_text(model.get("overlay_visibility")) or "show", "state": "active"},
+        ]
+    )
+    control_panel["context_conditions"] = panel_context
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,

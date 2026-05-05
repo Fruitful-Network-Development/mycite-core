@@ -50,6 +50,27 @@ CREATE TABLE IF NOT EXISTS datum_document_semantics (
     PRIMARY KEY (tenant_id, document_id)
 );
 
+CREATE TABLE IF NOT EXISTS documents (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    tenant_id       TEXT    NOT NULL,
+    document_id     TEXT    NOT NULL UNIQUE,
+    prefix          TEXT    NOT NULL CHECK (prefix IN ('lv','stl','cptr')),
+    msn_id          TEXT    NOT NULL,
+    sandbox         TEXT,
+    name            TEXT    NOT NULL,
+    version_hash    TEXT    NOT NULL,
+    is_anchor       INTEGER NOT NULL DEFAULT 0,
+    origin          TEXT    NOT NULL DEFAULT 'local' CHECK (origin IN ('local','foreign')),
+    legacy_alias    TEXT,
+    created_at      INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_legacy
+ON documents (tenant_id, legacy_alias);
+
+CREATE INDEX IF NOT EXISTS idx_documents_tenant_prefix_sandbox
+ON documents (tenant_id, prefix, sandbox);
+
 CREATE TABLE IF NOT EXISTS datum_row_semantics (
     tenant_id TEXT NOT NULL,
     document_id TEXT NOT NULL,
