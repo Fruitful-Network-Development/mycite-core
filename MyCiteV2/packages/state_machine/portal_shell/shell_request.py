@@ -51,9 +51,11 @@ from .shell_registry import (
     resolve_portal_surface,
 )
 from .shell import (
+    anchor_file_key_for_sandbox,
     canonicalize_portal_shell_state,
     initial_portal_shell_state,
     reduce_portal_shell_state,
+    sandbox_id_for_surface,
     segment_id_for_level,
 )
 
@@ -298,16 +300,17 @@ def build_portal_shell_state_from_query(
     params = dict(query or {})
     file_token = as_text(params.get("file"))
     verb = _normalize_slug(params.get("verb")) or (VERB_MEDIATE if is_tool_surface(surface_id) else VERB_NAVIGATE)
-    segments: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=portal_scope.scope_id)]
+    sandbox_id = sandbox_id_for_surface(surface_id)
+    segments: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=sandbox_id)]
     if file_token and file_token != SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
         segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=file_token))
     elif not file_token:
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=SYSTEM_ANCHOR_FILE_KEY))
+        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
     datum_id = as_text(params.get("datum"))
     object_id = as_text(params.get("object"))
     if datum_id:
         if len(segments) == 1:
-            segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=SYSTEM_ANCHOR_FILE_KEY))
+            segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
         segments.append(PortalFocusSegment(level=FOCUS_LEVEL_DATUM, id=datum_id))
     if object_id:
         if not datum_id:

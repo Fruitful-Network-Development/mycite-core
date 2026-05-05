@@ -13,6 +13,10 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     attach_region_family_contract,
 )
+from MyCiteV2.instances._shared.runtime.portal_workbench import (
+    WORKBENCH_MODE_GALLERY,
+    build_datum_file_workbench,
+)
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
     SqliteDirectiveContextAdapter,
@@ -51,6 +55,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_shell_request_payload,
     canonical_query_for_shell_state,
     focus_level_for_shell_state,
+    sandbox_id_for_file_key,
     segment_id_for_level,
 )
 from MyCiteV2.packages.modules.shared.scalars import as_text
@@ -376,9 +381,24 @@ def _document_label(document: Any) -> str:
 
 
 def _document_file_key(document: Any) -> str:
-    if getattr(document, "document_id", "") == "system:anthology":
+    if getattr(document, "document_id", "") == "system:anthology" or (
+        bool(getattr(document, "is_anchor", False)) and _document_sandbox_id(document) == "system"
+    ):
         return SYSTEM_ANCHOR_FILE_KEY
     return as_text(getattr(document, "document_id", ""))
+
+
+def _document_sandbox_id(document: Any) -> str:
+    document_id = as_text(getattr(document, "document_id", ""))
+    parsed = sandbox_id_for_file_key(document_id)
+    if parsed:
+        return parsed
+    tool_id = as_text(getattr(document, "tool_id", "")).replace("_", "-")
+    return tool_id or "system"
+
+
+def _system_documents(projection: DatumWorkbenchProjection) -> list[Any]:
+    return [document for document in projection.documents if _document_sandbox_id(document) == "system"]
 
 
 def _document_detail(document: Any) -> str:
@@ -470,7 +490,7 @@ def build_workspace_file_entries(
         },
     ]
     seen_keys = {entry["file_key"] for entry in file_entries}
-    for document in projection.documents:
+    for document in _system_documents(projection):
         file_key = _document_file_key(document)
         if not file_key or file_key in seen_keys:
             continue
@@ -489,14 +509,18 @@ def build_workspace_file_entries(
 
 
 def _selected_document(projection: DatumWorkbenchProjection, *, file_key: str) -> Any | None:
+    system_documents = _system_documents(projection)
     if file_key == SYSTEM_ANCHOR_FILE_KEY:
-        for document in projection.documents:
-            if getattr(document, "document_id", "") == "system:anthology":
+        for document in system_documents:
+            if _document_file_key(document) == SYSTEM_ANCHOR_FILE_KEY:
                 return document
-    for document in projection.documents:
+    for document in system_documents:
         if _document_file_key(document) == file_key:
             return document
-    return projection.selected_document
+    selected = projection.selected_document
+    if selected is not None and _document_sandbox_id(selected) == "system":
+        return selected
+    return None
 
 
 def _row_label(row: Any) -> str:
@@ -1542,6 +1566,7 @@ def build_system_workspace_bundle(
         authority_db_file=authority_db_file,
         authority_mode=authority_mode,
     )
+    system_documents = _system_documents(projection)
     file_entries = build_workspace_file_entries(
         projection=projection,
         shell_state=shell_state,
@@ -1550,6 +1575,7 @@ def build_system_workspace_bundle(
     active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
     selected_datum_id = segment_id_for_level(shell_state, level=FOCUS_LEVEL_DATUM)
     selected_object_id = segment_id_for_level(shell_state, level=FOCUS_LEVEL_OBJECT)
+    anchor_document = _selected_document(projection, file_key=SYSTEM_ANCHOR_FILE_KEY)
     active_document = None if active_file_key in {"", SYSTEM_ACTIVITY_FILE_KEY, SYSTEM_PROFILE_BASICS_FILE_KEY} else _selected_document(
         projection,
         file_key=active_file_key,
@@ -1767,17 +1793,21 @@ def build_system_workspace_bundle(
     )
     if directive_context is not None:
         inspector["sections"].append(_directive_context_section(directive_context))
-    workbench = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "system_workspace",
-        "title": "System",
-        "subtitle": "Datum-file workbench for the system sandbox.",
-        "visible": True,
-        "surface_payload": surface_payload,
-        },
-        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    explicit_workbench_mode = WORKBENCH_MODE_GALLERY if not active_file_key else None
+    workbench = build_datum_file_workbench(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
         surface_id=SYSTEM_ROOT_SURFACE_ID,
+        sandbox_id="system",
+        sandbox_label="SYSTEM",
+        anchor_document=anchor_document,
+        selected_document=active_document,
+        sandbox_documents=system_documents,
+        explicit_mode=explicit_workbench_mode,
+        title="System Datum-File Workbench",
+        subtitle="SYSTEM owns the core datum-file workbench for the system sandbox.",
+        visible=True,
+        extra_payload={"surface_payload": surface_payload},
     )
     return {
         "page_title": "System",

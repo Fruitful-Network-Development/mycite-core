@@ -1027,6 +1027,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/mutations/<action>")
     def portal_mutation_action(action: str) -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+            run_datum_workbench_mutation_action,
+        )
         from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm_action
         from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 
@@ -1062,9 +1065,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                         audit_storage_file=host_config.portal_audit_storage_file,
                     )
                 )
+            if target_authority in {"datum_workbench", "datum_document"}:
+                result = run_datum_workbench_mutation_action(
+                    action,
+                    payload,
+                    authority_db_file=host_config.authority_db_file,
+                    portal_instance_id=host_config.portal_instance_id,
+                )
+                return jsonify(result), int(result.get("status_code") or (200 if result.get("ok") else 400))
             return _error_response(
                 "unsupported_mutation_target",
-                "Mutation target_authority must be cts_gis or aws_csm.",
+                "Mutation target_authority must be cts_gis, aws_csm, or datum_workbench.",
             )
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))

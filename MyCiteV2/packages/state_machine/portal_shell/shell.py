@@ -58,6 +58,7 @@ WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
 SYSTEM_ANCHOR_FILE_KEY = "anthology"
+TOOL_ANCHOR_FILE_KEY = "anchor"
 SYSTEM_ACTIVITY_FILE_KEY = "activity"
 SYSTEM_PROFILE_BASICS_FILE_KEY = "profile_basics"
 SYSTEM_SANDBOX_QUERY_FILE_TOKEN = "sandbox"
@@ -908,10 +909,111 @@ def sandbox_id_for_surface(surface_id: object) -> str:
     return "system"
 
 
-def default_focus_path(*, scope_id: str, include_anchor_file: bool) -> tuple[PortalFocusSegment, ...]:
-    segments = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=scope_id or PORTAL_SCOPE_DEFAULT_ID)]
+def anchor_file_key_for_sandbox(sandbox_id: object) -> str:
+    sandbox_token = _as_text(sandbox_id) or "system"
+    return SYSTEM_ANCHOR_FILE_KEY if sandbox_token == "system" else TOOL_ANCHOR_FILE_KEY
+
+
+def sandbox_id_for_file_key(file_key: object) -> str:
+    token = _as_text(file_key)
+    if not token or token in {
+        SYSTEM_ANCHOR_FILE_KEY,
+        SYSTEM_ACTIVITY_FILE_KEY,
+        SYSTEM_PROFILE_BASICS_FILE_KEY,
+    }:
+        return "system"
+    if token == TOOL_ANCHOR_FILE_KEY:
+        return ""
+    if token.startswith("lv."):
+        parts = token.split(".")
+        return parts[2] if len(parts) >= 4 else ""
+    if token.startswith("system:"):
+        return "system"
+    if token.startswith("sandbox:"):
+        rest = token[len("sandbox:"):]
+        sandbox_token = rest.split(":", 1)[0]
+        return sandbox_token.replace("_", "-")
+    return ""
+
+
+def _normalize_active_sandbox_id(
+    *,
+    active_surface_id: str,
+    portal_scope: PortalScope,
+    requested_sandbox_id: object = "",
+) -> str:
+    requested = _as_text(requested_sandbox_id)
+    surface_sandbox = sandbox_id_for_surface(active_surface_id)
+    if not requested or requested == portal_scope.scope_id:
+        return surface_sandbox
+    if is_tool_surface(active_surface_id) and requested != surface_sandbox:
+        return surface_sandbox
+    if active_surface_id == SYSTEM_ROOT_SURFACE_ID and requested != "system":
+        return "system"
+    return requested
+
+
+def _file_key_allowed_for_sandbox(file_key: object, *, sandbox_id: str) -> bool:
+    token = _as_text(file_key)
+    if not token:
+        return False
+    if token == SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
+        return True
+    if token == anchor_file_key_for_sandbox(sandbox_id):
+        return True
+    parsed_sandbox = sandbox_id_for_file_key(token)
+    if parsed_sandbox:
+        return parsed_sandbox == sandbox_id
+    return sandbox_id == "system"
+
+
+def _normalize_file_key_for_sandbox(file_key: object, *, sandbox_id: str) -> str:
+    token = _as_text(file_key)
+    if not token:
+        return anchor_file_key_for_sandbox(sandbox_id)
+    if token == SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
+        return SYSTEM_SANDBOX_QUERY_FILE_TOKEN
+    if _file_key_allowed_for_sandbox(token, sandbox_id=sandbox_id):
+        return token
+    return anchor_file_key_for_sandbox(sandbox_id)
+
+
+def _clamp_focus_path_to_sandbox(
+    focus_path: tuple[PortalFocusSegment, ...],
+    *,
+    active_surface_id: str,
+    portal_scope: PortalScope,
+) -> tuple[PortalFocusSegment, ...]:
+    requested_sandbox = focus_path[0].id if focus_path else ""
+    sandbox_id = _normalize_active_sandbox_id(
+        active_surface_id=active_surface_id,
+        portal_scope=portal_scope,
+        requested_sandbox_id=requested_sandbox,
+    )
+    if not focus_path:
+        return default_focus_path(sandbox_id=sandbox_id, include_anchor_file=False)
+    clamped: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=sandbox_id)]
+    if len(focus_path) == 1:
+        return tuple(clamped)
+    file_key = _normalize_file_key_for_sandbox(focus_path[1].id, sandbox_id=sandbox_id)
+    if file_key == SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
+        return tuple(clamped)
+    clamped.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=file_key))
+    for segment in focus_path[2:]:
+        clamped.append(segment)
+    return tuple(clamped)
+
+
+def default_focus_path(
+    *,
+    scope_id: str = "",
+    sandbox_id: str = "",
+    include_anchor_file: bool,
+) -> tuple[PortalFocusSegment, ...]:
+    active_sandbox_id = _as_text(sandbox_id) or _as_text(scope_id) or "system"
+    segments = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=active_sandbox_id)]
     if include_anchor_file:
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=SYSTEM_ANCHOR_FILE_KEY))
+        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(active_sandbox_id)))
     return tuple(segments)
 
 
@@ -921,8 +1023,9 @@ def initial_portal_shell_state(
     portal_scope: PortalScope | dict[str, Any],
 ) -> PortalShellState:
     normalized_scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
+    sandbox_id = sandbox_id_for_surface(surface_id)
     focus_path = default_focus_path(
-        scope_id=normalized_scope.scope_id,
+        sandbox_id=sandbox_id,
         include_anchor_file=requires_shell_state_machine(surface_id),
     )
     base_state = PortalShellState(
@@ -1042,9 +1145,18 @@ def canonicalize_portal_shell_state(
         portal_scope=portal_scope,
         fallback_surface_id=active_surface_id,
     )
-    focus_path = _normalize_focus_path(state.focus_path, scope_id=portal_scope.scope_id)
+    surface_sandbox_id = sandbox_id_for_surface(active_surface_id)
+    focus_path = _normalize_focus_path(state.focus_path, scope_id=surface_sandbox_id)
+    focus_path = _clamp_focus_path_to_sandbox(
+        focus_path,
+        active_surface_id=active_surface_id,
+        portal_scope=portal_scope,
+    )
     if seed_anchor_file and len(focus_path) == 1:
-        focus_path = default_focus_path(scope_id=portal_scope.scope_id, include_anchor_file=True)
+        focus_path = default_focus_path(
+            sandbox_id=focus_path[0].id,
+            include_anchor_file=True,
+        )
     focus_subject = _subject_from_segment(focus_path[-1])
     mediation_subject = state.mediation_subject if _focus_path_contains_subject(focus_path, state.mediation_subject) else None
     verb = state.verb
@@ -1125,36 +1237,63 @@ def reduce_portal_shell_state(
         )
 
     if normalized_transition.kind == TRANSITION_FOCUS_SANDBOX:
-        next_sandbox_id = _as_text(normalized_transition.sandbox_id) or normalized_scope.scope_id
-        anchor_file_key = _as_text(normalized_transition.file_key) or SYSTEM_ANCHOR_FILE_KEY
+        next_sandbox_id = _normalize_active_sandbox_id(
+            active_surface_id=active_surface_id,
+            portal_scope=normalized_scope,
+            requested_sandbox_id=normalized_transition.sandbox_id,
+        )
+        anchor_file_key = _normalize_file_key_for_sandbox(
+            normalized_transition.file_key or anchor_file_key_for_sandbox(next_sandbox_id),
+            sandbox_id=next_sandbox_id,
+        )
         focus_path = [
             PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=next_sandbox_id),
             PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key),
         ]
     elif normalized_transition.kind == TRANSITION_FOCUS_FILE:
+        current_sandbox_id = _normalize_active_sandbox_id(
+            active_surface_id=active_surface_id,
+            portal_scope=normalized_scope,
+            requested_sandbox_id=segment_id_for_level(state, level=FOCUS_LEVEL_SANDBOX),
+        )
         next_file_key = _as_text(normalized_transition.file_key)
         if next_file_key == SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
-            focus_path = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=normalized_scope.scope_id)]
+            focus_path = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=current_sandbox_id)]
         else:
-            if not next_file_key:
-                next_file_key = SYSTEM_ANCHOR_FILE_KEY
+            next_file_key = _normalize_file_key_for_sandbox(next_file_key, sandbox_id=current_sandbox_id)
             focus_path = [
-                PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=normalized_scope.scope_id),
+                PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=current_sandbox_id),
                 PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=next_file_key),
             ]
     elif normalized_transition.kind == TRANSITION_FOCUS_DATUM:
-        file_key = normalized_transition.file_key or segment_id_for_level(state, level=FOCUS_LEVEL_FILE) or SYSTEM_ANCHOR_FILE_KEY
+        current_sandbox_id = _normalize_active_sandbox_id(
+            active_surface_id=active_surface_id,
+            portal_scope=normalized_scope,
+            requested_sandbox_id=segment_id_for_level(state, level=FOCUS_LEVEL_SANDBOX),
+        )
+        file_key = _normalize_file_key_for_sandbox(
+            normalized_transition.file_key or segment_id_for_level(state, level=FOCUS_LEVEL_FILE),
+            sandbox_id=current_sandbox_id,
+        )
         focus_path = [
-            PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=normalized_scope.scope_id),
+            PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=current_sandbox_id),
             PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=file_key),
         ]
         if normalized_transition.datum_id:
             focus_path.append(PortalFocusSegment(level=FOCUS_LEVEL_DATUM, id=normalized_transition.datum_id))
     elif normalized_transition.kind == TRANSITION_FOCUS_OBJECT:
-        file_key = normalized_transition.file_key or segment_id_for_level(state, level=FOCUS_LEVEL_FILE) or SYSTEM_ANCHOR_FILE_KEY
+        current_sandbox_id = _normalize_active_sandbox_id(
+            active_surface_id=active_surface_id,
+            portal_scope=normalized_scope,
+            requested_sandbox_id=segment_id_for_level(state, level=FOCUS_LEVEL_SANDBOX),
+        )
+        file_key = _normalize_file_key_for_sandbox(
+            normalized_transition.file_key or segment_id_for_level(state, level=FOCUS_LEVEL_FILE),
+            sandbox_id=current_sandbox_id,
+        )
         datum_id = normalized_transition.datum_id or segment_id_for_level(state, level=FOCUS_LEVEL_DATUM)
         focus_path = [
-            PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=normalized_scope.scope_id),
+            PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=current_sandbox_id),
             PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=file_key),
         ]
         if datum_id:
@@ -1453,16 +1592,22 @@ def build_portal_shell_state_from_query(
     params = dict(query or {})
     file_token = _as_text(params.get("file"))
     verb = _normalize_slug(params.get("verb")) or (VERB_MEDIATE if is_tool_surface(surface_id) else VERB_NAVIGATE)
-    segments: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=portal_scope.scope_id)]
+    sandbox_id = sandbox_id_for_surface(surface_id)
+    segments: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=sandbox_id)]
     if file_token and file_token != SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=file_token))
+        segments.append(
+            PortalFocusSegment(
+                level=FOCUS_LEVEL_FILE,
+                id=_normalize_file_key_for_sandbox(file_token, sandbox_id=sandbox_id),
+            )
+        )
     elif not file_token:
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=SYSTEM_ANCHOR_FILE_KEY))
+        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
     datum_id = _as_text(params.get("datum"))
     object_id = _as_text(params.get("object"))
     if datum_id:
         if len(segments) == 1:
-            segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=SYSTEM_ANCHOR_FILE_KEY))
+            segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
         segments.append(PortalFocusSegment(level=FOCUS_LEVEL_DATUM, id=datum_id))
     if object_id:
         if not datum_id:
@@ -1642,7 +1787,7 @@ def build_portal_activity_dispatch_bodies(
                 "kind": TRANSITION_FOCUS_SANDBOX,
                 "surface_id": entry.surface_id,
                 "sandbox_id": sandbox_id,
-                "file_key": SYSTEM_ANCHOR_FILE_KEY,
+                "file_key": anchor_file_key_for_sandbox(sandbox_id),
             }
         else:
             transition = {"kind": TRANSITION_ENTER_SURFACE, "surface_id": entry.surface_id}
@@ -1909,6 +2054,7 @@ __all__ = [
     "SYSTEM_ROOT_SURFACE_ID",
     "SYSTEM_SURFACE_IDS",
     "SYSTEM_SANDBOX_QUERY_FILE_TOKEN",
+    "TOOL_ANCHOR_FILE_KEY",
     "TOOL_KIND_GENERAL",
     "TOOL_KIND_HOST_ALIAS",
     "TOOL_KIND_SERVICE",
@@ -1920,6 +2066,8 @@ __all__ = [
     "TRANSITION_FOCUS_FILE",
     "TRANSITION_FOCUS_OBJECT",
     "TRANSITION_FOCUS_SANDBOX",
+    "anchor_file_key_for_sandbox",
+    "sandbox_id_for_file_key",
     "sandbox_id_for_surface",
     "TRANSITION_OPEN_INTERFACE_PANEL",
     "TRANSITION_SET_VERB",

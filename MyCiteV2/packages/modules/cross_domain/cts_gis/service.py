@@ -83,7 +83,10 @@ _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
 
 
 def _is_cts_gis_document_id(value: object) -> bool:
-    return _as_text(value).startswith(_CTS_GIS_CANONICAL_DOCUMENT_PREFIX)
+    token = _as_text(value)
+    return token.startswith(_CTS_GIS_CANONICAL_DOCUMENT_PREFIX) or (
+        token.startswith("lv.") and ".cts-gis." in token
+    )
 
 
 def _matches_cts_gis_document_id(candidate: object, requested: object) -> bool:
@@ -92,6 +95,34 @@ def _matches_cts_gis_document_id(candidate: object, requested: object) -> bool:
     if not candidate_token or not requested_token:
         return False
     return candidate_token == requested_token
+
+
+def _document_legacy_alias(document: DatumRecognitionDocument) -> str:
+    metadata = getattr(document, "document_metadata", None)
+    if isinstance(metadata, dict):
+        return _as_text(metadata.get("legacy_alias"))
+    return ""
+
+
+def _document_matches_cts_gis_id(document: DatumRecognitionDocument, requested: object) -> bool:
+    requested_token = _as_text(requested)
+    if not requested_token:
+        return False
+    return (
+        _matches_cts_gis_document_id(document.document_id, requested_token)
+        or _matches_cts_gis_document_id(_document_legacy_alias(document), requested_token)
+    )
+
+
+def _is_cts_gis_document(document: DatumRecognitionDocument) -> bool:
+    return (
+        document.source_kind == "sandbox_source"
+        and (
+            _as_lower(document.tool_id) == _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
+            or _is_cts_gis_document_id(document.document_id)
+            or _is_cts_gis_document_id(_document_legacy_alias(document))
+        )
+    )
 
 
 def _matches_attention_profile_document(document: DatumRecognitionDocument, attention_node_id: object) -> bool:
@@ -729,14 +760,7 @@ class CtsGisReadOnlyService:
         normalized_raw_underlay = _normalize_raw_underlay_visible(raw_underlay_visible)
         workbench = DatumWorkbenchService(self._datum_store).read_workbench(_as_text(tenant_id) or "fnd")
 
-        cts_gis_documents = [
-            document
-            for document in workbench.documents
-            if (
-                document.source_kind == "sandbox_source"
-                and _as_lower(document.tool_id) == _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID
-            )
-        ]
+        cts_gis_documents = [document for document in workbench.documents if _is_cts_gis_document(document)]
         requested_document_id_raw = _as_text(attention_document_id) or _as_text(selected_document_id)
         requested_document_id = requested_document_id_raw
         requested_row_address = _as_text(selected_row_address)
@@ -752,7 +776,7 @@ class CtsGisReadOnlyService:
         target_document = None
         if requested_document_id and _is_cts_gis_document_id(requested_document_id):
             for document in cts_gis_documents:
-                if _matches_cts_gis_document_id(document.document_id, requested_document_id):
+                if _document_matches_cts_gis_id(document, requested_document_id):
                     target_document = document
                     break
         if target_document is None and requested_attention_node_id:
@@ -853,6 +877,7 @@ class CtsGisReadOnlyService:
             "overlay_mode": normalized_overlay_mode,
             "raw_underlay_visible": normalized_raw_underlay,
             "documents": documents,
+            "workbench_documents": cts_gis_documents,
             "navigation_bundle": navigation_bundle,
             "document_catalog": document_catalog,
             "fallback_document_summary": fallback_document_summary,
@@ -1865,4 +1890,5 @@ class CtsGisReadOnlyService:
             selected_feature_id=normalized_request["selected_feature_id"],
         )
         finalized_surface["authority_catalog_summary"] = dict(projection_bundle.get("authority_catalog_summary") or {})
+        finalized_surface["workbench_documents"] = list(projection_bundle.get("workbench_documents") or [])
         return finalized_surface

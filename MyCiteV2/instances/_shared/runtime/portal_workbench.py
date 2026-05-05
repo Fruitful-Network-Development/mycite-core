@@ -21,6 +21,7 @@ not live in the workbench; it lives in the Interface Panel.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
@@ -51,6 +52,58 @@ def _as_list(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
 
 
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {as_text(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return as_text(value)
+
+
+def _accessor_for(value: Any):
+    if isinstance(value, dict):
+        return value.get
+    return lambda key, default=None: getattr(value, key, default)
+
+
+def _document_object(document: Any | None) -> Any | None:
+    if isinstance(document, dict) and document.get("document") is not None:
+        return document.get("document")
+    return document
+
+
+def _document_rows(document: Any | None) -> list[Any]:
+    if document is None:
+        return []
+    sources: list[Any] = []
+    if isinstance(document, dict):
+        sources.extend(
+            [
+                document.get("rows"),
+                document.get("datum_rows"),
+                (_as_dict(document.get("document")).get("rows") if isinstance(document.get("document"), dict) else None),
+            ]
+        )
+        nested = document.get("document")
+        if nested is not None and not isinstance(nested, dict):
+            sources.append(getattr(nested, "rows", None))
+            sources.append(getattr(nested, "datum_rows", None))
+    else:
+        sources.extend([getattr(document, "rows", None), getattr(document, "datum_rows", None)])
+    for rows in sources:
+        if rows is None:
+            continue
+        if isinstance(rows, list):
+            return rows
+        try:
+            return list(rows)
+        except TypeError:
+            continue
+    return []
+
+
 def _document_summary(document: Any | None) -> dict[str, Any]:
     """Return a normalized summary projection of a datum document.
 
@@ -63,14 +116,32 @@ def _document_summary(document: Any | None) -> dict[str, Any]:
 
     if document is None:
         return {}
-    if isinstance(document, dict):
-        accessor = document.get
-    else:
-        accessor = lambda key, default=None: getattr(document, key, default)
+    if hasattr(document, "to_summary_dict"):
+        summary = getattr(document, "to_summary_dict")()
+        if isinstance(summary, dict):
+            document = summary
+    if isinstance(document, dict) and isinstance(document.get("document_summary"), dict):
+        summary = dict(document.get("document_summary") or {})
+        nested = _document_object(document)
+        nested_rows = _document_rows(nested)
+        if nested_rows and not summary.get("row_count"):
+            summary["row_count"] = len(nested_rows)
+        if not summary.get("is_anchor") and isinstance(nested, object):
+            summary["is_anchor"] = bool(getattr(nested, "is_anchor", False))
+        return {
+            "document_id": as_text(summary.get("document_id")),
+            "document_name": as_text(summary.get("document_name") or summary.get("name")),
+            "relative_path": as_text(summary.get("relative_path") or summary.get("path")),
+            "source_kind": as_text(summary.get("source_kind") or summary.get("kind")),
+            "version_hash": as_text(summary.get("version_hash")),
+            "row_count": int(summary.get("row_count") or 0),
+            "tool_id": as_text(summary.get("tool_id") or summary.get("sandbox") or summary.get("sandbox_id")),
+            "is_anchor": bool(summary.get("is_anchor")),
+            "legacy_alias": as_text(summary.get("legacy_alias")),
+        }
+    accessor = _accessor_for(document)
 
-    rows = accessor("rows") or accessor("datum_rows") or []
-    if not isinstance(rows, list):
-        rows = list(rows)
+    rows = _document_rows(document)
     return {
         "document_id": as_text(accessor("document_id")),
         "document_name": as_text(accessor("document_name") or accessor("name")),
@@ -84,6 +155,190 @@ def _document_summary(document: Any | None) -> dict[str, Any]:
     }
 
 
+def _datum_coordinates(datum_id: object) -> dict[str, int] | None:
+    token = as_text(datum_id)
+    parts = token.split("-")
+    if len(parts) != 3 or any(not part.isdigit() for part in parts):
+        return None
+    return {
+        "layer": int(parts[0]),
+        "value_group": int(parts[1]),
+        "iteration": int(parts[2]),
+    }
+
+
+def _row_value(row: Any, key: str, default: Any = "") -> Any:
+    if isinstance(row, dict):
+        return row.get(key, default)
+    return getattr(row, key, default)
+
+
+def _row_label(row: Any, datum_id: str) -> str:
+    labels = _row_value(row, "labels", ())
+    if labels:
+        try:
+            first = list(labels)[0]
+            if as_text(first):
+                return as_text(first)
+        except TypeError:
+            pass
+    return as_text(_row_value(row, "label")) or datum_id or "Datum"
+
+
+def _row_item(
+    row: Any,
+    *,
+    document_id: str,
+    sandbox_id: str,
+    selected_datum_id: str,
+) -> dict[str, Any]:
+    datum_id = as_text(_row_value(row, "datum_id") or _row_value(row, "datum_address"))
+    primary_value = as_text(
+        _row_value(row, "display_value")
+        or _row_value(row, "primary_value_token")
+        or _row_value(row, "value_token")
+        or _row_value(row, "value")
+    )
+    diagnostics = _row_value(row, "diagnostic_states", ()) or ()
+    try:
+        diagnostics_list = [as_text(item) for item in list(diagnostics) if as_text(item)]
+    except TypeError:
+        diagnostics_list = [as_text(diagnostics)] if as_text(diagnostics) else []
+    item = {
+        "datum_id": datum_id,
+        "datum_address": datum_id,
+        "label": _row_label(row, datum_id),
+        "coordinates": _datum_coordinates(datum_id),
+        "selected": datum_id == selected_datum_id,
+        "display_value": primary_value,
+        "primary_value_token": primary_value,
+        "recognized_family": as_text(_row_value(row, "recognized_family")),
+        "recognized_anchor": as_text(_row_value(row, "recognized_anchor")),
+        "diagnostics": diagnostics_list,
+        "raw": _json_safe(_row_value(row, "raw", row if isinstance(row, dict) else None)),
+        "edit_actions": [
+            {
+                "action": "update_row_raw",
+                "label": "Edit",
+                "target_authority": "datum_workbench",
+                "sandbox_id": sandbox_id,
+                "document_id": document_id,
+                "datum_address": datum_id,
+                "endpoint": "/portal/api/v2/mutations/stage",
+            }
+        ],
+    }
+    return item
+
+
+def _sort_group_token(token: object) -> tuple[int, object]:
+    return (0, token) if isinstance(token, int) else (1, as_text(token))
+
+
+def _layer_groups_for_rows(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[object, object], list[dict[str, Any]]] = {}
+    layer_meta: dict[object, dict[str, Any]] = {}
+    value_group_meta: dict[tuple[object, object], dict[str, Any]] = {}
+    for item in rows:
+        datum_id = as_text(item.get("datum_id"))
+        if not datum_id:
+            continue
+        coordinates = _as_dict(item.get("coordinates"))
+        layer = coordinates.get("layer")
+        value_group = coordinates.get("value_group")
+        layer_key: object = layer if isinstance(layer, int) else "unstructured"
+        value_group_key: object = value_group if isinstance(value_group, int) else "unstructured"
+        grouped.setdefault((layer_key, value_group_key), []).append(item)
+        layer_meta.setdefault(
+            layer_key,
+            {
+                "layer": layer if isinstance(layer, int) else None,
+                "label": f"Layer {layer}" if isinstance(layer, int) else "Unstructured",
+            },
+        )
+        value_group_meta.setdefault(
+            (layer_key, value_group_key),
+            {
+                "value_group": value_group if isinstance(value_group, int) else None,
+                "label": f"Value Group {value_group}" if isinstance(value_group, int) else "Unstructured",
+            },
+        )
+    layer_groups: list[dict[str, Any]] = []
+    for layer_key in sorted({pair[0] for pair in grouped}, key=_sort_group_token):
+        value_groups: list[dict[str, Any]] = []
+        layer_row_count = 0
+        layer_selected = False
+        pairs = sorted([pair for pair in grouped if pair[0] == layer_key], key=lambda pair: _sort_group_token(pair[1]))
+        for pair in pairs:
+            vg_rows = sorted(
+                grouped[pair],
+                key=lambda item: (
+                    (_as_dict(item.get("coordinates")).get("iteration") if isinstance(_as_dict(item.get("coordinates")).get("iteration"), int) else 10**9),
+                    as_text(item.get("datum_id")),
+                ),
+            )
+            selected = any(bool(item.get("selected")) for item in vg_rows)
+            layer_selected = layer_selected or selected
+            layer_row_count += len(vg_rows)
+            value_groups.append(
+                {
+                    "value_group": value_group_meta[pair]["value_group"],
+                    "label": value_group_meta[pair]["label"],
+                    "row_count": len(vg_rows),
+                    "selected": selected,
+                    "rows": vg_rows,
+                }
+            )
+        layer_groups.append(
+            {
+                "layer": layer_meta[layer_key]["layer"],
+                "label": layer_meta[layer_key]["label"],
+                "row_count": layer_row_count,
+                "selected": layer_selected,
+                "value_groups": value_groups,
+            }
+        )
+    return layer_groups
+
+
+def _selected_datum_id(shell_state: PortalShellState | None) -> str:
+    if shell_state is None:
+        return ""
+    state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
+    for segment in state.focus_path:
+        if segment.level == "datum":
+            return segment.id
+    return ""
+
+
+def _layered_table_for_document(
+    document: Any,
+    *,
+    sandbox_id: str,
+    selected_datum_id: str,
+) -> dict[str, Any]:
+    summary = _document_summary(document)
+    document_id = as_text(summary.get("document_id"))
+    row_items = [
+        _row_item(row, document_id=document_id, sandbox_id=sandbox_id, selected_datum_id=selected_datum_id)
+        for row in _document_rows(document)
+    ]
+    return {
+        "document": summary,
+        "rows": row_items,
+        "layer_groups": _layer_groups_for_rows(row_items),
+        "mutation_contract": {
+            "target_authority": "datum_workbench",
+            "sandbox_id": sandbox_id,
+            "document_id": document_id,
+            "stages": ["stage", "validate", "preview", "apply", "discard"],
+            "operations": ["update_row_raw", "insert_datum", "delete_datum", "move_datum"],
+        },
+    }
+
+
 def _gallery_card_for_document(
     document: Any,
     *,
@@ -94,6 +349,10 @@ def _gallery_card_for_document(
     if not summary:
         return {}
     summary["sandbox_id"] = sandbox_id
+    summary["shell_transition"] = {
+        "kind": "focus_file",
+        "file_key": summary.get("document_id") or "",
+    }
     summary["selected"] = bool(
         selected_document_id and summary.get("document_id") == selected_document_id
     )
@@ -189,8 +448,6 @@ def build_datum_file_workbench(
     this builder.
     """
 
-    del portal_scope, shell_state
-
     mode = _resolve_mode(
         anchor_document=anchor_document,
         selected_document=selected_document,
@@ -214,6 +471,7 @@ def build_datum_file_workbench(
         },
         "anchor": anchor_summary or None,
         "selected_document": selected_summary or None,
+        "portal_scope": portal_scope.to_dict() if isinstance(portal_scope, PortalScope) else {},
     }
 
     if mode == WORKBENCH_MODE_GALLERY:
@@ -228,10 +486,11 @@ def build_datum_file_workbench(
     elif mode in (WORKBENCH_MODE_ANCHOR, WORKBENCH_MODE_SELECTED_DOCUMENT):
         focal_document = anchor_document if mode == WORKBENCH_MODE_ANCHOR else selected_document
         if focal_document is not None:
-            payload["layered_datum_table"] = {
-                "document": _document_summary(focal_document),
-                "rows": list(_as_list(getattr(focal_document, "rows", None) or _as_dict(focal_document).get("rows"))),
-            }
+            payload["layered_datum_table"] = _layered_table_for_document(
+                focal_document,
+                sandbox_id=sandbox_id,
+                selected_datum_id=_selected_datum_id(shell_state),
+            )
 
     if isinstance(extra_payload, dict):
         for key, value in extra_payload.items():

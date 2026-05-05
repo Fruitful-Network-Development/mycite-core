@@ -48,6 +48,7 @@ WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 FND_DCM_DEFAULT_SITE = "cuyahogavalleycountrysideconservancy.org"
 
 SYSTEM_ANCHOR_FILE_KEY = "anthology"
+TOOL_ANCHOR_FILE_KEY = "anchor"
 SYSTEM_ACTIVITY_FILE_KEY = "activity"
 SYSTEM_PROFILE_BASICS_FILE_KEY = "profile_basics"
 SYSTEM_SANDBOX_QUERY_FILE_TOKEN = "sandbox"
