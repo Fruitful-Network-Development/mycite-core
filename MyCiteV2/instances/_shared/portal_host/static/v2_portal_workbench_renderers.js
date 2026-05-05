@@ -784,8 +784,8 @@
     var stagePreview = asObject(surfacePayload.stage_preview);
     var actionResult = asObject(surfacePayload.action_result);
     var stagedInsert = asObject(surfacePayload.staged_insert);
-    var proposedRows = asArray(stagePreview.proposed_inserted_rows);
-    var remaps = asArray(stagePreview.remaps);
+    var proposedRows = asList(stagePreview.proposed_inserted_rows);
+    var remaps = asList(stagePreview.remaps);
 
     var html = '<section class="v2-card"><h3>Manipulation Evidence</h3>' +
       '<dl class="v2-surface-dl">' +
@@ -942,10 +942,6 @@
           adapter.resolveReflectiveWorkspaceMode(region, surfacePayload)) ||
         "generic_surface";
       if (!target) return;
-      if (region.visible === false) {
-        target.innerHTML = "";
-        return;
-      }
       if (family === "reflective_workspace" || mode !== "generic_surface") {
         renderReflectiveWorkspaceHost(ctx, target, region, surfacePayload);
         return;

@@ -378,7 +378,7 @@
             dispatchFromNode(node, event);
           }
         });
-      });
+      }
     });
   }
 
