@@ -12,6 +12,16 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_insert as preview_document_insert_mutation,
     preview_document_move as preview_document_move_mutation,
 )
+from MyCiteV2.packages.core.document_naming import is_canonical_document_id
+
+
+class NonCanonicalDocumentIdError(ValueError):
+    """Raised when a write attempts to persist a non-canonical document id.
+
+    Phase E3: new writes must produce canonical ``lv./stl./cptr.`` ids; legacy
+    ``system:`` / ``sandbox:`` ids are still accepted on reads via the
+    ``documents.legacy_alias`` index for one cycle.
+    """
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -63,12 +73,26 @@ class SqliteSystemDatumStoreAdapter(
         db_file: str | Path,
         *,
         clock: Callable[[], int] | None = None,
+        allow_legacy_writes: bool = True,
     ) -> None:
         self._db_file = Path(db_file)
         self._clock = clock or (lambda: int(time.time() * 1000))
+        self._allow_legacy_writes_flag = bool(allow_legacy_writes)
 
     def _connect(self):
         return open_sqlite(self._db_file)
+
+    def _allow_legacy_writes(self) -> bool:
+        """Phase E3 one-cycle compatibility flag for legacy bootstrapping.
+
+        New writes must produce canonical ``lv./stl./cptr.`` ids. This adapter
+        keeps a per-instance ``allow_legacy_writes`` escape hatch that the
+        bootstrapping pipeline (and tests that materialise legacy fixtures)
+        opt into explicitly. The flag will be removed once the catalog
+        upgrade in Phase E4 lands.
+        """
+
+        return self._allow_legacy_writes_flag
 
     def has_authoritative_catalog(self, tenant_id: str) -> bool:
         token = _as_text(tenant_id).lower()
@@ -110,6 +134,17 @@ class SqliteSystemDatumStoreAdapter(
             if isinstance(result, AuthoritativeDatumDocumentCatalogResult)
             else AuthoritativeDatumDocumentCatalogResult.from_dict(result)
         )
+        non_canonical_ids: list[str] = []
+        for document in normalized.documents:
+            doc_id = _as_text(document.document_id)
+            if doc_id and not is_canonical_document_id(doc_id):
+                non_canonical_ids.append(doc_id)
+        if non_canonical_ids and not self._allow_legacy_writes():
+            raise NonCanonicalDocumentIdError(
+                "Refusing to persist non-canonical document ids: "
+                + ", ".join(sorted(set(non_canonical_ids))[:3])
+                + (" …" if len(non_canonical_ids) > 3 else "")
+            )
         updated_at = self._clock()
         with self._connect() as connection:
             connection.execute(
@@ -269,15 +304,71 @@ class SqliteSystemDatumStoreAdapter(
                 "SELECT payload_json FROM authoritative_catalog_snapshots WHERE tenant_id = ?",
                 (normalized_request.tenant_id,),
             ).fetchone()
-        if row is None:
-            return AuthoritativeDatumDocumentCatalogResult(
-                tenant_id=normalized_request.tenant_id,
-                documents=(),
-                source_files={},
-                readiness_status={"authoritative_catalog": "missing"},
-                warnings=("sql_authoritative_catalog_missing",),
-            )
-        return AuthoritativeDatumDocumentCatalogResult.from_dict(loads_json(row["payload_json"]))
+            if row is None:
+                return AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id=normalized_request.tenant_id,
+                    documents=(),
+                    source_files={},
+                    readiness_status={"authoritative_catalog": "missing"},
+                    warnings=("sql_authoritative_catalog_missing",),
+                )
+            payload = loads_json(row["payload_json"])
+            self._project_canonical_document_ids(connection, normalized_request.tenant_id, payload)
+        return AuthoritativeDatumDocumentCatalogResult.from_dict(payload)
+
+    def _project_canonical_document_ids(
+        self,
+        connection: Any,
+        tenant_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Phase E4: project canonical document ids over a catalog payload.
+
+        Looks up each ``document_id`` in the ``documents`` table; if the row was
+        seeded by the migration script (``legacy_alias`` matching the legacy
+        identifier or ``document_id`` itself canonical), the catalog payload is
+        rewritten in-place to:
+
+        * carry the canonical identifier on ``documents[].document_id``
+        * retain the original legacy identifier under
+          ``documents[].document_metadata.legacy_alias`` for one-cycle
+          compatibility
+        """
+
+        documents = payload.get("documents")
+        if not isinstance(documents, list) or not documents:
+            return
+        cursor = connection.execute(
+            "SELECT document_id, legacy_alias FROM documents WHERE tenant_id = ?",
+            (tenant_id,),
+        )
+        canonical_by_legacy: dict[str, str] = {}
+        canonical_set: set[str] = set()
+        for row in cursor.fetchall():
+            doc_id = str(row["document_id"]).strip()
+            alias = (row["legacy_alias"] or "").strip()
+            if not doc_id:
+                continue
+            canonical_set.add(doc_id)
+            if alias:
+                canonical_by_legacy[alias] = doc_id
+        if not canonical_by_legacy and not canonical_set:
+            return
+        for entry in documents:
+            if not isinstance(entry, dict):
+                continue
+            stored_id = str(entry.get("document_id") or "").strip()
+            if not stored_id:
+                continue
+            metadata = entry.get("document_metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+            if stored_id in canonical_by_legacy:
+                metadata["legacy_alias"] = stored_id
+                entry["document_id"] = canonical_by_legacy[stored_id]
+                entry["document_metadata"] = metadata
+            elif stored_id in canonical_set and "legacy_alias" not in metadata:
+                entry["document_metadata"] = metadata
 
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
         normalized_request = (
@@ -288,15 +379,59 @@ class SqliteSystemDatumStoreAdapter(
                 "SELECT payload_json FROM system_workbench_snapshots WHERE tenant_id = ?",
                 (normalized_request.tenant_id,),
             ).fetchone()
-        if row is None:
-            return SystemDatumWorkbenchResult(
-                tenant_id=normalized_request.tenant_id,
-                rows=(),
-                source_files={},
-                materialization_status={"canonical_source": "missing", "authoritative_catalog": "missing"},
-                warnings=("sql_system_workbench_missing",),
-            )
-        return _workbench_from_payload(loads_json(row["payload_json"]))
+            if row is None:
+                return SystemDatumWorkbenchResult(
+                    tenant_id=normalized_request.tenant_id,
+                    rows=(),
+                    source_files={},
+                    materialization_status={"canonical_source": "missing", "authoritative_catalog": "missing"},
+                    warnings=("sql_system_workbench_missing",),
+                )
+            payload = loads_json(row["payload_json"])
+            self._project_canonical_source_documents(connection, normalized_request.tenant_id, payload)
+        return _workbench_from_payload(payload)
+
+    def _project_canonical_source_documents(
+        self,
+        connection: Any,
+        tenant_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        """Phase E4: extend ``source_files`` with canonical-keyed entries.
+
+        ``source_files`` is preserved one cycle for compatibility. For each
+        legacy id that has a canonical mapping in the ``documents`` table, an
+        additional entry is added under the canonical identifier (carrying the
+        legacy id under ``legacy_alias`` for downstream consumers).
+        """
+
+        source_files = payload.get("source_files")
+        if not isinstance(source_files, dict) or not source_files:
+            return
+        cursor = connection.execute(
+            "SELECT document_id, legacy_alias FROM documents WHERE tenant_id = ?",
+            (tenant_id,),
+        )
+        canonical_by_legacy: dict[str, str] = {}
+        for row in cursor.fetchall():
+            doc_id = str(row["document_id"]).strip()
+            alias = (row["legacy_alias"] or "").strip()
+            if doc_id and alias:
+                canonical_by_legacy[alias] = doc_id
+        if not canonical_by_legacy:
+            return
+        augmented = dict(source_files)
+        for legacy_id, file_metadata in source_files.items():
+            canonical_id = canonical_by_legacy.get(str(legacy_id).strip())
+            if not canonical_id or canonical_id in augmented:
+                continue
+            if isinstance(file_metadata, dict):
+                projected = dict(file_metadata)
+                projected.setdefault("legacy_alias", str(legacy_id))
+            else:
+                projected = file_metadata
+            augmented[canonical_id] = projected
+        payload["source_files"] = augmented
 
     def read_publication_tenant_summary(
         self,
@@ -338,8 +473,24 @@ class SqliteSystemDatumStoreAdapter(
                 """,
                 (normalized_request.tenant_id, document_token),
             ).fetchone()
-        if row is None:
-            return None
+            if row is None:
+                # Phase E3 one-cycle compatibility: accept legacy_alias too.
+                alias_row = connection.execute(
+                    """
+                    SELECT dds.policy, dds.version_hash, dds.canonical_payload_json
+                    FROM documents AS d
+                    JOIN datum_document_semantics AS dds
+                      ON dds.tenant_id = d.tenant_id
+                     AND (dds.document_id = d.document_id OR dds.document_id = d.legacy_alias)
+                    WHERE d.tenant_id = ?
+                      AND (d.document_id = ? OR d.legacy_alias = ?)
+                    LIMIT 1
+                    """,
+                    (normalized_request.tenant_id, document_token, document_token),
+                ).fetchone()
+                if alias_row is None:
+                    return None
+                row = alias_row
         return {
             "policy": row["policy"],
             "version_hash": row["version_hash"],

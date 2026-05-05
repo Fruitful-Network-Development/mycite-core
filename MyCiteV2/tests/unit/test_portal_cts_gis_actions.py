@@ -251,7 +251,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(preview["surface_payload"]["action_result"]["status"], "accepted")
             self.assertEqual(
-                preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"]["proposed_inserted_rows"][0]["datum_address"],
+                preview["surface_payload"]["staged_insert"]["last_preview"]["proposed_inserted_rows"][0]["datum_address"],
                 "4-2-4",
             )
 
@@ -301,7 +301,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             )
             self.assertEqual(preview["surface_payload"]["action_result"]["status"], "accepted")
             self.assertEqual(
-                preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"]["proposed_inserted_rows"][0]["datum_address"],
+                preview["surface_payload"]["staged_insert"]["last_preview"]["proposed_inserted_rows"][0]["datum_address"],
                 "4-2-3",
             )
 
@@ -350,7 +350,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 portal_domain="fruitfulnetworkdevelopment.com",
             )
             self.assertEqual(preview["surface_payload"]["action_result"]["status"], "accepted")
-            inserted = preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"][
+            inserted = preview["surface_payload"]["staged_insert"]["last_preview"][
                 "proposed_inserted_rows"
             ][0]
             self.assertEqual(inserted["datum_address"], "4-2-3")
@@ -401,7 +401,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 portal_domain="fruitfulnetworkdevelopment.com",
             )
             self.assertEqual(preview["surface_payload"]["action_result"]["status"], "accepted")
-            inserted = preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"][
+            inserted = preview["surface_payload"]["staged_insert"]["last_preview"][
                 "proposed_inserted_rows"
             ][0]
             self.assertEqual(inserted["datum_address"], "4-2-4")
@@ -452,7 +452,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             )
             self.assertTrue(preview["shell_composition"]["regions"]["workbench"]["visible"])
             self.assertEqual(
-                preview["shell_composition"]["regions"]["workbench"]["surface_payload"]["stage_preview"]["proposed_inserted_rows"][0]["datum_address"],
+                preview["surface_payload"]["staged_insert"]["last_preview"]["proposed_inserted_rows"][0]["datum_address"],
                 "4-2-2",
             )
             self.assertEqual(

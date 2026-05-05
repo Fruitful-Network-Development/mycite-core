@@ -8,7 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_unified_control_panel
+from MyCiteV2.instances._shared.runtime.portal_workbench import build_datum_file_workbench
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA,
     PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
@@ -218,37 +219,33 @@ def build_portal_paypal_csm_surface_bundle(
         },
     }
 
-    control_panel = build_tool_control_panel(
+    control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
-        data_dir=None,
-        public_dir=None,
-        private_dir=private_dir,
         surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
-        active_document=None,
-        selected_datum=None,
-        selected_object=None,
-        tool_rows=[],
-        title="PayPal-CSM",
-    )
-
-    workbench = attach_region_family_contract(
-        {
-            "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-            "kind": "surface_payload",
-            "title": "PayPal-CSM Workspace",
-            "subtitle": "Domain profile and order status visible when credentials are ready.",
-            "visible": domain_profile_present and credentials_ready,
-            "surface_payload": {
-                "kind": "surface_payload",
-                "surface_id": PAYPAL_CSM_TOOL_SURFACE_ID,
-                "domain_profile": profile_summary,
-                "tenant_summary": tenant_summary,
-                "credentials_ready": credentials_ready,
+        surface_label="PayPal-CSM",
+        navigation_groups=[],
+        actions=[],
+        tool_extensions={
+            "paypal_csm_status": {
+                "domain": _as_text(profile_summary.get("domain")),
+                "credentials_ready": bool(credentials_ready),
+                "fnd_environment": _as_text(fnd_config.get("environment")),
             },
         },
-        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    )
+
+    workbench = build_datum_file_workbench(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
         surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
+        sandbox_id="paypal-csm",
+        sandbox_label="PayPal-CSM",
+        anchor_document=None,
+        sandbox_documents=[],
+        title="PayPal-CSM Datum Workbench",
+        subtitle="Layered datum table for the active PayPal-CSM sandbox file.",
+        visible=bool(domain_profile_present and credentials_ready),
     )
 
     inspector_sections = [
@@ -292,6 +289,14 @@ def build_portal_paypal_csm_surface_bundle(
             "summary": "PayPal order mediation and donation profile.",
             "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
             "sections": inspector_sections,
+            "surface_payload": {
+                "kind": "paypal_csm_body",
+                "title": "PayPal-CSM Body",
+                "domain_profile": profile_summary,
+                "tenant_summary": tenant_summary,
+                "credentials_ready": bool(credentials_ready),
+                "fnd_environment": _as_text(fnd_config.get("environment")),
+            },
         },
         family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
         surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,

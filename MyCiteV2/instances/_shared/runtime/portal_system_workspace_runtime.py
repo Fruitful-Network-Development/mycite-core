@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-import json
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -28,12 +27,9 @@ from MyCiteV2.packages.modules.domains.publication import (
 )
 from MyCiteV2.packages.ports.directive_context import DirectiveContextRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_DATUM,
     FOCUS_LEVEL_FILE,
     FOCUS_LEVEL_OBJECT,
-    FND_EBI_TOOL_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -396,6 +392,41 @@ def _document_detail(document: Any) -> str:
     return " · ".join(detail_bits)
 
 
+def _sandbox_segment_for_entry(entry: dict[str, Any]) -> str:
+    """Derive the canonical sandbox segment for a file entry.
+
+    Recognises:
+    * built-in virtual file keys (``activity``, ``profile_basics``) and the
+      anchor key → ``system``
+    * canonical document ids ``lv.<msn>.<sandbox>.<name>.<hash>`` →
+      ``<sandbox>``
+    * legacy document ids ``system:<name>`` → ``system``
+    * legacy document ids ``sandbox:<tool>:<file>.json`` → ``<tool>``
+    * everything else falls back to ``system`` so the entry still has a
+      home in the navigation groups.
+    """
+
+    file_key = as_text(entry.get("file_key"))
+    if not file_key or file_key in {
+        SYSTEM_ANCHOR_FILE_KEY,
+        SYSTEM_ACTIVITY_FILE_KEY,
+        SYSTEM_PROFILE_BASICS_FILE_KEY,
+    }:
+        return "system"
+    if file_key.startswith("lv."):
+        parts = file_key.split(".")
+        if len(parts) >= 4:
+            return parts[2]
+        return "system"
+    if file_key.startswith("system:"):
+        return "system"
+    if file_key.startswith("sandbox:"):
+        rest = file_key[len("sandbox:"):]
+        sandbox_token = rest.split(":", 1)[0]
+        return sandbox_token.replace("_", "-")
+    return "system"
+
+
 def build_workspace_file_entries(
     *,
     projection: DatumWorkbenchProjection,
@@ -403,6 +434,15 @@ def build_workspace_file_entries(
     portal_scope: PortalScope,
 ) -> list[dict[str, Any]]:
     active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
+
+    def _shell_request_for(file_key: str) -> dict[str, Any]:
+        return _entry_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            transition={"kind": TRANSITION_FOCUS_FILE, "file_key": file_key},
+            requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
+        )
+
     file_entries = [
         {
             "file_key": SYSTEM_ANCHOR_FILE_KEY,
@@ -410,6 +450,7 @@ def build_workspace_file_entries(
             "kind": "document",
             "detail": "canonical anchor file",
             "active": active_file_key == SYSTEM_ANCHOR_FILE_KEY,
+            "shell_request": _shell_request_for(SYSTEM_ANCHOR_FILE_KEY),
         },
         {
             "file_key": SYSTEM_ACTIVITY_FILE_KEY,
@@ -417,6 +458,7 @@ def build_workspace_file_entries(
             "kind": "virtual",
             "detail": "workspace activity history",
             "active": active_file_key == SYSTEM_ACTIVITY_FILE_KEY,
+            "shell_request": _shell_request_for(SYSTEM_ACTIVITY_FILE_KEY),
         },
         {
             "file_key": SYSTEM_PROFILE_BASICS_FILE_KEY,
@@ -424,6 +466,7 @@ def build_workspace_file_entries(
             "kind": "virtual",
             "detail": "workspace profile basics editor",
             "active": active_file_key == SYSTEM_PROFILE_BASICS_FILE_KEY,
+            "shell_request": _shell_request_for(SYSTEM_PROFILE_BASICS_FILE_KEY),
         },
     ]
     seen_keys = {entry["file_key"] for entry in file_entries}
@@ -438,6 +481,7 @@ def build_workspace_file_entries(
                 "kind": "document",
                 "detail": _document_detail(document),
                 "active": active_file_key == file_key,
+                "shell_request": _shell_request_for(file_key),
             }
         )
         seen_keys.add(file_key)
@@ -955,110 +999,6 @@ def _system_selection_groups(
     return []
 
 
-def _tool_root_slug_for_surface(surface_id: str) -> str:
-    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
-        return "aws-csm"
-    if surface_id == FND_EBI_TOOL_SURFACE_ID:
-        return "fnd-ebi"
-    if surface_id == CTS_GIS_TOOL_SURFACE_ID:
-        return "cts-gis"
-    return ""
-
-
-def _safe_json_object(path: Path | None) -> dict[str, Any]:
-    if path is None or not path.exists() or not path.is_file():
-        return {}
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    return payload if isinstance(payload, dict) else {}
-
-
-def _tool_collection_payload(tool_root: Path, *, tool_slug: str) -> tuple[str, list[str]]:
-    collection_path = ""
-    member_files: list[str] = []
-    for candidate in sorted(tool_root.glob(f"tool.*.{tool_slug}.json")):
-        payload = _safe_json_object(candidate)
-        raw_members = payload.get("member_files")
-        if isinstance(raw_members, list):
-            member_files = [as_text(item) for item in raw_members if as_text(item)]
-        collection_path = candidate.name
-        break
-    if not member_files:
-        member_files = [
-            path.name
-            for path in sorted(tool_root.glob("*.json"))
-            if path.name != collection_path
-        ]
-    return collection_path, member_files
-
-
-def _aws_csm_domain_groups(tool_root: Path) -> list[dict[str, Any]]:
-    groups: list[dict[str, Any]] = []
-    newsletter_root = tool_root / "newsletter"
-    if not newsletter_root.exists():
-        return groups
-    for profile_path in sorted(newsletter_root.glob("newsletter.*.profile.json")):
-        profile = _safe_json_object(profile_path)
-        domain = as_text(profile.get("domain")) or profile_path.name
-        entries: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for candidate in (
-            profile.get("selected_author_address"),
-            profile.get("list_address"),
-            profile.get("sender_address"),
-        ):
-            token = as_text(candidate).lower()
-            if token and token not in seen:
-                seen.add(token)
-                entries.append(_panel_entry(label=token, prefix="->"))
-        contacts_path = newsletter_root / profile_path.name.replace(".profile.json", ".contacts.json")
-        contacts = _safe_json_object(contacts_path)
-        for contact in list(contacts.get("contacts") or []):
-            if not isinstance(contact, dict):
-                continue
-            token = as_text(contact.get("email")).lower()
-            if token and token not in seen:
-                seen.add(token)
-                entries.append(_panel_entry(label=token, prefix="->"))
-            if len(entries) >= 4:
-                break
-        if entries:
-            groups.append({"title": domain, "entries": entries})
-    return groups
-
-
-def _fnd_ebi_groups(tool_root: Path) -> list[dict[str, Any]]:
-    entries = []
-    for path in sorted(tool_root.glob("fnd-ebi.*.json")):
-        payload = _safe_json_object(path)
-        domain = as_text(payload.get("domain"))
-        if not domain:
-            continue
-        entries.append(_panel_entry(label=domain, meta=as_text(payload.get("site_root"))))
-    return [{"title": "Profiles", "entries": entries}] if entries else []
-
-
-def _tool_groups(tool_root: Path, *, surface_id: str, tool_slug: str, member_files: list[str], active_member: str) -> list[dict[str, Any]]:
-    groups: list[dict[str, Any]] = []
-    if member_files:
-        groups.append(
-            {
-                "title": "Files",
-                "entries": [
-                    _panel_entry(label=file_name, active=file_name == active_member)
-                    for file_name in member_files
-                ],
-            }
-        )
-    if tool_slug == "aws-csm":
-        groups.extend(_aws_csm_domain_groups(tool_root))
-    elif surface_id == FND_EBI_TOOL_SURFACE_ID:
-        groups.extend(_fnd_ebi_groups(tool_root))
-    return groups
-
-
 def build_system_control_panel(
     *,
     portal_scope: PortalScope,
@@ -1116,125 +1056,89 @@ def build_system_control_panel(
     )
 
 
-def build_tool_control_panel(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    data_dir: str | Path | None,
-    public_dir: str | Path | None,
-    private_dir: str | Path | None,
-    surface_id: str,
-    active_document: Any | None,
-    selected_datum: Any | None,
-    selected_object: dict[str, Any] | None,
-    tool_rows: list[dict[str, Any]],
-    title: str,
-) -> dict[str, Any]:
-    del data_dir, public_dir, active_document, selected_datum, selected_object, tool_rows
-    root = _path_or_none(private_dir)
-    tool_slug = _tool_root_slug_for_surface(surface_id)
-    tool_root = None
-    if root is not None and tool_slug:
-        candidate_roots = [root / "utilities" / "tools" / tool_slug]
-        for candidate in candidate_roots:
-            if candidate.exists():
-                tool_root = candidate
-                break
-        if tool_root is None:
-            tool_root = candidate_roots[0]
-    collection_file = ""
-    member_files: list[str] = []
-    if tool_root is not None and tool_root.exists():
-        collection_file, member_files = _tool_collection_payload(tool_root, tool_slug=tool_slug)
-    active_member = "spec.json" if "spec.json" in member_files else (member_files[0] if member_files else "")
-    context_items = [{"label": "Sandbox", "value": title.upper()}]
-    if collection_file:
-        context_items.append({"label": "File", "value": collection_file})
-    if active_member:
-        context_items.append({"label": "Mediation", "value": active_member})
-    return attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "focus_selection_panel",
-        "title": "Control Panel",
-        "surface_label": title.upper(),
-        "context_items": context_items,
-        "verb_tabs": _verb_tab_entries(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            requested_surface_id=surface_id,
-        ),
-        "groups": _tool_groups(
-            tool_root or Path("/nonexistent"),
-            surface_id=surface_id,
-            tool_slug=tool_slug,
-            member_files=member_files,
-            active_member=active_member,
-        ) if tool_slug else [],
-        "actions": [],
-        },
-        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
-        surface_id=surface_id,
-    )
-
-
 def _build_context_conditions(
     *,
-    shell_state: PortalShellState,
+    shell_state: PortalShellState | None,
     surface_label: str,
     active_document: Any | None,
     selected_datum: Any | None,
+    selected_object: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
-    """Build context condition rows showing current focus state."""
-    conditions = [
-        {
-            "level": "page",
-            "label": "Page",
-            "value": surface_label,
-            "state": "active",
-        }
-    ]
+    """Build context-condition rows aligned with the canonical focus stack.
 
-    # Add sandbox if tool context
-    if surface_label not in {"SYSTEM", "NETWORK", "UTILITIES"}:
-        conditions.append({
-            "level": "sandbox",
+    The rows mirror the focus stack ``sandbox -> file -> datum -> object``
+    so that the unified panel surface is identical in shape across SYSTEM
+    and every tool surface.
+    """
+
+    active_file_key = (
+        segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
+        if shell_state is not None
+        else ""
+    )
+    conditions: list[dict[str, Any]] = [
+        {
+            "level": FOCUS_LEVEL_FILE,
             "label": "Sandbox",
             "value": surface_label,
             "state": "active",
-        })
-
-    # Add document if focused
-    if active_document is not None:
-        conditions.append({
-            "level": "document",
-            "label": "Document",
-            "value": _document_label(active_document),
-            "state": "focused",
+        },
+        {
+            "level": FOCUS_LEVEL_FILE,
+            "label": "File",
+            "value": _file_value_for_panel(
+                active_file_key=active_file_key,
+                active_document=active_document,
+            ),
+            "state": "focused" if active_document is not None or active_file_key else "default",
             "metadata": {
-                "source_kind": as_text(getattr(active_document, "source_kind", "")),
-                "relative_path": as_text(getattr(active_document, "relative_path", "")),
+                "source_kind": as_text(getattr(active_document, "source_kind", "")) if active_document is not None else "",
+                "relative_path": as_text(getattr(active_document, "relative_path", "")) if active_document is not None else "",
             },
-        })
+        },
+    ]
 
-    # Add datum if selected
     if selected_datum is not None:
         datum_id = as_text(getattr(selected_datum, "datum_address", ""))
-        coordinates = _datum_coordinates(datum_id)
-        conditions.append({
-            "level": "datum",
-            "label": "Datum",
-            "value": _row_label(selected_datum),
-            "state": "selected",
-            "coordinates": coordinates,
-        })
+        conditions.append(
+            {
+                "level": FOCUS_LEVEL_DATUM,
+                "label": "Datum",
+                "value": _row_label(selected_datum) or datum_id,
+                "state": "selected",
+                "coordinates": _datum_coordinates(datum_id),
+            }
+        )
+
+    if isinstance(selected_object, dict) and (selected_object.get("label") or selected_object.get("object_id")):
+        conditions.append(
+            {
+                "level": FOCUS_LEVEL_OBJECT,
+                "label": "Object",
+                "value": as_text(selected_object.get("label")) or as_text(selected_object.get("object_id")),
+                "state": "selected",
+            }
+        )
+    else:
+        verb = getattr(shell_state, "verb", None) if shell_state is not None else None
+        if verb == VERB_MEDIATE:
+            subject = as_text((shell_state.mediation_subject or {}).get("id"))
+            if subject:
+                conditions.append(
+                    {
+                        "level": "mediation",
+                        "label": "Mediation",
+                        "value": subject,
+                        "state": "active",
+                    }
+                )
 
     return conditions
 
 
 def _build_nimm_aitas_control_section(
     *,
-    shell_state: PortalShellState,
+    shell_state: PortalShellState | None,
     directive_context: dict[str, Any] | None,
     nimm_directive: str | None,
     aitas_state: dict[str, Any] | None,
@@ -1247,6 +1151,19 @@ def _build_nimm_aitas_control_section(
     overlay = dict(context.get("overlay") or {})
     nimm_state = dict(overlay.get("nimm_state") or {})
     aitas_state_overlay = dict(overlay.get("aitas_state") or aitas_state or {})
+    verb_value = getattr(shell_state, "verb", "") if shell_state is not None else ""
+    focus_subject_id = ""
+    if shell_state is not None:
+        focus_subject_id = as_text((shell_state.focus_subject or {}).get("id"))
+    verb_shell_requests = (
+        _verb_tab_entries(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            requested_surface_id=surface_id,
+        )
+        if shell_state is not None
+        else []
+    )
 
     return {
         "title": "Directive Control",
@@ -1259,15 +1176,11 @@ def _build_nimm_aitas_control_section(
                 "subsections": [
                     {
                         "label": "Verb",
-                        "value": shell_state.verb,
+                        "value": verb_value,
                         "editable": True,
                         "control_type": "tabs",
                         "options": [VERB_NAVIGATE, VERB_INVESTIGATE, VERB_MEDIATE, VERB_MANIPULATE],
-                        "shell_requests": _verb_tab_entries(
-                            portal_scope=portal_scope,
-                            shell_state=shell_state,
-                            requested_surface_id=surface_id,
-                        ),
+                        "shell_requests": verb_shell_requests,
                     },
                     {
                         "label": "Operation",
@@ -1277,7 +1190,7 @@ def _build_nimm_aitas_control_section(
                     },
                     {
                         "label": "Target",
-                        "value": as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id,
+                        "value": focus_subject_id or portal_scope.scope_id,
                         "editable": False,
                         "control_type": "display",
                     },
@@ -1359,31 +1272,82 @@ def _build_nimm_aitas_control_section(
 
 def _build_terminal_control_interface(
     *,
-    shell_state: PortalShellState,
+    shell_state: PortalShellState | None,
     directive_context: dict[str, Any] | None,
+    enabled: bool = False,
 ) -> dict[str, Any]:
-    """Build terminal-style directive injection interface."""
+    """Build terminal-style directive injection interface.
+
+    The terminal section is hidden by default. Tools opt in by passing
+    ``tool_extensions["directive_terminal_enabled"]=True`` to
+    ``build_unified_control_panel``.
+
+    Backend routes for ``Validate``, ``Clear Overlay``, and ``Export
+    Envelope`` are not wired yet; those quick-actions are emitted with
+    ``disabled=True`` so the frontend renders them as inert. ``Inject``
+    is also disabled until the directive backend route lands (tracked
+    out-of-scope per the convergence plan).
+    """
+
     return {
         "title": "Directive Terminal",
+        "visible": bool(enabled),
         "collapsible": True,
-        "default_state": "expanded",
+        "default_state": "expanded" if enabled else "collapsed",
         "interface": {
             "mode": "command",
             "placeholder": "> inject directive...",
             "help_text": "Enter NIMM directive or AITAS control command",
+            "disabled": True,
+            "disabled_reason": "directive_inject_route_not_wired",
         },
         "quick_actions": [
-            {"action_id": "inject_directive", "label": "Inject", "shortcut": "Ctrl+Enter"},
-            {"action_id": "validate_context", "label": "Validate", "shortcut": "Ctrl+K"},
-            {"action_id": "clear_overlay", "label": "Clear Overlay"},
-            {"action_id": "export_envelope", "label": "Export Envelope"},
+            {
+                "action_id": "inject_directive",
+                "label": "Inject",
+                "shortcut": "Ctrl+Enter",
+                "disabled": True,
+                "disabled_reason": "directive_inject_route_not_wired",
+            },
+            {
+                "action_id": "validate_context",
+                "label": "Validate",
+                "shortcut": "Ctrl+K",
+                "disabled": True,
+                "disabled_reason": "validate_context_route_not_wired",
+            },
+            {
+                "action_id": "clear_overlay",
+                "label": "Clear Overlay",
+                "disabled": True,
+                "disabled_reason": "clear_overlay_route_not_wired",
+            },
+            {
+                "action_id": "export_envelope",
+                "label": "Export Envelope",
+                "disabled": True,
+                "disabled_reason": "export_envelope_route_not_wired",
+            },
         ],
         "history": {
             "show": True,
             "max_items": 10,
-            "items": [],  # Populated from session/audit
+            "items": [],
         },
     }
+
+
+_NAVIGATION_GROUP_SYSTEM_SANDBOX_LABEL = "Sandbox: system"
+
+
+def _navigation_group_label_for_sandbox(sandbox: str) -> str:
+    return f"Sandbox: {sandbox}" if sandbox else "Sandbox: system"
+
+
+def _navigation_group_sort_key(sandbox: str) -> tuple[int, str]:
+    if sandbox == "system":
+        return (0, "")
+    return (1, sandbox)
 
 
 def _file_entries_to_navigation_groups(
@@ -1392,80 +1356,127 @@ def _file_entries_to_navigation_groups(
     portal_scope: PortalScope,
     shell_state: PortalShellState,
 ) -> list[dict[str, Any]]:
-    """Convert file entries to navigation groups format."""
-    entries = [
-        _panel_entry(
-            label=as_text(entry.get("label")) or as_text(entry.get("file_key")),
-            meta=as_text(entry.get("detail")),
-            active=bool(entry.get("active")),
-            href=entry.get("href") or "",
-            shell_request=entry.get("shell_request"),
+    """Convert file entries to navigation groups, one group per sandbox.
+
+    Groups appear in canonical order: ``system`` first, then alphabetical
+    tool sandboxes. Each entry inherits its file-level ``shell_request`` so
+    clicks always dispatch ``focus_file``.
+    """
+
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for entry in file_entries:
+        sandbox = _sandbox_segment_for_entry(entry) or "system"
+        grouped.setdefault(sandbox, []).append(
+            _panel_entry(
+                label=as_text(entry.get("label")) or as_text(entry.get("file_key")),
+                meta=as_text(entry.get("detail")),
+                active=bool(entry.get("active")),
+                href=entry.get("href") or "",
+                shell_request=entry.get("shell_request"),
+            )
         )
-        for entry in file_entries
-    ]
-    return [{"title": "Files", "entries": entries}] if entries else []
+
+    if not grouped:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for sandbox in sorted(grouped.keys(), key=_navigation_group_sort_key):
+        out.append(
+            {
+                "title": _navigation_group_label_for_sandbox(sandbox),
+                "entries": grouped[sandbox],
+            }
+        )
+    return out
+
+
+_ALLOWED_WORKBENCH_MODES = {"anchor", "gallery", "selected_document"}
+
+
+def _workbench_state_context_row(workbench_state: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Project a ``workbench_state`` dict as a single context-conditions row.
+
+    Schema:
+    ``{"mode": "anchor"|"gallery"|"selected_document",
+       "anchor_document_id": <canonical id>,
+       "selected_document_id": <canonical id> (for selected_document mode)}``
+    """
+
+    if not isinstance(workbench_state, dict):
+        return None
+    mode = as_text(workbench_state.get("mode"))
+    if mode not in _ALLOWED_WORKBENCH_MODES:
+        return None
+    anchor_id = as_text(workbench_state.get("anchor_document_id"))
+    selected_id = as_text(workbench_state.get("selected_document_id"))
+    if mode == "anchor":
+        value = anchor_id or "anchor"
+    elif mode == "gallery":
+        value = "gallery"
+    else:
+        value = selected_id or anchor_id or "selected"
+    return {
+        "level": "workbench_state",
+        "label": "Workbench",
+        "value": value,
+        "state": mode,
+        "metadata": {
+            "mode": mode,
+            "anchor_document_id": anchor_id,
+            "selected_document_id": selected_id,
+        },
+    }
 
 
 def build_unified_control_panel(
     *,
-    # Identity
     portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    # Surface
+    shell_state: PortalShellState | None,
     surface_id: str,
     surface_label: str,
-    # Context state
     active_document: Any | None = None,
     selected_datum: Any | None = None,
     selected_object: dict[str, Any] | None = None,
-    # NIMM-AITAS state
     directive_context: dict[str, Any] | None = None,
     nimm_directive: str | None = None,
     aitas_state: dict[str, Any] | None = None,
-    # Navigation
     file_entries: list[dict[str, Any]] | None = None,
     navigation_groups: list[dict[str, Any]] | None = None,
-    # Actions
     actions: list[dict[str, Any]] | None = None,
-    # Tool-specific extensions
+    workbench_state: dict[str, Any] | None = None,
     tool_extensions: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """
-    Build unified control panel following canonical contract v2.
+    """Build the unified control panel following canonical contract v2.
 
-    Replaces:
-    - build_system_control_panel()
-    - build_tool_control_panel()
-    - AWS _build_control_panel()
-    - CTS-GIS _cts_gis_control_panel()
-
-    Returns control panel payload with:
-    - Portal identity section
-    - Context conditions (page → sandbox → document → datum)
-    - NIMM-AITAS unified control section (stacked facets)
-    - Terminal control interface
-    - Navigation groups
-    - Action buttons
+    Replaces every per-tool control-panel builder. Returns a control
+    panel payload with portal identity, context conditions (including
+    the optional ``workbench_state`` row), NIMM/AITAS facets, the
+    directive terminal (opt-in), navigation groups (file_entries are
+    auto-grouped by sandbox when no explicit groups are passed), and a
+    free-form ``tool_extensions`` map projected as additional facets in
+    the renderer.
     """
 
-    # 1. Portal Identity Section
     portal_identity = {
         "portal_instance_id": portal_scope.scope_id,
-        "portal_domain": getattr(portal_scope, 'scope_domain', '') or "",
+        "portal_domain": getattr(portal_scope, "scope_domain", "") or "",
         "tenant_id": portal_scope.scope_id,
-        "build_id": getattr(portal_scope, 'build_id', '') or "",
-        "host_shape": getattr(portal_scope, 'host_shape', '') or "local",
+        "build_id": getattr(portal_scope, "build_id", "") or "",
+        "host_shape": getattr(portal_scope, "host_shape", "") or "local",
     }
 
-    # 2. Context Conditions
     context_conditions = _build_context_conditions(
         shell_state=shell_state,
         surface_label=surface_label,
         active_document=active_document,
         selected_datum=selected_datum,
+        selected_object=selected_object,
     )
 
-    # 3. NIMM-AITAS Unified Control Section
+    workbench_row = _workbench_state_context_row(workbench_state)
+    if workbench_row is not None:
+        context_conditions.append(workbench_row)
+
     nimm_aitas_control = _build_nimm_aitas_control_section(
         shell_state=shell_state,
         directive_context=directive_context,
@@ -1475,38 +1486,36 @@ def build_unified_control_panel(
         surface_id=surface_id,
     )
 
-    # 4. Terminal Control Interface
+    extensions = dict(tool_extensions or {})
+    terminal_enabled = bool(extensions.pop("directive_terminal_enabled", False))
     terminal_control = _build_terminal_control_interface(
         shell_state=shell_state,
         directive_context=directive_context,
+        enabled=terminal_enabled,
     )
 
-    # 5. Navigation Groups
     resolved_navigation_groups = navigation_groups or []
     if file_entries and not navigation_groups:
-        # Auto-convert file_entries to navigation groups
         resolved_navigation_groups = _file_entries_to_navigation_groups(
             file_entries=file_entries,
             portal_scope=portal_scope,
             shell_state=shell_state,
         )
 
-    # 6. Merge tool extensions
-    extensions = dict(tool_extensions or {})
-
     return attach_region_family_contract(
         {
-        "schema": "mycite.v2.portal.shell.region.control_panel.v2",
-        "kind": "unified_directive_panel",
-        "title": "Control Panel",
-        "surface_label": surface_label,
-        "portal_identity": portal_identity,
-        "context_conditions": context_conditions,
-        "nimm_aitas_control": nimm_aitas_control,
-        "terminal_control": terminal_control,
-        "navigation_groups": resolved_navigation_groups,
-        "actions": list(actions or []),
-        **extensions,  # Tool-specific additions
+            "schema": "mycite.v2.portal.shell.region.control_panel.v2",
+            "kind": "unified_directive_panel",
+            "title": "Control Panel",
+            "surface_label": surface_label,
+            "portal_identity": portal_identity,
+            "context_conditions": context_conditions,
+            "nimm_aitas_control": nimm_aitas_control,
+            "terminal_control": terminal_control,
+            "navigation_groups": resolved_navigation_groups,
+            "actions": list(actions or []),
+            "workbench_state": dict(workbench_state) if isinstance(workbench_state, dict) else None,
+            "tool_extensions": extensions,
         },
         family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
         surface_id=surface_id,
@@ -1675,7 +1684,41 @@ def build_system_workspace_bundle(
             )
         )
 
-    # Use unified control panel builder
+    if not active_file_key:
+        system_workbench_mode = "gallery"
+    elif active_file_key == SYSTEM_ANCHOR_FILE_KEY:
+        system_workbench_mode = "anchor"
+    else:
+        system_workbench_mode = "selected_document"
+    system_workbench_state = {
+        "mode": system_workbench_mode,
+        "anchor_document_id": SYSTEM_ANCHOR_FILE_KEY,
+        "selected_document_id": active_file_key if system_workbench_mode == "selected_document" else "",
+    }
+
+    file_navigation_groups = _file_entries_to_navigation_groups(
+        file_entries=file_entries,
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+    )
+    additional_navigation_groups: list[dict[str, Any]] = []
+    if active_file_key and active_file_key not in {SYSTEM_ACTIVITY_FILE_KEY, SYSTEM_PROFILE_BASICS_FILE_KEY}:
+        additional_navigation_groups = _system_selection_groups(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            file_entries=[],
+            active_document=active_document,
+            active_file_key=active_file_key,
+            selected_datum=selected_datum,
+            selected_object=selected_object,
+            activity_projection=activity_projection,
+            profile_summary=profile_summary,
+        )
+    elif active_file_key == SYSTEM_ACTIVITY_FILE_KEY:
+        additional_navigation_groups = _system_activity_groups(activity_projection)
+    elif active_file_key == SYSTEM_PROFILE_BASICS_FILE_KEY:
+        additional_navigation_groups = _system_profile_groups(profile_summary)
+
     control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1685,8 +1728,9 @@ def build_system_workspace_bundle(
         selected_datum=selected_datum,
         selected_object=selected_object,
         directive_context=directive_context,
-        file_entries=file_entries,
+        navigation_groups=file_navigation_groups + additional_navigation_groups,
         actions=actions,
+        workbench_state=system_workbench_state,
     )
     inspector = attach_region_family_contract(
         {
@@ -1752,7 +1796,6 @@ def build_system_workspace_bundle(
 
 __all__ = [
     "build_system_workspace_bundle",
-    "build_tool_control_panel",
     "build_unified_control_panel",
     "build_workspace_file_entries",
     "read_system_workbench_projection",

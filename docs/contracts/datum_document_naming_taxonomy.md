@@ -3,17 +3,24 @@
 ## Overview
 
 Datum documents are the atomic storage units of the MOS (Mycelial Ontological Schema).
-Every datum document has a canonical identifier following a strict naming convention.
+Every datum document has a canonical identifier following a strict naming convention
+keyed on file *type* (the prefix), portal owner (`msn_id`), the optional sandbox
+the document lives in, the document name, and a content version hash.
 
-## Prefix Definitions
+This taxonomy applies to **datum content only**. Tool-specific profiles, configuration
+files, vault inventories, and other non-datum operational metadata are tracked
+separately and are referenced from datum documents through their JSON-unit rudi
+datum (`0-0-11`); they do not receive a canonical datum-document name.
 
-Three prefixes define the document type:
+## File Type Prefixes
 
-| Prefix | Full name | Type |
-|--------|-----------|------|
-| `lv.` | live | Anchor files and all sandbox datum sources |
-| `stl.` | stale | Binary payloads (compiled/hyphae form of filament datums) |
-| `cptr.` | capture | Cached decompiled sources (datum abstraction form of a payload) |
+Three prefixes define the datum-document type:
+
+| Prefix | Long form | Type | Content |
+|---|---|---|---|
+| `lv` | live | Sandbox sources | The system anchor file (`anthology.json`), every tool sandbox anchor (`anchor`), and every other in-sandbox source document. All datum files in a sandbox depend on the sandbox anchor and may reference new datum addresses for abstraction by treating the anchor's datums as branches. |
+| `stl` | stale | Binary payloads | The compiled hyphae form of a filament datum, produced by either the local portal or a foreign portal. A binary payload encodes only the minimal abstraction identity (hyphae value) of a single filament datum. |
+| `cptr` | capture | Cached sources | The decompiled JSON form of a binary payload. A capture contains every datum abstraction needed to materialize the corresponding filament datum's hyphae value, but it is not itself a sandbox source — it is a cache of the payload's decompiled form. |
 
 ## Canonical Name Format
 
@@ -25,57 +32,104 @@ cptr.<msn_id>.<name>.<version_hash>
 
 Fields:
 
-- `msn_id`: Portal/sandbox identifier (e.g., `3-2-3-17-77-1-6-4-1-4`)
-- `sandbox`: Sandbox name (e.g., `cts-gis`, `system`)
-- `name`: Document name — `anchor` for anchor files, `anthology` for the system sandbox anchor, or a specific name for other documents
-- `version_hash`: SHA-256 of the MSS (Monotonic Structured Serialization) form of the file
+- `msn_id` — Portal/owning instance identifier. Example: `3-2-3-17-77-1-6-4-1-4` for the FND portal.
+- `sandbox` — Sandbox name. Required for `lv.` documents only. Examples: `system`, `cts-gis`, `fnd-ebi`, `agro-erp`.
+- `name` — Document name. For `lv.` documents the name is `anchor` for every sandbox anchor *except* the system sandbox, where the anchor is named `anthology`. Non-anchor `lv.` documents and all `stl.`/`cptr.` documents use the document's own name (e.g. `247_17_77_1`, `registrar`, `txa`, `natural_entity`).
+- `version_hash` — 64-character lowercase hex SHA-256 over the MSS form of the document (policy `mos.mss_sha256_v1`).
 
-## Anchor File Naming Rules
+`stl.` and `cptr.` documents do not carry a sandbox segment. A binary payload or its
+capture is owned by a portal (`msn_id`) but is not constrained to one of that
+portal's sandboxes — payloads circulate across sandboxes and across portals through
+contracts.
 
-- General sandbox anchor: `lv.<msn_id>.<sandbox>.anchor.<hash>`
+## Anchor Naming Rules
+
 - System sandbox anchor: `lv.<msn_id>.system.anthology.<hash>`
-- The name `anchor` is reserved for anchor files. `anthology` is reserved for the system sandbox anchor only.
+- Every other sandbox anchor: `lv.<msn_id>.<sandbox>.anchor.<hash>`
+- The names `anchor` and `anthology` are reserved for sandbox anchors. Non-anchor
+  documents must not use them.
 
-## Concrete Examples
+## Concrete Examples (FND, msn_id `3-2-3-17-77-1-6-4-1-4`)
 
-| Staging form | Canonical form |
+| Legacy / staging form | Canonical form |
 |---|---|
-| `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json` | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.3-2-3-17.<hash>` |
-| `sc.3-2-3-17-77-1-6-4-1-4.cts.247_17_77_1.json` | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.247-17-77-1.<hash>` |
-| `tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json` | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.anchor.<hash>` |
+| `anthology.json` | `lv.3-2-3-17-77-1-6-4-1-4.system.anthology.<hash>` |
+| `tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json` (CTS-GIS sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.anchor.<hash>` |
+| `tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json` (FND-EBI sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.fnd-ebi.anchor.<hash>` |
+| `sc.3-2-3-17-77-1-6-4-1-4.cts.247_17_77_1.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.247-17-77-1.<hash>` |
+| `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.3-2-3-17.<hash>` |
+| `rf.3-2-3-17-77-1-6-4-1-4.txa.json` (Agro-ERP sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.agro-erp.txa.<hash>` |
 | `sc.3-2-3-17-77-1-6-4-1-4.registrar.bin` | `stl.3-2-3-17-77-1-6-4-1-4.registrar.<hash>` |
 | `sc.3-2-3-17-77-1-6-4-1-4.registrar.json` | `cptr.3-2-3-17-77-1-6-4-1-4.registrar.<hash>` |
-| `anthology.json` | `lv.3-2-3-17-77-1-6-4-1-4.system.anthology.<hash>` |
 
-## Staging-to-Canonical Mapping
-
-During migration from filesystem staging to SQL database:
-
-- `sc.*` prefix = staging candidate — becomes `lv.*`, `stl.*`, or `cptr.*` based on file type and content
-- `tool.*` prefix = staging anchor — becomes `lv.*.anchor.*`
-- The filesystem adapter translates staging paths to canonical document IDs at read time during migration
-- The sandbox segment resolves from the staging path: `fnd.*` staged geometry maps to the `cts-gis` sandbox; `msn-*` staged overlays map to the system sandbox context
+Note the historical `msn-` filename prefix (`msn-natural_entity`, `msn-administrative`) is
+**not** carried into the canonical name. The `msn_id` segment of the canonical id already
+records portal ownership; the legacy `msn-` filename prefix represented a separate
+"convention file" idea that has been retired in favour of starter-portal schema versions
+plus an FND-portal contract that delivers the necessary built-in payloads (e.g.
+`bin.registrar`).
 
 ## Version Hash
 
-The `<version_hash>` field is the SHA-256 of the MSS (Monotonic Structured Serialization) form of the document:
+The `version_hash` is the SHA-256 of the MSS (Monotonic Structured Serialization) form
+of the document under policy `mos.mss_sha256_v1`:
 
-- MSS form requires all datum iteration values to be properly ordered (no skips)
-- Self-delimiting integer encoding with transitive closure
-- Computed by `_sha256_token(prefix=MSS_VERSION_HASH_POLICY, payload=payload)` (see `packages/adapters/sql/datum_semantics.py`)
-- A standalone `compute_mss_hash()` library function is planned (TASK-MOS-MSS-HYPHAE-CORE-2026-05-03)
+- The MSS form is the *indiscriminate* inclusion of the complete datum file: every
+  row, ordered canonically by `(layer, value_group, iteration)`, with every reference
+  datum address materialized in the document.
+- Iteration values must be contiguous (no skips). A datum document with skipped
+  iterations cannot be written to the database; it must be canonicalized first.
+- The hash is computed by
+  `MyCiteV2/packages/core/mss/datum_identity.py::compute_mss_hash`.
 
-## Validation
+The MSS form of a single datum row's hyphae value (the minimal abstraction identity
+of one filament datum) is what `stl.` payloads encode; the cached source `cptr.` is
+the decompiled JSON of the same minimal abstraction set. These are distinct from the
+document `version_hash` of an `lv.` sandbox source, which covers the full ordered
+file.
 
-Document IDs must match the pattern:
+## Validation Regex
+
+Document IDs must match:
 
 ```
-^(lv|stl|cptr)\.[^.]+\.[^.]+\.[^.]+\.[a-f0-9]{64}$
+^lv\.[^.]+\.[^.]+\.[^.]+\.[a-f0-9]{64}$
+|
+^(stl|cptr)\.[^.]+\.[^.]+\.[a-f0-9]{64}$
 ```
 
-Validation is enforced at the datum store adapter boundary.
+Validation is enforced at the SQL adapter boundary
+(`MyCiteV2/packages/adapters/sql/datum_store.py`) and through the
+`MyCiteV2/packages/core/document_naming` library. Writes that do not match are
+rejected.
 
-## Migration Status (as of 2026-05-03)
+## SQL Realization
 
-Zero live database documents currently use the canonical `lv.*`/`stl.*`/`cptr.*` naming.
-All live documents use staging-style prefixes. Migration is in progress per `mos_sql_backed_core_declaration_draft.md`.
+A single relational table — `documents` — backs this taxonomy. The prefix is
+discriminated by a `CHECK (prefix IN ('lv','stl','cptr'))` constraint; `sandbox` is
+nullable so that `stl.` and `cptr.` rows can omit it. Refer to
+`mos_database_schema_addendum.md` for the schema.
+
+The taxonomy explicitly **does not** decompose into separate tables for SAMRAS
+namespaces, HOPS geometry chains, hyphae chains, or staging-promotion maps. Those
+concerns belong to the core libraries (`packages/core/samras`, `packages/core/hops`,
+`packages/core/datum_editing`, `packages/core/mss`) and the per-row
+`hyphae_chain_json` column on `datum_row_semantics`, not to additional relational
+schemas.
+
+## Origin (Local vs Foreign)
+
+Every `documents` row carries an `origin` column with values `local` or `foreign`.
+Local documents are owned by the operating portal (matching `msn_id`); foreign
+documents arrived through a contract with another portal. Update rights for foreign
+documents are mediated by the portal-to-portal contract that delivered them.
+Contract enforcement is handled by the contracts pipeline; the taxonomy itself only
+records the origin.
+
+## Migration Status
+
+The migration to canonical `lv./stl./cptr.` IDs is realized through the
+`documents` table introduced in 2026-05-05; legacy compatibility keys
+(`system:anthology`, `sandbox:<tool>:<filename>.json`) are retained as
+`documents.legacy_alias` for one cycle. New writes must produce canonical IDs;
+readers accept either form during the cycle.

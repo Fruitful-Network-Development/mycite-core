@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_unified_control_panel
+from MyCiteV2.instances._shared.runtime.portal_workbench import build_datum_file_workbench
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_EBI_TOOL_REQUEST_SCHEMA,
     FND_EBI_TOOL_SURFACE_SCHEMA,
@@ -166,40 +167,44 @@ def build_portal_fnd_ebi_surface_bundle(
         "warnings": list(donations_surface.get("warnings") or []),
     }
 
-    control_panel = build_tool_control_panel(
+    analytics_filter_entries = []
+    if selected_domain:
+        analytics_filter_entries.append(
+            {"label": "Domain", "meta": selected_domain, "active": True}
+        )
+    if analytics_access_state:
+        analytics_filter_entries.append(
+            {"label": "Access log", "meta": analytics_access_state, "active": analytics_access_state == "ready"}
+        )
+    if donations_log_state:
+        analytics_filter_entries.append(
+            {"label": "Donations log", "meta": donations_log_state, "active": donations_log_state == "ready"}
+        )
+
+    control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
-        data_dir=None,
-        public_dir=None,
-        private_dir=private_dir,
         surface_id=FND_EBI_TOOL_SURFACE_ID,
-        active_document=None,
-        selected_datum=None,
-        selected_object=None,
-        tool_rows=list(tool_rows or []),
-        title="FND-EBI",
+        surface_label="FND-EBI",
+        navigation_groups=[
+            {"title": "Analytics filters", "entries": analytics_filter_entries}
+        ] if analytics_filter_entries else [],
+        actions=[],
+        tool_extensions={
+            "fnd_ebi_analytics_filters": analytics_filter_entries,
+        },
     )
-    workbench = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "surface_payload",
-        "title": "FND-EBI Evidence",
-        "subtitle": "Workbench remains hidden until the runtime requests supporting evidence.",
-        "visible": workbench_visible,
-        "surface_payload": {
-            "kind": "surface_payload",
-            "surface_id": FND_EBI_TOOL_SURFACE_ID,
-            "webapps_summary": webapps_summary,
-            "overview": dict(analytics_surface.get("overview") or {}),
-            "traffic": dict(analytics_surface.get("traffic") or {}),
-            "events_summary": dict(analytics_surface.get("events_summary") or {}),
-            "errors_noise": dict(analytics_surface.get("errors_noise") or {}),
-            "files": dict(analytics_surface.get("files") or {}),
-            "donations": donations_payload,
-        },
-        },
-        family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+    workbench = build_datum_file_workbench(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
         surface_id=FND_EBI_TOOL_SURFACE_ID,
+        sandbox_id="fnd-ebi",
+        sandbox_label="FND-EBI",
+        anchor_document=None,
+        sandbox_documents=[],
+        title="FND-EBI Datum Workbench",
+        subtitle="Layered datum table for the active FND-EBI sandbox file.",
+        visible=workbench_visible,
     )
     inspector = attach_region_family_contract(
         {
@@ -225,6 +230,11 @@ def build_portal_fnd_ebi_surface_bundle(
                 ],
             }
         ],
+        "surface_payload": {
+            "analytics": analytics_surface,
+            "donations": donations_payload,
+            "selected_domain": selected_domain,
+        },
         },
         family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
         surface_id=FND_EBI_TOOL_SURFACE_ID,

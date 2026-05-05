@@ -539,10 +539,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             interface_body["garland_split_projection"]["geospatial_projection"],
         )
         self.assertEqual(
-            [group["title"] for group in bundle["control_panel"]["groups"][:3]],
+            [group["title"] for group in bundle["control_panel"]["navigation_groups"][:3]],
             ["STATE DIRECTIVE"],
         )
-        self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
+        self.assertNotIn(
+            "Attention",
+            [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+        )
         runtime_diagnostics = dict(bundle["surface_payload"].get("runtime_diagnostics") or {})
         self.assertIn("phase_timings_ms", runtime_diagnostics)
         self.assertIn("total_bundle_build", dict(runtime_diagnostics.get("phase_timings_ms") or {}))
@@ -826,8 +829,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "profile_projection",
                 bundle["inspector"]["interface_body"]["garland_split_projection"],
             )
-            self.assertIn("STATE DIRECTIVE", [group["title"] for group in bundle["control_panel"]["groups"]])
-            self.assertNotIn("Source Evidence", [group["title"] for group in bundle["control_panel"]["groups"]])
+            self.assertIn(
+                "STATE DIRECTIVE",
+                [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+            )
+            self.assertNotIn(
+                "Source Evidence",
+                [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+            )
             geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertIn("empty_message", geo)
             self.assertIn("features", geo)
@@ -978,7 +987,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             aitas_group = next(
                 group
-                for group in pinned_bundle["control_panel"]["groups"]
+                for group in pinned_bundle["control_panel"]["navigation_groups"]
                 if group["title"] == "STATE DIRECTIVE"
             )
             descendants_entry = next(
@@ -1030,7 +1039,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"selected_node_id": "3-2-3-17-77"}},
             )
 
-            state_group = next(group for group in bundle["control_panel"]["groups"] if group["title"] == "STATE DIRECTIVE")
+            state_group = next(
+                group
+                for group in bundle["control_panel"]["navigation_groups"]
+                if group["title"] == "STATE DIRECTIVE"
+            )
             labels = [entry["label"] for entry in state_group["entries"]]
             self.assertIn("NIMM directive", labels)
             self.assertTrue(any(label.startswith("Attention · ") for label in labels))
@@ -1043,7 +1056,17 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertIn("MAN", labels)
             intention_entries = [entry for entry in state_group["entries"] if entry["label"].startswith("Intention · ")]
             self.assertTrue(all(isinstance(entry.get("shell_request"), dict) for entry in intention_entries))
-            self.assertEqual(bundle["control_panel"]["verb_tabs"], [])
+            nimm_aitas = bundle["control_panel"]["nimm_aitas_control"]
+            verb_subsection = next(
+                subsection
+                for facet in nimm_aitas["facets"]
+                for subsection in facet["subsections"]
+                if subsection.get("label") == "Verb"
+            )
+            self.assertEqual(
+                {entry["label"] for entry in verb_subsection.get("shell_requests") or []},
+                {"NAV", "INV", "MED", "MAN"},
+            )
 
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -1064,7 +1087,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             state_directive_group = next(
                 group
-                for group in bundle["control_panel"]["groups"]
+                for group in bundle["control_panel"]["navigation_groups"]
                 if group["title"] == "STATE DIRECTIVE"
             )
             time_today_entry = next(
@@ -1343,8 +1366,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(geo["render_feature_count"], 3)
             self.assertGreater(geo["render_row_count"], 3)
             self.assertEqual(geo["projection_source"], "hops")
-            self.assertNotIn("Attention", [group["title"] for group in bundle["control_panel"]["groups"]])
-            self.assertNotIn("Projection Rules", [group["title"] for group in bundle["control_panel"]["groups"]])
+            self.assertNotIn(
+                "Attention",
+                [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+            )
+            self.assertNotIn(
+                "Projection Rules",
+                [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+            )
 
     def test_cts_gis_descendants_time_context_adds_matching_precinct_profiles(self) -> None:
         with TemporaryDirectory() as tmp:
@@ -2123,7 +2152,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             tool_exposure_policy=None,
         )
         control_panel = operational_envelope["shell_composition"]["regions"]["control_panel"]
-        self.assertEqual(control_panel["kind"], "focus_selection_panel")
+        self.assertEqual(control_panel["kind"], "unified_directive_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
         self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
@@ -2256,16 +2285,20 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(document["layer_groups"][0]["value_groups"][0]["value_group"], 0)
             self.assertEqual(document["layer_groups"][0]["value_groups"][1]["rows"][1]["coordinates"]["iteration"], 2)
             self.assertIsNone(document["selected_datum"])
-            self.assertEqual(control_panel["kind"], "focus_selection_panel")
+            self.assertEqual(control_panel["kind"], "unified_directive_panel")
             self.assertEqual(control_panel["surface_label"], "SYSTEM")
+            context_pairs = [
+                (row.get("label"), row.get("value"))
+                for row in control_panel["context_conditions"][:2]
+            ]
             self.assertEqual(
-                control_panel["context_items"][:2],
-                [
-                    {"label": "Sandbox", "value": "SYSTEM"},
-                    {"label": "File", "value": "anthology.json"},
-                ],
+                context_pairs,
+                [("Sandbox", "SYSTEM"), ("File", "anthology.json")],
             )
-            self.assertIn("Layer 1", [group["title"] for group in control_panel["groups"]])
+            self.assertIn(
+                "Layer 1",
+                [group["title"] for group in control_panel["navigation_groups"]],
+            )
 
             datum_state = reduce_portal_shell_state(
                 active_surface_id=SYSTEM_ROOT_SURFACE_ID,
@@ -2293,8 +2326,15 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertIn("reference_bindings", selected_datum)
             self.assertIn("raw", selected_datum)
             selected_panel = selected_bundle["control_panel"]
-            self.assertEqual(selected_panel["context_items"][2]["label"], "Datum")
-            self.assertEqual(selected_panel["groups"][0]["title"], "Below Focus")
+            datum_rows = [
+                row for row in selected_panel["context_conditions"]
+                if row.get("label") == "Datum"
+            ]
+            self.assertTrue(datum_rows, "Datum context row missing from unified panel")
+            self.assertIn(
+                "Below Focus",
+                [group["title"] for group in selected_panel["navigation_groups"]],
+            )
 
     def test_non_anthology_documents_keep_generic_workspace_rendering(self) -> None:
         with TemporaryDirectory() as tmp:

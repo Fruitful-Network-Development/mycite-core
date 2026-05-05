@@ -631,6 +631,80 @@
     });
   }
 
+  function renderToolExtensions(ctx, toolExtensions) {
+    if (!toolExtensions || typeof toolExtensions !== "object") return "";
+    var keys = Object.keys(toolExtensions);
+    if (!keys.length) return "";
+    var blocks = keys
+      .map(function (key) {
+        var value = toolExtensions[key];
+        if (value === null || value === undefined) return "";
+        var label = key
+          .split("_")
+          .map(function (token) {
+            return token.charAt(0).toUpperCase() + token.slice(1);
+          })
+          .join(" ");
+        var body = "";
+        if (Array.isArray(value)) {
+          if (!value.length) return "";
+          body = '<ul class="ide-controlpanel__list">' +
+            value
+              .map(function (entry) {
+                if (entry && typeof entry === "object") {
+                  return "<li>" + renderEntry(entry, ctx.escapeHtml) + "</li>";
+                }
+                return '<li class="ide-controlpanel__selectionEntry">' + ctx.escapeHtml(String(entry)) + "</li>";
+              })
+              .join("") +
+            "</ul>";
+        } else if (typeof value === "object") {
+          var rows = Object.keys(value)
+            .map(function (rowKey) {
+              var rowValue = value[rowKey];
+              if (rowValue === null || rowValue === undefined) return "";
+              var displayValue = typeof rowValue === "object" ? JSON.stringify(rowValue) : String(rowValue);
+              return (
+                '<div class="ide-controlpanel__contextRow">' +
+                '<span class="ide-controlpanel__contextKey">' +
+                ctx.escapeHtml(rowKey) +
+                ':</span><span class="ide-controlpanel__contextValue">' +
+                ctx.escapeHtml(displayValue) +
+                "</span></div>"
+              );
+            })
+            .filter(function (entry) {
+              return entry;
+            })
+            .join("");
+          if (!rows) return "";
+          body = '<div class="ide-controlpanel__contextRows">' + rows + "</div>";
+        } else {
+          body =
+            '<div class="ide-controlpanel__contextRow">' +
+            '<span class="ide-controlpanel__contextValue">' +
+            ctx.escapeHtml(String(value)) +
+            "</span></div>";
+        }
+        return (
+          '<div class="ide-controlpanel__toolExtension" data-tool-extension-key="' +
+          ctx.escapeHtml(key) +
+          '">' +
+          '<header class="ide-controlpanel__sectionHeader">' +
+          ctx.escapeHtml(label) +
+          "</header>" +
+          body +
+          "</div>"
+        );
+      })
+      .filter(function (block) {
+        return block;
+      })
+      .join("");
+    if (!blocks) return "";
+    return '<div class="ide-controlpanel__toolExtensions">' + blocks + "</div>";
+  }
+
   function renderUnifiedDirectivePanel(ctx, root, region) {
     var portalIdentity = region.portal_identity || {};
     var contextConditions = region.context_conditions || [];
@@ -638,6 +712,7 @@
     var terminalControl = region.terminal_control || {};
     var navigationGroups = region.navigation_groups || [];
     var actions = region.actions || [];
+    var toolExtensions = region.tool_extensions || {};
 
     // Build HTML
     var html = '<section class="ide-controlpanel__section">';
@@ -755,6 +830,8 @@
       html += "</div></div>";
     });
 
+    html += renderToolExtensions(ctx, toolExtensions);
+
     // Actions
     if (actions.length) {
       html += '<div class="ide-controlpanel__actions">';
@@ -814,25 +891,21 @@
       (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
       "sections_panel";
 
-    // Prefer unified directive panel for all tools with directive controls
-    if (region.kind === "unified_directive_panel" ||
-        region.nimm_aitas_control ||
-        region.terminal_control) {
+    if (
+      mode === "unified_directive_panel" ||
+      region.kind === "unified_directive_panel" ||
+      region.nimm_aitas_control ||
+      region.terminal_control
+    ) {
       renderUnifiedDirectivePanel(ctx, root, region);
       return;
     }
 
-    // Legacy routing for backward compatibility
-    if (mode === "cts_gis_directive_panel") {
-      renderCtsGisDirectivePanel(ctx, root, region);
-      return;
-    }
     if (mode === "focus_selection_panel") {
       renderGenericFocusSelectionPanel(ctx, root, region);
       return;
     }
 
-    // Default to sections for tools without directive controls
     renderSectionModules(ctx, root, region);
   }
 

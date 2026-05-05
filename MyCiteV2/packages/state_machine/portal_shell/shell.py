@@ -93,6 +93,7 @@ PORTAL_SHELL_VERBS = (
 )
 
 TRANSITION_ENTER_SURFACE = "enter_surface"
+TRANSITION_FOCUS_SANDBOX = "focus_sandbox"
 TRANSITION_FOCUS_FILE = "focus_file"
 TRANSITION_FOCUS_DATUM = "focus_datum"
 TRANSITION_FOCUS_OBJECT = "focus_object"
@@ -102,6 +103,7 @@ TRANSITION_OPEN_INTERFACE_PANEL = "open_interface_panel"
 TRANSITION_CLOSE_INTERFACE_PANEL = "close_interface_panel"
 PORTAL_SHELL_TRANSITIONS = (
     TRANSITION_ENTER_SURFACE,
+    TRANSITION_FOCUS_SANDBOX,
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_OBJECT,
@@ -415,6 +417,7 @@ class PortalShellState:
 class PortalShellTransition:
     kind: str
     surface_id: str = ""
+    sandbox_id: str = ""
     file_key: str = ""
     datum_id: str = ""
     object_id: str = ""
@@ -429,6 +432,7 @@ class PortalShellTransition:
             verb = normalize_nimm_verb(verb, field_name="portal_shell_transition.verb")
         object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "surface_id", _as_text(self.surface_id))
+        object.__setattr__(self, "sandbox_id", _as_text(self.sandbox_id))
         object.__setattr__(self, "file_key", _as_text(self.file_key))
         object.__setattr__(self, "datum_id", _as_text(self.datum_id))
         object.__setattr__(self, "object_id", _as_text(self.object_id))
@@ -438,6 +442,8 @@ class PortalShellTransition:
         payload = {"kind": self.kind}
         if self.surface_id:
             payload["surface_id"] = self.surface_id
+        if self.sandbox_id:
+            payload["sandbox_id"] = self.sandbox_id
         if self.file_key:
             payload["file_key"] = self.file_key
         if self.datum_id:
@@ -459,6 +465,7 @@ class PortalShellTransition:
         return cls(
             kind=payload.get("kind"),
             surface_id=payload.get("surface_id") or payload.get("requested_surface_id") or "",
+            sandbox_id=payload.get("sandbox_id") or "",
             file_key=payload.get("file_key") or "",
             datum_id=payload.get("datum_id") or "",
             object_id=payload.get("object_id") or "",
@@ -876,6 +883,31 @@ def requires_shell_state_machine(surface_id: object) -> bool:
     return _as_text(surface_id) in REDUCER_OWNED_SURFACE_IDS
 
 
+_TOOL_SURFACE_TO_SANDBOX_ID: dict[str, str] = {
+    AWS_CSM_TOOL_SURFACE_ID: "aws-csm",
+    CTS_GIS_TOOL_SURFACE_ID: "cts-gis",
+    FND_DCM_TOOL_SURFACE_ID: "fnd-dcm",
+    FND_EBI_TOOL_SURFACE_ID: "fnd-ebi",
+    PAYPAL_CSM_TOOL_SURFACE_ID: "paypal-csm",
+    WORKBENCH_UI_TOOL_SURFACE_ID: "workbench-ui",
+}
+
+
+def sandbox_id_for_surface(surface_id: object) -> str:
+    """Return the canonical sandbox segment for a surface.
+
+    SYSTEM and non-tool surfaces map to ``"system"``. Tool surfaces map
+    to their canonical hyphen-separated sandbox segment (``"cts-gis"``,
+    ``"aws-csm"``, …) used in canonical document ids
+    (``lv.<msn>.<sandbox>.<name>.<hash>``) and surface routes.
+    """
+
+    surface_token = _as_text(surface_id)
+    if surface_token in _TOOL_SURFACE_TO_SANDBOX_ID:
+        return _TOOL_SURFACE_TO_SANDBOX_ID[surface_token]
+    return "system"
+
+
 def default_focus_path(*, scope_id: str, include_anchor_file: bool) -> tuple[PortalFocusSegment, ...]:
     segments = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=scope_id or PORTAL_SCOPE_DEFAULT_ID)]
     if include_anchor_file:
@@ -1092,7 +1124,14 @@ def reduce_portal_shell_state(
             seed_anchor_file=seed_anchor_file,
         )
 
-    if normalized_transition.kind == TRANSITION_FOCUS_FILE:
+    if normalized_transition.kind == TRANSITION_FOCUS_SANDBOX:
+        next_sandbox_id = _as_text(normalized_transition.sandbox_id) or normalized_scope.scope_id
+        anchor_file_key = _as_text(normalized_transition.file_key) or SYSTEM_ANCHOR_FILE_KEY
+        focus_path = [
+            PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=next_sandbox_id),
+            PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key),
+        ]
+    elif normalized_transition.kind == TRANSITION_FOCUS_FILE:
         next_file_key = _as_text(normalized_transition.file_key)
         if next_file_key == SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
             focus_path = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=normalized_scope.scope_id)]
@@ -1581,16 +1620,37 @@ def build_portal_activity_dispatch_bodies(
     portal_scope: PortalScope | dict[str, Any],
     shell_state: PortalShellState | dict[str, Any] | None,
 ) -> dict[str, dict[str, Any]]:
+    """Build per-surface activity-bar dispatch bodies.
+
+    Tool surfaces dispatch ``focus_sandbox`` so the workbench state
+    machine collapses (sandbox switch → anchor default). The URL
+    still mirrors state because the request payload carries the
+    requested surface id, which the runtime entrypoint converts back
+    into the tool route after the reducer applies the transition.
+    Non-tool reducer-owned surfaces continue to dispatch
+    ``enter_surface`` (the canonical seed).
+    """
+
     scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
     bodies: dict[str, dict[str, Any]] = {}
     for entry in build_portal_surface_catalog():
         if not requires_shell_state_machine(entry.surface_id):
             continue
+        if is_tool_surface(entry.surface_id):
+            sandbox_id = sandbox_id_for_surface(entry.surface_id)
+            transition = {
+                "kind": TRANSITION_FOCUS_SANDBOX,
+                "surface_id": entry.surface_id,
+                "sandbox_id": sandbox_id,
+                "file_key": SYSTEM_ANCHOR_FILE_KEY,
+            }
+        else:
+            transition = {"kind": TRANSITION_ENTER_SURFACE, "surface_id": entry.surface_id}
         bodies[entry.surface_id] = build_portal_shell_request_payload(
             requested_surface_id=entry.surface_id,
             portal_scope=scope,
             shell_state=shell_state,
-            transition={"kind": TRANSITION_ENTER_SURFACE, "surface_id": entry.surface_id},
+            transition=transition,
         )
     return bodies
 
@@ -1859,6 +1919,8 @@ __all__ = [
     "TRANSITION_FOCUS_DATUM",
     "TRANSITION_FOCUS_FILE",
     "TRANSITION_FOCUS_OBJECT",
+    "TRANSITION_FOCUS_SANDBOX",
+    "sandbox_id_for_surface",
     "TRANSITION_OPEN_INTERFACE_PANEL",
     "TRANSITION_SET_VERB",
     "UTILITIES_INTEGRATIONS_ROUTE",

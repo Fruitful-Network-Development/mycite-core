@@ -99,15 +99,17 @@
 
   function resolveDirectivePanelMode(region) {
     var family = resolveRegionFamily(region);
-    var surfaceId = resolveRegionSurfaceId(region);
     var kind = asText(region && region.kind);
 
+    // Unified directive panel is the canonical mode for all migrated surfaces.
+    if (kind === "unified_directive_panel") {
+      return "unified_directive_panel";
+    }
+
     if (family === "directive_panel") {
-      if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
       if (kind === "focus_selection_panel") return "focus_selection_panel";
       return "sections_panel";
     }
-    if (surfaceId === "system.tools.cts_gis") return "cts_gis_directive_panel";
     if (kind === "focus_selection_panel") return "focus_selection_panel";
     return "sections_panel";
   }

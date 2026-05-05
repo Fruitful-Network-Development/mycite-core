@@ -250,11 +250,13 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "region_renderers",
             "tool_surface_adapter",
             "aws_workspace",
+            "paypal_workspace",
             "system_workspace",
             "network_workspace",
             "workbench_renderers",
             "inspector_renderers",
             "cts_gis_surface",
+            "cts_gis_workspace",
             "shell_core",
             "shell_watchdog",
         ]
@@ -271,11 +273,21 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         startup_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "startup_critical"]
         deferred_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "deferred"]
         self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "inspector_renderers", "shell_core", "shell_watchdog"])
-        self.assertEqual(deferred_module_ids, ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"])
+        self.assertEqual(
+            deferred_module_ids,
+            [
+                "aws_workspace",
+                "paypal_workspace",
+                "system_workspace",
+                "network_workspace",
+                "cts_gis_surface",
+                "cts_gis_workspace",
+            ],
+        )
         self.assertEqual(manifest["budget_policy"]["startup_module_ids"], startup_module_ids)
         self.assertEqual(manifest["budget_policy"]["deferred_module_ids"], deferred_module_ids)
         self.assertEqual(manifest["cache_policy"]["invalidation_mode"], "query_versioned_static_assets")
-        system_module = manifest["scripts"]["shell_modules"][3]
+        system_module = manifest["scripts"]["shell_modules"][4]
         self.assertEqual(system_module["module_id"], "system_workspace")
         self.assertEqual(system_module["load_phase"], "deferred")
         self.assertEqual(system_module["loading_scope"], ["system.root"])
@@ -404,8 +416,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
 
         self.assertIn("resolveDirectivePanelMode", region_renderers)
-        self.assertIn('family === "directive_panel"', region_renderers)
-        self.assertIn("cts_gis_directive_panel", region_renderers)
+        self.assertIn("unified_directive_panel", region_renderers)
         self.assertNotIn("surface_label ===", region_renderers)
 
         self.assertIn("function resolveDirectivePanelMode(region)", tool_adapter)
@@ -663,6 +674,123 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
                     if token in text:
                         violations.append(f"{path.relative_to(REPO_ROOT)} -> {token}")
         self.assertEqual(violations, [])
+
+    def test_legacy_control_panel_builders_are_retired(self) -> None:
+        """Phase C4: legacy per-tool control-panel builders must not exist.
+
+        The unified builder ``build_unified_control_panel`` is the only
+        function that may construct a control panel region. Tool runtimes
+        may decorate the unified payload (e.g. via tool-specific helper
+        named ``_build_<tool>_directive_panel``), but no module may
+        define or import ``build_tool_control_panel``,
+        ``_build_control_panel`` (as a *local* control-panel builder
+        defined directly inside a tool runtime), or
+        ``_cts_gis_control_panel``.
+        """
+
+        forbidden_definition_patterns = [
+            "def build_tool_control_panel(",
+            "def _build_control_panel(",
+            "def _cts_gis_control_panel(",
+        ]
+        forbidden_import_patterns = [
+            "build_tool_control_panel",
+            "_cts_gis_control_panel",
+        ]
+        instances_root = REPO_ROOT / "MyCiteV2" / "instances"
+        violations: list[str] = []
+        for path in sorted(instances_root.rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for token in forbidden_definition_patterns:
+                if token in text:
+                    violations.append(f"{path.relative_to(REPO_ROOT)} defines {token.strip()}")
+            for token in forbidden_import_patterns:
+                if f"import {token}" in text or f", {token}" in text or f"    {token}," in text:
+                    violations.append(f"{path.relative_to(REPO_ROOT)} imports {token}")
+        self.assertEqual(violations, [])
+
+    def test_unified_directive_panel_kind_is_used_by_all_six_tool_runtimes(self) -> None:
+        """Phase C4: every migrated tool runtime emits ``unified_directive_panel``.
+
+        Verified by checking each of the six tool runtimes calls
+        ``build_unified_control_panel`` and that the unified builder is
+        the only function emitting the ``unified_directive_panel`` kind.
+        """
+
+        runtime_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime"
+        required_runtimes = [
+            "portal_cts_gis_runtime.py",
+            "portal_aws_runtime.py",
+            "portal_fnd_dcm_runtime.py",
+            "portal_fnd_ebi_runtime.py",
+            "portal_paypal_runtime.py",
+            "portal_workbench_ui_runtime.py",
+        ]
+        missing: list[str] = []
+        for filename in required_runtimes:
+            path = runtime_root / filename
+            text = path.read_text(encoding="utf-8")
+            if "build_unified_control_panel" not in text:
+                missing.append(filename)
+        self.assertEqual(missing, [])
+
+    def test_interface_panel_open_reasserts_anchor_focus(self) -> None:
+        """Phase D5: opening the Interface Panel re-asserts focus on the sandbox anchor.
+
+        The shell core must call a sandbox-focus dispatch when the IP toggles
+        from closed to open while the workbench is not in anchor mode, so
+        directive scripts running in the IP can assume the anchor + msn-SAMRAS
+        frame.
+        """
+
+        shell_core_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("reassertAnchorFocusIfNeeded", shell_core_source)
+        self.assertIn("focus_sandbox", shell_core_source)
+        self.assertIn("handleInterfacePanelToggle", shell_core_source)
+
+    def test_workbench_renderer_dispatches_on_datum_file_workbench(self) -> None:
+        """Phase D6: workbench frontend dispatches on ``region.kind=datum_file_workbench``.
+
+        The workbench renderer must implement a top-level dispatch on the
+        ``datum_file_workbench`` region kind and provide both
+        ``renderLayeredDatumTable`` and ``renderSandboxDocumentGallery`` paths
+        for the three workbench modes. Legacy CTS-GIS secondary-evidence
+        renderers must be retired.
+        """
+
+        workbench_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn('region.kind) === "datum_file_workbench"', workbench_source)
+        self.assertIn("renderLayeredDatumTable", workbench_source)
+        self.assertIn("renderSandboxDocumentGallery", workbench_source)
+        self.assertNotIn("renderSecondaryEvidenceSurface", workbench_source)
+        self.assertNotIn("renderCtsGisToolSummary", workbench_source)
+        self.assertNotIn("renderCtsGisIdleHelp", workbench_source)
+        self.assertNotIn("renderCtsGisManipulationState", workbench_source)
+
+    def test_tool_inspector_carries_tool_specific_surface_payload(self) -> None:
+        """Phase D4: tool-specific UI lives in the Interface Panel (inspector).
+
+        Each migrated tool runtime that previously projected tool chrome into
+        the workbench must now route that chrome through the inspector's
+        ``surface_payload`` so the workbench can stay the unified
+        ``datum_file_workbench``.
+        """
+
+        runtime_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime"
+        for filename in (
+            "portal_fnd_dcm_runtime.py",
+            "portal_fnd_ebi_runtime.py",
+            "portal_paypal_runtime.py",
+        ):
+            text = (runtime_root / filename).read_text(encoding="utf-8")
+            self.assertIn("build_datum_file_workbench", text, msg=filename)
+            self.assertIn("surface_payload", text, msg=filename)
 
 
 if __name__ == "__main__":

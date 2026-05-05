@@ -2,139 +2,110 @@
 
 ## Purpose
 
-This addendum extends the schema proposed in `mycelial_ontological_schema.md` with tables required by findings from the 2026-05-03 datum logic precision audit.
+This addendum extends the schema proposed in `mycelial_ontological_schema.md` with
+the relational changes required to realize the canonical MOS document naming
+taxonomy (see `datum_document_naming_taxonomy.md`). Per the 2026-05-05 user
+clarification, *only one* new relational table is introduced (`documents`); SAMRAS,
+HOPS, datum-editing, and document-naming concerns are handled by core libraries —
+not by additional relational schemas.
 
-Reference: `mycelial_ontological_schema.md` for the base schema (sandboxes/files, datums, datum_references, SAMRAS, HOPS geometry tables).
+## §1 — `documents` (the only new table; replaces / renames `files`)
 
-## New Tables
-
-### 1. `documents` (replaces/renames `files`)
-
-Primary document entity with enforced naming policy.
+Primary document entity with enforced canonical naming. The prefix
+discriminates between the three datum-document file types — `lv.` sandbox sources,
+`stl.` binary payloads, and `cptr.` cached sources.
 
 ```sql
 CREATE TABLE documents (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    document_id     TEXT    NOT NULL UNIQUE,   -- canonical lv.*/stl.*/cptr.* name
-    prefix          TEXT    NOT NULL CHECK (prefix IN ('lv', 'stl', 'cptr')),
+    tenant_id       TEXT    NOT NULL,
+    document_id     TEXT    NOT NULL UNIQUE,        -- canonical lv./stl./cptr. id
+    prefix          TEXT    NOT NULL CHECK (prefix IN ('lv','stl','cptr')),
     msn_id          TEXT    NOT NULL,
-    sandbox         TEXT    NOT NULL,
+    sandbox         TEXT,                            -- NULL for stl./cptr.
     name            TEXT    NOT NULL,
-    version_hash    TEXT    NOT NULL,          -- 64-char hex SHA-256
+    version_hash    TEXT    NOT NULL,                -- 64-char hex SHA-256 over MSS form
     is_anchor       INTEGER NOT NULL DEFAULT 0 CHECK (is_anchor IN (0, 1)),
-    origin          TEXT    NOT NULL DEFAULT 'local' CHECK (origin IN ('local', 'foreign')),
-    created_at      INTEGER NOT NULL           -- Unix epoch ms
+    origin          TEXT    NOT NULL DEFAULT 'local' CHECK (origin IN ('local','foreign')),
+    legacy_alias    TEXT,                            -- e.g. 'system:anthology' (one-cycle compat)
+    created_at      INTEGER NOT NULL                 -- Unix epoch ms
 );
-
 CREATE UNIQUE INDEX idx_documents_document_id ON documents (document_id);
+CREATE INDEX        idx_documents_tenant_legacy ON documents (tenant_id, legacy_alias);
+CREATE INDEX        idx_documents_sandbox ON documents (tenant_id, sandbox) WHERE sandbox IS NOT NULL;
 ```
 
-Note: the application layer validates `document_id` against the naming regex
-`^(lv|stl|cptr)\.[^.]+\.[^.]+\.[^.]+\.[a-f0-9]{64}$` before insert.
+Naming validation regex (enforced at the SQL adapter boundary by
+`MyCiteV2/packages/adapters/sql/datum_store.py` via the
+`MyCiteV2/packages/core/document_naming` library):
+
+```
+^lv\.[^.]+\.[^.]+\.[^.]+\.[a-f0-9]{64}$
+|
+^(stl|cptr)\.[^.]+\.[^.]+\.[a-f0-9]{64}$
+```
+
+`legacy_alias` is retained for one cycle to keep readers compatible with the legacy
+`system:<file>`/`sandbox:<tool>:<filename>.json` identifiers. New writes must
+produce a canonical `document_id`.
+
 See `datum_document_naming_taxonomy.md` for the full naming contract.
 
----
+## §2 — `samras_namespaces` — **withdrawn**
 
-### 2. `samras_namespaces` (new — supports multiple SAMRAS address spaces per anchor)
+The 2026-05-03 audit proposed a `samras_namespaces` table to track multiple
+SAMRAS address spaces per anchor. This is **withdrawn**: SAMRAS is a structural
+abstraction over a datum file's row content, not a relational entity. The
+authoritative implementation lives in `MyCiteV2/packages/core/samras/`
+(magnitude decode, ordinal address derivation, structure validity, mutation /
+canonical bitstream regeneration). Per-document SAMRAS state, when materialized,
+remains as a row inside the document itself (e.g. the `1-1-2` `msn` SAMRAS
+abstraction lives in the anthology's datum rows).
 
-One row per SAMRAS structure in an anchor document, named by namespace.
+## §3 — `precinct_time_windows` — **withdrawn**
 
-```sql
-CREATE TABLE samras_namespaces (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    document_id     INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
-    datum_address   TEXT    NOT NULL,          -- e.g. '1-1-2' for msn, '1-1-3' for ruigi
-    namespace_name  TEXT    NOT NULL CHECK (namespace_name IN ('msn', 'ruigi', 'other')),
-    root_ref        TEXT,
-    raw_bitstream   BLOB,
-    decoded_json    TEXT,
-    decode_state    TEXT    NOT NULL DEFAULT 'pending'
-                            CHECK (decode_state IN ('ready', 'blocked_invalid_magnitude', 'pending')),
-    UNIQUE (document_id, namespace_name)
-);
-```
+The proposed `precinct_time_windows` table is **withdrawn**. Per state-profile
+precinct/time-window data lives inline in the relevant `lv.<msn_id>.<sandbox>.<state_profile>`
+document, decoded by the core `samras` and `hops` libraries. Tracking is
+deferred to `TASK-MOS-RUIGI-SAMRAS-2026-05-03`.
 
-Note: the `msn` namespace currently lives at datum_address `1-1-2`.
-The `ruigi` namespace (for precinct `247-*` addressing) is planned at a TBD datum address
-(TASK-MOS-RUIGI-SAMRAS-2026-05-03).
+## §4 — `datum_hyphae_chains` — **withdrawn**
 
----
+The proposed `datum_hyphae_chains` table is **withdrawn**. The chain remains
+serialized as JSON in the existing `datum_row_semantics.hyphae_chain_json`
+column. Derivation is performed by
+`MyCiteV2/packages/core/mss/datum_identity.py::derive_hyphae_chain`. Storing the
+chain as JSON inside the row keeps a row's hyphae value co-located with its
+identity hash and avoids a join-table that has no readers.
 
-### 3. `precinct_time_windows` (new — state profile precinct collection list)
+## §5 — `document_staging_map` — **withdrawn**
 
-Maps ruigi-SAMRAS node refs to HOPS chronological time windows within a state profile document.
+The proposed `document_staging_map` table is **withdrawn**. The migration
+script `MyCiteV2/scripts/migrate_to_canonical_document_ids.py` is idempotent and
+records the legacy → canonical mapping directly on the `documents` row via the
+`legacy_alias` column. There is no longer a need for a separate staging map.
 
-```sql
-CREATE TABLE precinct_time_windows (
-    id                INTEGER PRIMARY KEY AUTOINCREMENT,
-    state_profile_id  INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
-    ruigi_node_ref    TEXT    NOT NULL,        -- e.g. '247-17-77-1'
-    time_start_hops   TEXT,                   -- nullable: open-ended window start
-    time_end_hops     TEXT,                   -- nullable: open-ended window end
-    datum_row_addr    TEXT    NOT NULL,
-    UNIQUE (state_profile_id, ruigi_node_ref, time_start_hops, time_end_hops)
-);
-```
+## Why the Collapse
 
-Usage: when the portal AITAS time = T, query returns `ruigi_node_ref` values where
-`time_start_hops <= T <= time_end_hops`. Each match maps to the precinct document
-`lv.<msn_id>.cts-gis.<ruigi_node_ref>.<hash>`.
+The clarified data model treats *file category* as the primary discriminator (anchor /
+binary payload / cached source / sandbox source) and absorbs every other concern
+either:
 
----
+- into the row itself (`hyphae_chain_json` on `datum_row_semantics`), or
+- into a pure-stdlib core library (`packages/core/samras`, `packages/core/hops`,
+  `packages/core/datum_editing`, `packages/core/mss`, `packages/core/document_naming`).
 
-### 4. `datum_hyphae_chains` (new — normalized hyphae chain storage)
-
-Stores the ordered list of rudi datums constituting the hyphae value for a datum.
-
-```sql
-CREATE TABLE datum_hyphae_chains (
-    datum_document_id  INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
-    datum_address      TEXT    NOT NULL,
-    chain_position     INTEGER NOT NULL,
-    rudi_address       TEXT    NOT NULL,
-    PRIMARY KEY (datum_document_id, datum_address, chain_position)
-);
-```
-
-Hyphae chain rule: for datum D using rudi datum `0-0-K` as its highest reference,
-the chain is `[0-0-1, 0-0-2, ..., 0-0-K]` regardless of which intermediate rudi datums
-D directly references. Every preceding rudi datum must be present in the chain even if
-not used.
-
-Note: the chain derivation algorithm is implemented at
-`MyCiteV2/packages/core/mss/datum_identity.py::derive_hyphae_chain`
-(TASK-MOS-MSS-HYPHAE-CORE-2026-05-03).
-This table supersedes the `datum_hyphae_chain` join table from `mycelial_ontological_schema.md`
-with explicit positional ordering and document-scoped addressing.
-
----
-
-### 5. `document_staging_map` (new — promotion tracking)
-
-Tracks hippo staging path to canonical MOS document mapping.
-
-```sql
-CREATE TABLE document_staging_map (
-    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
-    staging_path          TEXT    NOT NULL UNIQUE,
-    canonical_document_id INTEGER REFERENCES documents (id) ON DELETE SET NULL,
-    promoted_at           INTEGER,             -- Unix epoch ms, nullable until promoted
-    promotion_method      TEXT                 -- e.g. 'filesystem_adapter', 'manual', 'migration_script'
-);
-```
-
-Purpose: enables tracking which hippo source files have been promoted to canonical MOS
-documents and which remain pending. Every staging path known to the filesystem adapter
-should have a row here from first discovery.
-
----
+This keeps the relational surface narrow (one canonical-name table plus the existing
+row-semantics tables) while the algorithmic mass — bullet-proof datum editing,
+SAMRAS/HOPS decode, MSS hashing, hyphae chain derivation — lives in clean,
+independently-testable Python libraries.
 
 ## Relationships to Prior Schema
 
-| New table | Relationship to `mycelial_ontological_schema.md` |
+| Table | Relationship to `mycelial_ontological_schema.md` |
 |---|---|
-| `documents` | Supersedes `files` — all `file_id` foreign keys in geometry tables should reference `documents.id` |
-| `samras_namespaces` | Supersedes `samras_structures` — supports multiple SAMRAS address spaces per document rather than one structure per file |
-| `precinct_time_windows` | New — no prior equivalent |
-| `datum_hyphae_chains` | Formalizes `datum_hyphae_chain` from the prior schema with explicit chain position and document-scoped datum addressing |
-| `document_staging_map` | New — enables migration tracking from staging-style filenames to canonical `lv.*`/`stl.*`/`cptr.*` naming |
+| `documents` | Supersedes `files`. All `file_id` foreign keys in row-semantics tables should follow the cycle to reference `documents.id`. `legacy_alias` retained for one cycle. |
+
+The other prior-schema tables proposed in the 2026-05-03 audit are withdrawn for the
+reasons in §2–§5. Follow `datum_document_naming_taxonomy.md` and the core libraries
+listed above instead.

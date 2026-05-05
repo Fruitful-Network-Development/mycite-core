@@ -3,6 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Mapping
 
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    build_unified_control_panel,
+)
+from MyCiteV2.instances._shared.runtime.portal_workbench import (
+    build_datum_file_workbench,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_DCM_TOOL_REQUEST_SCHEMA,
     FND_DCM_TOOL_SURFACE_SCHEMA,
@@ -136,9 +142,10 @@ def _facts_rows(items: list[tuple[str, object]]) -> list[dict[str, str]]:
     return rows
 
 
-def _build_control_panel(
+def _build_fnd_dcm_directive_panel(
     *,
     portal_scope: PortalScope,
+    shell_state: object | None,
     workspace: dict[str, Any],
 ) -> dict[str, Any]:
     canonical_query = _as_dict(workspace.get("canonical_query"))
@@ -269,25 +276,49 @@ def _build_control_panel(
                 ],
             }
         )
-    context_items = [
-        {"label": "Sandbox", "value": "FND-DCM"},
-        {"label": "Site", "value": selected_label or "—"},
-        {"label": "View", "value": selected_view.title()},
+    fnd_dcm_site_view = [
+        {"label": "Site", "value": selected_label or "—", "state": "active"},
+        {"label": "View", "value": selected_view.title(), "state": "active"},
     ]
     if selected_view == "pages":
-        context_items.append({"label": "Page", "value": _as_text(workspace.get("page")) or "—"})
+        fnd_dcm_site_view.append({"label": "Page", "value": _as_text(workspace.get("page")) or "—", "state": "active"})
     if selected_view == "collections":
-        context_items.append({"label": "Collection", "value": _as_text(workspace.get("collection")) or "—"})
-    return {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "focus_selection_panel",
-        "title": "Control Panel",
-        "surface_label": "FND-DCM",
-        "context_items": context_items,
-        "verb_tabs": [],
-        "groups": groups,
-        "actions": [],
-    }
+        fnd_dcm_site_view.append(
+            {"label": "Collection", "value": _as_text(workspace.get("collection")) or "—", "state": "active"}
+        )
+
+    panel = build_unified_control_panel(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        surface_id=FND_DCM_TOOL_SURFACE_ID,
+        surface_label="FND-DCM",
+        navigation_groups=groups,
+        actions=[],
+        tool_extensions={
+            "fnd_dcm_site_view": fnd_dcm_site_view,
+        },
+    )
+    panel_context = list(panel.get("context_conditions") or [])
+    file_value = f"site://{selected_label or selected_site or 'fnd-dcm'}"
+    file_replaced = False
+    for row in panel_context:
+        if row.get("label") == "File":
+            row["value"] = file_value
+            file_replaced = True
+            break
+    if not file_replaced:
+        panel_context.append({"level": "file", "label": "File", "value": file_value, "state": "active"})
+    panel_context.append({"level": "view", "label": "View", "value": selected_view.title(), "state": "active"})
+    if selected_view == "pages":
+        panel_context.append(
+            {"level": "page", "label": "Page", "value": _as_text(workspace.get("page")) or "—", "state": "active"}
+        )
+    if selected_view == "collections":
+        panel_context.append(
+            {"level": "collection", "label": "Collection", "value": _as_text(workspace.get("collection")) or "—", "state": "active"}
+        )
+    panel["context_conditions"] = panel_context
+    return panel
 
 
 def _build_inspector(
@@ -385,6 +416,49 @@ def _build_inspector(
                 ],
             }
         )
+    board_profile_preview = _as_dict(workspace.get("board_profile_preview"))
+    manifest_sections = [
+        {
+            "title": "Manifest JSON",
+            "summary": _as_text(_as_dict(workspace.get("tool_files")).get("manifest_path")),
+            "preformatted": _as_text(workspace.get("raw_manifest_json")),
+        },
+        {
+            "title": "Collection Sources",
+            "columns": [
+                {"key": "collection_id", "label": "Collection"},
+                {"key": "source_kind", "label": "Kind"},
+                {"key": "relative_path", "label": "Relative Path"},
+                {"key": "exists", "label": "Exists"},
+            ],
+            "items": [
+                {
+                    "collection_id": _as_text(item.get("collection_id")),
+                    "source_kind": _as_text(item.get("source_kind")),
+                    "relative_path": _as_text(item.get("relative_path")),
+                    "exists": "yes" if item.get("exists") else "no",
+                }
+                for item in _as_list(workspace.get("selected_collection_sources"))
+                if isinstance(item, dict)
+            ],
+        },
+        {
+            "title": "Normalization Evidence",
+            "rows": [
+                {"label": "step", "value": _as_text(item)}
+                for item in _as_list(workspace.get("normalization_evidence"))
+                if _as_text(item)
+            ],
+        },
+    ]
+    manifest_notes = [
+        "FND-DCM is read-only in v1.",
+        "Manifest evidence is rendered in the Interface Panel.",
+    ]
+    if board_profile_preview:
+        manifest_notes.append(
+            f"Board profile normalization preview found {int(board_profile_preview.get('count') or 0)} profiles and {int(board_profile_preview.get('summary_count') or 0)} summaries."
+        )
     return {
         "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
         "kind": "summary_panel",
@@ -392,63 +466,18 @@ def _build_inspector(
         "summary": "Hosted manifest inspection and collection normalization.",
         "subject": subject,
         "sections": sections,
-    }
-
-
-def _workbench_surface_payload(workspace: dict[str, Any]) -> dict[str, Any]:
-    board_profile_preview = _as_dict(workspace.get("board_profile_preview"))
-    notes = [
-        "FND-DCM is read-only in v1.",
-        "Workbench evidence stays hidden until explicitly opened.",
-    ]
-    if board_profile_preview:
-        notes.append(
-            f"Board profile normalization preview found {int(board_profile_preview.get('count') or 0)} profiles and {int(board_profile_preview.get('summary_count') or 0)} summaries."
-        )
-    return {
-        "kind": "fnd_dcm_secondary_evidence",
-        "title": "FND-DCM Evidence",
-        "cards": [
-            {"label": "Site", "value": _as_text(workspace.get("selected_label")) or _as_text(workspace.get("selected_site"))},
-            {"label": "View", "value": _as_text(workspace.get("view")) or "overview"},
-            {"label": "Sources", "value": str(len(_as_list(workspace.get("selected_collection_sources"))))},
-            {"label": "Issues", "value": str(len(_as_list(workspace.get("issues"))))},
-        ],
-        "sections": [
-            {
-                "title": "Manifest JSON",
-                "summary": _as_text(_as_dict(workspace.get("tool_files")).get("manifest_path")),
-                "preformatted": _as_text(workspace.get("raw_manifest_json")),
-            },
-            {
-                "title": "Collection Sources",
-                "columns": [
-                    {"key": "collection_id", "label": "Collection"},
-                    {"key": "source_kind", "label": "Kind"},
-                    {"key": "relative_path", "label": "Relative Path"},
-                    {"key": "exists", "label": "Exists"},
-                ],
-                "items": [
-                    {
-                        "collection_id": _as_text(item.get("collection_id")),
-                        "source_kind": _as_text(item.get("source_kind")),
-                        "relative_path": _as_text(item.get("relative_path")),
-                        "exists": "yes" if item.get("exists") else "no",
-                    }
-                    for item in _as_list(workspace.get("selected_collection_sources"))
-                    if isinstance(item, dict)
-                ],
-            },
-            {
-                "title": "Normalization Evidence",
-                "rows": [
-                    {"label": "step", "value": _as_text(item)}
-                    for item in _as_list(workspace.get("normalization_evidence"))
-                    if _as_text(item)
-                ],
-            },
-        ],
-        "notes": notes,
+        "surface_payload": {
+            "kind": "fnd_dcm_manifest_tree",
+            "title": "FND-DCM Manifest Tree",
+            "cards": [
+                {"label": "Site", "value": _as_text(workspace.get("selected_label")) or _as_text(workspace.get("selected_site"))},
+                {"label": "View", "value": _as_text(workspace.get("view")) or "overview"},
+                {"label": "Sources", "value": str(len(_as_list(workspace.get("selected_collection_sources"))))},
+                {"label": "Issues", "value": str(len(_as_list(workspace.get("issues"))))},
+            ],
+            "sections": manifest_sections,
+            "notes": manifest_notes,
+        },
     }
 
 
@@ -522,22 +551,22 @@ def build_portal_fnd_dcm_surface_bundle(
         "page_title": "FND-DCM",
         "page_subtitle": "Read-only hosted manifest inspection and normalization.",
         "surface_payload": surface_payload,
-        "control_panel": attach_region_family_contract(
-            _build_control_panel(portal_scope=portal_scope, workspace=workspace),
-            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
-            surface_id=FND_DCM_TOOL_SURFACE_ID,
+        "control_panel": _build_fnd_dcm_directive_panel(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            workspace=workspace,
         ),
-        "workbench": attach_region_family_contract(
-            {
-                "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-                "kind": "fnd_dcm_workbench",
-                "title": "FND-DCM Evidence",
-                "subtitle": "Raw manifest JSON, collection file metadata, and normalization evidence.",
-                "visible": False,
-                "surface_payload": _workbench_surface_payload(workspace),
-            },
-            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+        "workbench": build_datum_file_workbench(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
             surface_id=FND_DCM_TOOL_SURFACE_ID,
+            sandbox_id="fnd-dcm",
+            sandbox_label="FND-DCM",
+            anchor_document=None,
+            sandbox_documents=[],
+            title="FND-DCM Datum Workbench",
+            subtitle="Layered datum table for the active FND-DCM sandbox file.",
+            visible=False,
         ),
         "inspector": attach_region_family_contract(
             _build_inspector(tool_status=tool_status, workspace=workspace),
