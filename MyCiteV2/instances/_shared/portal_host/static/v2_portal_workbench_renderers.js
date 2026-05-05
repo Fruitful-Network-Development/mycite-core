@@ -890,6 +890,16 @@
         adapter.resolveReflectiveWorkspaceModuleSpec(region, surfacePayload)) ||
       {};
 
+    // Handle loading state
+    if (mode === "loading") {
+      target.innerHTML =
+        '<section class="v2-card" style="margin:12px">' +
+        '<h3>Loading Workbench</h3>' +
+        '<p>Loading tool workbench renderer...</p>' +
+        '</section>';
+      return;
+    }
+
     if (mode === "registered_workspace" && asObject(moduleSpec).moduleId) {
       renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec);
       return;
@@ -902,6 +912,18 @@
       renderSecondaryEvidenceSurface(target, region, surfacePayload);
       return;
     }
+
+    // Fallback for tools without specific workbench
+    if (mode === "generic_surface" && !region.sections && !region.cards && !region.rows) {
+      target.innerHTML =
+        '<section class="v2-card" style="margin:12px">' +
+        '<h3>Workbench</h3>' +
+        '<p>This tool does not provide a workbench view. ' +
+        'Use the interface panel to interact with the tool.</p>' +
+        '</section>';
+      return;
+    }
+
     renderGenericSurface(ctx, target, region, surfacePayload);
   }
 

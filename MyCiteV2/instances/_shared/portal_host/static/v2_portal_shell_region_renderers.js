@@ -814,6 +814,15 @@
       (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
       "sections_panel";
 
+    // Prefer unified directive panel for all tools with directive controls
+    if (region.kind === "unified_directive_panel" ||
+        region.nimm_aitas_control ||
+        region.terminal_control) {
+      renderUnifiedDirectivePanel(ctx, root, region);
+      return;
+    }
+
+    // Legacy routing for backward compatibility
     if (mode === "cts_gis_directive_panel") {
       renderCtsGisDirectivePanel(ctx, root, region);
       return;
@@ -822,10 +831,8 @@
       renderGenericFocusSelectionPanel(ctx, root, region);
       return;
     }
-    if (mode === "unified_directive_panel" || region.kind === "unified_directive_panel") {
-      renderUnifiedDirectivePanel(ctx, root, region);
-      return;
-    }
+
+    // Default to sections for tools without directive controls
     renderSectionModules(ctx, root, region);
   }
 
@@ -833,18 +840,10 @@
     var adapter = toolSurfaceAdapter();
     var region = ctx.region || {};
     var root = ctx.target || document.getElementById("portalControlPanel");
-    var family =
-      (adapter && typeof adapter.resolveRegionFamily === "function" && adapter.resolveRegionFamily(region)) ||
-      "";
-    var directiveMode =
-      (adapter && typeof adapter.resolveDirectivePanelMode === "function" && adapter.resolveDirectivePanelMode(region)) ||
-      "sections_panel";
     if (!root) return;
-    if (family === "directive_panel" || directiveMode !== "sections_panel") {
-      renderDirectivePanelHost(ctx, root, region);
-      return;
-    }
-    renderSectionModules(ctx, root, region);
+
+    // Always use directive panel host for intelligent routing
+    renderDirectivePanelHost(ctx, root, region);
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("region_renderers");
