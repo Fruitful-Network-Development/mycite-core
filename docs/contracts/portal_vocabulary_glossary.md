@@ -26,8 +26,10 @@ The word `workbench` is overloaded. The canonical disambiguation is:
 | Term | Definition |
 |---|---|
 | `Workbench` (region-family) | The center region of the three-panel portal layout. Every surface emits a region-family-`workbench` content payload. |
-| `datum-file workbench` | The shared workbench renderer used on every surface (SYSTEM and every tool surface) that operates over a sandbox of canonical `lv.` datum documents. Tri-state: `mode=anchor`, `mode=gallery`, `mode=selected_document`. Region kind: `datum_file_workbench`, schema `mycite.v2.portal.shell.region.workbench.v2`. |
-| `SYSTEM datum-file workbench` | The datum-file workbench instantiated against the `system` sandbox (anchor `anthology`). Reachable at `/portal/system`. |
+| `datum-file workbench` | The shared workbench renderer used on every surface (SYSTEM and every tool surface) that operates over one active sandbox of canonical `lv.` datum documents. Tri-state: `mode=anchor`, `mode=gallery`, `mode=selected_document`. Region kind: `datum_file_workbench`, schema `mycite.v2.portal.shell.region.workbench.v2`. |
+| `sandbox` | The highest datum-document grouping inside a portal `msn_id`. A datum-file workbench may focus only one sandbox at a time. |
+| `SYSTEM datum-file workbench` | The datum-file workbench instantiated against the `system` sandbox only (anchor `anthology`). Reachable at `/portal/system`. |
+| `tool datum-file workbench` | The same shared workbench instantiated against a tool sandbox such as `cts-gis`; its default anchor token is `anchor`. |
 | `Workbench UI` (tool) | The separate SQL authority inspector surface at `/portal/system/tools/workbench-ui`. Documented exception in `surface_catalog.md`: keeps the SQL row grid as workbench-primary; it does **not** replace `SYSTEM` and it does **not** cover all deployed files. |
 | `NETWORK system-log workbench` | The system-log surface workbench renderer (region-family-`workbench`). Distinct from the datum-file workbench; logs are not datum documents. |
 

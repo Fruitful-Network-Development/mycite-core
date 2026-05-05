@@ -17,8 +17,10 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     SURFACE_POSTURE_WORKBENCH_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
+    TOOL_ANCHOR_FILE_KEY,
     CTS_GIS_TOOL_SURFACE_ID,
     PAYPAL_CSM_TOOL_SURFACE_ID,
+    PortalScope,
     TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_FILE,
@@ -36,6 +38,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonical_query_for_surface_query,
     canonical_query_for_runtime_request_payload,
     canonical_route_for_surface,
+    build_portal_shell_state_from_query,
     initial_portal_shell_state,
     reduce_portal_shell_state,
     requires_shell_state_machine,
@@ -207,18 +210,18 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual(sandbox_id_for_surface(PAYPAL_CSM_TOOL_SURFACE_ID), "paypal-csm")
         self.assertEqual(sandbox_id_for_surface("unknown.surface"), "system")
 
-    def test_focus_sandbox_transition_seeds_anchor_under_target_sandbox(self) -> None:
+    def test_tool_focus_sandbox_transition_seeds_tool_anchor_under_target_sandbox(self) -> None:
         state = initial_portal_shell_state(
             surface_id=SYSTEM_ROOT_SURFACE_ID,
             portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition"]},
         )
         next_state = reduce_portal_shell_state(
-            active_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
             portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition"]},
             current_state=state,
             transition={
                 "kind": TRANSITION_FOCUS_SANDBOX,
-                "surface_id": SYSTEM_ROOT_SURFACE_ID,
+                "surface_id": CTS_GIS_TOOL_SURFACE_ID,
                 "sandbox_id": "cts-gis",
                 "file_key": SYSTEM_ANCHOR_FILE_KEY,
             },
@@ -228,7 +231,32 @@ class PortalShellContractTests(unittest.TestCase):
         ids = [segment.id for segment in next_state.focus_path]
         self.assertEqual(levels, ["sandbox", "file"])
         self.assertEqual(ids[0], "cts-gis")
-        self.assertEqual(ids[1], SYSTEM_ANCHOR_FILE_KEY)
+        self.assertEqual(ids[1], TOOL_ANCHOR_FILE_KEY)
+
+    def test_system_root_rejects_cross_sandbox_file_focus(self) -> None:
+        state = initial_portal_shell_state(
+            surface_id=SYSTEM_ROOT_SURFACE_ID,
+            portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition"]},
+        )
+        next_state = reduce_portal_shell_state(
+            active_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition"]},
+            current_state=state,
+            transition={
+                "kind": TRANSITION_FOCUS_FILE,
+                "file_key": "sandbox:cts_gis:sc.example.json",
+            },
+            seed_anchor_file=False,
+        )
+        self.assertEqual([segment.id for segment in next_state.focus_path], ["system", SYSTEM_ANCHOR_FILE_KEY])
+
+    def test_tool_route_default_focus_uses_tool_sandbox_anchor(self) -> None:
+        state = build_portal_shell_state_from_query(
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
+            query={"verb": "mediate"},
+        )
+        self.assertEqual([segment.id for segment in state.focus_path], ["cts-gis", TOOL_ANCHOR_FILE_KEY])
 
     def test_shell_request_resolution_returns_canonical_query_for_reducer_surfaces(self) -> None:
         selection = resolve_portal_shell_request(

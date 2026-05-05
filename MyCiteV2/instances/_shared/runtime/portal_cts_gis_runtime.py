@@ -63,15 +63,18 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
+    FOCUS_LEVEL_FILE,
     PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
+    TOOL_ANCHOR_FILE_KEY,
     PortalScope,
     PortalShellState,
     build_portal_shell_request_payload,
     normalize_runtime_shell_action_request_payload,
     normalize_runtime_shell_surface_request_payload,
     resolve_portal_tool_registry_entry,
+    segment_id_for_level,
 )
 from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
 from MyCiteV2.packages.state_machine.nimm import (
@@ -88,6 +91,69 @@ _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
 _DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
+
+
+def _summary_for_workbench_document(document: Any) -> dict[str, Any]:
+    if isinstance(document, dict) and isinstance(document.get("document_summary"), dict):
+        summary = dict(document.get("document_summary") or {})
+    elif hasattr(document, "to_summary_dict"):
+        summary = dict(document.to_summary_dict())
+    elif isinstance(document, dict):
+        summary = dict(document)
+    else:
+        summary = {
+            "document_id": _as_text(getattr(document, "document_id", "")),
+            "document_name": _as_text(getattr(document, "document_name", "")),
+            "relative_path": _as_text(getattr(document, "relative_path", "")),
+            "tool_id": _as_text(getattr(document, "tool_id", "")),
+            "row_count": len(list(getattr(document, "rows", ()) or ())),
+        }
+    metadata = summary.get("document_metadata") if isinstance(summary.get("document_metadata"), dict) else {}
+    legacy_alias = _as_text(summary.get("legacy_alias")) or _as_text(metadata.get("legacy_alias"))
+    document_id = _as_text(summary.get("document_id"))
+    document_name = _as_text(summary.get("document_name") or summary.get("name"))
+    is_anchor = bool(summary.get("is_anchor")) or (
+        document_name.lower() in {"anchor", "anchor.json"}
+        or ".anchor." in document_id
+        or legacy_alias.endswith(":anchor.json")
+        or legacy_alias.endswith(":anchor")
+    )
+    summary["legacy_alias"] = legacy_alias
+    summary["is_anchor"] = is_anchor
+    return summary
+
+
+def _wrap_workbench_document(document: Any) -> dict[str, Any]:
+    if isinstance(document, dict) and isinstance(document.get("document_summary"), dict):
+        nested_document = document.get("document")
+    else:
+        nested_document = document
+    return {
+        "document": nested_document,
+        "document_summary": _summary_for_workbench_document(document),
+    }
+
+
+def _workbench_document_id(document: Any) -> str:
+    return _as_text(_summary_for_workbench_document(document).get("document_id"))
+
+
+def _workbench_document_matches(document: Any, requested_document_id: object) -> bool:
+    requested = _as_text(requested_document_id)
+    if not requested:
+        return False
+    summary = _summary_for_workbench_document(document)
+    return requested in {
+        _as_text(summary.get("document_id")),
+        _as_text(summary.get("legacy_alias")),
+    }
+
+
+def _cts_gis_workbench_documents(service_surface: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_documents = list(service_surface.get("workbench_documents") or [])
+    if not raw_documents:
+        raw_documents = list(service_surface.get("documents") or [])
+    return [_wrap_workbench_document(document) for document in raw_documents]
 CTS_GIS_ACTION_RESULT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.result.v1"
 CTS_GIS_TOOL_ACTION_ROUTE = "/portal/api/v2/system/tools/cts-gis/actions"
 CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.cts_gis.actions"
@@ -3482,29 +3548,24 @@ def build_portal_cts_gis_surface_bundle(
         "configured": tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id),
         "operational": operational,
         "source_layout_state": _as_text((source_evidence_public.get("readiness") or {}).get("state")) or "pending",
-        "document_count": len(list(service_surface.get("documents") or [])),
+        "document_count": len(list(service_surface.get("workbench_documents") or service_surface.get("documents") or [])),
         "active_document_id": _as_text((resolved_tool_state.get("source") or {}).get("attention_document_id")),
         "help_text": "Load a structure or stage an insert operation to begin." if not has_active_manipulation else "",
     }
 
-    cts_gis_sandbox_documents = list(service_surface.get("documents") or [])
+    cts_gis_sandbox_documents = _cts_gis_workbench_documents(service_surface)
     cts_gis_anchor_document = None
     cts_gis_selected_document = None
-    cts_gis_active_document_id = _as_text((resolved_tool_state.get("source") or {}).get("attention_document_id"))
+    focus_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
+    cts_gis_active_document_id = (
+        "" if focus_file_key in {"", TOOL_ANCHOR_FILE_KEY} else _as_text(focus_file_key)
+    ) or _as_text((resolved_tool_state.get("source") or {}).get("attention_document_id"))
     for document in cts_gis_sandbox_documents:
-        document_id = (
-            getattr(document, "document_id", None)
-            if not isinstance(document, dict)
-            else document.get("document_id")
-        )
-        is_anchor = bool(
-            getattr(document, "is_anchor", False)
-            if not isinstance(document, dict)
-            else document.get("is_anchor")
-        )
+        summary = _summary_for_workbench_document(document)
+        is_anchor = bool(summary.get("is_anchor"))
         if is_anchor and cts_gis_anchor_document is None:
             cts_gis_anchor_document = document
-        if cts_gis_active_document_id and document_id == cts_gis_active_document_id:
+        if cts_gis_active_document_id and _workbench_document_matches(document, cts_gis_active_document_id):
             cts_gis_selected_document = document
 
     workbench = build_datum_file_workbench(

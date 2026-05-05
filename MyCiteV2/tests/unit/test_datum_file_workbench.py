@@ -130,6 +130,44 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         self.assertEqual(region["layered_datum_table"]["document"]["document_id"], selected["document_id"])
         self.assertEqual(len(region["layered_datum_table"]["rows"]), 1)
 
+    def test_projection_bundle_input_emits_gallery_card_and_layer_groups(self) -> None:
+        bundle = {
+            "document_summary": {
+                "document_id": "lv.fnd.cts-gis.precinct.bbbb",
+                "document_name": "precinct.json",
+                "tool_id": "cts-gis",
+                "row_count": 2,
+            },
+            "document": {
+                "rows": [
+                    {"datum_address": "2-3-1", "raw": [["2-3-1"], ["first"]]},
+                    {"datum_address": "2-3-2", "raw": [["2-3-2"], ["second"]]},
+                ]
+            },
+        }
+        gallery = build_datum_file_workbench(
+            portal_scope=self.portal_scope,
+            shell_state=None,
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            sandbox_id="cts-gis",
+            sandbox_documents=[bundle],
+            explicit_mode=WORKBENCH_MODE_GALLERY,
+        )
+        self.assertEqual(gallery["gallery"]["documents"][0]["document_id"], "lv.fnd.cts-gis.precinct.bbbb")
+        selected = build_datum_file_workbench(
+            portal_scope=self.portal_scope,
+            shell_state=None,
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            sandbox_id="cts-gis",
+            anchor_document=None,
+            selected_document=bundle,
+        )
+        table = selected["layered_datum_table"]
+        self.assertEqual(table["document"]["document_id"], "lv.fnd.cts-gis.precinct.bbbb")
+        self.assertEqual(table["layer_groups"][0]["layer"], 2)
+        self.assertEqual(table["layer_groups"][0]["value_groups"][0]["value_group"], 3)
+        self.assertEqual(table["layer_groups"][0]["value_groups"][0]["row_count"], 2)
+
     def test_explicit_gallery_overrides_anchor_resolution(self) -> None:
         anchor = _document(
             document_id="lv.fnd.system.anthology.aaaa",

@@ -23,6 +23,11 @@ Tool-specific UI (Diktataograph, Garland, Staged Insert, Domain Gallery, Manifes
 tree, Analytics body, PayPal body) lives in the `Interface Panel` only. Tool surfaces
 do not replace the workbench with tool chrome.
 
+The portal `msn_id` bounds the portal; sandbox is the parent datum-document
+grouping inside that boundary. `system.root` is bound to sandbox `system` only.
+Tool surfaces are bound to their named sandbox only (`cts-gis`, `aws-csm`, and so
+on). Cross-sandbox datum-file navigation is not a supported shell state.
+
 `Workbench UI` is the documented `workbench_primary` exception (see its section
 below). It keeps the SQL row grid as workbench-primary; it does not adopt the shared
 `datum_file_workbench` renderer.
@@ -144,7 +149,9 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/cts-gis`.
 - Its default posture is interface-panel-led.
-- Its workbench is the shared `datum_file_workbench` over the CTS-GIS sandbox. Default mode is `anchor`, rendering the layered datum table for `lv.<msn>.cts-gis.anchor.<hash>`.
+- Its workbench is the shared `datum_file_workbench` over the CTS-GIS sandbox.
+  Default shell focus is `file=anchor`; if no materialized CTS-GIS anchor document
+  exists yet, the same workbench falls back to the CTS-GIS sandbox gallery.
 - Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body on the shared tab host. Diktataograph, Staged Insert, and Garland are Interface Panel content; they are not workbench renderers.
 - `tab_host=shared_interface_tabs`.
 - `tabs` currently materialize as `diktataograph` and `garland`.

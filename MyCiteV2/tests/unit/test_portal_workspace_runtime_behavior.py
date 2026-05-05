@@ -756,7 +756,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             tool_exposure_policy=None,
         )
         self.assertEqual(envelope["surface_id"], "system.tools.cts_gis")
-        self.assertEqual(envelope["canonical_query"]["file"], "anthology")
+        self.assertEqual(envelope["canonical_query"]["file"], "anchor")
         self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
         self.assertNotIn("record", envelope["canonical_query"])
         self.assertNotIn("type", envelope["canonical_query"])
@@ -2336,7 +2336,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 [group["title"] for group in selected_panel["navigation_groups"]],
             )
 
-    def test_non_anthology_documents_keep_generic_workspace_rendering(self) -> None:
+    def test_system_workspace_rejects_non_system_document_focus(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
             data_dir = root / "data"
@@ -2397,8 +2397,16 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 authority_mode="sql_primary",
             )
             document = bundle["surface_payload"]["workspace"]["document"]
-            self.assertNotIn("presentation", document)
-            self.assertEqual(document["document_id"], sandbox_document_id)
+            self.assertEqual(document["document_id"], "system:anthology")
+            self.assertEqual(document["presentation"], "anthology_layered_table")
+            self.assertEqual(
+                [segment.id for segment in shell_state.focus_path],
+                ["system", "anthology"],
+            )
+            self.assertNotIn(
+                "Sandbox: cts-gis",
+                [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
+            )
 
 
     def test_system_workbench_projection_uses_cache_until_authority_mtime_changes(self) -> None:

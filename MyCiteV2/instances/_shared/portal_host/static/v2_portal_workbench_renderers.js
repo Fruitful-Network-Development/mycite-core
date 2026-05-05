@@ -847,10 +847,12 @@
                         " rows)"
                     ) +
                     "</summary>" +
-                    '<div class="v2-tableWrap"><table class="v2-table"><thead><tr><th>Iter</th><th>Datum</th><th>Value</th></tr></thead><tbody>' +
+                    '<div class="v2-tableWrap"><table class="v2-table"><thead><tr><th>Iter</th><th>Datum</th><th>Value</th><th>Action</th></tr></thead><tbody>' +
                     vgRows
                       .map(function (row) {
                         var coords = asObject(row.coordinates);
+                        var editActions = asList(row.edit_actions);
+                        var editAction = asObject(editActions[0]);
                         return (
                           "<tr><td>" +
                           escapeHtml(coords.iteration != null ? String(coords.iteration) : "—") +
@@ -858,6 +860,18 @@
                           escapeHtml(asText(row.label) || asText(row.datum_id) || "Datum") +
                           "</td><td>" +
                           escapeHtml(asText(row.display_value) || asText(row.primary_value_token) || "—") +
+                          "</td><td>" +
+                          (asText(editAction.action)
+                            ? '<button type="button" data-datum-edit-action="' +
+                              escapeHtml(asText(editAction.action)) +
+                              '" data-datum-document-id="' +
+                              escapeHtml(asText(editAction.document_id)) +
+                              '" data-datum-address="' +
+                              escapeHtml(asText(editAction.datum_address)) +
+                              '" data-datum-sandbox-id="' +
+                              escapeHtml(asText(editAction.sandbox_id)) +
+                              '">Edit</button>'
+                            : "—") +
                           "</td></tr>"
                         );
                       })
@@ -883,15 +897,29 @@
     return (
       heading +
       '<section class="v2-card" style="margin-top:12px"><div class="v2-tableWrap">' +
-      '<table class="v2-table"><thead><tr><th>Datum</th><th>Value</th></tr></thead><tbody>' +
+      '<table class="v2-table"><thead><tr><th>Datum</th><th>Value</th><th>Action</th></tr></thead><tbody>' +
       rows
         .map(function (row) {
           var rowObj = asObject(row);
+          var editActions = asList(rowObj.edit_actions);
+          var editAction = asObject(editActions[0]);
           return (
             "<tr><td>" +
             escapeHtml(asText(rowObj.label) || asText(rowObj.datum_id) || "Datum") +
             "</td><td>" +
             escapeHtml(asText(rowObj.display_value) || asText(rowObj.primary_value_token) || "—") +
+            "</td><td>" +
+            (asText(editAction.action)
+              ? '<button type="button" data-datum-edit-action="' +
+                escapeHtml(asText(editAction.action)) +
+                '" data-datum-document-id="' +
+                escapeHtml(asText(editAction.document_id)) +
+                '" data-datum-address="' +
+                escapeHtml(asText(editAction.datum_address)) +
+                '" data-datum-sandbox-id="' +
+                escapeHtml(asText(editAction.sandbox_id)) +
+                '">Edit</button>'
+              : "—") +
             "</td></tr>"
           );
         })
@@ -922,7 +950,7 @@
             '<article class="v2-card' +
             (cardObj.selected ? " is-selected" : "") +
             (cardObj.is_anchor ? " is-anchor" : "") +
-            '" tabindex="0" data-shell-transition-kind="focus_file" data-shell-file-key="' +
+            '" tabindex="0" role="button" data-shell-transition-kind="focus_file" data-shell-file-key="' +
             escapeHtml(documentId) +
             '">' +
             "<h3>" +
@@ -952,6 +980,104 @@
       body = renderLayeredDatumTable(region);
     }
     target.innerHTML = renderDatumFileWorkbenchHeader(region) + body;
+    bindDatumFileWorkbenchEvents(ctx, target, region);
+  }
+
+  function bindDatumFileWorkbenchEvents(ctx, target, region) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-shell-transition-kind]"), function (node) {
+      function activate(event) {
+        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        var kind = node.getAttribute("data-shell-transition-kind") || "";
+        var fileKey = node.getAttribute("data-shell-file-key") || "";
+        if (kind && typeof ctx.dispatchTransition === "function") {
+          ctx.dispatchTransition({ kind: kind, file_key: fileKey });
+        }
+      }
+      node.addEventListener("click", activate);
+      node.addEventListener("keydown", activate);
+    });
+    Array.prototype.forEach.call(target.querySelectorAll("[data-datum-edit-action]"), function (node) {
+      node.addEventListener("click", function () {
+        var table = asObject(region && region.layered_datum_table);
+        var documentId = node.getAttribute("data-datum-document-id") || asText(asObject(table.document).document_id);
+        var datumAddress = node.getAttribute("data-datum-address") || "";
+        var sandboxId = node.getAttribute("data-datum-sandbox-id") || asText(asObject(region && region.sandbox).id);
+        var editor = target.querySelector("[data-datum-inline-editor]");
+        if (!editor) {
+          editor = document.createElement("section");
+          editor.className = "v2-card";
+          editor.setAttribute("data-datum-inline-editor", "true");
+          editor.style.marginTop = "12px";
+          target.appendChild(editor);
+        }
+        editor.innerHTML =
+          "<h3>Datum Editor</h3>" +
+          "<p><small>" +
+          escapeHtml(documentId) +
+          " · " +
+          escapeHtml(datumAddress) +
+          "</small></p>" +
+          '<textarea data-datum-edit-payload rows="5" style="width:100%"></textarea>' +
+          '<div style="margin-top:8px">' +
+          '<button type="button" data-datum-stage>Stage</button> ' +
+          '<button type="button" data-datum-validate>Validate</button> ' +
+          '<button type="button" data-datum-preview>Preview</button> ' +
+          '<button type="button" data-datum-apply>Apply</button> ' +
+          '<button type="button" data-datum-discard>Discard</button>' +
+          "</div>" +
+          '<pre data-datum-edit-status style="white-space:pre-wrap"></pre>';
+        bindDatumEditorActions(editor, {
+          sandbox_id: sandboxId,
+          document_id: documentId,
+          datum_address: datumAddress,
+          action: node.getAttribute("data-datum-edit-action") || "update_row_raw",
+        });
+      });
+    });
+  }
+
+  function bindDatumEditorActions(editor, basePayload) {
+    function postMutation(stage) {
+      var textarea = editor.querySelector("[data-datum-edit-payload]");
+      var status = editor.querySelector("[data-datum-edit-status]");
+      var payloadText = textarea ? textarea.value : "";
+      var body = {
+        target_authority: "datum_workbench",
+        operation: basePayload.action,
+        sandbox_id: basePayload.sandbox_id,
+        document_id: basePayload.document_id,
+        datum_address: basePayload.datum_address,
+        payload_text: payloadText,
+      };
+      if (status) status.textContent = "pending " + stage + "...";
+      fetch("/portal/api/v2/mutations/" + stage, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (response) {
+          return response.json().catch(function () {
+            return { ok: response.ok, status: response.status };
+          });
+        })
+        .then(function (payload) {
+          if (status) status.textContent = prettyJson(payload);
+        })
+        .catch(function (error) {
+          if (status) status.textContent = String(error && error.message ? error.message : error);
+        });
+    }
+    [
+      ["data-datum-stage", "stage"],
+      ["data-datum-validate", "validate"],
+      ["data-datum-preview", "preview"],
+      ["data-datum-apply", "apply"],
+      ["data-datum-discard", "discard"],
+    ].forEach(function (pair) {
+      var node = editor.querySelector("[" + pair[0] + "]");
+      if (node) node.addEventListener("click", function () { postMutation(pair[1]); });
+    });
   }
 
   window.PortalShellWorkbenchRenderer = {

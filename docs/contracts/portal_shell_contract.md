@@ -61,7 +61,12 @@ Order:
 
 The contract-level anchor-file invariant is:
 
-- a fresh reducer-owned `SYSTEM` entry seeds `file=anthology`
+- a fresh reducer-owned `SYSTEM` entry seeds `sandbox=system&file=anthology`
+- a fresh reducer-owned tool entry seeds `sandbox=<tool-sandbox>&file=anchor`
+
+`portal_scope.scope_id` / portal `msn_id` is the portal boundary, not a datum
+document grouping. The first focus segment is always the active sandbox. A runtime
+must not use `fnd` (or any portal id) as the datum-document sandbox segment.
 
 `back_out` is exact and deterministic:
 
@@ -99,6 +104,10 @@ Authoritative invariants:
   `region.kind = datum_file_workbench`. Tool-specific UI (Diktataograph, Garland,
   Staged Insert, Domain Gallery, Manifest tree, Analytics body, PayPal body) lives in
   the `Interface Panel` only. The workbench is never replaced by tool chrome.
+- Sandbox is the highest datum-document grouping under portal `msn_id`. `SYSTEM`
+  may only focus documents owned by sandbox `system`; a tool surface may only focus
+  documents owned by its tool sandbox. Cross-sandbox file focus is invalid and is
+  clamped back to the current sandbox anchor.
 - `Workbench UI` is the documented `workbench_primary` exception: it keeps the SQL
   row grid as workbench-primary content (region kind `workbench_ui_surface`).
   Documented in `surface_catalog.md`.
@@ -113,6 +122,7 @@ Authoritative invariants:
 `SYSTEM` is the core datum-file workbench for the system sandbox.
 
 - It is not a generic dashboard or home page.
+- It cannot navigate or edit datum documents owned by tool sandboxes.
 - Its default active file is the system sandbox anchor file, `anthology.json`.
 - For migrated portals, `SYSTEM` anthology/profile/grant posture resolves from the MOS authority database while preserving the same file/workbench outward contract.
 - The anchor file is rendered as a layered datum table grouped by `layer` and `value_group`.

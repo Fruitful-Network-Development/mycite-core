@@ -133,3 +133,9 @@ The migration to canonical `lv./stl./cptr.` IDs is realized through the
 (`system:anthology`, `sandbox:<tool>:<filename>.json`) are retained as
 `documents.legacy_alias` for one cycle. New writes must produce canonical IDs;
 readers accept either form during the cycle.
+
+Sandbox is the parent datum-document grouping below `msn_id`. Canonical local
+datum documents therefore resolve as `lv.<msn_id>.<sandbox>.<name>.<hash>`, where
+`system` owns the SYSTEM anthology/workbench documents and each tool owns its own
+sandbox documents. Readers must reject or clamp attempts to focus a document whose
+resolved sandbox does not match the active workbench sandbox.
