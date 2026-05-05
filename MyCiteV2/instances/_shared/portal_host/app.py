@@ -217,6 +217,19 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
+        "module_id": "cts_gis_workspace",
+        "file": "v2_portal_inspector_renderers.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.tools.cts_gis",),
+        "budget_group": "deferred_tool_renderers",
+        "exports": (
+            {
+                "global": "PortalCtsGisWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
         "module_id": "shell_core",
         "file": "v2_portal_shell_core.js",
         "load_phase": "startup_critical",

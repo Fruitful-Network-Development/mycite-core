@@ -120,6 +120,11 @@
         globalName: "PortalSystemWorkspaceRenderer",
         label: "system workspace",
       },
+      "system.tools.cts_gis": {
+        moduleId: "cts_gis_workspace",
+        globalName: "PortalCtsGisWorkspaceRenderer",
+        label: "CTS-GIS workbench",
+      },
       "network.root": {
         moduleId: "network_workspace",
         globalName: "PortalNetworkWorkspaceRenderer",

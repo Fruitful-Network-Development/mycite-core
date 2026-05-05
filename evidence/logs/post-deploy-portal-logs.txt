@@ -1,0 +1,100 @@
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     ...<10 lines>...
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:             return _error_response(legacy_maps_code, str(exc), status_code=400)
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:             ^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py", line 1059, in run_portal_shell_entry
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:         surface_query=normalized_request.surface_query,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     ...<14 lines>...
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:         query=canonical_query,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py", line 921, in _bundle_for_surface
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:                 portal_scope=portal_scope,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     ...<16 lines>...
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:             portal_instance_id=portal_scope.scope_id,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py", line 853, in _tool_bundle_for_surface
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:             surface_query=surface_query,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:                ^^^^^^^^^^^^^^^^^^^^^^^^^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     ...<12 lines>...
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:         selection_surface_id: str,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:         ^
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/portal_shell_runtime.py", line 692, in _build_aws_tool_bundle
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     shell_state=shell_state,
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/instances/_shared/runtime/portal_aws_runtime.py", line 28, in <module>
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     ...<2 lines>...
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     )
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/packages/adapters/event_transport/__init__.py", line 1, in <module>
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     from .aws_csm_onboarding_cloud import AwsEc2RoleOnboardingCloudAdapter
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:   File "/srv/repo/mycite-core/MyCiteV2/packages/adapters/event_transport/aws_csm_onboarding_cloud.py", line 29, in <module>
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]:     from MyCiteV2.packages.modules.shared.scalars import as_text, as_dict, as_list, as_bool
+May 04 05:49:01 ip-172-31-21-63 gunicorn[368638]: ImportError: cannot import name 'as_bool' from 'MyCiteV2.packages.modules.shared.scalars' (/srv/repo/mycite-core/MyCiteV2/packages/modules/shared/scalars.py)
+May 04 19:03:41 ip-172-31-21-63 systemd[1]: Stopping mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal...
+May 04 19:03:41 ip-172-31-21-63 gunicorn[368638]: [2026-05-04 19:03:41 +0000] [368638] [INFO] Worker exiting (pid: 368638)
+May 04 19:03:41 ip-172-31-21-63 gunicorn[368639]: [2026-05-04 19:03:41 +0000] [368639] [INFO] Worker exiting (pid: 368639)
+May 04 19:03:41 ip-172-31-21-63 gunicorn[368633]: [2026-05-04 19:03:41 +0000] [368633] [INFO] Handling signal: term
+May 04 19:03:41 ip-172-31-21-63 gunicorn[368633]: [2026-05-04 19:03:41 +0000] [368633] [INFO] Worker (pid:368638) was sent SIGTERM!
+May 04 19:03:42 ip-172-31-21-63 gunicorn[368633]: [2026-05-04 19:03:42 +0000] [368633] [INFO] Worker (pid:368639) was sent SIGTERM!
+May 04 19:03:42 ip-172-31-21-63 gunicorn[368633]: [2026-05-04 19:03:42 +0000] [368633] [INFO] Shutting down: Master
+May 04 19:03:42 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Deactivated successfully.
+May 04 19:03:42 ip-172-31-21-63 systemd[1]: Stopped mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:03:42 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Consumed 1min 38.513s CPU time, 2.6G memory peak, 618.9M memory swap peak.
+May 04 19:03:42 ip-172-31-21-63 systemd[1]: Started mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:03:42 +0000] [427975] [INFO] Starting gunicorn 25.3.0
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:03:42 +0000] [427975] [INFO] Listening at: http://127.0.0.1:6101 (427975)
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:03:42 +0000] [427975] [INFO] Using worker: sync
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427991]: [2026-05-04 19:03:42 +0000] [427991] [INFO] Booting worker with pid: 427991
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427992]: [2026-05-04 19:03:42 +0000] [427992] [INFO] Booting worker with pid: 427992
+May 04 19:03:42 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:03:42 +0000] [427975] [INFO] Control socket listening at /home/admin/.gunicorn/gunicorn.ctl
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:09:11 +0000] [427975] [INFO] Handling signal: term
+May 04 19:09:11 ip-172-31-21-63 systemd[1]: Stopping mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal...
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427991]: [2026-05-04 19:09:11 +0000] [427991] [INFO] Worker exiting (pid: 427991)
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427992]: [2026-05-04 19:09:11 +0000] [427992] [INFO] Worker exiting (pid: 427992)
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:09:11 +0000] [427975] [INFO] Worker (pid:427991) was sent SIGTERM!
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:09:11 +0000] [427975] [INFO] Worker (pid:427992) was sent SIGTERM!
+May 04 19:09:11 ip-172-31-21-63 gunicorn[427975]: [2026-05-04 19:09:11 +0000] [427975] [INFO] Shutting down: Master
+May 04 19:09:11 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Deactivated successfully.
+May 04 19:09:11 ip-172-31-21-63 systemd[1]: Stopped mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:09:11 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Consumed 25.398s CPU time, 728.2M memory peak.
+May 04 19:09:11 ip-172-31-21-63 systemd[1]: Started mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:09:11 +0000] [428476] [INFO] Starting gunicorn 25.3.0
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:09:11 +0000] [428476] [INFO] Listening at: http://127.0.0.1:6101 (428476)
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:09:11 +0000] [428476] [INFO] Using worker: sync
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428482]: [2026-05-04 19:09:11 +0000] [428482] [INFO] Booting worker with pid: 428482
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428483]: [2026-05-04 19:09:11 +0000] [428483] [INFO] Booting worker with pid: 428483
+May 04 19:09:11 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:09:11 +0000] [428476] [INFO] Control socket listening at /home/admin/.gunicorn/gunicorn.ctl
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:28:45 +0000] [428476] [INFO] Handling signal: term
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: Stopping mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal...
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428483]: [2026-05-04 19:28:45 +0000] [428483] [INFO] Worker exiting (pid: 428483)
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428482]: [2026-05-04 19:28:45 +0000] [428482] [INFO] Worker exiting (pid: 428482)
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:28:45 +0000] [428476] [INFO] Worker (pid:428482) was sent SIGTERM!
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:28:45 +0000] [428476] [INFO] Worker (pid:428483) was sent SIGTERM!
+May 04 19:28:45 ip-172-31-21-63 gunicorn[428476]: [2026-05-04 19:28:45 +0000] [428476] [INFO] Shutting down: Master
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Deactivated successfully.
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: Stopped mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Consumed 25.702s CPU time, 664.4M memory peak.
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: Started mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Starting gunicorn 25.3.0
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Listening at: http://127.0.0.1:6101 (430475)
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Using worker: sync
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430480]: [2026-05-04 19:28:45 +0000] [430480] [INFO] Booting worker with pid: 430480
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430481]: [2026-05-04 19:28:45 +0000] [430481] [INFO] Booting worker with pid: 430481
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Control socket listening at /home/admin/.gunicorn/gunicorn.ctl
+May 04 22:19:35 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 22:19:35 +0000] [430475] [INFO] Handling signal: term
+May 04 22:19:35 ip-172-31-21-63 gunicorn[430480]: [2026-05-04 22:19:35 +0000] [430480] [INFO] Worker exiting (pid: 430480)
+May 04 22:19:35 ip-172-31-21-63 systemd[1]: Stopping mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal...
+May 04 22:19:35 ip-172-31-21-63 gunicorn[430481]: [2026-05-04 22:19:35 +0000] [430481] [INFO] Worker exiting (pid: 430481)
+May 04 22:19:35 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 22:19:35 +0000] [430475] [INFO] Worker (pid:430480) was sent SIGTERM!
+May 04 22:19:36 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 22:19:36 +0000] [430475] [INFO] Shutting down: Master
+May 04 22:19:36 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Deactivated successfully.
+May 04 22:19:36 ip-172-31-21-63 systemd[1]: Stopped mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 22:19:36 ip-172-31-21-63 systemd[1]: mycite-v2-fnd-portal.service: Consumed 44.038s CPU time, 920.8M memory peak.
+May 04 22:19:36 ip-172-31-21-63 systemd[1]: Started mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442493]: [2026-05-04 22:19:37 +0000] [442493] [INFO] Starting gunicorn 25.3.0
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442493]: [2026-05-04 22:19:37 +0000] [442493] [INFO] Listening at: http://127.0.0.1:6101 (442493)
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442493]: [2026-05-04 22:19:37 +0000] [442493] [INFO] Using worker: sync
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442499]: [2026-05-04 22:19:37 +0000] [442499] [INFO] Booting worker with pid: 442499
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442500]: [2026-05-04 22:19:37 +0000] [442500] [INFO] Booting worker with pid: 442500
+May 04 22:19:37 ip-172-31-21-63 gunicorn[442493]: [2026-05-04 22:19:37 +0000] [442493] [INFO] Control socket listening at /home/admin/.gunicorn/gunicorn.ctl

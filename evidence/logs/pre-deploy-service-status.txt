@@ -1,0 +1,22 @@
+● mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal
+     Loaded: loaded (/etc/systemd/system/mycite-v2-fnd-portal.service; enabled; preset: enabled)
+    Drop-In: /etc/systemd/system/mycite-v2-fnd-portal.service.d
+             └─override.conf
+     Active: active (running) since Mon 2026-05-04 19:28:45 UTC; 2h 50min ago
+ Invocation: c1ba6464433b452690d9ef050461e7a9
+   Main PID: 430475 (gunicorn)
+      Tasks: 4 (limit: 4619)
+     Memory: 738M (peak: 920.8M)
+        CPU: 42.845s
+     CGroup: /system.slice/mycite-v2-fnd-portal.service
+             ├─430475 /srv/venvs/fnd_portal/bin/python3 /srv/venvs/fnd_portal/bin/gunicorn --workers 2 --timeout 180 --worker-tmp-dir /dev/shm --bind 127.0.0.1:6101 MyCiteV2.instances._shared.portal_host.wsgi:app
+             ├─430480 /srv/venvs/fnd_portal/bin/python3 /srv/venvs/fnd_portal/bin/gunicorn --workers 2 --timeout 180 --worker-tmp-dir /dev/shm --bind 127.0.0.1:6101 MyCiteV2.instances._shared.portal_host.wsgi:app
+             └─430481 /srv/venvs/fnd_portal/bin/python3 /srv/venvs/fnd_portal/bin/gunicorn --workers 2 --timeout 180 --worker-tmp-dir /dev/shm --bind 127.0.0.1:6101 MyCiteV2.instances._shared.portal_host.wsgi:app
+
+May 04 19:28:45 ip-172-31-21-63 systemd[1]: Started mycite-v2-fnd-portal.service - MyCite V2 Fruitful Network Development portal.
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Starting gunicorn 25.3.0
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Listening at: http://127.0.0.1:6101 (430475)
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Using worker: sync
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430480]: [2026-05-04 19:28:45 +0000] [430480] [INFO] Booting worker with pid: 430480
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430481]: [2026-05-04 19:28:45 +0000] [430481] [INFO] Booting worker with pid: 430481
+May 04 19:28:45 ip-172-31-21-63 gunicorn[430475]: [2026-05-04 19:28:45 +0000] [430475] [INFO] Control socket listening at /home/admin/.gunicorn/gunicorn.ctl

@@ -2079,4 +2079,46 @@
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("cts_gis_surface");
   }
+
+  // CTS-GIS Workbench Renderer
+  window.PortalCtsGisWorkspaceRenderer = {
+    render: function (ctx, target, surfacePayload) {
+      var region = ctx.region || {};
+      if (!target) return;
+
+      // For CTS-GIS, workbench is primarily the diktataograph navigation canvas
+      // Delegate to the inspector renderer's navigation canvas rendering
+      var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
+      var navigationCanvas = interfaceBody.navigation_canvas || {};
+      var stagingWidget = interfaceBody.staging_widget || {};
+
+      target.innerHTML =
+        '<div class="cts-gis-workbench">' +
+        '<section class="v2-card cts-gis-pane cts-gis-pane--diktataograph">' +
+        '<header class="cts-gis-pane__header"><h3>' +
+        escapeHtml(navigationCanvas.title || "Diktataograph") +
+        "</h3><p>" +
+        escapeHtml(navigationCanvas.summary || "") +
+        "</p></header>" +
+        '<section class="cts-gis-navCanvas" data-cts-gis-nav-canvas="structure">' +
+        renderDirectoryDropdownCanvas(navigationCanvas) +
+        renderNavigationDiagnostics(navigationCanvas.diagnostics || []) +
+        "</section>" +
+        renderCtsGisStagingWidget(stagingWidget) +
+        "</section></div>";
+
+      var entriesByKind = {
+        path: (navigationCanvas.active_path || []).map(function(e, i) {
+          e._renderIndex = i;
+          return e;
+        }),
+      };
+      bindShellRequestEntries(target, ctx, entriesByKind);
+      bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
+      bindCtsGisStagingWidget(target, ctx, stagingWidget);
+    },
+  };
+  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("cts_gis_workspace");
+  }
 })();

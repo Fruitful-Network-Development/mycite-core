@@ -560,7 +560,20 @@
   window.PortalSystemWorkspaceRenderer = {
     render: renderWorkspace,
   };
-  if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
-    window.__MYCITE_V2_REGISTER_SHELL_MODULE("system_workspace");
-  }
+
+  // Immediate self-registration with deferred fallback
+  (function registerModule() {
+    if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
+      window.__MYCITE_V2_REGISTER_SHELL_MODULE("system_workspace");
+    } else {
+      // Defer registration if shell module registry not ready
+      if (!window.__MYCITE_V2_DEFERRED_MODULE_REGISTRATIONS) {
+        window.__MYCITE_V2_DEFERRED_MODULE_REGISTRATIONS = [];
+      }
+      window.__MYCITE_V2_DEFERRED_MODULE_REGISTRATIONS.push({
+        moduleId: "system_workspace",
+        global: window.PortalSystemWorkspaceRenderer,
+      });
+    }
+  })();
 })();

@@ -4,7 +4,10 @@ from time import perf_counter
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_tool_control_panel
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    build_tool_control_panel,
+    build_unified_control_panel,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
