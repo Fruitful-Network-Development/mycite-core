@@ -90,6 +90,11 @@ materialization paths.
 - Every other sandbox anchor: `lv.<msn_id>.<sandbox>.anchor.<hash>`
 - The names `anchor` and `anthology` are reserved for sandbox anchors. Non-anchor
   documents must not use them.
+- Any sandbox anchor file that exists on disk is an authoritative datum document in
+  MOS. Tool anchors are not a separate file-authority class.
+- Tool sandboxes are not required to mirror the system sandbox starter set. A tool
+  sandbox may legitimately contain only its anchor plus the source documents that
+  actually exist for that tool.
 
 ## Concrete Examples (FND, msn_id `3-2-3-17-77-1-6-4-1-4`)
 
@@ -196,3 +201,9 @@ datum documents therefore resolve as `lv.<msn_id>.<sandbox>.<name>.<hash>`, wher
 `system` owns the SYSTEM anthology/workbench documents and each tool owns its own
 sandbox documents. Readers must reject or clamp attempts to focus a document whose
 resolved sandbox does not match the active workbench sandbox.
+
+The raw on-disk filename remains compatibility metadata only. In runtime catalog and
+workbench summaries, `document_name` may still carry the source filename
+(`tool.<msn>.cts-gis.json`, `sc.<msn>.msn-address_nodes.json`, …), while
+`canonical_name` carries the authoritative datum-document name (`anchor`,
+`address_nodes`, `administrative`, …).

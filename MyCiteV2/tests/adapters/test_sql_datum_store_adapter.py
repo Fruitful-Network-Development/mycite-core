@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql._sqlite import open_sqlite
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -98,6 +99,16 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
                 ).to_dict(),
                 expected_catalog,
             )
+            round_trip_catalog = sql_adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            )
+            anchor_document = next(
+                document
+                for document in round_trip_catalog.documents
+                if document.tool_id == "cts_gis" and document.is_anchor
+            )
+            self.assertEqual(anchor_document.canonical_name, "anchor")
+            self.assertEqual(anchor_document.document_name, "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json")
             self.assertEqual(
                 sql_adapter.read_system_resource_workbench(SystemDatumStoreRequest(tenant_id="fnd")).to_dict(),
                 expected_workbench,
@@ -183,6 +194,87 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
                 ["0-0-1", "0-0-2", "0-0-3", "1-0-1", "2-0-1"],
             )
             self.assertEqual(datum_identity["local_references"], ["1-0-1"])
+
+    def test_catalog_projection_prefers_matching_version_hash_over_newer_alias_duplicate(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            adapter = SqliteSystemDatumStoreAdapter(db_file)
+            adapter.store_authoritative_catalog(
+                AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id="fnd",
+                    documents=(
+                        AuthoritativeDatumDocument(
+                            document_id="sandbox:cts_gis:sc.example.msn-address_nodes.json",
+                            source_kind="sandbox_source",
+                            tool_id="cts_gis",
+                            document_name="sc.example.msn-address_nodes.json",
+                            relative_path="sandbox/cts-gis/sources/sc.example.msn-address_nodes.json",
+                            rows=(
+                                AuthoritativeDatumDocumentRow(
+                                    datum_address="4-2-1",
+                                    raw=[["4-2-1", "~", "ROOT"], ["row"]],
+                                ),
+                            ),
+                        ),
+                    ),
+                    source_files={},
+                    readiness_status={"authoritative_catalog": "loaded"},
+                )
+            )
+
+            with open_sqlite(db_file) as connection:
+                version_hash = str(
+                    connection.execute(
+                        "SELECT version_hash FROM datum_document_semantics WHERE document_id = ?",
+                        ("sandbox:cts_gis:sc.example.msn-address_nodes.json",),
+                    ).fetchone()["version_hash"]
+                ).strip()
+                expected_hash = version_hash.split(":", 1)[1]
+                connection.executemany(
+                    "INSERT INTO documents ("
+                    "tenant_id, document_id, prefix, msn_id, sandbox, name, "
+                    "version_hash, is_anchor, origin, legacy_alias, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        (
+                            "fnd",
+                            f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
+                            "lv",
+                            "3-2-3-17-77-1-6-4-1-4",
+                            "cts_gis",
+                            "address_nodes",
+                            version_hash,
+                            0,
+                            "local",
+                            "sandbox:cts_gis:sc.example.msn-address_nodes.json",
+                            1,
+                        ),
+                        (
+                            "fnd",
+                            f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{('f' * 64)}",
+                            "lv",
+                            "3-2-3-17-77-1-6-4-1-4",
+                            "cts_gis",
+                            "address_nodes",
+                            "sha256:" + ("f" * 64),
+                            0,
+                            "local",
+                            "sandbox:cts_gis:sc.example.msn-address_nodes.json",
+                            999,
+                        ),
+                    ],
+                )
+                connection.commit()
+
+            projected = adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            )
+            self.assertEqual(len(projected.documents), 1)
+            self.assertEqual(
+                projected.documents[0].document_id,
+                f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
+            )
+            self.assertEqual(projected.documents[0].canonical_name, "address_nodes")
 
     def test_apply_document_insert_shifts_rows_and_updates_references(self) -> None:
         with TemporaryDirectory() as temp_dir:

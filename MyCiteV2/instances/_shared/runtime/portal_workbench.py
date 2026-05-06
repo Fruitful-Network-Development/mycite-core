@@ -124,34 +124,40 @@ def _document_summary(document: Any | None) -> dict[str, Any]:
         summary = dict(document.get("document_summary") or {})
         nested = _document_object(document)
         nested_rows = _document_rows(nested)
+        metadata = summary.get("document_metadata") if isinstance(summary.get("document_metadata"), dict) else {}
         if nested_rows and not summary.get("row_count"):
             summary["row_count"] = len(nested_rows)
         if not summary.get("is_anchor") and isinstance(nested, object):
             summary["is_anchor"] = bool(getattr(nested, "is_anchor", False))
+        if not summary.get("canonical_name") and isinstance(nested, object):
+            summary["canonical_name"] = as_text(getattr(nested, "canonical_name", ""))
         return {
             "document_id": as_text(summary.get("document_id")),
             "document_name": as_text(summary.get("document_name") or summary.get("name")),
+            "canonical_name": as_text(summary.get("canonical_name")),
             "relative_path": as_text(summary.get("relative_path") or summary.get("path")),
             "source_kind": as_text(summary.get("source_kind") or summary.get("kind")),
             "version_hash": as_text(summary.get("version_hash")),
             "row_count": int(summary.get("row_count") or 0),
             "tool_id": as_text(summary.get("tool_id") or summary.get("sandbox") or summary.get("sandbox_id")),
             "is_anchor": bool(summary.get("is_anchor")),
-            "legacy_alias": as_text(summary.get("legacy_alias")),
+            "legacy_alias": as_text(summary.get("legacy_alias") or metadata.get("legacy_alias")),
         }
     accessor = _accessor_for(document)
 
     rows = _document_rows(document)
+    metadata = _as_dict(accessor("document_metadata"))
     return {
         "document_id": as_text(accessor("document_id")),
         "document_name": as_text(accessor("document_name") or accessor("name")),
+        "canonical_name": as_text(accessor("canonical_name")),
         "relative_path": as_text(accessor("relative_path") or accessor("path")),
         "source_kind": as_text(accessor("source_kind") or accessor("kind")),
         "version_hash": as_text(accessor("version_hash")),
         "row_count": len(rows),
         "tool_id": as_text(accessor("tool_id") or accessor("sandbox") or accessor("sandbox_id")),
         "is_anchor": bool(accessor("is_anchor")),
-        "legacy_alias": as_text(accessor("legacy_alias")),
+        "legacy_alias": as_text(accessor("legacy_alias") or metadata.get("legacy_alias")),
     }
 
 
@@ -349,6 +355,8 @@ def _gallery_card_for_document(
     if not summary:
         return {}
     summary["sandbox_id"] = sandbox_id
+    summary["label"] = summary.get("canonical_name") or summary.get("document_name") or summary.get("document_id") or ""
+    summary["secondary_label"] = summary.get("document_name") or summary.get("relative_path") or ""
     summary["shell_transition"] = {
         "kind": "focus_file",
         "file_key": summary.get("document_id") or "",
@@ -377,7 +385,7 @@ def _gallery_cards(
     cards.sort(
         key=lambda card: (
             0 if card.get("is_anchor") else 1,
-            (card.get("document_name") or card.get("document_id") or "").lower(),
+            (card.get("canonical_name") or card.get("document_name") or card.get("document_id") or "").lower(),
         )
     )
     return cards

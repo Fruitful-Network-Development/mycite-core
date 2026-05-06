@@ -465,7 +465,7 @@
       '<section class="v2-card" style="margin-top:12px"><h3>Current Lens</h3>' +
       '<dl class="v2-surface-dl">' +
       "<dt>document</dt><dd><strong>" +
-      escapeHtml(selectedDocument.document_name || selectedDocument.document_id || "—") +
+      escapeHtml(selectedDocument.canonical_name || selectedDocument.document_name || selectedDocument.document_id || "—") +
       "</strong></dd>" +
       "<dt>version</dt><dd><strong>" +
       escapeHtml(selectedDocument.version_hash || "—") +
@@ -814,10 +814,12 @@
     var heading =
       '<header class="v2-card" style="margin-bottom:12px">' +
       "<h3>" +
-      escapeHtml(asText(doc.document_name) || asText(doc.document_id) || "Datum file") +
+      escapeHtml(asText(doc.canonical_name) || asText(doc.document_name) || asText(doc.document_id) || "Datum file") +
       "</h3>" +
-      (asText(doc.document_id)
-        ? '<small>' + escapeHtml(asText(doc.document_id)) + "</small>"
+      ((asText(doc.document_name) || asText(doc.document_id))
+        ? '<small>' +
+          escapeHtml(asText(doc.document_name) || asText(doc.document_id)) +
+          "</small>"
         : "") +
       "</header>";
     if (layerGroups.length) {
@@ -946,6 +948,8 @@
         .map(function (card) {
           var cardObj = asObject(card);
           var documentId = asText(cardObj.document_id);
+          var canonicalName = asText(cardObj.canonical_name) || asText(cardObj.label);
+          var rawName = asText(cardObj.document_name) || asText(cardObj.secondary_label) || asText(cardObj.relative_path);
           return (
             '<article class="v2-card' +
             (cardObj.selected ? " is-selected" : "") +
@@ -954,12 +958,13 @@
             escapeHtml(documentId) +
             '">' +
             "<h3>" +
-            escapeHtml(asText(cardObj.document_name) || documentId || "Document") +
+            escapeHtml(canonicalName || documentId || "Document") +
             (cardObj.is_anchor ? ' <small>(anchor)</small>' : "") +
             "</h3>" +
-            "<p><small>" +
-            escapeHtml(documentId) +
-            "</small></p>" +
+            ((rawName || documentId)
+              ? "<p><small>" + escapeHtml(rawName || documentId) + "</small></p>"
+              : "") +
+            (documentId ? "<p><small>" + escapeHtml(documentId) + "</small></p>" : "") +
             "<p>Rows: " +
             escapeHtml(String(cardObj.row_count || 0)) +
             "</p>" +

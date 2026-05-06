@@ -63,6 +63,8 @@ The contract-level anchor-file invariant is:
 
 - a fresh reducer-owned `SYSTEM` entry seeds `sandbox=system&file=anthology`
 - a fresh reducer-owned tool entry seeds `sandbox=<tool-sandbox>&file=anchor`
+- if a sandbox anchor file exists on disk, it must materialize as an authoritative
+  sandbox document before the workbench is considered complete
 
 `portal_scope.scope_id` / portal `msn_id` is the portal boundary, not a datum
 document grouping. The first focus segment is always the active sandbox. A runtime
@@ -90,7 +92,8 @@ Tri-state on every datum-file workbench:
    is the default mode whenever a sandbox is focused without a non-anchor file
    selection. Activity-bar tool clicks dispatch `focus_sandbox`, which seeds
    `focus.file = anchor(<sandbox>)` and renders the anchor's layered datum table in
-   the workbench.
+   the workbench. Falling back to `gallery` is reserved for sandboxes that truly have
+   no materialized anchor document.
 2. `mode = gallery` — a card grid of every `lv.<msn>.<sandbox>.*` document owned by
    the focused sandbox. Reached by `back_out` from the anchor (or from a selected
    document). Selecting a card re-enters `mode=selected_document`.

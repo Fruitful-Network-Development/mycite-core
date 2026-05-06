@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.packages.core.document_naming import CanonicalNameError, derive_canonical_id_from_legacy, parse_canonical_document_id
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -131,6 +132,19 @@ def _document_id_for_path(*, source_kind: str, tool_id: str, path: Path) -> str:
     if source_kind == "system_anthology":
         return "system:anthology"
     return f"sandbox:{tool_id}:{path.name}"
+
+
+def _canonical_name_for_legacy_document_id(document_id: str) -> str:
+    try:
+        return parse_canonical_document_id(
+            derive_canonical_id_from_legacy(
+                document_id,
+                msn_id="X",
+                version_hash="0" * 64,
+            )
+        ).name
+    except CanonicalNameError:
+        return ""
 
 
 def _extract_row(resource_id: str, raw: Any) -> SystemDatumResourceRow:
@@ -315,8 +329,13 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         ),
                         source_kind="system_anthology",
                         document_name=anthology_file.name,
+                        canonical_name="anthology",
                         relative_path=self._relative_or_absolute(anthology_file),
-                        document_metadata=metadata,
+                        document_metadata={
+                            **dict(metadata),
+                            "legacy_alias": "system:anthology",
+                        },
+                        is_anchor=True,
                         rows=rows,
                     )
                 )
@@ -329,15 +348,77 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                 warnings.append("Canonical system anthology must be a JSON object.")
 
         sandbox_source_files: list[Path] = []
+        sandbox_anchor_files: list[Path] = []
         seen_sandbox_document_ids: set[str] = set()
         sandbox_root = self._resolve_path("sandbox_root_dir", self._data_dir / "sandbox")
         if sandbox_root.exists() and sandbox_root.is_dir():
             for tool_dir in sorted(path for path in sandbox_root.iterdir() if path.is_dir()):
                 source_dir = tool_dir / "sources"
+                anchor_file = _find_tool_anchor_file(tool_dir)
+                if (not source_dir.exists() or not source_dir.is_dir()) and anchor_file is None:
+                    continue
+                public_tool_id = _canonical_tool_public_id(tool_dir.name)
+                if anchor_file is not None:
+                    anchor_document_id = _document_id_for_path(
+                        source_kind="sandbox_source",
+                        tool_id=public_tool_id,
+                        path=anchor_file,
+                    )
+                    if anchor_document_id not in seen_sandbox_document_ids:
+                        seen_sandbox_document_ids.add(anchor_document_id)
+                        sandbox_anchor_files.append(anchor_file)
+                        anchor_signature = self._path_signature(anchor_file)
+                        anchor_warnings: list[str] = []
+                        try:
+                            anchor_rows, anchor_metadata = self._cached_read_document_rows_and_metadata(anchor_file)
+                        except json.JSONDecodeError:
+                            anchor_rows = ()
+                            anchor_metadata = {}
+                            anchor_warnings.append(
+                                f"Sandbox anchor document is not valid JSON at {self._relative_or_absolute(anchor_file)}."
+                            )
+                        except ValueError:
+                            anchor_rows = ()
+                            anchor_metadata = {}
+                            anchor_warnings.append(
+                                f"Sandbox anchor document must be a JSON object at {self._relative_or_absolute(anchor_file)}."
+                            )
+                        anchor_metadata_with_cache = {
+                            **dict(anchor_metadata),
+                            "legacy_alias": anchor_document_id,
+                            "__filesystem_cache__": {
+                                "source_signature": {
+                                    "exists": bool(anchor_signature[0]),
+                                    "mtime_ns": int(anchor_signature[1]),
+                                    "size": int(anchor_signature[2]),
+                                },
+                                "anchor_signature": {
+                                    "exists": bool(anchor_signature[0]),
+                                    "mtime_ns": int(anchor_signature[1]),
+                                    "size": int(anchor_signature[2]),
+                                },
+                            },
+                        }
+                        documents.append(
+                            AuthoritativeDatumDocument(
+                                document_id=anchor_document_id,
+                                source_kind="sandbox_source",
+                                document_name=anchor_file.name,
+                                canonical_name=_canonical_name_for_legacy_document_id(anchor_document_id) or "anchor",
+                                relative_path=self._relative_or_absolute(anchor_file),
+                                tool_id=public_tool_id,
+                                document_metadata=anchor_metadata_with_cache,
+                                is_anchor=True,
+                                anchor_document_name=anchor_file.name,
+                                anchor_document_path=self._relative_or_absolute(anchor_file),
+                                anchor_document_metadata=dict(anchor_metadata_with_cache),
+                                anchor_rows=anchor_rows,
+                                rows=anchor_rows,
+                                warnings=tuple(anchor_warnings),
+                            )
+                        )
                 if not source_dir.exists() or not source_dir.is_dir():
                     continue
-                anchor_file = _find_tool_anchor_file(tool_dir)
-                public_tool_id = _canonical_tool_public_id(tool_dir.name)
                 for source_path in _iter_sandbox_source_files(source_dir, tool_id=public_tool_id):
                     source_signature = self._path_signature(source_path)
                     anchor_signature = self._path_signature(anchor_file) if anchor_file is not None else (False, 0, 0)
@@ -367,6 +448,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         )
                     metadata_with_cache = {
                         **dict(metadata),
+                        "legacy_alias": document_id,
                         "__filesystem_cache__": {
                             "source_signature": {
                                 "exists": bool(source_signature[0]),
@@ -395,9 +477,11 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                             document_id=document_id,
                             source_kind="sandbox_source",
                             document_name=source_path.name,
+                            canonical_name=_canonical_name_for_legacy_document_id(document_id),
                             relative_path=self._relative_or_absolute(source_path),
                             tool_id=public_tool_id,
                             document_metadata=metadata_with_cache,
+                            is_anchor=False,
                             anchor_document_name=anchor_document_name,
                             anchor_document_path=anchor_document_path,
                             anchor_document_metadata=anchor_document_metadata,
@@ -425,6 +509,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             documents=tuple(documents),
             source_files={
                 "anthology": self._relative_or_absolute(anthology_file),
+                "sandbox_anchor_documents": [self._relative_or_absolute(path) for path in sandbox_anchor_files],
                 "sandbox_source_documents": [self._relative_or_absolute(path) for path in sandbox_source_files],
                 "system_sources": [self._relative_or_absolute(path) for path in system_source_files],
                 "payload_cache": [self._relative_or_absolute(path) for path in payload_cache_files],
@@ -432,6 +517,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             readiness_status={
                 "authoritative_catalog": authoritative_catalog,
                 "anthology_status": anthology_status,
+                "sandbox_anchor_document_count": len(sandbox_anchor_files),
                 "sandbox_source_document_count": len(sandbox_source_files),
                 "system_source_count": len(system_source_files),
                 "payload_cache_count": len(payload_cache_files),
@@ -465,6 +551,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             materialization_status={
                 "canonical_source": catalog.readiness_status.get("anthology_status"),
                 "authoritative_catalog": catalog.readiness_status.get("authoritative_catalog"),
+                "sandbox_anchor_document_count": catalog.readiness_status.get("sandbox_anchor_document_count"),
                 "sandbox_source_document_count": catalog.readiness_status.get("sandbox_source_document_count"),
                 "derived_materialization": catalog.readiness_status.get("derived_materialization"),
                 "system_source_count": catalog.readiness_status.get("system_source_count"),

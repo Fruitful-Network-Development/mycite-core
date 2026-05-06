@@ -28,6 +28,7 @@ def _document(
     document_id: str,
     document_name: str,
     sandbox: str,
+    canonical_name: str = "",
     is_anchor: bool = False,
     rows: list | None = None,
     version_hash: str = "",
@@ -36,6 +37,7 @@ def _document(
     return {
         "document_id": document_id,
         "document_name": document_name,
+        "canonical_name": canonical_name or document_name.replace(".json", ""),
         "relative_path": f"sandbox/{sandbox}/sources/{document_name}",
         "tool_id": sandbox,
         "is_anchor": is_anchor,
@@ -73,19 +75,22 @@ class DatumFileWorkbenchTests(unittest.TestCase):
     def test_gallery_mode_lists_sandbox_documents_with_anchor_first(self) -> None:
         anchor = _document(
             document_id="lv.fnd.cts_gis.anchor.aaaa",
-            document_name="anchor.json",
+            document_name="tool.3-2-3.cts-gis.json",
             sandbox="cts_gis",
+            canonical_name="anchor",
             is_anchor=True,
         )
         secondary = _document(
             document_id="lv.fnd.cts_gis.natural_entity.bbbb",
-            document_name="natural_entity.json",
+            document_name="sc.3-2-3.msn-natural_entity.json",
             sandbox="cts_gis",
+            canonical_name="natural_entity",
         )
         tertiary = _document(
             document_id="lv.fnd.cts_gis.address_nodes.cccc",
-            document_name="address_nodes.json",
+            document_name="sc.3-2-3.msn-address_nodes.json",
             sandbox="cts_gis",
+            canonical_name="address_nodes",
         )
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
@@ -99,6 +104,8 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         self.assertEqual(region["mode"], WORKBENCH_MODE_GALLERY)
         cards = region["gallery"]["documents"]
         self.assertEqual(cards[0]["document_id"], anchor["document_id"])
+        self.assertEqual(cards[0]["label"], "anchor")
+        self.assertEqual(cards[1]["label"], "address_nodes")
         # address_nodes sorts before natural_entity alphabetically.
         self.assertEqual(
             [card["document_id"] for card in cards],
@@ -174,6 +181,7 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             document_id="lv.fnd.system.anthology.aaaa",
             document_name="anthology.json",
             sandbox="system",
+            canonical_name="anthology",
             is_anchor=True,
         )
         region = build_datum_file_workbench(
@@ -188,6 +196,26 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         self.assertEqual(region["mode"], WORKBENCH_MODE_GALLERY)
         self.assertIn("gallery", region)
         self.assertNotIn("layered_datum_table", region)
+
+    def test_anchor_only_sandbox_still_resolves_anchor_mode(self) -> None:
+        anchor = _document(
+            document_id="lv.fnd.cts_gis.anchor.aaaa",
+            document_name="tool.3-2-3.cts-gis.json",
+            canonical_name="anchor",
+            sandbox="cts_gis",
+            is_anchor=True,
+            rows=[{"datum_address": "1-1-1"}],
+        )
+        region = build_datum_file_workbench(
+            portal_scope=self.portal_scope,
+            shell_state=None,
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
+            sandbox_id="cts_gis",
+            anchor_document=anchor,
+            sandbox_documents=[anchor],
+        )
+        self.assertEqual(region["mode"], WORKBENCH_MODE_ANCHOR)
+        self.assertEqual(region["anchor"]["canonical_name"], "anchor")
 
     def test_attaches_region_family_contract(self) -> None:
         region = build_datum_file_workbench(

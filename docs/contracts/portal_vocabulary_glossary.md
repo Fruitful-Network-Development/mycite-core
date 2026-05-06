@@ -69,6 +69,8 @@ The CTS-GIS `filament datum` and its hyphae-value usage live in the
 - **canonical document id**: a `lv.<msn>.<sandbox>.<name>.<hash>` / `stl.<msn>.<name>.<hash>` / `cptr.<msn>.<name>.<hash>` identifier. Validated by `MyCiteV2/packages/core/document_naming/`.
 - **legacy alias**: a pre-canonical document identifier (`system:anthology`, `sandbox:<tool>:<filename>.json`). Retained on the `documents.legacy_alias` column for one cycle of compatibility.
 - **anchor**: the canonical entry document of a sandbox. Named `anthology` for the system sandbox; named `anchor` for every other sandbox. Carries `documents.is_anchor = 1`.
+- **canonical name**: the authoritative document name segment inside the canonical id (`anthology`, `anchor`, `address_nodes`, `administrative`, `247_17_77_1`, …). Used as the primary workbench/gallery label.
+- **raw document name**: the compatibility filename token from disk (`tool.<msn>.cts-gis.json`, `sc.<msn>.msn-address_nodes.json`, …). Preserved as secondary evidence, not as the primary authority label.
 - **sandbox source** (`lv.`): an in-sandbox datum document. Includes anchors and non-anchor sources.
 - **binary payload** (`stl.`): the compiled hyphae form of a single filament datum. No sandbox segment in the canonical id.
 - **cached source** (`cptr.`): the decompiled JSON form of a binary payload. No sandbox segment in the canonical id.

@@ -110,15 +110,10 @@ def _summary_for_workbench_document(document: Any) -> dict[str, Any]:
         }
     metadata = summary.get("document_metadata") if isinstance(summary.get("document_metadata"), dict) else {}
     legacy_alias = _as_text(summary.get("legacy_alias")) or _as_text(metadata.get("legacy_alias"))
-    document_id = _as_text(summary.get("document_id"))
-    document_name = _as_text(summary.get("document_name") or summary.get("name"))
-    is_anchor = bool(summary.get("is_anchor")) or (
-        document_name.lower() in {"anchor", "anchor.json"}
-        or ".anchor." in document_id
-        or legacy_alias.endswith(":anchor.json")
-        or legacy_alias.endswith(":anchor")
-    )
+    canonical_name = _as_text(summary.get("canonical_name"))
+    is_anchor = bool(summary.get("is_anchor"))
     summary["legacy_alias"] = legacy_alias
+    summary["canonical_name"] = canonical_name
     summary["is_anchor"] = is_anchor
     return summary
 

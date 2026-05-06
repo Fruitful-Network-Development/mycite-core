@@ -17,7 +17,7 @@ from MyCiteV2.scripts.migrate_fnd_repo_to_mos_sql import classify_data_path, run
 class MigrateFndRepoToMosSqlTests(unittest.TestCase):
     def test_classify_data_path_covers_expected_buckets(self) -> None:
         self.assertEqual(classify_data_path("system/anthology.json"), "authoritative_import")
-        self.assertEqual(classify_data_path("sandbox/cts-gis/tool.abc.cts-gis.json"), "supporting_anchor_context")
+        self.assertEqual(classify_data_path("sandbox/cts-gis/tool.abc.cts-gis.json"), "authoritative_import")
         self.assertEqual(classify_data_path("payloads/cache/sc.example.json"), "derived_materialization")
         self.assertEqual(classify_data_path("payloads/sc.example.bin"), "explicit_exception")
 
@@ -77,6 +77,12 @@ class MigrateFndRepoToMosSqlTests(unittest.TestCase):
 
             self.assertEqual(report["coverage_gate"]["status"], "passed")
             self.assertFalse(report["failures"])
+            self.assertTrue(
+                any(
+                    item["relative_path"] == "sandbox/cts-gis/tool.test.cts-gis.json"
+                    for item in report["documents"]
+                )
+            )
             authority = SqlitePortalAuthorityAdapter(db_file).read_portal_authority(
                 {"scope_id": "fnd", "known_tool_ids": ["cts_gis", "workbench_ui"]}
             )

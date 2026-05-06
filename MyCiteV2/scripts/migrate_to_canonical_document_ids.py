@@ -394,11 +394,12 @@ def repair(
             connection.commit()
 
     if quarantine_log is not None and quarantine:
-        import ndjson  # type: ignore[import]
+        quarantine_log.parent.mkdir(parents=True, exist_ok=True)
         with quarantine_log.open("w", encoding="utf-8") as fh:
             for entry in quarantine:
                 fh.write(json.dumps(entry) + "\n")
     elif quarantine_log is not None:
+        quarantine_log.parent.mkdir(parents=True, exist_ok=True)
         quarantine_log.write_text("", encoding="utf-8")
 
     return {
