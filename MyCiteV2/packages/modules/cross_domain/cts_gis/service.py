@@ -85,7 +85,7 @@ _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
 def _is_cts_gis_document_id(value: object) -> bool:
     token = _as_text(value)
     return token.startswith(_CTS_GIS_CANONICAL_DOCUMENT_PREFIX) or (
-        token.startswith("lv.") and ".cts-gis." in token
+        token.startswith("lv.") and (".cts_gis." in token or ".cts-gis." in token)
     )
 
 

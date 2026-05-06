@@ -25,8 +25,10 @@ do not replace the workbench with tool chrome.
 
 The portal `msn_id` bounds the portal; sandbox is the parent datum-document
 grouping inside that boundary. `system.root` is bound to sandbox `system` only.
-Tool surfaces are bound to their named sandbox only (`cts-gis`, `aws-csm`, and so
-on). Cross-sandbox datum-file navigation is not a supported shell state.
+Tool surfaces are bound to their named sandbox only. URL route slugs use hyphens
+(`cts-gis`, `aws-csm`), while canonical sandbox tokens used in document IDs use
+underscores (`cts_gis`, `aws_csm`). Cross-sandbox datum-file navigation is not a
+supported shell state.
 
 `Workbench UI` is the documented `workbench_primary` exception (see its section
 below). It keeps the SQL row grid as workbench-primary; it does not adopt the shared

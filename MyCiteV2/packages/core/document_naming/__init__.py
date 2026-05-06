@@ -146,14 +146,94 @@ def is_canonical_document_id(text: str) -> bool:
 
 
 def _sanitize_segment(text: str) -> str:
-    """Lowercase, replace underscores/spaces with hyphens, strip non-allowed chars."""
+    """Lowercase, preserve underscores, strip non-allowed chars (spaces → underscore)."""
 
-    cleaned = text.strip().lower().replace(" ", "-").replace("_", "-")
+    cleaned = text.strip().lower().replace(" ", "_")
     out = []
     for ch in cleaned:
-        if ch.isalnum() or ch == "-":
+        if ch.isalnum() or ch in ("_", "-"):
             out.append(ch)
-    return "".join(out).strip("-") or "anchor"
+    return "".join(out).strip("_-") or "anchor"
+
+
+def _sanitize_sandbox_token(text: str) -> str:
+    """Normalize a sandbox token to its canonical underscore form.
+
+    Hyphens and spaces become underscores. Only alphanumeric and underscores
+    are kept. This maps URL slugs (``cts-gis``) to programmatic tokens
+    (``cts_gis``) while leaving already-canonical tokens unchanged.
+    """
+
+    cleaned = text.strip().lower().replace("-", "_").replace(" ", "_")
+    out = []
+    for ch in cleaned:
+        if ch.isalnum() or ch == "_":
+            out.append(ch)
+    return "".join(out).strip("_") or "anchor"
+
+
+_SC_MSN_RE = re.compile(r"^[0-9][0-9\-]*[0-9]$")
+_SC_NAMESPACE_MARKERS = ("msn-", "msn_", "fnd.", "cts.", "registrar.")
+
+
+def extract_semantic_name_from_sc_stem(stem: str) -> Optional[str]:
+    """Extract the canonical semantic name from a source-file stem.
+
+    Source files follow the pattern ``sc.<msn_id>.<namespace><semantic>``.
+    This function strips the ``sc.`` prefix, skips the MSN address segment,
+    and strips any namespace marker (``msn-``, ``msn_``, ``fnd.``,
+    ``registrar.``) to produce the bare semantic name.
+
+    Returns ``None`` when the stem is malformed (empty semantic after stripping,
+    or unrecognisable structure).
+
+    Examples::
+
+        "sc.3-2-3-17-77-1-6-4-1-4.msn-natural_entity"  → "natural_entity"
+        "sc.3-2-3-17-77-1-6-4-1-4.msn_address_nodes"   → "address_nodes"
+        "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1" → "3-2-3-17-77-1-1"
+        "sc.3-2-3-17-77-1-6-4-1-4.sos_voterid"          → "sos_voterid"
+        "sc.3-2-3-17-77-1-6-4-1-4.msn-"                 → None
+        "sc.3-2-3-17-77-1-6-4-1-4."                     → None
+    """
+
+    if not stem.startswith("sc."):
+        return None
+    rest = stem[3:]  # strip "sc."
+    if not rest:
+        return None
+
+    # Split off the first dot-segment; if it looks like an MSN address, skip it.
+    if "." in rest:
+        msn_candidate, remainder = rest.split(".", 1)
+        if not _SC_MSN_RE.fullmatch(msn_candidate):
+            # Not an MSN address — treat entire rest as the semantic suffix.
+            remainder = rest
+    else:
+        # No dot: entire rest is the semantic suffix (no MSN segment).
+        remainder = rest
+
+    if not remainder:
+        return None
+
+    # Strip namespace prefix if present.
+    for marker in _SC_NAMESPACE_MARKERS:
+        if remainder.startswith(marker):
+            semantic = remainder[len(marker):]
+            if not semantic:
+                return None  # malformed: marker with empty tail
+            return _sanitize_segment(semantic) or None
+
+    # No namespace prefix — remainder is the semantic name directly.
+    return _sanitize_segment(remainder) or None
+
+
+class MalformedSourceNameError(CanonicalNameError):
+    """Raised when a source file stem cannot be reduced to a valid semantic name.
+
+    The offending stem is included in the message. Callers should quarantine
+    the source file rather than materialising a garbage document.
+    """
 
 
 def derive_canonical_id_from_legacy(
@@ -168,9 +248,12 @@ def derive_canonical_id_from_legacy(
     Rules:
     * ``system:anthology`` → ``lv.<msn>.system.anthology.<hash>``
     * ``system:<other>``   → ``lv.<msn>.system.<other>.<hash>``
-    * ``sandbox:<tool>:<file>.json`` → ``lv.<msn>.<tool-slug>.<name>.<hash>``
-      where the ``<tool-slug>`` underscore form (e.g. ``cts_gis``) is
-      normalized to its hyphen form (``cts-gis``).
+    * ``sandbox:<tool>:<file>.json`` → ``lv.<msn>.<token>.<name>.<hash>``
+      where ``<token>`` is the canonical underscore sandbox token derived
+      via ``_sanitize_sandbox_token()`` (e.g. ``cts_gis``, never ``cts-gis``).
+      The ``<name>`` is extracted from the source filename using
+      ``extract_semantic_name_from_sc_stem()`` for ``sc.`` files; malformed
+      stems raise ``MalformedSourceNameError``.
     * ``payload:<name>.bin`` → ``stl.<msn>.<name>.<hash>``
     * ``cache:<name>.json``  → ``cptr.<msn>.<name>.<hash>``
     """
@@ -193,17 +276,25 @@ def derive_canonical_id_from_legacy(
     sb_match = _LEGACY_SANDBOX_RE.fullmatch(raw)
     if sb_match:
         sandbox_raw, file_stem = sb_match.group(1), sb_match.group(2)
-        sandbox = _sanitize_segment(sandbox_raw)
+        sandbox = _sanitize_sandbox_token(sandbox_raw)
         stem = file_stem.rsplit("/", 1)[-1]
         anchor_pattern = re.compile(r"^tool\.[^.]+\.([A-Za-z0-9_\-]+)$")
         anchor_hit = anchor_pattern.fullmatch(stem)
-        if anchor_hit and _sanitize_segment(anchor_hit.group(1)) == sandbox:
+        if anchor_hit and _sanitize_sandbox_token(anchor_hit.group(1)) == sandbox:
             name = "anchor"
         elif sandbox == "system" and stem == "anthology":
             name = "anthology"
         else:
-            head = stem.split(".", 1)[0] if "." in stem else stem
-            name = _sanitize_segment(head)
+            semantic = extract_semantic_name_from_sc_stem(stem)
+            if semantic is None:
+                if stem.startswith("sc."):
+                    raise MalformedSourceNameError(
+                        f"malformed source stem, quarantined: {stem!r}"
+                    )
+                # Non-sc. file without namespace prefix — use sanitized stem directly.
+                name = _sanitize_segment(stem.split(".", 1)[0] if "." in stem else stem)
+            else:
+                name = semantic
         return format_canonical_document_id(
             prefix="lv",
             msn_id=msn_id,
@@ -238,8 +329,10 @@ def derive_canonical_id_from_legacy(
 __all__ = [
     "ALLOWED_PREFIXES",
     "CanonicalNameError",
+    "MalformedSourceNameError",
     "ParsedDocumentId",
     "derive_canonical_id_from_legacy",
+    "extract_semantic_name_from_sc_stem",
     "format_canonical_document_id",
     "is_canonical_document_id",
     "parse_canonical_document_id",

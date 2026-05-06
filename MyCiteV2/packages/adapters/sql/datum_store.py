@@ -346,12 +346,22 @@ class SqliteSystemDatumStoreAdapter(
         canonical_set: set[str] = set()
         for row in cursor.fetchall():
             doc_id = str(row["document_id"]).strip()
-            alias = (row["legacy_alias"] or "").strip()
+            alias_raw = (row["legacy_alias"] or "").strip()
             if not doc_id:
                 continue
             canonical_set.add(doc_id)
-            if alias:
-                canonical_by_legacy[alias] = doc_id
+            if alias_raw:
+                if alias_raw.startswith("["):
+                    # Multi-alias JSON array: expand each entry as a lookup key.
+                    try:
+                        for item in loads_json(alias_raw):
+                            s = str(item).strip()
+                            if s:
+                                canonical_by_legacy[s] = doc_id
+                    except (ValueError, TypeError):
+                        canonical_by_legacy[alias_raw] = doc_id
+                else:
+                    canonical_by_legacy[alias_raw] = doc_id
         if not canonical_by_legacy and not canonical_set:
             return
         for entry in documents:

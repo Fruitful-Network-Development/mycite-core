@@ -33,7 +33,7 @@ cptr.<msn_id>.<name>.<version_hash>
 Fields:
 
 - `msn_id` — Portal/owning instance identifier. Example: `3-2-3-17-77-1-6-4-1-4` for the FND portal.
-- `sandbox` — Sandbox name. Required for `lv.` documents only. Examples: `system`, `cts-gis`, `fnd-ebi`, `agro-erp`.
+- `sandbox` — Canonical sandbox token. Required for `lv.` documents only. **Uses underscores** (programmatic form). Examples: `system`, `cts_gis`, `fnd_ebi`, `agro_erp`. URL route slugs (`/tools/cts-gis`) are a separate display concern and must not appear in canonical document IDs.
 - `name` — Document name. For `lv.` documents the name is `anchor` for every sandbox anchor *except* the system sandbox, where the anchor is named `anthology`. Non-anchor `lv.` documents and all `stl.`/`cptr.` documents use the document's own name (e.g. `247_17_77_1`, `registrar`, `txa`, `natural_entity`).
 - `version_hash` — 64-character lowercase hex SHA-256 over the MSS form of the document (policy `mos.mss_sha256_v1`).
 
@@ -41,6 +41,48 @@ Fields:
 capture is owned by a portal (`msn_id`) but is not constrained to one of that
 portal's sandboxes — payloads circulate across sandboxes and across portals through
 contracts.
+
+## URL Slug vs Sandbox Token
+
+The sandbox **token** (used in canonical document IDs and programmatic APIs) uses underscores.
+The URL **slug** (used in portal routes and filesystem directory names) uses hyphens.
+These are two distinct representations of the same sandbox identity.
+
+| URL slug (route / filesystem) | Canonical sandbox token (document ID) |
+|-------------------------------|----------------------------------------|
+| `/tools/cts-gis`              | `cts_gis`                             |
+| `data/sandbox/fnd-ebi/`       | `fnd_ebi`                             |
+| `/tools/aws-csm`              | `aws_csm`                             |
+| `system` (no slug difference) | `system`                              |
+
+`sandbox_id_for_surface()` in `portal_shell/shell.py` is the authoritative conversion point.
+It always returns the underscore token form. Callers must not use the URL slug as a
+document filter or document ID component.
+
+## Source Filename to Canonical Name Parsing
+
+Legacy `sc.` source files follow the pattern `sc.<msn_id>.<namespace><semantic>.json`.
+The canonical document name is extracted by:
+
+1. Stripping `sc.` and the MSN ID segment.
+2. Stripping a recognized namespace marker from the remainder:
+   `msn-`, `msn_`, `fnd.`, `cts.`, `registrar.`
+3. The remaining `<semantic>` becomes the canonical name (underscores preserved, dots stripped).
+4. If the semantic is empty after stripping, the source file is **malformed** — it is
+   quarantined and not materialized as a canonical document.
+
+Examples:
+- `sc.<msn>.msn-natural_entity.json` → `natural_entity`
+- `sc.<msn>.msn_address_nodes.json` → `address_nodes`
+- `sc.<msn>.fnd.3-2-3-17-77-1-1.json` → `3-2-3-17-77-1-1`
+- `sc.<msn>.cts.247_17_77_1.json` → `247_17_77_1`
+- `sc.<msn>.sos_voterid.json` → `sos_voterid`
+- `sc.<msn>.msn-.json` → **MALFORMED** — quarantined
+
+The parser is `extract_semantic_name_from_sc_stem()` in
+`MyCiteV2/packages/core/document_naming/__init__.py`. It is the canonical,
+single-function implementation used by the migration script and any future
+materialization paths.
 
 ## Anchor Naming Rules
 
@@ -54,11 +96,12 @@ contracts.
 | Legacy / staging form | Canonical form |
 |---|---|
 | `anthology.json` | `lv.3-2-3-17-77-1-6-4-1-4.system.anthology.<hash>` |
-| `tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json` (CTS-GIS sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.anchor.<hash>` |
-| `tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json` (FND-EBI sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.fnd-ebi.anchor.<hash>` |
-| `sc.3-2-3-17-77-1-6-4-1-4.cts.247_17_77_1.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.247-17-77-1.<hash>` |
-| `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts-gis.3-2-3-17.<hash>` |
-| `rf.3-2-3-17-77-1-6-4-1-4.txa.json` (Agro-ERP sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.agro-erp.txa.<hash>` |
+| `tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json` (CTS-GIS sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.cts_gis.anchor.<hash>` |
+| `tool.3-2-3-17-77-1-6-4-1-4.fnd-ebi.json` (FND-EBI sandbox anchor) | `lv.3-2-3-17-77-1-6-4-1-4.fnd_ebi.anchor.<hash>` |
+| `sc.3-2-3-17-77-1-6-4-1-4.cts.247_17_77_1.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts_gis.247_17_77_1.<hash>` |
+| `sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json` (CTS-GIS sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.cts_gis.3-2-3-17.<hash>` |
+| `sc.3-2-3-17-77-1-6-4-1-4.msn-natural_entity.json` | `lv.3-2-3-17-77-1-6-4-1-4.cts_gis.natural_entity.<hash>` |
+| `rf.3-2-3-17-77-1-6-4-1-4.txa.json` (Agro-ERP sandbox source) | `lv.3-2-3-17-77-1-6-4-1-4.agro_erp.rf.<hash>` |
 | `sc.3-2-3-17-77-1-6-4-1-4.registrar.bin` | `stl.3-2-3-17-77-1-6-4-1-4.registrar.<hash>` |
 | `sc.3-2-3-17-77-1-6-4-1-4.registrar.json` | `cptr.3-2-3-17-77-1-6-4-1-4.registrar.<hash>` |
 
@@ -73,6 +116,10 @@ plus an FND-portal contract that delivers the necessary built-in payloads (e.g.
 
 The `version_hash` is the SHA-256 of the MSS (Monotonic Structured Serialization) form
 of the document under policy `mos.mss_sha256_v1`:
+
+`mss.` is a design-time shorthand for the serialization/hash policy only; it is
+not a fourth document prefix. Stored document IDs are limited to the three
+canonical prefixes: `lv.`, `stl.`, and `cptr.`.
 
 - The MSS form is the *indiscriminate* inclusion of the complete datum file: every
   row, ordered canonically by `(layer, value_group, iteration)`, with every reference
@@ -125,6 +172,16 @@ documents arrived through a contract with another portal. Update rights for fore
 documents are mediated by the portal-to-portal contract that delivered them.
 Contract enforcement is handled by the contracts pipeline; the taxonomy itself only
 records the origin.
+
+## MOS Database as Authority
+
+The MOS authority database (`mos_authority.sqlite3`) is the single runtime source of
+truth for datum document materialization and naming. The `documents` table is the
+canonical index.
+
+`/srv/repo/hippo` is **historical evidence only**. It is not imported by MyCiteV2 at
+runtime, it is not a materialization authority for MOS, and it must not influence
+document naming, sandbox token resolution, or workbench rendering decisions.
 
 ## Migration Status
 

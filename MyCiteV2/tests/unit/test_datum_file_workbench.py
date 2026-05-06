@@ -72,26 +72,26 @@ class DatumFileWorkbenchTests(unittest.TestCase):
 
     def test_gallery_mode_lists_sandbox_documents_with_anchor_first(self) -> None:
         anchor = _document(
-            document_id="lv.fnd.cts-gis.anchor.aaaa",
+            document_id="lv.fnd.cts_gis.anchor.aaaa",
             document_name="anchor.json",
-            sandbox="cts-gis",
+            sandbox="cts_gis",
             is_anchor=True,
         )
         secondary = _document(
-            document_id="lv.fnd.cts-gis.precinct.bbbb",
-            document_name="precinct.json",
-            sandbox="cts-gis",
+            document_id="lv.fnd.cts_gis.natural_entity.bbbb",
+            document_name="natural_entity.json",
+            sandbox="cts_gis",
         )
         tertiary = _document(
-            document_id="lv.fnd.cts-gis.zelda.cccc",
-            document_name="zelda.json",
-            sandbox="cts-gis",
+            document_id="lv.fnd.cts_gis.address_nodes.cccc",
+            document_name="address_nodes.json",
+            sandbox="cts_gis",
         )
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            sandbox_id="cts-gis",
+            sandbox_id="cts_gis",
             anchor_document=None,
             sandbox_documents=[secondary, anchor, tertiary],
             explicit_mode=WORKBENCH_MODE_GALLERY,
@@ -99,29 +99,30 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         self.assertEqual(region["mode"], WORKBENCH_MODE_GALLERY)
         cards = region["gallery"]["documents"]
         self.assertEqual(cards[0]["document_id"], anchor["document_id"])
+        # address_nodes sorts before natural_entity alphabetically.
         self.assertEqual(
             [card["document_id"] for card in cards],
-            [anchor["document_id"], secondary["document_id"], tertiary["document_id"]],
+            [anchor["document_id"], tertiary["document_id"], secondary["document_id"]],
         )
 
     def test_selected_document_mode_emits_layered_datum_table_for_selection(self) -> None:
         anchor = _document(
-            document_id="lv.fnd.aws-csm.anchor.aaaa",
+            document_id="lv.fnd.aws_csm.anchor.aaaa",
             document_name="anchor.json",
-            sandbox="aws-csm",
+            sandbox="aws_csm",
             is_anchor=True,
         )
         selected = _document(
-            document_id="lv.fnd.aws-csm.profile.bbbb",
+            document_id="lv.fnd.aws_csm.profile.bbbb",
             document_name="profile.json",
-            sandbox="aws-csm",
+            sandbox="aws_csm",
             rows=[{"datum_address": "1-1-1"}],
         )
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            sandbox_id="aws-csm",
+            sandbox_id="aws_csm",
             anchor_document=anchor,
             selected_document=selected,
         )
@@ -133,9 +134,9 @@ class DatumFileWorkbenchTests(unittest.TestCase):
     def test_projection_bundle_input_emits_gallery_card_and_layer_groups(self) -> None:
         bundle = {
             "document_summary": {
-                "document_id": "lv.fnd.cts-gis.precinct.bbbb",
-                "document_name": "precinct.json",
-                "tool_id": "cts-gis",
+                "document_id": "lv.fnd.cts_gis.natural_entity.bbbb",
+                "document_name": "natural_entity.json",
+                "tool_id": "cts_gis",
                 "row_count": 2,
             },
             "document": {
@@ -149,21 +150,21 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            sandbox_id="cts-gis",
+            sandbox_id="cts_gis",
             sandbox_documents=[bundle],
             explicit_mode=WORKBENCH_MODE_GALLERY,
         )
-        self.assertEqual(gallery["gallery"]["documents"][0]["document_id"], "lv.fnd.cts-gis.precinct.bbbb")
+        self.assertEqual(gallery["gallery"]["documents"][0]["document_id"], "lv.fnd.cts_gis.natural_entity.bbbb")
         selected = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            sandbox_id="cts-gis",
+            sandbox_id="cts_gis",
             anchor_document=None,
             selected_document=bundle,
         )
         table = selected["layered_datum_table"]
-        self.assertEqual(table["document"]["document_id"], "lv.fnd.cts-gis.precinct.bbbb")
+        self.assertEqual(table["document"]["document_id"], "lv.fnd.cts_gis.natural_entity.bbbb")
         self.assertEqual(table["layer_groups"][0]["layer"], 2)
         self.assertEqual(table["layer_groups"][0]["value_groups"][0]["value_group"], 3)
         self.assertEqual(table["layer_groups"][0]["value_groups"][0]["row_count"], 2)
@@ -193,7 +194,7 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            sandbox_id="cts-gis",
+            sandbox_id="cts_gis",
             anchor_document=None,
             explicit_mode=WORKBENCH_MODE_GALLERY,
         )

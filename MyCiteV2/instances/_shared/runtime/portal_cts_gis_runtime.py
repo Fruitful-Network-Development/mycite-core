@@ -3572,7 +3572,7 @@ def build_portal_cts_gis_surface_bundle(
         portal_scope=portal_scope,
         shell_state=shell_state,
         surface_id=CTS_GIS_TOOL_SURFACE_ID,
-        sandbox_id="cts-gis",
+        sandbox_id="cts_gis",
         sandbox_label="CTS-GIS",
         anchor_document=cts_gis_anchor_document,
         selected_document=cts_gis_selected_document,
