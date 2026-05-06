@@ -59,7 +59,7 @@ def classify_data_path(relative_path: str) -> str:
     if rel.startswith("sandbox/") and rel.endswith(".json") and "/sources/" not in rel:
         name = Path(rel).name
         if name.startswith("tool") or name == "tool.json":
-            return "supporting_anchor_context"
+            return "authoritative_import"
     if rel == "system/system_log.json":
         return "derived_materialization"
     if rel.startswith("system/sources/") and rel.endswith(".json"):

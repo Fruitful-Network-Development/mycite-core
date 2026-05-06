@@ -153,7 +153,8 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its default posture is interface-panel-led.
 - Its workbench is the shared `datum_file_workbench` over the CTS-GIS sandbox.
   Default shell focus is `file=anchor`; if no materialized CTS-GIS anchor document
-  exists yet, the same workbench falls back to the CTS-GIS sandbox gallery.
+  exists, the workbench opens anchor mode. Gallery fallback is reserved for a
+  sandbox that truly has no materialized anchor document.
 - Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body on the shared tab host. Diktataograph, Staged Insert, and Garland are Interface Panel content; they are not workbench renderers.
 - `tab_host=shared_interface_tabs`.
 - `tabs` currently materialize as `diktataograph` and `garland`.

@@ -304,10 +304,13 @@ class DatumRecognitionDocument:
     document_id: str
     source_kind: str
     document_name: str
+    canonical_name: str
     relative_path: str
     tool_id: str
     source_authority: str
     document_metadata: dict[str, Any] | None
+    is_anchor: bool
+    legacy_alias: str
     anchor_document_name: str
     anchor_document_path: str
     anchor_document_metadata: dict[str, Any] | None
@@ -341,6 +344,7 @@ class DatumRecognitionDocument:
         object.__setattr__(self, "document_id", document_id)
         object.__setattr__(self, "source_kind", source_kind)
         object.__setattr__(self, "document_name", _as_text(self.document_name))
+        object.__setattr__(self, "canonical_name", _as_text(self.canonical_name))
         object.__setattr__(self, "relative_path", _as_text(self.relative_path))
         object.__setattr__(self, "tool_id", _as_text(self.tool_id))
         object.__setattr__(self, "source_authority", _as_lower(self.source_authority) or "authoritative")
@@ -349,6 +353,8 @@ class DatumRecognitionDocument:
             "document_metadata",
             _normalize_json_value(self.document_metadata or {}, field_name="datum_recognition_document.document_metadata"),
         )
+        object.__setattr__(self, "is_anchor", bool(self.is_anchor))
+        object.__setattr__(self, "legacy_alias", _as_text(self.legacy_alias))
         object.__setattr__(self, "anchor_document_name", _as_text(self.anchor_document_name))
         object.__setattr__(self, "anchor_document_path", _as_text(self.anchor_document_path))
         object.__setattr__(
@@ -378,10 +384,13 @@ class DatumRecognitionDocument:
             "document_id": self.document_id,
             "source_kind": self.source_kind,
             "document_name": self.document_name,
+            "canonical_name": self.canonical_name,
             "relative_path": self.relative_path,
             "tool_id": self.tool_id,
             "source_authority": self.source_authority,
             "document_metadata": dict(self.document_metadata or {}),
+            "is_anchor": self.is_anchor,
+            "legacy_alias": self.legacy_alias,
             "anchor_document_name": self.anchor_document_name,
             "anchor_document_path": self.anchor_document_path,
             "anchor_document_metadata": dict(self.anchor_document_metadata or {}),
@@ -599,17 +608,20 @@ def _recognize_document(document: AuthoritativeDatumDocument) -> DatumRecognitio
             )
         )
 
-    anchor_resolution = "not_required" if document.source_kind == "system_anthology" else "resolved"
-    if document.source_kind == "sandbox_source" and not document.anchor_rows:
+    anchor_resolution = "not_required" if document.source_kind == "system_anthology" or bool(document.is_anchor) else "resolved"
+    if document.source_kind == "sandbox_source" and not document.is_anchor and not document.anchor_rows:
         anchor_resolution = "missing"
     return DatumRecognitionDocument(
         document_id=document.document_id,
         source_kind=document.source_kind,
         document_name=document.document_name,
+        canonical_name=document.canonical_name,
         relative_path=document.relative_path,
         tool_id=document.tool_id,
         source_authority=document.source_authority,
         document_metadata=document.document_metadata,
+        is_anchor=document.is_anchor,
+        legacy_alias=_as_text((document.document_metadata or {}).get("legacy_alias")),
         anchor_document_name=document.anchor_document_name,
         anchor_document_path=document.anchor_document_path,
         anchor_document_metadata=document.anchor_document_metadata,
@@ -637,6 +649,9 @@ def _select_document_id(documents: tuple[DatumRecognitionDocument, ...]) -> str:
         return sandbox_with_diagnostics[0].document_id
     sandbox_documents = [document for document in documents if document.source_kind == "sandbox_source"]
     if sandbox_documents:
+        for document in sandbox_documents:
+            if document.is_anchor:
+                return document.document_id
         return sandbox_documents[0].document_id
     return documents[0].document_id if documents else ""
 

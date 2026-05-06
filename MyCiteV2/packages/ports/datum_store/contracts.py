@@ -125,9 +125,11 @@ class AuthoritativeDatumDocument:
     source_kind: str
     document_name: str
     relative_path: str
+    canonical_name: str = ""
     tool_id: str = ""
     source_authority: str = "authoritative"
     document_metadata: dict[str, JsonValue] | None = None
+    is_anchor: bool = False
     anchor_document_name: str = ""
     anchor_document_path: str = ""
     anchor_document_metadata: dict[str, JsonValue] | None = None
@@ -140,6 +142,7 @@ class AuthoritativeDatumDocument:
         document_id = _as_text(self.document_id)
         source_kind = _as_text(self.source_kind).lower()
         document_name = _as_text(self.document_name)
+        canonical_name = _as_text(self.canonical_name)
         relative_path = _as_text(self.relative_path)
         tool_id = _as_text(self.tool_id)
         source_authority = _as_text(self.source_authority).lower() or "authoritative"
@@ -169,6 +172,7 @@ class AuthoritativeDatumDocument:
         object.__setattr__(self, "document_id", document_id)
         object.__setattr__(self, "source_kind", source_kind)
         object.__setattr__(self, "document_name", document_name)
+        object.__setattr__(self, "canonical_name", canonical_name)
         object.__setattr__(self, "relative_path", relative_path)
         object.__setattr__(self, "tool_id", tool_id)
         object.__setattr__(self, "source_authority", source_authority)
@@ -180,6 +184,7 @@ class AuthoritativeDatumDocument:
                 field_name="authoritative_datum_document.document_metadata",
             ),
         )
+        object.__setattr__(self, "is_anchor", bool(self.is_anchor))
         object.__setattr__(self, "anchor_document_name", _as_text(self.anchor_document_name))
         object.__setattr__(self, "anchor_document_path", _as_text(self.anchor_document_path))
         object.__setattr__(
@@ -208,10 +213,12 @@ class AuthoritativeDatumDocument:
             "document_id": self.document_id,
             "source_kind": self.source_kind,
             "document_name": self.document_name,
+            "canonical_name": self.canonical_name,
             "relative_path": self.relative_path,
             "tool_id": self.tool_id,
             "source_authority": self.source_authority,
             "document_metadata": self.document_metadata or {},
+            "is_anchor": self.is_anchor,
             "anchor_document_name": self.anchor_document_name,
             "anchor_document_path": self.anchor_document_path,
             "anchor_document_metadata": self.anchor_document_metadata or {},
@@ -239,10 +246,12 @@ class AuthoritativeDatumDocument:
             document_id=payload.get("document_id"),
             source_kind=payload.get("source_kind"),
             document_name=payload.get("document_name"),
+            canonical_name=payload.get("canonical_name") or "",
             relative_path=payload.get("relative_path"),
             tool_id=payload.get("tool_id") or "",
             source_authority=payload.get("source_authority") or "authoritative",
             document_metadata=payload.get("document_metadata") or {},
+            is_anchor=bool(payload.get("is_anchor")),
             anchor_document_name=payload.get("anchor_document_name") or "",
             anchor_document_path=payload.get("anchor_document_path") or "",
             anchor_document_metadata=payload.get("anchor_document_metadata") or {},

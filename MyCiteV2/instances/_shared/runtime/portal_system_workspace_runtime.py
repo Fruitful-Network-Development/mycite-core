@@ -371,8 +371,11 @@ def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, A
 
 
 def _document_label(document: Any) -> str:
-    if getattr(document, "document_id", "") == "system:anthology":
+    if _is_system_anchor_document(document):
         return "Anthology"
+    canonical_name = as_text(getattr(document, "canonical_name", ""))
+    if canonical_name:
+        return canonical_name
     name = as_text(getattr(document, "document_name", ""))
     tool_id = as_text(getattr(document, "tool_id", ""))
     if tool_id and name:
@@ -380,10 +383,12 @@ def _document_label(document: Any) -> str:
     return name or as_text(getattr(document, "document_id", "")) or "Document"
 
 
+def _is_system_anchor_document(document: Any) -> bool:
+    return bool(getattr(document, "is_anchor", False)) and _document_sandbox_id(document) == "system"
+
+
 def _document_file_key(document: Any) -> str:
-    if getattr(document, "document_id", "") == "system:anthology" or (
-        bool(getattr(document, "is_anchor", False)) and _document_sandbox_id(document) == "system"
-    ):
+    if _is_system_anchor_document(document):
         return SYSTEM_ANCHOR_FILE_KEY
     return as_text(getattr(document, "document_id", ""))
 
@@ -894,7 +899,7 @@ def _system_document_groups(
     active_document: Any,
     selected_datum_id: str,
 ) -> list[dict[str, Any]]:
-    if as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+    if _is_system_anchor_document(active_document):
         groups: list[dict[str, Any]] = []
         for layer_group in _anthology_layer_groups(active_document, selected_datum_id=selected_datum_id):
             entries = []
@@ -1677,7 +1682,7 @@ def build_system_workspace_bundle(
             "selected_datum": _selected_datum_payload(selected_datum),
             "selected_object": selected_object,
         }
-        if as_text(getattr(active_document, "document_id", "")) == "system:anthology":
+        if _is_system_anchor_document(active_document):
             document_payload["presentation"] = "anthology_layered_table"
             document_payload["summary"] = "Canonical system anchor file rendered as a layered datum table."
             document_payload["inspector_hint"] = (

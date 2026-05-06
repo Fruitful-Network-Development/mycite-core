@@ -49,6 +49,11 @@ Naming validation regex (enforced at the SQL adapter boundary by
 `system:<file>`/`sandbox:<tool>:<filename>.json` identifiers. New writes must
 produce a canonical `document_id`.
 
+When the runtime is operating in compatibility mode, the raw source filename may
+still be carried alongside the canonical row as secondary metadata. That does not
+change authority: sandbox anchors remain first-class `documents` rows with
+`is_anchor = 1`, not an out-of-band support-file category.
+
 See `datum_document_naming_taxonomy.md` for the full naming contract.
 
 ## §2 — `samras_namespaces` — **withdrawn**

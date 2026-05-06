@@ -47,6 +47,20 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
+def _sqlite_journal_mode_token(value: object) -> str:
+    token = _as_text(value).upper()
+    if token in {"DELETE", "TRUNCATE", "PERSIST", "MEMORY", "WAL", "OFF"}:
+        return token
+    return "WAL"
+
+
+def _normalize_version_hash_token(value: object) -> str:
+    token = _as_text(value).lower()
+    if token.startswith("sha256:"):
+        token = token.split(":", 1)[1]
+    return token
+
+
 def _workbench_from_payload(payload: dict[str, object]) -> SystemDatumWorkbenchResult:
     rows = payload.get("rows") or ()
     warnings = payload.get("warnings") or ()
@@ -147,72 +161,84 @@ class SqliteSystemDatumStoreAdapter(
             )
         updated_at = self._clock()
         with self._connect() as connection:
-            connection.execute(
-                """
-                INSERT INTO authoritative_catalog_snapshots (tenant_id, payload_json, updated_at_unix_ms)
-                VALUES (?, ?, ?)
-                ON CONFLICT(tenant_id) DO UPDATE SET
-                    payload_json = excluded.payload_json,
-                    updated_at_unix_ms = excluded.updated_at_unix_ms
-                """,
-                (normalized.tenant_id, dumps_json(normalized.to_dict()), updated_at),
+            prior_journal_mode = _sqlite_journal_mode_token(
+                connection.execute("PRAGMA journal_mode").fetchone()[0]
             )
-            connection.execute("DELETE FROM datum_row_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
-            connection.execute("DELETE FROM datum_document_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
-            for document in normalized.documents:
-                semantics = build_document_semantics(document)
+            prior_temp_store = int(connection.execute("PRAGMA temp_store").fetchone()[0])
+            connection.execute("PRAGMA temp_store = MEMORY")
+            connection.execute("PRAGMA journal_mode = MEMORY")
+            try:
                 connection.execute(
                     """
-                    INSERT INTO datum_document_semantics (
-                        tenant_id,
-                        document_id,
-                        policy,
-                        version_hash,
-                        canonical_payload_json,
-                        updated_at_unix_ms
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO authoritative_catalog_snapshots (tenant_id, payload_json, updated_at_unix_ms)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(tenant_id) DO UPDATE SET
+                        payload_json = excluded.payload_json,
+                        updated_at_unix_ms = excluded.updated_at_unix_ms
                     """,
-                    (
-                        normalized.tenant_id,
-                        document.document_id,
-                        semantics["document"]["policy"],
-                        semantics["document"]["version_hash"],
-                        dumps_json(semantics["document"]["canonical_payload"]),
-                        updated_at,
-                    ),
+                    (normalized.tenant_id, dumps_json(normalized.to_dict()), updated_at),
                 )
-                for datum_address, row_semantics in semantics["rows"].items():
+                connection.execute("DELETE FROM datum_row_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
+                connection.execute("DELETE FROM datum_document_semantics WHERE tenant_id = ?", (normalized.tenant_id,))
+                for document in normalized.documents:
+                    semantics = build_document_semantics(document)
                     connection.execute(
                         """
-                        INSERT INTO datum_row_semantics (
+                        INSERT INTO datum_document_semantics (
                             tenant_id,
                             document_id,
-                            datum_address,
                             policy,
-                            semantic_hash,
-                            hyphae_hash,
-                            hyphae_chain_json,
-                            local_references_json,
-                            warnings_json,
+                            version_hash,
+                            canonical_payload_json,
                             updated_at_unix_ms
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?)
                         """,
                         (
                             normalized.tenant_id,
                             document.document_id,
-                            datum_address,
-                            row_semantics["policy"],
-                            row_semantics["semantic_hash"],
-                            row_semantics["hyphae_hash"],
-                            dumps_json(row_semantics["hyphae_chain"]),
-                            dumps_json(row_semantics["local_references"]),
-                            dumps_json(row_semantics["warnings"]),
+                            semantics["document"]["policy"],
+                            semantics["document"]["version_hash"],
+                            dumps_json(semantics["document"]["canonical_payload"]),
                             updated_at,
                         ),
                     )
-            connection.commit()
+                    for datum_address, row_semantics in semantics["rows"].items():
+                        connection.execute(
+                            """
+                            INSERT INTO datum_row_semantics (
+                                tenant_id,
+                                document_id,
+                                datum_address,
+                                policy,
+                                semantic_hash,
+                                hyphae_hash,
+                                hyphae_chain_json,
+                                local_references_json,
+                                warnings_json,
+                                updated_at_unix_ms
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                normalized.tenant_id,
+                                document.document_id,
+                                datum_address,
+                                row_semantics["policy"],
+                                row_semantics["semantic_hash"],
+                                row_semantics["hyphae_hash"],
+                                dumps_json(row_semantics["hyphae_chain"]),
+                                dumps_json(row_semantics["local_references"]),
+                                dumps_json(row_semantics["warnings"]),
+                                updated_at,
+                            ),
+                        )
+                connection.commit()
+            finally:
+                if connection.in_transaction:
+                    connection.rollback()
+                connection.execute(f"PRAGMA temp_store = {prior_temp_store}")
+                connection.execute(f"PRAGMA journal_mode = {prior_journal_mode}")
 
     def store_system_workbench(self, result: SystemDatumWorkbenchResult) -> None:
         normalized = (
@@ -339,17 +365,36 @@ class SqliteSystemDatumStoreAdapter(
         if not isinstance(documents, list) or not documents:
             return
         cursor = connection.execute(
-            "SELECT document_id, legacy_alias FROM documents WHERE tenant_id = ?",
+            "SELECT id, document_id, legacy_alias, name, is_anchor, version_hash, created_at "
+            "FROM documents WHERE tenant_id = ? ORDER BY created_at DESC, id DESC",
             (tenant_id,),
         )
-        canonical_by_legacy: dict[str, str] = {}
-        canonical_set: set[str] = set()
+        semantics_version_by_id = {
+            str(row["document_id"]).strip(): _normalize_version_hash_token(row["version_hash"])
+            for row in connection.execute(
+                "SELECT document_id, version_hash FROM datum_document_semantics WHERE tenant_id = ?",
+                (tenant_id,),
+            ).fetchall()
+        }
+        canonical_by_legacy: dict[str, dict[str, Any]] = {}
+        canonical_by_legacy_version: dict[tuple[str, str], dict[str, Any]] = {}
+        canonical_by_id: dict[str, dict[str, Any]] = {}
+        canonical_by_id_version: dict[tuple[str, str], dict[str, Any]] = {}
         for row in cursor.fetchall():
             doc_id = str(row["document_id"]).strip()
             alias_raw = (row["legacy_alias"] or "").strip()
             if not doc_id:
                 continue
-            canonical_set.add(doc_id)
+            normalized_version = _normalize_version_hash_token(row["version_hash"])
+            details = {
+                "document_id": doc_id,
+                "canonical_name": str(row["name"] or "").strip(),
+                "is_anchor": bool(row["is_anchor"]),
+                "legacy_alias": alias_raw,
+                "version_hash": normalized_version,
+            }
+            canonical_by_id_version[(doc_id, normalized_version)] = details
+            canonical_by_id.setdefault(doc_id, details)
             if alias_raw:
                 if alias_raw.startswith("["):
                     # Multi-alias JSON array: expand each entry as a lookup key.
@@ -357,12 +402,19 @@ class SqliteSystemDatumStoreAdapter(
                         for item in loads_json(alias_raw):
                             s = str(item).strip()
                             if s:
-                                canonical_by_legacy[s] = doc_id
+                                expanded_details = {
+                                    **details,
+                                    "legacy_alias": s,
+                                }
+                                canonical_by_legacy_version[(s, normalized_version)] = expanded_details
+                                canonical_by_legacy.setdefault(s, expanded_details)
                     except (ValueError, TypeError):
-                        canonical_by_legacy[alias_raw] = doc_id
+                        canonical_by_legacy_version[(alias_raw, normalized_version)] = details
+                        canonical_by_legacy.setdefault(alias_raw, details)
                 else:
-                    canonical_by_legacy[alias_raw] = doc_id
-        if not canonical_by_legacy and not canonical_set:
+                    canonical_by_legacy_version[(alias_raw, normalized_version)] = details
+                    canonical_by_legacy.setdefault(alias_raw, details)
+        if not canonical_by_legacy and not canonical_by_id:
             return
         for entry in documents:
             if not isinstance(entry, dict):
@@ -370,15 +422,35 @@ class SqliteSystemDatumStoreAdapter(
             stored_id = str(entry.get("document_id") or "").strip()
             if not stored_id:
                 continue
+            stored_version = (
+                _normalize_version_hash_token(entry.get("version_hash"))
+                or semantics_version_by_id.get(stored_id, "")
+            )
             metadata = entry.get("document_metadata")
             if not isinstance(metadata, dict):
                 metadata = {}
-            if stored_id in canonical_by_legacy:
-                metadata["legacy_alias"] = stored_id
-                entry["document_id"] = canonical_by_legacy[stored_id]
-                entry["document_metadata"] = metadata
-            elif stored_id in canonical_set and "legacy_alias" not in metadata:
-                entry["document_metadata"] = metadata
+            details = (
+                canonical_by_legacy_version.get((stored_id, stored_version))
+                or canonical_by_id_version.get((stored_id, stored_version))
+                or canonical_by_legacy.get(stored_id)
+                or canonical_by_id.get(stored_id)
+            )
+            if details is None:
+                continue
+            projected_id = str(details.get("document_id") or "").strip()
+            projected_alias = str(details.get("legacy_alias") or "").strip()
+            if canonical_by_legacy.get(stored_id) is not None and projected_alias:
+                metadata["legacy_alias"] = projected_alias
+                entry["legacy_alias"] = projected_alias
+            elif projected_alias:
+                metadata.setdefault("legacy_alias", projected_alias)
+                entry["legacy_alias"] = projected_alias
+            if projected_id:
+                entry["document_id"] = projected_id
+            if str(details.get("canonical_name") or "").strip():
+                entry["canonical_name"] = str(details.get("canonical_name") or "").strip()
+            entry["is_anchor"] = bool(details.get("is_anchor")) or bool(entry.get("is_anchor"))
+            entry["document_metadata"] = metadata
 
     def read_system_resource_workbench(self, request: SystemDatumStoreRequest) -> SystemDatumWorkbenchResult:
         normalized_request = (
@@ -419,28 +491,55 @@ class SqliteSystemDatumStoreAdapter(
         if not isinstance(source_files, dict) or not source_files:
             return
         cursor = connection.execute(
-            "SELECT document_id, legacy_alias FROM documents WHERE tenant_id = ?",
+            "SELECT id, document_id, legacy_alias, name, is_anchor, version_hash, created_at "
+            "FROM documents WHERE tenant_id = ? ORDER BY created_at DESC, id DESC",
             (tenant_id,),
         )
-        canonical_by_legacy: dict[str, str] = {}
+        semantics_version_by_id = {
+            str(row["document_id"]).strip(): _normalize_version_hash_token(row["version_hash"])
+            for row in connection.execute(
+                "SELECT document_id, version_hash FROM datum_document_semantics WHERE tenant_id = ?",
+                (tenant_id,),
+            ).fetchall()
+        }
+        canonical_by_legacy: dict[str, dict[str, Any]] = {}
+        canonical_by_legacy_version: dict[tuple[str, str], dict[str, Any]] = {}
         for row in cursor.fetchall():
             doc_id = str(row["document_id"]).strip()
             alias = (row["legacy_alias"] or "").strip()
             if doc_id and alias:
-                canonical_by_legacy[alias] = doc_id
+                details = {
+                    "document_id": doc_id,
+                    "canonical_name": str(row["name"] or "").strip(),
+                    "is_anchor": bool(row["is_anchor"]),
+                    "legacy_alias": alias,
+                    "version_hash": _normalize_version_hash_token(row["version_hash"]),
+                }
+                canonical_by_legacy_version[(alias, str(details["version_hash"]))] = details
+                canonical_by_legacy.setdefault(alias, details)
         if not canonical_by_legacy:
             return
         augmented = dict(source_files)
         for legacy_id, file_metadata in source_files.items():
-            canonical_id = canonical_by_legacy.get(str(legacy_id).strip())
+            normalized_legacy_id = str(legacy_id).strip()
+            metadata_version = ""
+            if isinstance(file_metadata, dict):
+                metadata_version = _normalize_version_hash_token(file_metadata.get("version_hash"))
+            if not metadata_version:
+                metadata_version = semantics_version_by_id.get(normalized_legacy_id, "")
+            projected = canonical_by_legacy_version.get((normalized_legacy_id, metadata_version)) or canonical_by_legacy.get(normalized_legacy_id)
+            canonical_id = "" if projected is None else str(projected.get("document_id") or "").strip()
             if not canonical_id or canonical_id in augmented:
                 continue
             if isinstance(file_metadata, dict):
-                projected = dict(file_metadata)
-                projected.setdefault("legacy_alias", str(legacy_id))
+                projected_metadata = dict(file_metadata)
+                projected_metadata.setdefault("legacy_alias", str(legacy_id))
+                if str(projected.get("canonical_name") or "").strip():
+                    projected_metadata.setdefault("canonical_name", str(projected.get("canonical_name") or "").strip())
+                projected_metadata.setdefault("is_anchor", bool(projected.get("is_anchor")))
             else:
-                projected = file_metadata
-            augmented[canonical_id] = projected
+                projected_metadata = file_metadata
+            augmented[canonical_id] = projected_metadata
         payload["source_files"] = augmented
 
     def read_publication_tenant_summary(
