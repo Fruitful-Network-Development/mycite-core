@@ -22,6 +22,10 @@
     return String(value == null ? "" : value).trim();
   }
 
+  function stripJsonSuffix(value) {
+    return asText(value).replace(/\.json$/i, "");
+  }
+
   function prettyJson(value) {
     if (value == null) return "";
     try {
@@ -263,7 +267,7 @@
           '<td><div class="v2-workbenchUi__primaryCell">' +
           selection +
           '<strong>' +
-          escapeHtml(row.document_name || row.label || row.document_id || "—") +
+          escapeHtml(stripJsonSuffix(row.document_name || row.label || row.document_id || "—")) +
           "</strong>" +
           '<div class="v2-workbenchUi__subvalue">' +
           escapeHtml(row.document_id || "—") +
@@ -814,11 +818,11 @@
     var heading =
       '<header class="v2-card" style="margin-bottom:12px">' +
       "<h3>" +
-      escapeHtml(asText(doc.canonical_name) || asText(doc.document_name) || asText(doc.document_id) || "Datum file") +
+      escapeHtml(stripJsonSuffix(asText(doc.canonical_name) || asText(doc.document_name) || asText(doc.document_id) || "Datum file")) +
       "</h3>" +
       ((asText(doc.document_name) || asText(doc.document_id))
         ? '<small>' +
-          escapeHtml(asText(doc.document_name) || asText(doc.document_id)) +
+          escapeHtml(stripJsonSuffix(asText(doc.document_name) || asText(doc.document_id))) +
           "</small>"
         : "") +
       "</header>";
@@ -948,8 +952,8 @@
         .map(function (card) {
           var cardObj = asObject(card);
           var documentId = asText(cardObj.document_id);
-          var canonicalName = asText(cardObj.canonical_name) || asText(cardObj.label);
-          var rawName = asText(cardObj.document_name) || asText(cardObj.secondary_label) || asText(cardObj.relative_path);
+          var canonicalName = stripJsonSuffix(asText(cardObj.canonical_name) || asText(cardObj.label));
+          var rawName = stripJsonSuffix(asText(cardObj.document_name) || asText(cardObj.secondary_label) || asText(cardObj.relative_path));
           return (
             '<article class="v2-card' +
             (cardObj.selected ? " is-selected" : "") +

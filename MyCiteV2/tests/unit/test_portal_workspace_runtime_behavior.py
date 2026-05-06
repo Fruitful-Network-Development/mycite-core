@@ -1067,6 +1067,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 {entry["label"] for entry in verb_subsection.get("shell_requests") or []},
                 {"NAV", "INV", "MED", "MAN"},
             )
+            nav_subsection = next(
+                subsection
+                for facet in nimm_aitas["facets"]
+                for subsection in facet["subsections"]
+                if subsection.get("control_type") == "nav_arrows"
+            )
+            nav_requests = nav_subsection.get("shell_requests") or {}
+            self.assertIn("nav_out", nav_requests)
 
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:

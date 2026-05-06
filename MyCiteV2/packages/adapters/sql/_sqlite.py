@@ -148,6 +148,17 @@ def connect_sqlite(db_file: str | Path) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(SCHEMA_SQL)
+    # One row per legacy alias once duplicates are repaired; creation fails until then.
+    try:
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_tenant_legacy_unique
+            ON documents (tenant_id, legacy_alias)
+            WHERE legacy_alias IS NOT NULL AND legacy_alias != ''
+            """
+        )
+    except sqlite3.OperationalError:
+        pass
     return connection
 
 

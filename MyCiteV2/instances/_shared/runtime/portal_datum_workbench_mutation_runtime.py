@@ -252,7 +252,7 @@ def run_datum_workbench_mutation_action(
         )
     if authority_db_file is None:
         return _error("authority_db_required", "authority_db_file is required.", status_code=503)
-    store = SqliteSystemDatumStoreAdapter(authority_db_file)
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
     try:
         preview = _preview_or_apply(
             store,
