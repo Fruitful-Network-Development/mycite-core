@@ -2970,6 +2970,40 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
     }
 
 
+def _hydrate_compiled_workbench_documents(
+    *,
+    service_surface: dict[str, Any],
+    datum_store: SqliteSystemDatumStoreAdapter | FilesystemSystemDatumStoreAdapter | None,
+    tenant_id: str,
+) -> None:
+    """Populate workbench documents for compiled-only service surfaces.
+
+    Production-strict compiled artifacts intentionally minimize payload size and can
+    omit ``workbench_documents``. The shared datum-file workbench depends on this
+    collection for gallery/anchor rendering, so hydrate it from the live datum store
+    when available.
+    """
+
+    if list(service_surface.get("workbench_documents") or []):
+        return
+    if not isinstance(datum_store, SqliteSystemDatumStoreAdapter):
+        return
+    if list(service_surface.get("documents") or []):
+        service_surface["workbench_documents"] = list(service_surface.get("documents") or [])
+        return
+    if datum_store is None:
+        return
+    projection_bundle = CtsGisReadOnlyService(datum_store).read_projection_bundle(
+        _as_text(tenant_id) or "fnd",
+        project_all_documents=False,
+    )
+    hydrated_documents = list(projection_bundle.get("workbench_documents") or [])
+    if hydrated_documents:
+        service_surface["workbench_documents"] = hydrated_documents
+    if not list(service_surface.get("document_catalog") or []):
+        service_surface["document_catalog"] = list(projection_bundle.get("document_catalog") or [])
+
+
 def _public_selected_document(document: dict[str, Any]) -> dict[str, Any]:
     return {
         "document_id": _as_text(document.get("document_id")),
@@ -3240,6 +3274,11 @@ def build_portal_cts_gis_surface_bundle(
                 requested_tool_state=requested_tool_state,
             )
             else _service_surface_from_compiled_artifact(compiled_artifact)
+        )
+        _hydrate_compiled_workbench_documents(
+            service_surface=service_surface,
+            datum_store=datum_store,
+            tenant_id=portal_scope.scope_id,
         )
         phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
         resolved_tool_state = _tool_state_for_navigation(
