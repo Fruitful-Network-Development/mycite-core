@@ -286,7 +286,7 @@ def run_migration(
         )
         return report
 
-    datum_store = SqliteSystemDatumStoreAdapter(authority_db_file)
+    datum_store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
     datum_store.store_authoritative_catalog(authoritative_catalog)
     datum_store.store_system_workbench(system_workbench)
     datum_store.store_publication_summary(publication_summary, tenant_id=tenant_id, tenant_domain=tenant_domain)

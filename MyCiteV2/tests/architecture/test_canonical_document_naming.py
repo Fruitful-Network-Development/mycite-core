@@ -71,7 +71,7 @@ class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
     def test_datum_store_accepts_both_canonical_and_legacy_lookups(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "auth.sqlite3"
-            store = SqliteSystemDatumStoreAdapter(db_file)
+            store = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
             doc = AuthoritativeDatumDocument(
                 document_id="system:anthology",
                 document_name="anthology",

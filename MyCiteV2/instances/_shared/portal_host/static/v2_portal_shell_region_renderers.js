@@ -166,6 +166,11 @@
     }
   }
 
+  function stripJsonSuffix(value) {
+    var token = String(value == null ? "" : value).trim();
+    return token.replace(/\.json$/i, "");
+  }
+
   function buildActivePathFromNodeId(nodeId) {
     var token = String(nodeId || "").trim();
     if (!token || !/^\d+(?:-\d+)*$/.test(token)) return [];
@@ -766,8 +771,30 @@
               html +=
                 '<button class="ide-controlpanel__verbTab' +
                 (tab.active ? " is-active" : "") +
-                '" type="button">' +
+                '" type="button" data-control-verb-index="' +
+                String((sub.shell_requests || []).indexOf(tab)) +
+                '">' +
                 ctx.escapeHtml(tab.label || "") +
+                "</button>";
+            });
+            html += "</div>";
+          } else if (sub.control_type === "nav_arrows") {
+            var nav = sub.shell_requests || {};
+            html += '<div class="ide-controlpanel__verbTabs">';
+            [
+              ["shift_left", "←"],
+              ["shift_right", "→"],
+              ["nav_out", "↑"],
+              ["nav_in", "↓"],
+            ].forEach(function (pair) {
+              var shellRequest = nav[pair[0]] || null;
+              html +=
+                '<button class="ide-controlpanel__verbTab" type="button" data-nav-arrow-key="' +
+                ctx.escapeHtml(pair[0]) +
+                '"' +
+                (shellRequest ? "" : " disabled") +
+                ">" +
+                ctx.escapeHtml(pair[1]) +
                 "</button>";
             });
             html += "</div>";
@@ -861,6 +888,40 @@
     });
     Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__selectionEntry"), function (node, index) {
       bindSurfaceNavigation(node, flatEntries[index], ctx);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__link"), function (node, index) {
+      bindSurfaceNavigation(node, flatEntries[index], ctx);
+    });
+    var verbTabs = [];
+    var navArrowRequests = {};
+    (nimmAitasControl.facets || []).forEach(function (facet) {
+      (facet.subsections || []).forEach(function (sub) {
+        if (sub.control_type === "tabs") {
+          verbTabs = sub.shell_requests || [];
+        }
+        if (sub.control_type === "nav_arrows") {
+          navArrowRequests = sub.shell_requests || {};
+        }
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("[data-control-verb-index]"), function (node) {
+      var index = Number(node.getAttribute("data-control-verb-index"));
+      bindSurfaceNavigation(node, verbTabs[index], ctx);
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("[data-nav-arrow-key]"), function (node) {
+      node.addEventListener("click", function () {
+        var key = String(node.getAttribute("data-nav-arrow-key") || "");
+        var request = navArrowRequests[key] || null;
+        if (request) ctx.loadShell(request);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("[data-terminal-action-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var index = Number(node.getAttribute("data-terminal-action-index"));
+        var action = (terminalControl.quick_actions || [])[index] || {};
+        if (action.disabled) return;
+        if (action.shell_request) ctx.loadShell(action.shell_request);
+      });
     });
 
     // Bind actions

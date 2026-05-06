@@ -147,7 +147,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
         }
 
     def _seed_db(self, db_file: Path) -> None:
-        SqliteSystemDatumStoreAdapter(db_file).store_authoritative_catalog(
+        SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
                 documents=(_document(),),
@@ -157,7 +157,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
         )
 
     def _seed_document(self, db_file: Path, document: AuthoritativeDatumDocument) -> None:
-        SqliteSystemDatumStoreAdapter(db_file).store_authoritative_catalog(
+        SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
                 documents=(document,),

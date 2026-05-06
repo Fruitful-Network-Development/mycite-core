@@ -68,6 +68,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     TOOL_ANCHOR_FILE_KEY,
+    TRANSITION_FOCUS_FILE,
     PortalScope,
     PortalShellState,
     build_portal_shell_request_payload,
@@ -149,6 +150,38 @@ def _cts_gis_workbench_documents(service_surface: dict[str, Any]) -> list[dict[s
     if not raw_documents:
         raw_documents = list(service_surface.get("documents") or [])
     return [_wrap_workbench_document(document) for document in raw_documents]
+
+
+def _cts_gis_control_panel_file_entries(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    documents: list[dict[str, Any]],
+    requested_surface_id: str,
+) -> list[dict[str, Any]]:
+    active_file_key = _as_text(segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE))
+    entries: list[dict[str, Any]] = []
+    for wrapped in list(documents or []):
+        summary = _summary_for_workbench_document(wrapped)
+        file_key = _as_text(summary.get("document_id"))
+        if not file_key:
+            continue
+        label = _as_text(summary.get("canonical_name")) or _as_text(summary.get("document_name")) or file_key
+        entries.append(
+            {
+                "file_key": file_key,
+                "label": label,
+                "detail": "anchor" if bool(summary.get("is_anchor")) else "datum document",
+                "active": file_key == active_file_key,
+                "shell_request": build_portal_shell_request_payload(
+                    requested_surface_id=requested_surface_id,
+                    portal_scope=portal_scope,
+                    shell_state=shell_state,
+                    transition={"kind": TRANSITION_FOCUS_FILE, "file_key": file_key},
+                ),
+            }
+        )
+    return entries
 CTS_GIS_ACTION_RESULT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.result.v1"
 CTS_GIS_TOOL_ACTION_ROUTE = "/portal/api/v2/system/tools/cts-gis/actions"
 CTS_GIS_TOOL_ACTION_ENTRYPOINT_ID = "portal.system.tools.cts_gis.actions"
@@ -210,7 +243,7 @@ def _datum_store_for_authority_db(
     cached = _DATUM_STORE_BY_AUTHORITY_DB.get(cache_key)
     if cached is not None:
         return cached
-    store = SqliteSystemDatumStoreAdapter(root)
+    store = SqliteSystemDatumStoreAdapter(root, allow_legacy_writes=True)
     _DATUM_STORE_BY_AUTHORITY_DB[cache_key] = store
     return store
 
@@ -1686,6 +1719,12 @@ def _build_cts_gis_directive_panel(
             "compiled_envelope_ready": bool(compiled_nimm_envelope),
             "latest_action_kind": _as_text(action_result.get("action_kind")),
         }
+    file_entries = _cts_gis_control_panel_file_entries(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        documents=_cts_gis_workbench_documents(service_surface),
+        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+    )
 
     panel = build_unified_control_panel(
         portal_scope=portal_scope,
@@ -1695,6 +1734,7 @@ def _build_cts_gis_directive_panel(
         directive_context=None,
         nimm_directive=_as_text(resolved_tool_state.get("nimm_directive")),
         aitas_state=aitas_overlay,
+        file_entries=file_entries,
         navigation_groups=base_navigation_groups,
         actions=stage_actions,
         tool_extensions=tool_extensions,

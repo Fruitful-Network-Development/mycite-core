@@ -32,6 +32,8 @@ CREATE TABLE documents (
 );
 CREATE UNIQUE INDEX idx_documents_document_id ON documents (document_id);
 CREATE INDEX        idx_documents_tenant_legacy ON documents (tenant_id, legacy_alias);
+CREATE UNIQUE INDEX idx_documents_tenant_legacy_unique ON documents (tenant_id, legacy_alias)
+    WHERE legacy_alias IS NOT NULL AND legacy_alias != '';
 CREATE INDEX        idx_documents_sandbox ON documents (tenant_id, sandbox) WHERE sandbox IS NOT NULL;
 ```
 
@@ -48,6 +50,15 @@ Naming validation regex (enforced at the SQL adapter boundary by
 `legacy_alias` is retained for one cycle to keep readers compatible with the legacy
 `system:<file>`/`sandbox:<tool>:<filename>.json` identifiers. New writes must
 produce a canonical `document_id`.
+
+After authority repair (TASK-MOS-AUTHORITY-SEMANTICS-AND-DEDUPE-2026-05-06), the partial
+unique index **`idx_documents_tenant_legacy_unique`** enforces **at most one**
+`documents` row per `(tenant_id, legacy_alias)` when `legacy_alias` is non-empty:
+duplicate rows drift catalog projection versus row semantics.
+
+`datum_document_semantics` and `datum_row_semantics` **`document_id` foreign keys**
+are migrated to canonical `lv.`/`stl.`/`cptr.` ids; legacy identifiers remain readable
+via `documents.legacy_alias` and SQL adapter alias-bridges until fixtures fully drop legacy keys.
 
 When the runtime is operating in compatibility mode, the raw source filename may
 still be carried alongside the canonical row as secondary metadata. That does not

@@ -380,7 +380,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
                     }
                 },
             )
-            SqliteSystemDatumStoreAdapter(db_file).store_authoritative_catalog(
+            SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
                 AuthoritativeDatumDocumentCatalogResult(
                     tenant_id="fnd",
                     documents=(

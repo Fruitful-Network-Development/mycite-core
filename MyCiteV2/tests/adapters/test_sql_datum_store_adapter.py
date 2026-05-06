@@ -161,7 +161,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_store_authoritative_catalog_persists_version_identity_and_hyphae_chain(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -195,10 +195,16 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             )
             self.assertEqual(datum_identity["local_references"], ["1-0-1"])
 
-    def test_catalog_projection_prefers_matching_version_hash_over_newer_alias_duplicate(self) -> None:
+    def test_catalog_projection_and_semantic_reads_use_documents_legacy_alias(self) -> None:
+        """``documents`` maps legacy catalog ids → canonical lv.*; semantics stay on legacy until migrated.
+
+        A single ``documents`` row per ``legacy_alias`` is enforced by SQLite (partial unique index).
+        Readers still resolve canonical ``document_id`` and ``read_datum_semantic_identity``.
+        """
+
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
-            adapter = SqliteSystemDatumStoreAdapter(db_file)
+            adapter = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
             adapter.store_authoritative_catalog(
                 AuthoritativeDatumDocumentCatalogResult(
                     tenant_id="fnd",
@@ -230,39 +236,26 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
                     ).fetchone()["version_hash"]
                 ).strip()
                 expected_hash = version_hash.split(":", 1)[1]
-                connection.executemany(
-                    "INSERT INTO documents ("
-                    "tenant_id, document_id, prefix, msn_id, sandbox, name, "
-                    "version_hash, is_anchor, origin, legacy_alias, created_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    [
-                        (
-                            "fnd",
-                            f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
-                            "lv",
-                            "3-2-3-17-77-1-6-4-1-4",
-                            "cts_gis",
-                            "address_nodes",
-                            version_hash,
-                            0,
-                            "local",
-                            "sandbox:cts_gis:sc.example.msn-address_nodes.json",
-                            1,
-                        ),
-                        (
-                            "fnd",
-                            f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{('f' * 64)}",
-                            "lv",
-                            "3-2-3-17-77-1-6-4-1-4",
-                            "cts_gis",
-                            "address_nodes",
-                            "sha256:" + ("f" * 64),
-                            0,
-                            "local",
-                            "sandbox:cts_gis:sc.example.msn-address_nodes.json",
-                            999,
-                        ),
-                    ],
+                connection.execute(
+                    """
+                    INSERT INTO documents (
+                        tenant_id, document_id, prefix, msn_id, sandbox, name,
+                        version_hash, is_anchor, origin, legacy_alias, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "fnd",
+                        f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
+                        "lv",
+                        "3-2-3-17-77-1-6-4-1-4",
+                        "cts_gis",
+                        "address_nodes",
+                        version_hash,
+                        0,
+                        "local",
+                        "sandbox:cts_gis:sc.example.msn-address_nodes.json",
+                        1,
+                    ),
                 )
                 connection.commit()
 
@@ -276,9 +269,18 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             )
             self.assertEqual(projected.documents[0].canonical_name, "address_nodes")
 
+            datum_identity = adapter.read_datum_semantic_identity(
+                tenant_id="fnd",
+                document_id=f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
+                datum_address="4-2-1",
+            )
+            self.assertIsNotNone(datum_identity)
+            self.assertEqual(datum_identity["policy"], "mos.hyphae_chain_v1")
+            self.assertIn("4-2-1", (datum_identity["hyphae_chain"] or {}).get("addresses", []))
+
     def test_apply_document_insert_shifts_rows_and_updates_references(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -306,7 +308,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_apply_document_insert_remaps_hyphen_qualified_refs(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -329,7 +331,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_apply_document_insert_allows_append_on_sparse_family(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -354,7 +356,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_apply_document_delete_rejects_live_references(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -373,7 +375,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_apply_document_delete_shifts_following_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -399,7 +401,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
 
     def test_apply_document_move_reindexes_source_and_destination_families(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3")
+            adapter = SqliteSystemDatumStoreAdapter(Path(temp_dir) / "authority.sqlite3", allow_legacy_writes=True)
             self._seed_catalog(
                 adapter,
                 rows=(
@@ -425,6 +427,74 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             self.assertEqual(updated_rows[2]["raw"][0][0], "1-0-3")
             self.assertEqual(updated_rows[3]["raw"][0][2], "1-0-3")
             self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
+
+    def test_read_datum_semantic_identity_bridges_canonical_through_documents_legacy_alias(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            adapter = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
+            sandbox_id = "sandbox:cts_gis:bridge.example.json"
+            adapter.store_authoritative_catalog(
+                AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id="fnd",
+                    documents=(
+                        AuthoritativeDatumDocument(
+                            document_id=sandbox_id,
+                            source_kind="sandbox_source",
+                            tool_id="cts_gis",
+                            document_name="bridge.example.json",
+                            relative_path="sandbox/cts-gis/sources/bridge.example.json",
+                            rows=(
+                                AuthoritativeDatumDocumentRow(
+                                    datum_address="9-9-9",
+                                    raw=[["9-9-9", "~", "ROOT"], ["leaf"]],
+                                ),
+                            ),
+                        ),
+                    ),
+                    source_files={},
+                    readiness_status={"authoritative_catalog": "loaded"},
+                )
+            )
+
+            with open_sqlite(db_file) as connection:
+                version_hash_row = connection.execute(
+                    "SELECT version_hash FROM datum_document_semantics WHERE document_id = ?",
+                    (sandbox_id,),
+                ).fetchone()
+                self.assertIsNotNone(version_hash_row)
+                version_hash = str(version_hash_row["version_hash"]).strip()
+                expected_hex = version_hash.split(":", 1)[1] if ":" in version_hash else version_hash
+                canonical_id = f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.bridge_leaf.{expected_hex}"
+                connection.execute(
+                    """
+                    INSERT INTO documents (
+                        tenant_id, document_id, prefix, msn_id, sandbox, name,
+                        version_hash, is_anchor, origin, legacy_alias, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        "fnd",
+                        canonical_id,
+                        "lv",
+                        "3-2-3-17-77-1-6-4-1-4",
+                        "cts_gis",
+                        "bridge_leaf",
+                        version_hash,
+                        0,
+                        "local",
+                        sandbox_id,
+                        100,
+                    ),
+                )
+                connection.commit()
+
+            datum_identity = adapter.read_datum_semantic_identity(
+                tenant_id="fnd",
+                document_id=canonical_id,
+                datum_address="9-9-9",
+            )
+            self.assertIsNotNone(datum_identity)
+            self.assertEqual(datum_identity["policy"], "mos.hyphae_chain_v1")
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
+    TRANSITION_BACK_OUT,
     TRANSITION_SET_VERB,
     VERB_INVESTIGATE,
     VERB_MANIPULATE,
@@ -54,6 +55,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     VERB_NAVIGATE,
     build_portal_shell_request_payload,
     canonical_query_for_shell_state,
+    anchor_file_key_for_sandbox,
     focus_level_for_shell_state,
     sandbox_id_for_file_key,
     segment_id_for_level,
@@ -809,6 +811,54 @@ def _verb_tab_entries(
     ]
 
 
+def _nimm_navigation_shell_requests(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    requested_surface_id: str,
+    file_entries: list[dict[str, Any]] | None,
+) -> dict[str, dict[str, Any]]:
+    if shell_state is None:
+        return {}
+    sandbox_id = as_text(segment_id_for_level(shell_state, level="sandbox")) or portal_scope.scope_id
+    active_file_key = as_text(segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE))
+    requests: dict[str, dict[str, Any]] = {}
+    if len(tuple(shell_state.focus_path)) > 1:
+        requests["nav_out"] = _entry_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            transition={"kind": TRANSITION_BACK_OUT},
+            requested_surface_id=requested_surface_id,
+        )
+    else:
+        requests["nav_in"] = _entry_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            transition={"kind": TRANSITION_FOCUS_FILE, "file_key": anchor_file_key_for_sandbox(sandbox_id)},
+            requested_surface_id=requested_surface_id,
+        )
+    ordered = [entry for entry in list(file_entries or []) if as_text(entry.get("file_key"))]
+    active_index = next(
+        (index for index, entry in enumerate(ordered) if as_text(entry.get("file_key")) == active_file_key),
+        -1,
+    )
+    if active_index > 0:
+        requests["shift_left"] = _entry_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            transition={"kind": TRANSITION_FOCUS_FILE, "file_key": as_text(ordered[active_index - 1].get("file_key"))},
+            requested_surface_id=requested_surface_id,
+        )
+    if active_index >= 0 and active_index + 1 < len(ordered):
+        requests["shift_right"] = _entry_shell_request(
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            transition={"kind": TRANSITION_FOCUS_FILE, "file_key": as_text(ordered[active_index + 1].get("file_key"))},
+            requested_surface_id=requested_surface_id,
+        )
+    return requests
+
+
 def _file_value_for_panel(*, active_file_key: str, active_document: Any | None) -> str:
     if active_document is not None:
         relative_path = as_text(getattr(active_document, "relative_path", ""))
@@ -1173,6 +1223,7 @@ def _build_nimm_aitas_control_section(
     aitas_state: dict[str, Any] | None,
     portal_scope: PortalScope,
     surface_id: str,
+    file_entries: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build unified NIMM-AITAS control section with stacked facets."""
 
@@ -1192,6 +1243,12 @@ def _build_nimm_aitas_control_section(
         )
         if shell_state is not None
         else []
+    )
+    nav_shell_requests = _nimm_navigation_shell_requests(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        requested_surface_id=surface_id,
+        file_entries=file_entries,
     )
 
     return {
@@ -1222,6 +1279,13 @@ def _build_nimm_aitas_control_section(
                         "value": focus_subject_id or portal_scope.scope_id,
                         "editable": False,
                         "control_type": "display",
+                    },
+                    {
+                        "label": "NAV",
+                        "value": "Directional shell controls",
+                        "editable": True,
+                        "control_type": "nav_arrows",
+                        "shell_requests": nav_shell_requests,
                     },
                 ],
             },
@@ -1513,6 +1577,7 @@ def build_unified_control_panel(
         aitas_state=aitas_state,
         portal_scope=portal_scope,
         surface_id=surface_id,
+        file_entries=file_entries,
     )
 
     extensions = dict(tool_extensions or {})
@@ -1523,13 +1588,17 @@ def build_unified_control_panel(
         enabled=terminal_enabled,
     )
 
-    resolved_navigation_groups = navigation_groups or []
-    if file_entries and not navigation_groups:
-        resolved_navigation_groups = _file_entries_to_navigation_groups(
+    resolved_navigation_groups = list(navigation_groups or [])
+    if file_entries:
+        derived_file_groups = _file_entries_to_navigation_groups(
             file_entries=file_entries,
             portal_scope=portal_scope,
             shell_state=shell_state,
         )
+        if navigation_groups:
+            resolved_navigation_groups.extend(derived_file_groups)
+        else:
+            resolved_navigation_groups = derived_file_groups
 
     return attach_region_family_contract(
         {

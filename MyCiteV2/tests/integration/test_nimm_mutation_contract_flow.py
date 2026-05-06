@@ -51,7 +51,7 @@ def _document() -> AuthoritativeDatumDocument:
 
 class NimmMutationContractIntegrationTests(unittest.TestCase):
     def _seed_db(self, db_file: Path) -> None:
-        SqliteSystemDatumStoreAdapter(db_file).store_authoritative_catalog(
+        SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
             AuthoritativeDatumDocumentCatalogResult(
                 tenant_id="fnd",
                 documents=(_document(),),
@@ -154,7 +154,7 @@ class NimmMutationContractIntegrationTests(unittest.TestCase):
                 {},
             )
 
-            store = SqliteSystemDatumStoreAdapter(db_file)
+            store = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
             catalog = store.read_authoritative_datum_documents({"tenant_id": "fnd"})
             self.assertEqual(catalog.documents[0].row_count, 4)
 

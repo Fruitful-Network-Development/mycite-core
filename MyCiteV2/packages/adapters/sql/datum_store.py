@@ -22,6 +22,7 @@ class NonCanonicalDocumentIdError(ValueError):
     ``system:`` / ``sandbox:`` ids are still accepted on reads via the
     ``documents.legacy_alias`` index for one cycle.
     """
+
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -61,6 +62,16 @@ def _normalize_version_hash_token(value: object) -> str:
     return token
 
 
+def _sql_norm_version_hash(column: str) -> str:
+    """SQLite expression lowering version_hash tokens like ``sha256:<hex>`` for joins."""
+
+    col = column.strip()
+    return (
+        f"CASE WHEN substr(lower(trim({col})), 1, 7) = 'sha256:' "
+        f"THEN substr(lower(trim({col})), 8) ELSE lower(trim({col})) END"
+    )
+
+
 def _workbench_from_payload(payload: dict[str, object]) -> SystemDatumWorkbenchResult:
     rows = payload.get("rows") or ()
     warnings = payload.get("warnings") or ()
@@ -87,7 +98,7 @@ class SqliteSystemDatumStoreAdapter(
         db_file: str | Path,
         *,
         clock: Callable[[], int] | None = None,
-        allow_legacy_writes: bool = True,
+        allow_legacy_writes: bool = False,
     ) -> None:
         self._db_file = Path(db_file)
         self._clock = clock or (lambda: int(time.time() * 1000))
@@ -142,7 +153,12 @@ class SqliteSystemDatumStoreAdapter(
             ).fetchone()
         return row is not None
 
-    def store_authoritative_catalog(self, result: AuthoritativeDatumDocumentCatalogResult) -> None:
+    def store_authoritative_catalog(
+        self,
+        result: AuthoritativeDatumDocumentCatalogResult,
+        *,
+        allow_non_canonical_catalog_ids: bool | None = None,
+    ) -> None:
         normalized = (
             result
             if isinstance(result, AuthoritativeDatumDocumentCatalogResult)
@@ -153,7 +169,12 @@ class SqliteSystemDatumStoreAdapter(
             doc_id = _as_text(document.document_id)
             if doc_id and not is_canonical_document_id(doc_id):
                 non_canonical_ids.append(doc_id)
-        if non_canonical_ids and not self._allow_legacy_writes():
+        allow_legacy_effective = (
+            self._allow_legacy_writes()
+            if allow_non_canonical_catalog_ids is None
+            else bool(allow_non_canonical_catalog_ids)
+        )
+        if non_canonical_ids and not allow_legacy_effective:
             raise NonCanonicalDocumentIdError(
                 "Refusing to persist non-canonical document ids: "
                 + ", ".join(sorted(set(non_canonical_ids))[:3])
@@ -297,7 +318,8 @@ class SqliteSystemDatumStoreAdapter(
         self.store_authoritative_catalog(
             filesystem.read_authoritative_datum_documents(
                 AuthoritativeDatumDocumentRequest(tenant_id=normalized_tenant_id)
-            )
+            ),
+            allow_non_canonical_catalog_ids=True,
         )
         self.store_system_workbench(
             filesystem.read_system_resource_workbench(
@@ -584,8 +606,10 @@ class SqliteSystemDatumStoreAdapter(
             ).fetchone()
             if row is None:
                 # Phase E3 one-cycle compatibility: accept legacy_alias too.
+                vh_docs = _sql_norm_version_hash("d.version_hash")
+                vh_dds = _sql_norm_version_hash("dds.version_hash")
                 alias_row = connection.execute(
-                    """
+                    f"""
                     SELECT dds.policy, dds.version_hash, dds.canonical_payload_json
                     FROM documents AS d
                     JOIN datum_document_semantics AS dds
@@ -593,6 +617,10 @@ class SqliteSystemDatumStoreAdapter(
                      AND (dds.document_id = d.document_id OR dds.document_id = d.legacy_alias)
                     WHERE d.tenant_id = ?
                       AND (d.document_id = ? OR d.legacy_alias = ?)
+                    ORDER BY
+                      CASE WHEN {vh_docs} = {vh_dds} THEN 0 ELSE 1 END,
+                      d.created_at DESC,
+                      d.id DESC
                     LIMIT 1
                     """,
                     (normalized_request.tenant_id, document_token, document_token),
@@ -629,6 +657,36 @@ class SqliteSystemDatumStoreAdapter(
                 """,
                 (normalized_request.tenant_id, document_token, datum_token),
             ).fetchone()
+            if row is None:
+                vh_docs = _sql_norm_version_hash("d.version_hash")
+                vh_dds = _sql_norm_version_hash("dds.version_hash")
+                row = connection.execute(
+                    f"""
+                    SELECT drs.policy, drs.semantic_hash, drs.hyphae_hash, drs.hyphae_chain_json,
+                           drs.local_references_json, drs.warnings_json
+                    FROM documents AS d
+                    JOIN datum_document_semantics AS dds
+                      ON dds.tenant_id = d.tenant_id
+                     AND (dds.document_id = d.document_id OR dds.document_id = d.legacy_alias)
+                    JOIN datum_row_semantics AS drs
+                      ON drs.tenant_id = dds.tenant_id
+                     AND drs.document_id = dds.document_id
+                     AND drs.datum_address = ?
+                    WHERE d.tenant_id = ?
+                      AND (d.document_id = ? OR d.legacy_alias = ?)
+                    ORDER BY
+                      CASE WHEN {vh_docs} = {vh_dds} THEN 0 ELSE 1 END,
+                      d.created_at DESC,
+                      d.id DESC
+                    LIMIT 1
+                    """,
+                    (
+                        datum_token,
+                        normalized_request.tenant_id,
+                        document_token,
+                        document_token,
+                    ),
+                ).fetchone()
         if row is None:
             return None
         return {
