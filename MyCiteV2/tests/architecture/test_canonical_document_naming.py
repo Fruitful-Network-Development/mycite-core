@@ -39,22 +39,25 @@ CANONICAL_REGEX = re.compile(
 
 
 class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
+    def _migrate_fixture_db(self, db_file: Path) -> None:
+        with open_sqlite(db_file) as connection:
+            connection.executemany(
+                "INSERT INTO datum_document_semantics ("
+                "tenant_id, document_id, policy, version_hash, "
+                "canonical_payload_json, updated_at_unix_ms"
+                ") VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    ("fnd", "system:anthology", "P", "a" * 64, "{}", 0),
+                    ("fnd", "sandbox:cts_gis:tool.xx.cts-gis.json", "P", "b" * 64, "{}", 0),
+                ],
+            )
+            connection.commit()
+        migrate(db_file=db_file, msn_id="3-2-3-17-77-1-6-4-1-4")
+
     def test_documents_table_rows_are_all_canonical_after_migration(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "auth.sqlite3"
-            with open_sqlite(db_file) as connection:
-                connection.executemany(
-                    "INSERT INTO datum_document_semantics ("
-                    "tenant_id, document_id, policy, version_hash, "
-                    "canonical_payload_json, updated_at_unix_ms"
-                    ") VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        ("fnd", "system:anthology", "P", "a" * 64, "{}", 0),
-                        ("fnd", "sandbox:cts_gis:tool.xx.cts-gis.json", "P", "b" * 64, "{}", 0),
-                    ],
-                )
-                connection.commit()
-            migrate(db_file=db_file, msn_id="3-2-3-17-77-1-6-4-1-4")
+            self._migrate_fixture_db(db_file)
             with open_sqlite(db_file) as connection:
                 document_ids = [
                     str(row["document_id"]).strip()
@@ -100,6 +103,85 @@ class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
                 tenant_id="fnd", document_id=canonical_id
             )
             self.assertIsNotNone(canonical_hit)
+
+    def test_migration_marks_system_anchor_with_anthology_name(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "auth.sqlite3"
+            self._migrate_fixture_db(db_file)
+            with open_sqlite(db_file) as connection:
+                row = connection.execute(
+                    "SELECT document_id, name, is_anchor FROM documents WHERE sandbox = ?",
+                    ("system",),
+                ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertRegex(
+                str(row["document_id"]).strip(),
+                r"^lv\.3-2-3-17-77-1-6-4-1-4\.system\.anthology\.[a-f0-9]{64}$",
+            )
+            self.assertEqual(str(row["name"]).strip(), "anthology")
+            self.assertEqual(int(row["is_anchor"]), 1)
+
+    def test_migration_marks_tool_anchor_with_anchor_name(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "auth.sqlite3"
+            self._migrate_fixture_db(db_file)
+            with open_sqlite(db_file) as connection:
+                row = connection.execute(
+                    "SELECT document_id, name, is_anchor FROM documents WHERE sandbox = ?",
+                    ("cts_gis",),
+                ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertRegex(
+                str(row["document_id"]).strip(),
+                r"^lv\.3-2-3-17-77-1-6-4-1-4\.cts_gis\.anchor\.[a-f0-9]{64}$",
+            )
+            self.assertEqual(str(row["name"]).strip(), "anchor")
+            self.assertEqual(int(row["is_anchor"]), 1)
+
+    def test_anchor_detection_uses_is_anchor_flag_not_name_only(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "auth.sqlite3"
+            with open_sqlite(db_file) as connection:
+                connection.execute(
+                    "INSERT INTO documents ("
+                    "tenant_id, document_id, prefix, msn_id, sandbox, name, version_hash, "
+                    "is_anchor, origin, legacy_alias, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "fnd",
+                        "lv.3-2-3-17-77-1-6-4-1-4.system.anchor." + ("c" * 64),
+                        "lv",
+                        "3-2-3-17-77-1-6-4-1-4",
+                        "system",
+                        "anchor",
+                        "c" * 64,
+                        0,
+                        "local",
+                        None,
+                        0,
+                    ),
+                )
+                row = connection.execute(
+                    "SELECT name, is_anchor FROM documents WHERE sandbox = ?",
+                    ("system",),
+                ).fetchone()
+            self.assertIsNotNone(row)
+            self.assertEqual(str(row["name"]).strip(), "anchor")
+            self.assertEqual(int(row["is_anchor"]), 0)
+
+    def test_anchor_names_are_reserved_to_anchor_documents(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "auth.sqlite3"
+            self._migrate_fixture_db(db_file)
+            with open_sqlite(db_file) as connection:
+                names = [
+                    str(row["name"]).strip()
+                    for row in connection.execute(
+                        "SELECT name FROM documents WHERE is_anchor = 1 ORDER BY name"
+                    )
+                ]
+            self.assertTrue(names)
+            self.assertTrue(all(name in ("anchor", "anthology") for name in names))
 
     def test_strict_mode_rejects_non_canonical_writes(self) -> None:
         with TemporaryDirectory() as temp_dir:

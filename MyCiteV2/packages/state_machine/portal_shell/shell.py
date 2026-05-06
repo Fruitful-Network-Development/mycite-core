@@ -885,22 +885,23 @@ def requires_shell_state_machine(surface_id: object) -> bool:
 
 
 _TOOL_SURFACE_TO_SANDBOX_ID: dict[str, str] = {
-    AWS_CSM_TOOL_SURFACE_ID: "aws-csm",
-    CTS_GIS_TOOL_SURFACE_ID: "cts-gis",
-    FND_DCM_TOOL_SURFACE_ID: "fnd-dcm",
-    FND_EBI_TOOL_SURFACE_ID: "fnd-ebi",
-    PAYPAL_CSM_TOOL_SURFACE_ID: "paypal-csm",
-    WORKBENCH_UI_TOOL_SURFACE_ID: "workbench-ui",
+    AWS_CSM_TOOL_SURFACE_ID: "aws_csm",
+    CTS_GIS_TOOL_SURFACE_ID: "cts_gis",
+    FND_DCM_TOOL_SURFACE_ID: "fnd_dcm",
+    FND_EBI_TOOL_SURFACE_ID: "fnd_ebi",
+    PAYPAL_CSM_TOOL_SURFACE_ID: "paypal_csm",
+    WORKBENCH_UI_TOOL_SURFACE_ID: "workbench_ui",
 }
 
 
 def sandbox_id_for_surface(surface_id: object) -> str:
-    """Return the canonical sandbox segment for a surface.
+    """Return the canonical sandbox token for a surface.
 
     SYSTEM and non-tool surfaces map to ``"system"``. Tool surfaces map
-    to their canonical hyphen-separated sandbox segment (``"cts-gis"``,
-    ``"aws-csm"``, …) used in canonical document ids
-    (``lv.<msn>.<sandbox>.<name>.<hash>``) and surface routes.
+    to their canonical underscore sandbox token (``"cts_gis"``,
+    ``"aws_csm"``, …) used in canonical document ids
+    (``lv.<msn>.<sandbox>.<name>.<hash>``).
+    URL route slugs (``/tools/cts-gis``) are separate and remain hyphenated.
     """
 
     surface_token = _as_text(surface_id)
