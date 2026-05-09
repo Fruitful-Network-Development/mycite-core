@@ -539,7 +539,7 @@
     var payload = (profile && profile.raw) || domainRaw || (newsletter && newsletter.raw) || null;
     if (!payload) return "";
     return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
+      '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkDetail__json">' +
       escapeHtml(compactJson(payload)) +
       "</pre></section>"
     );
@@ -1105,7 +1105,7 @@
     },
   };
 
-  window.PortalAwsCsmInspectorRenderer = {
+  window.PortalAwsCsmInterfacePanelRenderer = {
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var tool = (surfacePayload && surfacePayload.tool) || {};
@@ -1139,7 +1139,7 @@
             ? ""
             : "Select a domain or mailbox profile to inspect AWS-CSM tool posture.",
         }),
-        '<div class="v2-inspector-stack aws-csm-interfacePanel">' +
+        '<div class="v2-interfacePanel-stack aws-csm-interfacePanel">' +
         renderToolPostureCard(tool) +
         renderInspectorTabs(tabs) +
         '<div class="aws-csm-interfacePanel__body">' +

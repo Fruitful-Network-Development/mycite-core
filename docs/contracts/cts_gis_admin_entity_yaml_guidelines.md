@@ -7,6 +7,7 @@ administrative street overlays and for other CTS-GIS title-overlay documents tha
 `rf.3-1-2` / `rf.3-1-3` row shape, including `msn-address_nodes`. Do not edit the
 database-backed documents through ad-hoc UI changes, and do not write the entries directly from an
 agent session.
+Do not edit the database-backed administrative file through ad-hoc UI changes.
 
 ## Canonical staged payload
 
@@ -36,7 +37,7 @@ JSON-equivalent support is allowed for the same structure, but YAML is the canon
 - Every persisted datum address still uses `<layer>-<value_group>-<iteration>`.
 - New street/admin-entity and address-node title-overlay datums must use `valueGroup: 2`.
 - Runtime computes final `iteration` values; operators do not stage final addresses directly.
-- Stage new entries grouped by their immediate target-node family.
+- Stage new entries grouped by city or by their immediate target-node family, depending on the source document's operator grouping.
 - Runtime appends at the next available iterations for that group. Historical documents may already
   contain interleaved or duplicate node bindings; those remain diagnostics rather than hard stage
   blockers.

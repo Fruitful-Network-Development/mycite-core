@@ -79,46 +79,76 @@ must not use `fnd` (or any portal id) as the datum-document sandbox segment.
 
 Query state mirrors runtime-owned state. Runtime computes canonical next state and canonical next route/query. The URL is a projection of canonical state, not the source of truth.
 
-## Workbench State Machine
+## Workbench State Reflection
 
-The `Workbench` (the center region of `ide-body`) is a shared state machine driven by
-the focus stack, identical in shape across SYSTEM and every tool surface. The shared
-renderer is `datum_file_workbench`, region kind
+The `Workbench` (the center region of `ide-body`) is **purely reflective**. It materializes
+the current MyCite state — sandbox, file, datum, object — driven by the AITAS Space value.
+Navigation in, out, or shifting left/right within a level updates the AITAS Space value,
+which the workbench reflects through a structured payload. There are no discrete display
+modes; the content shape is always the same, and renderers decide what to show based on
+which focus-stack fields are populated.
+
+The shared renderer is `datum_file_workbench`, region kind
 `mycite.v2.portal.shell.region.workbench.v2`.
 
-Tri-state on every datum-file workbench:
+### state_reflection schema
 
-1. `mode = anchor` — the layered datum table for the sandbox's anchor document. This
-   is the default mode whenever a sandbox is focused without a non-anchor file
-   selection. Activity-bar tool clicks dispatch `focus_sandbox`, which seeds
-   `focus.file = anchor(<sandbox>)` and renders the anchor's layered datum table in
-   the workbench. Falling back to `gallery` is reserved for sandboxes that truly have
-   no materialized anchor document.
-2. `mode = gallery` — a card grid of every `lv.<msn>.<sandbox>.*` document owned by
-   the focused sandbox. Reached by `back_out` from the anchor (or from a selected
-   document). Selecting a card re-enters `mode=selected_document`.
-3. `mode = selected_document` — the layered datum table for a non-anchor sandbox
-   source. Reached by clicking a card in `mode=gallery` or by directly selecting a
-   document from the control panel's file list.
+```
+state_reflection:
+  schema: "mycite.v2.portal.workbench.state_reflection.v1"
+  current_sandbox: str   # active sandbox id
+  current_file: str      # active file document_id, empty if at sandbox level
+  current_datum: str     # active datum address, empty if at file level
+  current_object: str    # active object id, empty if at datum level
+  aitas:
+    attention: str       # the id of the currently attended element
+    intention: str       # "observe" | "navigate" | "investigate"
+    time: str            # "current"
+    archetype: str       # "datum_file_workbench" or surface-specific lens id
+  nimm:
+    directive: str       # current directive name ("observe_state" | "investigate_datum" | …)
+    actions: list        # [{action_id, directive, script_hint}] — NIMM-backed control actions
+```
 
-Authoritative invariants:
+`intention` shifts automatically:
+- `"observe"` when at sandbox level (no file focused)
+- `"navigate"` when a file is focused but no datum
+- `"investigate"` when a specific datum is focused → Interface Panel activates datum focus widget
+
+### Rendering rules (no modes)
+
+| State | Workbench shows | Interface Panel shows |
+|---|---|---|
+| `current_file` empty | `document_collection.documents` card list | default widget/sections |
+| `current_file` set, `current_datum` empty | `layered_datum_table` | default widget/sections |
+| `current_datum` set (`intention=investigate`) | `layered_datum_table` (datum highlighted) | datum focus widget with NIMM actions |
+
+### NIMM directive backing
+
+Controls must not encode action semantics in the renderer. Every workbench button reads
+its action from `state_reflection.nimm.actions`. Each action entry carries:
+- `action_id` — semantic identifier (e.g. `"back_out"`, `"open_datum_panel"`)
+- `directive` — the NIMM directive string (e.g. `"nav;self:out"`)
+- `script_hint` — a preloaded script expression (e.g. `"daemon(\"nav;self:out\")"`)
+
+The frontend binds `[data-nimm-action-id]` elements to `dispatchTransition({ kind: "nimm_directive", directive, action_id })`.
+
+### Authoritative invariants
 
 - Tool surfaces (CTS-GIS, AWS-CSM, FND-EBI, FND-DCM, PayPal-CSM) emit
   `region.kind = datum_file_workbench`. Tool-specific UI (Diktataograph, Garland,
   Staged Insert, Domain Gallery, Manifest tree, Analytics body, PayPal body) lives in
   the `Interface Panel` only. The workbench is never replaced by tool chrome.
-- Sandbox is the highest datum-document grouping under portal `msn_id`. `SYSTEM`
-  may only focus documents owned by sandbox `system`; a tool surface may only focus
-  documents owned by its tool sandbox. Cross-sandbox file focus is invalid and is
-  clamped back to the current sandbox anchor.
-- `Workbench UI` is the documented `workbench_primary` exception: it keeps the SQL
-  row grid as workbench-primary content (region kind `workbench_ui_surface`).
-  Documented in `surface_catalog.md`.
-- Toggling the `Interface Panel` open while `workbench.mode != anchor` re-asserts
-  `focus.file = anchor(<sandbox>)` so directive scripts running in the IP can assume
-  the documented "anchor + msn-SAMRAS" frame.
-- Activity-bar tool clicks dispatch the `focus_sandbox` transition; the URL is still a
-  projection of canonical state.
+- `Workbench UI` is routable at `system.tools.workbench_ui`. Its SQL grid is a
+  reflective SQL authority lens — purely reflective, not a primary two-pane inspector.
+  It uses `state_reflection` like every other surface.
+- On tool surfaces, the Interface Panel and Workbench toggles are mutually exclusive
+  by default: opening one closes the other. On non-tool (system) surfaces, both can
+  be open simultaneously (for widgets and sections beside the datum table).
+- `inspector` is a retired term. The canonical region key is `interface_panel`.
+  CSS class `ide-interfacePanel`. Region schema `mycite.v2.portal.shell.region.interface_panel.v1`.
+- Activity-bar tool clicks dispatch the `focus_sandbox` transition; the URL is a
+  projection of canonical state, not the source of truth.
 
 ## SYSTEM Workspace
 
@@ -216,13 +246,10 @@ Authoritative invariants:
 - Historical split-shell artifacts and non-canonical public shell routes remain
   retired; reintroducing them violates the one-shell contract.
 
-### Shell Composition Aliases
+### Shell Composition Keys
 
-- `shell_composition.inspector_collapsed` remains valid as the compatibility alias for the public `Interface Panel`.
-- `shell_composition.interface_panel_collapsed` mirrors `inspector_collapsed`.
+- `shell_composition.interface_panel_collapsed` reports whether the public `Interface Panel` is hidden.
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
-- `shell_composition.regions.inspector` remains valid as the public compatibility alias for `regions.interface_panel`.
-- `shell_composition.regions.interface_panel` mirrors `regions.inspector`.
 - `shell_composition.regions.control_panel`, `regions.workbench`, and `regions.interface_panel` remain governed by the canonical `directive_panel`, `reflective_workspace`, and `presentation_surface` family contracts.
 - Retired scoped fallback keys are outside the active shell composition contract and must not reappear in runtime emission or client dispatch.
 - Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
@@ -235,7 +262,7 @@ Authoritative invariants:
 - `AWS-CSM` is the canonical AWS service tool surface under `SYSTEM`.
 - `CTS-GIS` is the canonical structural/spatial mediation tool surface under `SYSTEM`.
 - `FND-DCM` is the canonical hosted-manifest control surface under `SYSTEM`.
-- `Workbench UI` is the canonical read-only two-pane SQL authority inspector surface under `SYSTEM`.
+- `Workbench UI` is the canonical read-only two-pane SQL authority lens under `SYSTEM`.
 - `AWS-CSM` has one public route: `/portal/system/tools/aws-csm`.
 - `CTS-GIS` has one public route: `/portal/system/tools/cts-gis`.
 - `FND-DCM` has one public route: `/portal/system/tools/fnd-dcm`.
@@ -273,11 +300,11 @@ Authoritative invariants:
   - `File: tool.<msn>.cts-gis.json`
   - `Mediation: spec.json`
 - Tool configuration, enabling, exposure, integration state, vault, peripherals, and control surfaces belong under `UTILITIES`.
-- Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata; approved posture exceptions must be named explicitly in the contract.
-- `Workbench UI` is the approved `workbench_primary` exception because its primary surface is the SQL-backed datum grid rather than an interface-panel tool body.
+- Tool registry posture fields serialize the shared tool default (`interface_panel_primary`) as compatibility metadata.
+- `Workbench UI` uses the shared registry posture and keeps the SQL-backed workbench lens visible by default through composition authority.
 - `Workbench UI` does not replace the reducer-owned `SYSTEM` anthology workspace at `/portal/system`.
 - `Workbench UI` inspects authoritative SQL-backed documents only; retained host-bound/private assets and `NETWORK` derived materializations remain outside its corpus unless separately ported.
-- Every non-`workbench_primary` tool composition defaults to `regions.workbench.visible=false`.
+- Tool compositions default to `regions.workbench.visible=false` unless the registry declares `default_workbench_visible=true`.
 - Tool composition building always normalizes tool surfaces to `regions.interface_panel.visible=true` on the first server response, while `Workbench UI` also keeps the workbench visible on first composition.
 - Secondary-evidence workbench content is explicit opt-in per tool runtime.
 - Tool runtimes may project workbench content, but they do not open the workbench on first composition.
@@ -298,7 +325,7 @@ Authoritative invariants:
 - All tools attach to the same interface surface. Service-tool behavior is distinguished by whether the tool can employ the portal's authenticated peripheral package, not by a separate class of portal.
 - All tool region payloads must conform to the three canonical shell region families declared in this contract.
 
-Default tool posture is interface-panel-led; `Workbench UI` is the approved workbench-primary exception for SQL-backed authority inspection.
+Default tool posture is interface-panel-led; `Workbench UI` is a standard tool with a default-visible SQL authority lens in the workbench.
 
 ### CTS-GIS Tool-Local State
 

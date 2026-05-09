@@ -3,7 +3,6 @@
  * - Local tab switching for page-internal panels
  * - Alias sidebar filter
  * - Workbench + Interface Panel shell splitters
- * Internal compatibility note: legacy IDs/class names still use "inspector".
  */
 
 (function () {
@@ -30,8 +29,6 @@
   const WORKBENCH_OPEN_KEY = "mycite.layout.workbench.open";
   const INTERFACE_PANEL_WIDTH_KEY = "mycite.layout.interface_panel.width";
   const INTERFACE_PANEL_OPEN_KEY = "mycite.layout.interface_panel.open";
-  const LEGACY_INSPECTOR_WIDTH_KEY = "mycite.layout.inspector.width";
-  const LEGACY_INSPECTOR_OPEN_KEY = "mycite.layout.inspector.open";
 
   function applyTheme(themeId) {
     const safe = THEME_STANDARD.sanitize(themeId);
@@ -59,15 +56,6 @@
 
   function getStoredValue(storageKey) {
     try { return window.localStorage.getItem(storageKey) || ""; } catch (_) { return ""; }
-  }
-
-  function getStoredValueFromAliases(storageKeys) {
-    const keys = Array.isArray(storageKeys) ? storageKeys : [storageKeys];
-    for (const key of keys) {
-      const value = getStoredValue(key);
-      if (value) return value;
-    }
-    return "";
   }
 
   function detectPreferredTheme(storageKey) {
@@ -186,10 +174,10 @@
   function initWorkbenchLayout() {
     const shell = qs(".ide-shell");
     const controlPanel = qs("#portalControlPanel");
-    const inspector = qs("#portalInspector");
+    const interfacePanel = qs("#portalInterfacePanel");
     const workbench = qs(".ide-workbench");
     const ideBody = qs(".ide-body");
-    if (!shell || !controlPanel || !inspector || !workbench) return null;
+    if (!shell || !controlPanel || !interfacePanel || !workbench) return null;
     const shellDriverV2 = document.body && document.body.getAttribute("data-portal-shell-driver") === "v2-composition";
 
     function clamp(value, min, max) {
@@ -264,21 +252,21 @@
       if (hasSystemWorkbench()) {
         return {
           defaultControlPanelWidth: 248,
-          defaultInspectorWidth: 300,
+          defaultInterfacePanelWidth: 300,
           minControlPanelWidth: 188,
           maxControlPanelWidth: 360,
-          minInspectorWidth: 240,
-          maxInspectorWidth: 440,
+          minInterfacePanelWidth: 240,
+          maxInterfacePanelWidth: 440,
           minWorkbenchWidth: 920,
         };
       }
       return {
         defaultControlPanelWidth: 280,
-        defaultInspectorWidth: 360,
+        defaultInterfacePanelWidth: 360,
         minControlPanelWidth: 220,
         maxControlPanelWidth: 420,
-        minInspectorWidth: 280,
-        maxInspectorWidth: 520,
+        minInterfacePanelWidth: 280,
+        maxInterfacePanelWidth: 520,
         minWorkbenchWidth: 720,
       };
     }
@@ -292,7 +280,7 @@
       if (aliasState === "true" || aliasState === "false") {
         return aliasState !== "true";
       }
-      return shell.getAttribute("data-inspector-collapsed") !== "true";
+      return shell.getAttribute("data-interface-panel-collapsed") !== "true";
     }
 
     function applyControlPanelWidth(value) {
@@ -304,8 +292,8 @@
 
     function applyInterfacePanelWidth(value) {
       const policy = currentLayoutPolicy();
-      const width = clamp(value, policy.minInspectorWidth, policy.maxInspectorWidth);
-      shell.style.setProperty("--ide-inspector-w", `${width}px`);
+      const width = clamp(value, policy.minInterfacePanelWidth, policy.maxInterfacePanelWidth);
+      shell.style.setProperty("--ide-interfacePanel-w", `${width}px`);
       return width;
     }
 
@@ -324,10 +312,10 @@
 
     function applyInterfacePanelVisibility(isOpen) {
       shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
-      shell.setAttribute("data-inspector-collapsed", isOpen ? "false" : "true");
-      inspector.classList.toggle("is-collapsed", !isOpen);
-      inspector.setAttribute("aria-hidden", isOpen ? "false" : "true");
-      inspector.style.display = isOpen ? "" : "none";
+      shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
+      interfacePanel.classList.toggle("is-collapsed", !isOpen);
+      interfacePanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
+      interfacePanel.style.display = isOpen ? "" : "none";
     }
 
     function canHideWorkbench() {
@@ -343,7 +331,7 @@
       const composition = currentShellComposition();
       const policy = currentLayoutPolicy();
       const workbenchOpen = workbenchIsOpen();
-      const inspectorOpen = interfacePanelIsOpen();
+      const interfacePanelOpen = interfacePanelIsOpen();
       shell.classList.toggle("ide-shell--system-workbench", composition === "system" && hasSystemWorkbench());
       shell.classList.toggle("ide-shell--tool-composition", composition === "tool");
       const bodyWidth = ideBody.clientWidth || window.innerWidth || 0;
@@ -356,14 +344,14 @@
       const splitterWidth = readShellPxVar("--ide-splitter-w", 8);
       const controlPanelOpen = shell.getAttribute("data-control-panel-collapsed") !== "true";
       let controlPanelWidth = controlPanelOpen ? readShellPxVar("--ide-controlpanel-w", 280) : 0;
-      let inspectorWidth = inspectorOpen ? readShellPxVar("--ide-inspector-w", 360) : 0;
+      let interfacePanelWidth = interfacePanelOpen ? readShellPxVar("--ide-interfacePanel-w", 360) : 0;
       const controlPanelSplitterWidth = controlPanelOpen ? splitterWidth : 0;
       let workbenchWidth = bodyWidth
         - activityWidth
         - controlPanelWidth
-        - inspectorWidth
+        - interfacePanelWidth
         - controlPanelSplitterWidth
-        - (inspectorOpen ? splitterWidth : 0);
+        - (interfacePanelOpen ? splitterWidth : 0);
 
       if (workbenchWidth >= policy.minWorkbenchWidth) {
         shell.classList.remove("ide-shell--workbench-tight");
@@ -371,10 +359,10 @@
       }
 
       let deficit = policy.minWorkbenchWidth - workbenchWidth;
-      if (inspectorOpen && inspectorWidth > policy.minInspectorWidth) {
-        const nextInspectorWidth = Math.max(policy.minInspectorWidth, inspectorWidth - deficit);
-        deficit -= inspectorWidth - nextInspectorWidth;
-        inspectorWidth = applyInterfacePanelWidth(nextInspectorWidth);
+      if (interfacePanelOpen && interfacePanelWidth > policy.minInterfacePanelWidth) {
+        const nextInterfacePanelWidth = Math.max(policy.minInterfacePanelWidth, interfacePanelWidth - deficit);
+        deficit -= interfacePanelWidth - nextInterfacePanelWidth;
+        interfacePanelWidth = applyInterfacePanelWidth(nextInterfacePanelWidth);
       }
 
       if (deficit > 0 && controlPanelOpen && controlPanelWidth > policy.minControlPanelWidth) {
@@ -386,9 +374,9 @@
       workbenchWidth = bodyWidth
         - activityWidth
         - controlPanelWidth
-        - inspectorWidth
+        - interfacePanelWidth
         - controlPanelSplitterWidth
-        - (inspectorOpen ? splitterWidth : 0);
+        - (interfacePanelOpen ? splitterWidth : 0);
       shell.classList.toggle("ide-shell--workbench-tight", workbenchWidth < policy.minWorkbenchWidth);
     }
 
@@ -410,7 +398,7 @@
               ? "Workbench. Tool lock enabled: Workbench and Interface Panel can stay visible together. Double-click to unlock."
               : "Workbench. Tool default: single-click switches to Workbench-only. Double-click to lock co-visible mode.";
           }
-        } else if (target === "interface-panel" || target === "inspector") {
+        } else if (target === "interface-panel") {
           isOpen = interfacePanelIsOpen();
           if (composition === "tool") {
             title = toolLock
@@ -575,11 +563,11 @@
         workbench.setAttribute("data-foreground-visible", workbenchIsOpen() ? "true" : "false");
       }
       workbench.setAttribute("aria-hidden", workbenchIsOpen() ? "false" : "true");
-      if (!inspector.getAttribute("data-primary-surface")) {
-        inspector.setAttribute("data-primary-surface", "false");
+      if (!interfacePanel.getAttribute("data-primary-surface")) {
+        interfacePanel.setAttribute("data-primary-surface", "false");
       }
-      if (!inspector.getAttribute("data-surface-layout")) {
-        inspector.setAttribute("data-surface-layout", "sidebar");
+      if (!interfacePanel.getAttribute("data-surface-layout")) {
+        interfacePanel.setAttribute("data-surface-layout", "sidebar");
       }
       document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));
       syncShellToggleButtons({ routeKey: routeKey });
@@ -588,18 +576,13 @@
 
     const storedControlPanel = parseInt(getStoredValue(CONTROL_PANEL_WIDTH_KEY), 10);
     const storedControlPanelOpen = getStoredValue(CONTROL_PANEL_OPEN_KEY);
-    const storedInterfacePanel = parseInt(
-      getStoredValueFromAliases([INTERFACE_PANEL_WIDTH_KEY, LEGACY_INSPECTOR_WIDTH_KEY]),
-      10
-    );
-    const storedInterfacePanelOpen = getStoredValueFromAliases(
-      [INTERFACE_PANEL_OPEN_KEY, LEGACY_INSPECTOR_OPEN_KEY]
-    );
+    const storedInterfacePanel = parseInt(getStoredValue(INTERFACE_PANEL_WIDTH_KEY), 10);
+    const storedInterfacePanelOpen = getStoredValue(INTERFACE_PANEL_OPEN_KEY);
     const storedWorkbenchOpen = getStoredValue(WORKBENCH_OPEN_KEY);
     const initialPolicy = currentLayoutPolicy();
 
     setControlPanelWidth(storedControlPanel || initialPolicy.defaultControlPanelWidth, false);
-    setInterfacePanelWidth(storedInterfacePanel || initialPolicy.defaultInspectorWidth, false);
+    setInterfacePanelWidth(storedInterfacePanel || initialPolicy.defaultInterfacePanelWidth, false);
     if (shellDriverV2) {
       applyShellPostureFromDom({ useStoredWorkbenchPreference: false });
     } else {
@@ -607,7 +590,7 @@
       let interfacePanelShouldOpen = false;
       if (storedInterfacePanelOpen === "1") interfacePanelShouldOpen = true;
       else if (storedInterfacePanelOpen === "0") interfacePanelShouldOpen = false;
-      else interfacePanelShouldOpen = !!window.__PORTAL_SHELL_INSPECTOR_DEFAULT_OPEN;
+      else interfacePanelShouldOpen = !!window.__PORTAL_SHELL_INTERFACE_PANEL_DEFAULT_OPEN;
       setInterfacePanelOpen(interfacePanelShouldOpen, false);
       let workbenchShouldOpen = storedWorkbenchOpen !== "0";
       if (!workbenchShouldOpen && !interfacePanelIsOpen()) workbenchShouldOpen = true;
@@ -621,13 +604,13 @@
         const type = splitter.getAttribute("data-splitter") || "";
         const startX = event.clientX;
         const startControlPanel = parseInt(getComputedStyle(shell).getPropertyValue("--ide-controlpanel-w"), 10) || 280;
-        const startInspector = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || 360;
+        const startInterfacePanel = parseInt(getComputedStyle(shell).getPropertyValue("--ide-interfacePanel-w"), 10) || 360;
 
         function onMove(moveEvent) {
           if (type === "control-panel") {
             setControlPanelWidth(startControlPanel + (moveEvent.clientX - startX), false);
           } else {
-            setInterfacePanelWidth(startInspector - (moveEvent.clientX - startX), false);
+            setInterfacePanelWidth(startInterfacePanel - (moveEvent.clientX - startX), false);
           }
         }
 
@@ -636,7 +619,7 @@
             const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-controlpanel-w"), 10) || startControlPanel;
             setControlPanelWidth(width, true);
           } else {
-            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-inspector-w"), 10) || startInspector;
+            const width = parseInt(getComputedStyle(shell).getPropertyValue("--ide-interfacePanel-w"), 10) || startInterfacePanel;
             setInterfacePanelWidth(width, true);
           }
           document.removeEventListener("pointermove", onMove);
@@ -675,7 +658,7 @@
     qsa("[data-shell-toggle]", shell).forEach(button => {
       const target = button.getAttribute("data-shell-toggle") || "";
       button.addEventListener("click", () => {
-        const toolLockable = target === "workbench" || target === "interface-panel" || target === "inspector";
+        const toolLockable = target === "workbench" || target === "interface-panel";
         if (currentShellComposition() === "tool" && toolLockable) {
           if (button.__myciteToggleTimer) {
             clearTimeout(button.__myciteToggleTimer);
@@ -698,7 +681,7 @@
       });
 
       button.addEventListener("dblclick", event => {
-        const lockable = target === "workbench" || target === "interface-panel" || target === "inspector";
+        const lockable = target === "workbench" || target === "interface-panel";
         if (currentShellComposition() !== "tool" || !lockable) return;
         event.preventDefault();
         if (button.__myciteToggleTimer) {
@@ -723,25 +706,23 @@
       setControlPanelOpen,
       setWorkbenchOpen,
       setInterfacePanelOpen,
-      setInspectorOpen: setInterfacePanelOpen,
-      setInterfacePanelWidth,
-      setInspectorWidth: setInterfacePanelWidth,
-      setShellComposition,
+            setInterfacePanelWidth,
+            setShellComposition,
       syncFromDom: applyShellPostureFromDom,
       rebalanceWorkbench,
     };
   }
 
-  function initInspector(layoutApi) {
+  function initInterfacePanel(layoutApi) {
     const shell = qs(".ide-shell");
-    const inspector = qs("#portalInspector");
-    const titleEl = qs("#portalInspectorTitle");
-    const contentEl = qs("#portalInspectorContent");
-    if (!shell || !inspector || !titleEl || !contentEl) return;
+    const interfacePanel = qs("#portalInterfacePanel");
+    const titleEl = qs("#portalInterfacePanelTitle");
+    const contentEl = qs("#portalInterfacePanelContent");
+    if (!shell || !interfacePanel || !titleEl || !contentEl) return;
     const shellDriverV2 = document.body && document.body.getAttribute("data-portal-shell-driver") === "v2-composition";
 
     function systemShellRoot() {
-      return qs("#systemShellInspectorRoot", contentEl);
+      return qs("#systemShellInterfacePanelRoot", contentEl);
     }
 
     function toolShellRoot() {
@@ -749,7 +730,7 @@
     }
 
     function transientMount() {
-      return qs("#portalInspectorTransientMount", contentEl);
+      return qs("#portalInterfacePanelTransientMount", contentEl);
     }
 
     function currentComposition() {
@@ -790,9 +771,9 @@
       activatePanelRoot(token === "tool" || token === "system" ? token : currentComposition());
     }
 
-    function removeNonTransientInspectorChildren() {
+    function removeNonTransientInterfacePanelChildren() {
       Array.from(contentEl.children).forEach((child) => {
-        if (child.id === "portalInspectorTransientMount") return;
+        if (child.id === "portalInterfacePanelTransientMount") return;
         child.remove();
       });
     }
@@ -823,7 +804,7 @@
           tMount.innerHTML = html;
           return;
         }
-        tMount.innerHTML = '<p class="ide-inspector__empty">Select an item to load interface panel content.</p>';
+        tMount.innerHTML = '<p class="ide-interfacePanel__empty">Select an item to load interface panel content.</p>';
         return;
       }
 
@@ -833,22 +814,22 @@
       }
 
       if (node instanceof Node) {
-        removeNonTransientInspectorChildren();
+        removeNonTransientInterfacePanelChildren();
         contentEl.insertBefore(node, tMountLegacy || null);
         return;
       }
 
       if (html) {
-        removeNonTransientInspectorChildren();
+        removeNonTransientInterfacePanelChildren();
         const holder = document.createElement("div");
         holder.innerHTML = html;
         contentEl.insertBefore(holder, tMountLegacy || null);
         return;
       }
 
-      removeNonTransientInspectorChildren();
+      removeNonTransientInterfacePanelChildren();
       const empty = document.createElement("p");
-      empty.className = "ide-inspector__empty";
+      empty.className = "ide-interfacePanel__empty";
       empty.textContent = "Select an item to load interface panel content.";
       contentEl.insertBefore(empty, tMountLegacy || null);
     }
@@ -858,7 +839,7 @@
       if (layoutApi) layoutApi.setInterfacePanelOpen(true, true);
       if (layoutApi) {
         layoutApi.setInterfacePanelWidth(
-          parseInt(getStoredValueFromAliases([INTERFACE_PANEL_WIDTH_KEY, LEGACY_INSPECTOR_WIDTH_KEY]), 10) || 360,
+          parseInt(getStoredValue(INTERFACE_PANEL_WIDTH_KEY), 10) || 360,
           false
         );
       }
@@ -889,7 +870,7 @@
       });
     }
 
-    qsa("[data-inspector-close]").forEach(btn => {
+    qsa("[data-interface-panel-close]").forEach(btn => {
       btn.addEventListener("click", () => {
         if (shellDriverV2) {
           document.dispatchEvent(new CustomEvent("mycite:v2:interface-panel-dismiss-request"));
@@ -901,13 +882,13 @@
 
     document.addEventListener("click", event => {
       const trigger = event.target && event.target.closest
-        ? event.target.closest("[data-inspector-template]")
+        ? event.target.closest("[data-interface-panel-template]")
         : null;
       if (!trigger) return;
       event.preventDefault();
-      const templateId = trigger.getAttribute("data-inspector-template") || "";
-      const title = trigger.getAttribute("data-inspector-title") || "Interface Panel";
-      const subtitle = trigger.getAttribute("data-inspector-subtitle") || "";
+      const templateId = trigger.getAttribute("data-interface-panel-template") || "";
+      const title = trigger.getAttribute("data-interface-panel-title") || "Interface Panel";
+      const subtitle = trigger.getAttribute("data-interface-panel-subtitle") || "";
       if (!templateId) return;
       openTemplate(templateId, title, subtitle);
     });
@@ -926,7 +907,7 @@
 
     activatePersistentRoot();
 
-    window.PortalInspector = {
+    window.PortalInterfacePanel = {
       open,
       close,
       toggle,
@@ -941,8 +922,7 @@
     ? {
         setWorkbenchOpen: (open, persist) => layoutApi.setWorkbenchOpen(!!open, persist !== false),
         setInterfacePanelOpen: (open, persist) => layoutApi.setInterfacePanelOpen(!!open, persist !== false),
-        setInspectorOpen: (open, persist) => layoutApi.setInterfacePanelOpen(!!open, persist !== false),
-        setControlPanelOpen: (open, persist) => layoutApi.setControlPanelOpen(!!open, persist !== false),
+                setControlPanelOpen: (open, persist) => layoutApi.setControlPanelOpen(!!open, persist !== false),
         setShellComposition: (mode, options) => layoutApi.setShellComposition(mode, options),
         syncFromDom: (options) => layoutApi.syncFromDom && layoutApi.syncFromDom(options),
         rebalanceWorkbench: () => layoutApi.rebalanceWorkbench && layoutApi.rebalanceWorkbench(),
@@ -951,6 +931,5 @@
   initThemeSelector();
   initLocalTabs();
   initAliasSearch();
-  initInspector(layoutApi);
-  window.PortalInterfacePanel = window.PortalInspector;
+  initInterfacePanel(layoutApi);
 })();

@@ -678,7 +678,7 @@ class WorkbenchUiReadService:
             "No mutation controls are exposed on this surface.",
         ]
 
-        inspector_sections = [
+        interface_panel_sections = [
             {
                 "title": "Selection",
                 "rows": [
@@ -692,7 +692,7 @@ class WorkbenchUiReadService:
                 ],
             }
         ]
-        inspector_sections.append(
+        interface_panel_sections.append(
             {
                 "title": "Lens Resolution",
                 "rows": [
@@ -705,7 +705,7 @@ class WorkbenchUiReadService:
                 ],
             }
         )
-        inspector_sections.append(
+        interface_panel_sections.append(
             {
                 "title": "Hyphae Identity",
                 "rows": [
@@ -717,7 +717,7 @@ class WorkbenchUiReadService:
             }
         )
         if source_visibility == "show":
-            inspector_sections.append(
+            interface_panel_sections.append(
                 {
                     "title": "Source Metadata",
                     "rows": [
@@ -726,7 +726,7 @@ class WorkbenchUiReadService:
                     ],
                 }
             )
-        inspector_sections.append(
+        interface_panel_sections.append(
             {
                 "title": "Directive Overlay",
                 "rows": _overlay_summary_rows(overlay, event_rows=overlay_events),
@@ -777,7 +777,7 @@ class WorkbenchUiReadService:
             "warnings": list(catalog.warnings),
             "navigation": navigation,
             "surface_payload": {
-                "kind": "workbench_ui_surface",
+                "kind": "sql_authority_lens",
                 "tool_id": WORKBENCH_UI_TOOL_ID,
                 "title": "Workbench UI",
                 "subtitle": "Read-only two-pane SQL-backed spreadsheet with additive directive overlays.",
@@ -837,5 +837,5 @@ class WorkbenchUiReadService:
                 },
                 "notes": notes,
             },
-            "inspector_sections": inspector_sections,
+            "interface_panel_sections": interface_panel_sections,
         }

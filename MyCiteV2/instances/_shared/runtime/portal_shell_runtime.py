@@ -34,7 +34,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
     PortalShellRequest,
@@ -567,17 +567,17 @@ def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _network_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
+def _network_interface_panel(surface_payload: dict[str, Any]) -> dict[str, Any]:
     workspace = dict(surface_payload.get("workspace") or {})
     selected_record = workspace.get("selected_record")
     subject = None
     if isinstance(selected_record, dict) and _as_text(selected_record.get("datum_address")):
         subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
     return {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": "Log Record",
-        "summary": "Read-only log-record inspector.",
+        "summary": "Read-only log-record detail.",
         "visible": subject is not None,
         "subject": subject,
         "surface_payload": surface_payload,
@@ -661,14 +661,14 @@ def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True)
     }
 
 
-def _generic_inspector(surface_payload: dict[str, Any]) -> dict[str, Any]:
+def _generic_interface_panel(surface_payload: dict[str, Any]) -> dict[str, Any]:
     sections: list[dict[str, Any]] = []
     for section in list(surface_payload.get("sections") or []):
         rows = list(section.get("rows") or [])
         if rows:
             sections.append({"title": section.get("title") or "Section", "rows": rows})
     return {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": _as_text(surface_payload.get("title")) or "Overview",
         "summary": _as_text(surface_payload.get("subtitle")),
@@ -786,10 +786,10 @@ def _build_workbench_ui_tool_bundle(
     **_: Any,
 ) -> dict[str, Any]:
     from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
-        build_portal_workbench_ui_surface_bundle,
+        build_portal_workbench_ui_bundle,
     )
 
-    return build_portal_workbench_ui_surface_bundle(
+    return build_portal_workbench_ui_bundle(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
         shell_state=shell_state,
@@ -968,8 +968,8 @@ def _bundle_for_surface(
                 family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
                 surface_id=selection_surface_id,
             ),
-            "inspector": attach_region_family_contract(
-                _network_inspector(surface_payload),
+            "interface_panel": attach_region_family_contract(
+                _network_interface_panel(surface_payload),
                 family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
                 surface_id=selection_surface_id,
             ),
@@ -995,8 +995,8 @@ def _bundle_for_surface(
                 family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
                 surface_id=selection_surface_id,
             ),
-            "inspector": attach_region_family_contract(
-                _generic_inspector(surface_payload),
+            "interface_panel": attach_region_family_contract(
+                _generic_interface_panel(surface_payload),
                 family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
                 surface_id=selection_surface_id,
             ),
@@ -1024,8 +1024,8 @@ def _bundle_for_surface(
             family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
             surface_id=selection_surface_id,
         ),
-        "inspector": attach_region_family_contract(
-            _generic_inspector(surface_payload),
+        "interface_panel": attach_region_family_contract(
+            _generic_interface_panel(surface_payload),
             family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
             surface_id=selection_surface_id,
         ),
@@ -1091,7 +1091,7 @@ def run_portal_shell_entry(
         ),
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
-        inspector=bundle["inspector"],
+        interface_panel=bundle["interface_panel"],
         shell_state=composition_shell_state,
         control_panel_collapsed=bool(
             composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
@@ -1249,7 +1249,7 @@ def run_system_profile_basics_action(
         ),
         control_panel=workspace_bundle["control_panel"],
         workbench=workspace_bundle["workbench"],
-        inspector=workspace_bundle["inspector"],
+        interface_panel=workspace_bundle["interface_panel"],
         shell_state=selection.shell_state,
     )
     return build_portal_runtime_envelope(

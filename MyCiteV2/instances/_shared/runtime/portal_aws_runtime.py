@@ -67,7 +67,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     UTILITIES_ROOT_SURFACE_ID,
@@ -1403,7 +1403,7 @@ def _build_aws_csm_directive_panel(
     return panel
 
 
-def _build_inspector(
+def _build_interface_panel(
     *,
     tool_status: dict[str, Any],
     workspace: dict[str, Any],
@@ -1534,7 +1534,7 @@ def _build_inspector(
             }
         )
     return {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": "AWS-CSM",
         "summary": "Unified service-tool posture and selected domain detail.",
@@ -1682,7 +1682,7 @@ def build_portal_aws_surface_bundle(
         tool_status=tool_status,
         action_result=action_result,
     )
-    inspector = _build_inspector(
+    interface_panel = _build_interface_panel(
         tool_status=tool_status,
         workspace=enriched_workspace,
         surface_payload=surface_payload,
@@ -1710,8 +1710,8 @@ def build_portal_aws_surface_bundle(
             subtitle="Layered datum table for the active AWS-CSM sandbox file.",
             visible=False,
         ),
-        "inspector": attach_region_family_contract(
-            inspector,
+        "interface_panel": attach_region_family_contract(
+            interface_panel,
             family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
             surface_id=AWS_CSM_TOOL_SURFACE_ID,
         ),
@@ -1743,7 +1743,7 @@ def _runtime_envelope_from_bundle(
         ),
         control_panel=_as_dict(bundle.get("control_panel")),
         workbench=_as_dict(bundle.get("workbench")),
-        inspector=_as_dict(bundle.get("inspector")),
+        interface_panel=_as_dict(bundle.get("interface_panel")),
         shell_state=shell_state,
         control_panel_collapsed=_control_panel_collapsed(shell_state),
     )

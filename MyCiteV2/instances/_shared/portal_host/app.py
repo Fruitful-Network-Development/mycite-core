@@ -125,7 +125,7 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
                 "required_callables": ("render",),
             },
             {
-                "global": "PortalAwsCsmInspectorRenderer",
+                "global": "PortalAwsCsmInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -142,7 +142,7 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
                 "required_callables": ("render",),
             },
             {
-                "global": "PortalPaypalCsmInspectorRenderer",
+                "global": "PortalPaypalCsmInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -172,7 +172,7 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
                 "required_callables": ("render",),
             },
             {
-                "global": "PortalNetworkInspectorRenderer",
+                "global": "PortalNetworkInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -191,34 +191,34 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
-        "module_id": "inspector_renderers",
-        "file": "v2_portal_inspector_host.js",
+        "module_id": "interface_panel_renderers",
+        "file": "v2_portal_interface_panel_host.js",
         "load_phase": "startup_critical",
         "loading_scope": ("shared_interface_panel_host",),
         "budget_group": "initial_shell",
         "exports": (
             {
-                "global": "PortalShellInspectorRenderer",
+                "global": "PortalShellInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
     },
     {
         "module_id": "cts_gis_surface",
-        "file": "v2_portal_inspector_renderers.js",
+        "file": "v2_portal_interface_panel_renderers.js",
         "load_phase": "deferred",
         "loading_scope": ("system.tools.cts_gis",),
         "budget_group": "deferred_tool_renderers",
         "exports": (
             {
-                "global": "PortalCtsGisInspectorRenderer",
+                "global": "PortalCtsGisInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
     },
     {
         "module_id": "cts_gis_workspace",
-        "file": "v2_portal_inspector_renderers.js",
+        "file": "v2_portal_interface_panel_renderers.js",
         "load_phase": "deferred",
         "loading_scope": ("system.tools.cts_gis",),
         "budget_group": "deferred_tool_renderers",

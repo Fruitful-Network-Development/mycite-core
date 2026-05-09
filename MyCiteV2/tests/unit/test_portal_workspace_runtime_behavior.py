@@ -493,7 +493,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             "descendants_depth_1_or_2",
         )
         self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "no_authoritative_cts_gis_documents")
-        interface_body = bundle["inspector"]["interface_body"]
+        interface_body = bundle["interface_panel"]["interface_body"]
         self.assertNotIn("kind", interface_body)
         self.assertIn("navigation_canvas", interface_body)
         self.assertIn("garland_split_projection", interface_body)
@@ -581,7 +581,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertFalse(bundle["workbench"]["visible"])
         self.assertEqual(bundle["control_panel"]["family_contract"]["family"], "directive_panel")
         self.assertEqual(bundle["workbench"]["family_contract"]["family"], "reflective_workspace")
-        self.assertEqual(bundle["inspector"]["family_contract"]["family"], "presentation_surface")
+        self.assertEqual(bundle["interface_panel"]["family_contract"]["family"], "presentation_surface")
 
         envelope = run_portal_shell_entry(
             {
@@ -603,7 +603,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertFalse(composition["interface_panel_collapsed"])
         self.assertEqual(composition["foreground_shell_region"], "interface-panel")
         self.assertFalse(composition["regions"]["workbench"]["visible"])
-        self.assertEqual(composition["regions"]["interface_panel"], composition["regions"]["inspector"])
+        self.assertNotIn("inspector", composition["regions"])
         self.assertEqual(composition["regions"]["control_panel"]["family_contract"]["family"], "directive_panel")
         self.assertEqual(composition["regions"]["workbench"]["family_contract"]["family"], "reflective_workspace")
         self.assertEqual(composition["regions"]["interface_panel"]["family_contract"]["family"], "presentation_surface")
@@ -693,7 +693,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={},
-            inspector={},
+            interface_panel={},
             shell_state=initial_portal_shell_state(
                 surface_id=SYSTEM_ROOT_SURFACE_ID,
                 portal_scope={"scope_id": "fnd", "capabilities": []},
@@ -701,7 +701,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         )
         self.assertFalse(root_composition["workbench_collapsed"])
         self.assertTrue(root_composition["interface_panel_collapsed"])
-        self.assertEqual(root_composition["regions"]["interface_panel"], root_composition["regions"]["inspector"])
+        self.assertNotIn("inspector", root_composition["regions"])
 
         aws_tool_composition = build_shell_composition_payload(
             active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
@@ -711,18 +711,15 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={},
-            inspector={},
+            interface_panel={},
             shell_state=None,
         )
         self.assertTrue(aws_tool_composition["workbench_collapsed"])
         self.assertFalse(aws_tool_composition["interface_panel_collapsed"])
         self.assertEqual(aws_tool_composition["foreground_shell_region"], "interface-panel")
-        self.assertTrue(aws_tool_composition["regions"]["inspector"]["primary_surface"])
-        self.assertEqual(aws_tool_composition["regions"]["inspector"]["layout_mode"], "dominant")
-        self.assertEqual(
-            aws_tool_composition["regions"]["interface_panel"],
-            aws_tool_composition["regions"]["inspector"],
-        )
+        self.assertTrue(aws_tool_composition["regions"]["interface_panel"]["primary_surface"])
+        self.assertEqual(aws_tool_composition["regions"]["interface_panel"]["layout_mode"], "dominant")
+        self.assertNotIn("inspector", aws_tool_composition["regions"])
 
         evidence_composition = build_shell_composition_payload(
             active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
@@ -732,7 +729,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={"visible": True},
-            inspector={},
+            interface_panel={},
             shell_state=None,
         )
         self.assertTrue(evidence_composition["workbench_collapsed"])
@@ -794,40 +791,40 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0-0")
             self.assertEqual(bundle["surface_payload"]["source_evidence"]["readiness"]["state"], "ready")
-            self.assertEqual(bundle["inspector"]["interface_body"]["layout"], "diktataograph_garland_split")
-            self.assertEqual(bundle["inspector"]["interface_body"]["narrow_layout"], "diktataograph_garland_stack")
-            self.assertNotIn("kind", bundle["inspector"]["interface_body"])
-            self.assertIn("navigation_canvas", bundle["inspector"]["interface_body"])
-            self.assertIn("garland_split_projection", bundle["inspector"]["interface_body"])
-            self.assertEqual(bundle["inspector"]["interface_body"]["tab_host"], "shared_interface_tabs")
-            self.assertEqual(bundle["inspector"]["interface_body"]["default_tab_id"], "diktataograph")
+            self.assertEqual(bundle["interface_panel"]["interface_body"]["layout"], "diktataograph_garland_split")
+            self.assertEqual(bundle["interface_panel"]["interface_body"]["narrow_layout"], "diktataograph_garland_stack")
+            self.assertNotIn("kind", bundle["interface_panel"]["interface_body"])
+            self.assertIn("navigation_canvas", bundle["interface_panel"]["interface_body"])
+            self.assertIn("garland_split_projection", bundle["interface_panel"]["interface_body"])
+            self.assertEqual(bundle["interface_panel"]["interface_body"]["tab_host"], "shared_interface_tabs")
+            self.assertEqual(bundle["interface_panel"]["interface_body"]["default_tab_id"], "diktataograph")
             self.assertEqual(
-                [tab["id"] for tab in bundle["inspector"]["interface_body"]["tabs"]],
+                [tab["id"] for tab in bundle["interface_panel"]["interface_body"]["tabs"]],
                 ["diktataograph", "garland"],
             )
             self.assertEqual(
-                bundle["inspector"]["interface_body"]["navigation_canvas"]["mode"],
+                bundle["interface_panel"]["interface_body"]["navigation_canvas"]["mode"],
                 "directory_dropdowns",
             )
             self.assertEqual(
-                bundle["inspector"]["interface_body"]["navigation_canvas"]["decode_state"],
+                bundle["interface_panel"]["interface_body"]["navigation_canvas"]["decode_state"],
                 "ready",
             )
             self.assertEqual(
-                len(bundle["inspector"]["interface_body"]["navigation_canvas"]["dropdowns"]),
+                len(bundle["interface_panel"]["interface_body"]["navigation_canvas"]["dropdowns"]),
                 6,
             )
             self.assertEqual(
-                [entry["node_id"] for entry in bundle["inspector"]["interface_body"]["navigation_canvas"]["active_path"]],
+                [entry["node_id"] for entry in bundle["interface_panel"]["interface_body"]["navigation_canvas"]["active_path"]],
                 ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
             )
             self.assertIn(
                 "geospatial_projection",
-                bundle["inspector"]["interface_body"]["garland_split_projection"],
+                bundle["interface_panel"]["interface_body"]["garland_split_projection"],
             )
             self.assertIn(
                 "profile_projection",
-                bundle["inspector"]["interface_body"]["garland_split_projection"],
+                bundle["interface_panel"]["interface_body"]["garland_split_projection"],
             )
             self.assertIn(
                 "STATE DIRECTIVE",
@@ -837,22 +834,22 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "Source Evidence",
                 [group["title"] for group in bundle["control_panel"]["navigation_groups"]],
             )
-            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            geo = bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertIn("empty_message", geo)
             self.assertIn("features", geo)
             self.assertIn("projection_state", geo)
             self.assertIn("feature_collection", geo)
             self.assertIn(
                 "active_profile",
-                bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
+                bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"],
             )
             self.assertIn(
                 "hierarchy",
-                bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"],
+                bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"],
             )
-            self.assertNotIn("context_strip", bundle["inspector"]["interface_body"])
+            self.assertNotIn("context_strip", bundle["interface_panel"]["interface_body"])
             self.assertEqual(
-                bundle["inspector"]["interface_body"]["navigation_canvas"]["dropdowns"][0]["options"][0]["display_label"],
+                bundle["interface_panel"]["interface_body"]["navigation_canvas"]["dropdowns"][0]["options"][0]["display_label"],
                 "1 NEG",
             )
 
@@ -885,7 +882,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
                 "3-2-3-17-77-0-0",
             )
-            self.assertNotIn("kind", envelope["shell_composition"]["regions"]["inspector"]["interface_body"])
+            self.assertNotIn("kind", envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"])
             self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
@@ -924,7 +921,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 pinned_bundle["surface_payload"]["tool_state"]["source"]["attention_document_id"],
                 pinned_document_id,
             )
-            navigation_canvas = pinned_bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = pinned_bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             option_for_state_node = next(
                 option
                 for dropdown in navigation_canvas["dropdowns"]
@@ -954,7 +951,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
             summary_by_label = {
                 row["label"]: row["value"]
-                for row in navigated_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]["summary_rows"]
+                for row in navigated_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"]["summary_rows"]
             }
             self.assertEqual(summary_by_label["Projection state"], "awaiting_real_projection")
 
@@ -1155,7 +1152,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 bundle["surface_payload"]["tool_state"]["active_path"],
                 ["3", "3-2", "3-2-3", "3-2-3-17", "3-2-3-17-77"],
             )
-            interface_body = bundle["inspector"]["interface_body"]
+            interface_body = bundle["interface_panel"]["interface_body"]
             navigation_canvas = interface_body["navigation_canvas"]
             garland = interface_body["garland_split_projection"]
             self.assertEqual(navigation_canvas["mode"], "directory_dropdowns")
@@ -1219,8 +1216,8 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             )
 
             tool_state = bundle["surface_payload"]["tool_state"]
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
-            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
+            geo = bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(tool_state["selected_node_id"], "3-2-3-17-77")
             self.assertEqual(
@@ -1258,7 +1255,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"selected_node_id": "3-2"}},
             )
 
-            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
             self.assertFalse(garland["geospatial_projection"]["has_real_projection"])
             profile = garland["profile_projection"]
             self.assertFalse(profile["has_real_projection"])
@@ -1309,7 +1306,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"selected_node_id": "3-2-3"}},
             )
 
-            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
             profile = garland["profile_projection"]
             geo = garland["geospatial_projection"]
             self.assertTrue(profile["has_real_projection"])
@@ -1362,7 +1359,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 },
             )
 
-            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
             geo = garland["geospatial_projection"]
             profile = garland["profile_projection"]
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0-0")
@@ -1425,7 +1422,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     }
                 },
             )
-            base_geo = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            base_geo = base_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertNotIn("247-17-77-1", [feature["node_id"] for feature in base_geo["features"]])
             self.assertNotIn("247-17-25-1", [feature["node_id"] for feature in base_geo["features"]])
 
@@ -1448,11 +1445,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     }
                 },
             )
-            timed_geo = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            timed_geo = timed_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             timed_feature_ids = [feature["node_id"] for feature in timed_geo["features"]]
             self.assertIn("247-17-77-1", timed_feature_ids)
             self.assertNotIn("247-17-25-1", timed_feature_ids)
-            profile_projection = timed_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            profile_projection = timed_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"]
             self.assertTrue(bool((profile_projection.get("district_overlay_toggle") or {}).get("enabled")))
             collections = list(profile_projection.get("district_precinct_collections") or [])
             self.assertEqual(len(collections), 1)
@@ -1510,7 +1507,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     }
                 },
             )
-            base_profile = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            base_profile = base_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"]
             base_collections = list(base_profile.get("district_precinct_collections") or [])
             self.assertEqual(base_collections[0]["summary_state"], "deferred")
             toggle_request = dict(
@@ -1670,7 +1667,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"selected_node_id": "3-2-3"}},
             )
 
-            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            geo = bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertEqual(geo["projection_source"], "hops")
             self.assertEqual(geo["projection_state"], "projectable_degraded")
             self.assertEqual(len(geo["collection_bounds"]), 4)
@@ -1711,7 +1708,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 },
             )
 
-            geo = bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            geo = bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertEqual(bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"], "3-2-3-17-77-0")
             self.assertEqual([feature["node_id"] for feature in geo["features"]], ["3-2-3-17-77"])
 
@@ -1742,7 +1739,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 },
             )
 
-            garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+            garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
             geo = garland["geospatial_projection"]
             self.assertEqual(
                 bundle["surface_payload"]["tool_state"]["aitas"]["intention_rule_id"],
@@ -1780,7 +1777,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     }
                 },
             )
-            base_geo = base_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            base_geo = base_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             target_feature_id = base_geo["features"][1]["feature_id"]
 
             selected_bundle = build_portal_cts_gis_surface_bundle(
@@ -1803,7 +1800,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 },
             )
 
-            geo = selected_bundle["inspector"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
+            geo = selected_bundle["interface_panel"]["interface_body"]["garland_split_projection"]["geospatial_projection"]
             self.assertTrue(geo["selected_feature_explicit"])
             self.assertEqual(geo["selected_feature_id"], target_feature_id)
             self.assertEqual(geo["focus_bounds"], base_geo["focus_bounds"])
@@ -1854,7 +1851,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"aitas": {"attention_node_id": "3-2-3-17-77"}}},
             )
 
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             diagnostic_codes = [item["code"] for item in navigation_canvas["diagnostics"]]
@@ -1877,7 +1874,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
             )
 
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(len(navigation_canvas["dropdowns"]), 6)
             diagnostics_by_code = {
@@ -1912,7 +1909,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
             )
 
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(navigation_canvas["magnitude_source_kind"], "tool_anchor")
             self.assertEqual(navigation_canvas["magnitude_datum_address"], "1-1-2")
@@ -1945,7 +1942,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 private_dir=private_dir,
             )
 
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "ready")
             self.assertEqual(navigation_canvas["magnitude_source_kind"], "administrative_source_reconstructed")
             self.assertGreaterEqual(len(navigation_canvas["dropdowns"]), 5)
@@ -1983,7 +1980,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 request_payload={"tool_state": {"aitas": {"attention_node_id": "3-2-3-17-77"}}},
             )
 
-            navigation_canvas = bundle["inspector"]["interface_body"]["navigation_canvas"]
+            navigation_canvas = bundle["interface_panel"]["interface_body"]["navigation_canvas"]
             self.assertEqual(navigation_canvas["decode_state"], "blocked_invalid_magnitude")
             self.assertEqual(navigation_canvas["dropdowns"], [])
             self.assertEqual(navigation_canvas["active_path"], [])
@@ -2075,17 +2072,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "network_system_log_workbench",
             )
             self.assertEqual(
-                envelope["shell_composition"]["regions"]["inspector"]["kind"],
+                envelope["shell_composition"]["regions"]["interface_panel"]["kind"],
                 "summary_panel",
             )
-            self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
             self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-            self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
-            self.assertEqual(
-                envelope["shell_composition"]["regions"]["interface_panel"],
-                envelope["shell_composition"]["regions"]["inspector"],
-            )
+            self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+            self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
             record_id = envelope["surface_payload"]["workspace"]["records"][0]["datum_address"]
             focused_envelope = run_portal_shell_entry(
@@ -2108,18 +2101,14 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 focused_envelope["canonical_query"],
                 {"view": "system_logs", "record": record_id},
             )
-            self.assertFalse(focused_envelope["shell_composition"]["inspector_collapsed"])
             self.assertFalse(focused_envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(focused_envelope["shell_composition"]["workbench_collapsed"])
-            self.assertTrue(focused_envelope["shell_composition"]["regions"]["inspector"]["visible"])
+            self.assertTrue(focused_envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
             self.assertEqual(
-                focused_envelope["shell_composition"]["regions"]["inspector"]["subject"],
+                focused_envelope["shell_composition"]["regions"]["interface_panel"]["subject"],
                 {"level": "record", "id": record_id},
             )
-            self.assertEqual(
-                focused_envelope["shell_composition"]["regions"]["interface_panel"],
-                focused_envelope["shell_composition"]["regions"]["inspector"],
-            )
+            self.assertNotIn("inspector", focused_envelope["shell_composition"]["regions"])
             self.assertEqual(
                 focused_envelope["shell_state"],
                 {"schema": "mycite.v2.portal.shell.state.v1"},
@@ -2162,14 +2151,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         control_panel = operational_envelope["shell_composition"]["regions"]["control_panel"]
         self.assertEqual(control_panel["kind"], "unified_directive_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
-        self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
-        self.assertEqual(
-            envelope["shell_composition"]["regions"]["interface_panel"],
-            envelope["shell_composition"]["regions"]["inspector"],
-        )
+        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
     def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
         envelope = run_portal_shell_entry(
@@ -2204,14 +2189,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             [entry["label"] for entry in control_panel["groups"][0]["entries"]],
             ["Tool Exposure", "Integrations"],
         )
-        self.assertTrue(envelope["shell_composition"]["inspector_collapsed"])
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertFalse(envelope["shell_composition"]["regions"]["inspector"]["visible"])
-        self.assertEqual(
-            envelope["shell_composition"]["regions"]["interface_panel"],
-            envelope["shell_composition"]["regions"]["inspector"],
-        )
+        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
     def test_runtime_owned_surface_does_not_emit_client_supplied_shell_state(self) -> None:
         envelope = run_portal_shell_entry(

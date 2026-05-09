@@ -23,8 +23,6 @@ The shell is one host layout with four peer regions inside `ide-body`:
 
 Tools do not create parallel shells.
 
-`inspector` remains a compatibility alias for `Interface Panel` until schema alias retirement.
-
 ## Region Families
 
 Shell region dispatch is constrained to three canonical payload families:
@@ -184,8 +182,8 @@ Implementation work under that stream preserves:
 Rules:
 
 - tool registry posture metadata is descriptive, not authoritative
-- non-`workbench_primary` tools default to hidden workbench on first composition
-- `workbench_ui` remains the approved `workbench_primary` exception
+- tools default to hidden workbench on first composition unless their registry entry sets `default_workbench_visible=true`
+- `workbench_ui` keeps the SQL authority lens visible through that registry flag
 - runtime bundles may project secondary workbench evidence but must not override first-load posture authority
 
 ## Request and Query Normalization Invariant
@@ -236,9 +234,7 @@ Active contract state:
 - wrapper states and direct-query helpers continue to flow through shared adapters and widget contracts
 - top-level tool-specific shell dispatcher branches are retired from the active runtime/client paths
 
-Deferred scope:
-
-- public `inspector` alias retirement remains a later schema-revision task and does not change the active three-family shell contract
+No public right-rail compatibility aliases remain in the active shell-region contract.
 
 ## Contract Test Matrix
 

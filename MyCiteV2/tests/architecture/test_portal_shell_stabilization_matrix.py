@@ -49,7 +49,7 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
                 activity_items=[],
                 control_panel={},
                 workbench={"visible": True},
-                inspector={},
+                interface_panel={},
                 shell_state=None,
             )
 

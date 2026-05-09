@@ -773,7 +773,7 @@
       renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec);
       return;
     }
-    if (mode === "workbench_ui_surface") {
+    if (asText(surfacePayload && surfacePayload.kind) === "sql_authority_lens" || asText(region && region.kind) === "sql_authority_lens") {
       renderWorkbenchUiSurface(ctx, target, region, surfacePayload);
       return;
     }
@@ -934,19 +934,19 @@
     );
   }
 
-  function renderSandboxDocumentGallery(region) {
-    var gallery = asObject(region && region.gallery);
-    var documents = asList(gallery.documents);
+  function renderSandboxDocumentCollection(region) {
+    var collection = asObject(region && region.document_collection);
+    var documents = asList(collection.documents);
     if (!documents.length) {
       return (
         '<section class="v2-card" style="margin-top:12px">' +
-        '<h3>Sandbox Document Gallery</h3>' +
+        '<h3>Sandbox Documents</h3>' +
         "<p>No datum documents are owned by this sandbox yet.</p>" +
         "</section>"
       );
     }
     return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Sandbox Document Gallery</h3>' +
+      '<section class="v2-card" style="margin-top:12px"><h3>Sandbox Documents</h3>' +
       '<div class="v2-card-grid">' +
       documents
         .map(function (card) {
@@ -981,13 +981,11 @@
   }
 
   function renderDatumFileWorkbench(ctx, target, region) {
-    var mode = asText(region && region.mode) || "anchor";
-    var body;
-    if (mode === "gallery") {
-      body = renderSandboxDocumentGallery(region);
-    } else {
-      body = renderLayeredDatumTable(region);
-    }
+    var activeDocument = asObject(region && region.active_document);
+    var table = asObject(region && region.layered_datum_table);
+    var body = (activeDocument.document_id || asObject(table.document).document_id)
+      ? renderLayeredDatumTable(region)
+      : renderSandboxDocumentCollection(region);
     target.innerHTML = renderDatumFileWorkbenchHeader(region) + body;
     bindDatumFileWorkbenchEvents(ctx, target, region);
   }
@@ -1006,6 +1004,31 @@
       node.addEventListener("click", activate);
       node.addEventListener("keydown", activate);
     });
+    // Wire NIMM directive actions: buttons with data-nimm-action-id dispatch the
+    // corresponding transition directive from state_reflection.nimm.actions
+    var stateReflection = asObject(region && region.state_reflection);
+    var nimmActions = asList((asObject(stateReflection.nimm)).actions);
+    if (nimmActions.length) {
+      var nimmActionMap = {};
+      nimmActions.forEach(function (entry) {
+        var action = entry && typeof entry === "object" ? entry : {};
+        var actionId = asText(action.action_id);
+        if (actionId) nimmActionMap[actionId] = action;
+      });
+      Array.prototype.forEach.call(target.querySelectorAll("[data-nimm-action-id]"), function (node) {
+        node.addEventListener("click", function (event) {
+          event.preventDefault();
+          var actionId = node.getAttribute("data-nimm-action-id") || "";
+          var actionEntry = nimmActionMap[actionId];
+          if (!actionEntry) return;
+          var directive = asText(actionEntry.directive);
+          if (directive && typeof ctx.dispatchTransition === "function") {
+            ctx.dispatchTransition({ kind: "nimm_directive", directive: directive, action_id: actionId });
+          }
+        });
+      });
+    }
+
     Array.prototype.forEach.call(target.querySelectorAll("[data-datum-edit-action]"), function (node) {
       node.addEventListener("click", function () {
         var table = asObject(region && region.layered_datum_table);

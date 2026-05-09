@@ -2,21 +2,15 @@
 
 This module exposes :func:`build_datum_file_workbench`, the single
 shared builder used by every tool surface to project the centre
-"workbench" region of the portal shell. The workbench is a state
-machine reactive to the active sandbox:
-
-* ``mode == "anchor"`` — the layered datum table of the sandbox's
-  anchor file (``anthology`` for the SYSTEM sandbox, ``anchor`` for
-  every tool sandbox).
-* ``mode == "gallery"`` — a card grid of every document owned by the
-  sandbox, used when the user has backed out of the anchor.
-* ``mode == "selected_document"`` — the layered datum table of an
-  explicitly selected document (gallery click).
+"workbench" region of the portal shell. The workbench materializes the
+current MyCite state: sandbox, file, datum, object, AITAS context, and
+NIMM directive posture.
 
 The frontend dispatches on ``region.kind == "datum_file_workbench"``
-and renders the appropriate sub-view based on ``mode``. Tool-specific
-chrome (Diktataograph, Garland, manifest trees, analytics, …) does
-not live in the workbench; it lives in the Interface Panel.
+and renders from ``state_reflection``, ``document_collection``, and
+``active_document``. Tool-specific chrome (Diktataograph, Garland,
+manifest trees, analytics, etc.) does not live in the workbench; it
+lives in the Interface Panel.
 """
 
 from __future__ import annotations
@@ -33,15 +27,6 @@ from MyCiteV2.packages.state_machine.portal_shell import PortalScope, PortalShel
 
 PORTAL_SHELL_REGION_DATUM_FILE_WORKBENCH_SCHEMA = "mycite.v2.portal.shell.region.workbench.v2"
 DATUM_FILE_WORKBENCH_KIND = "datum_file_workbench"
-
-WORKBENCH_MODE_ANCHOR = "anchor"
-WORKBENCH_MODE_GALLERY = "gallery"
-WORKBENCH_MODE_SELECTED_DOCUMENT = "selected_document"
-WORKBENCH_MODES = (
-    WORKBENCH_MODE_ANCHOR,
-    WORKBENCH_MODE_GALLERY,
-    WORKBENCH_MODE_SELECTED_DOCUMENT,
-)
 
 
 def _as_dict(value: Any) -> dict[str, Any]:
@@ -319,6 +304,66 @@ def _selected_datum_id(shell_state: PortalShellState | None) -> str:
     return ""
 
 
+def _focus_id(shell_state: PortalShellState | None, *, level: str) -> str:
+    if shell_state is None:
+        return ""
+    state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
+    for segment in state.focus_path:
+        if segment.level == level:
+            return segment.id
+    return ""
+
+
+def _state_reflection(
+    *,
+    shell_state: PortalShellState | None,
+    sandbox_id: str,
+    active_document_summary: dict[str, Any],
+    extra_payload: dict[str, Any] | None,
+) -> dict[str, Any]:
+    extra = extra_payload if isinstance(extra_payload, dict) else {}
+    current_sandbox = _focus_id(shell_state, level="sandbox") or sandbox_id
+    current_file = _focus_id(shell_state, level="file") or as_text(active_document_summary.get("document_id"))
+    current_datum = _focus_id(shell_state, level="datum")
+    current_object = _focus_id(shell_state, level="object")
+    attention = current_object or current_datum or current_file or current_sandbox
+    # intention shifts from "observe" to "investigate" when a specific datum is in focus
+    intention = "investigate" if current_datum else ("navigate" if current_file else "observe")
+    aitas = extra.get("aitas") or extra.get("aitas_state") or {
+        "attention": attention,
+        "intention": intention,
+        "time": "current",
+        "archetype": "datum_file_workbench",
+    }
+    # nimm actions carry structured directive hints the frontend can use as control backing
+    nimm_actions: list[dict[str, Any]] = [
+        {"action_id": "focus_sandbox", "directive": "nav;self:in", "script_hint": "daemon(\"nav;self:in\")"},
+        {"action_id": "focus_file", "directive": "nav;file:select", "script_hint": "daemon(\"nav;file:select\")"},
+        {"action_id": "focus_datum", "directive": "nav;datum:select", "script_hint": "daemon(\"nav;datum:select\")"},
+        {"action_id": "focus_object", "directive": "nav;object:select", "script_hint": "daemon(\"nav;object:select\")"},
+        {"action_id": "back_out", "directive": "nav;self:out", "script_hint": "daemon(\"nav;self:out\")"},
+    ]
+    if current_datum:
+        nimm_actions = [
+            {"action_id": "open_datum_panel", "directive": "investigate;datum:open_panel", "script_hint": "daemon(\"investigate;datum:open_panel\")"},
+            {"action_id": "close_datum_panel", "directive": "investigate;datum:close_panel", "script_hint": "daemon(\"investigate;datum:close_panel\")"},
+            {"action_id": "back_out", "directive": "nav;self:out", "script_hint": "daemon(\"nav;self:out\")"},
+        ]
+    nimm = extra.get("nimm") or extra.get("nimm_directive") or {
+        "directive": "observe_state" if not current_datum else "investigate_datum",
+        "actions": nimm_actions,
+    }
+    return {
+        "schema": "mycite.v2.portal.workbench.state_reflection.v1",
+        "current_sandbox": current_sandbox,
+        "current_file": current_file,
+        "current_datum": current_datum,
+        "current_object": current_object,
+        "aitas": _json_safe(aitas),
+        "nimm": _json_safe(nimm),
+    }
+
+
 def _layered_table_for_document(
     document: Any,
     *,
@@ -391,33 +436,6 @@ def _gallery_cards(
     return cards
 
 
-def _resolve_mode(
-    *,
-    anchor_document: Any | None,
-    selected_document: Any | None,
-    explicit_mode: str | None,
-) -> str:
-    """Resolve the workbench mode from inputs.
-
-    Explicit mode (when valid) wins. Otherwise: anchor mode when
-    a sandbox anchor is provided and no other selection exists;
-    selected_document when a non-anchor selection is provided;
-    gallery when no selection at all.
-    """
-
-    if explicit_mode in WORKBENCH_MODES:
-        return explicit_mode
-    selected_summary = _document_summary(selected_document)
-    anchor_summary = _document_summary(anchor_document)
-    selected_id = selected_summary.get("document_id")
-    anchor_id = anchor_summary.get("document_id")
-    if selected_id and selected_id != anchor_id:
-        return WORKBENCH_MODE_SELECTED_DOCUMENT
-    if anchor_id:
-        return WORKBENCH_MODE_ANCHOR
-    return WORKBENCH_MODE_GALLERY
-
-
 def build_datum_file_workbench(
     *,
     portal_scope: PortalScope,
@@ -428,19 +446,12 @@ def build_datum_file_workbench(
     anchor_document: Any | None = None,
     selected_document: Any | None = None,
     sandbox_documents: list[Any] | None = None,
-    explicit_mode: str | None = None,
     title: str = "Datum File Workbench",
     subtitle: str = "",
     visible: bool = True,
     extra_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Construct the canonical ``datum_file_workbench`` region payload.
-
-    Returns a region dict with kind ``datum_file_workbench`` carrying
-    the resolved ``mode`` plus mode-specific projections. The frontend
-    dispatch picks ``renderLayeredDatumTable`` for ``anchor`` and
-    ``selected_document`` modes, and ``renderSandboxDocumentGallery``
-    for ``gallery`` mode.
 
     Tool surfaces pass:
       * ``sandbox_id`` — canonical sandbox segment (``"system"``,
@@ -449,22 +460,26 @@ def build_datum_file_workbench(
       * ``selected_document`` — the focused datum file (may be the
         anchor itself or a sibling)
       * ``sandbox_documents`` — every datum document owned by
-        ``sandbox_id``, used to render the gallery
-
-    Workbench-UI is the documented exception: it keeps its bespoke
-    SQL row-grid as a workbench-primary surface and does not call
-    this builder.
+        ``sandbox_id``, used to render the document collection
     """
-
-    mode = _resolve_mode(
-        anchor_document=anchor_document,
-        selected_document=selected_document,
-        explicit_mode=explicit_mode,
-    )
 
     anchor_summary = _document_summary(anchor_document)
     selected_summary = _document_summary(selected_document)
     documents = _as_list(sandbox_documents)
+    selected_id = as_text(selected_summary.get("document_id"))
+    anchor_id = as_text(anchor_summary.get("document_id"))
+    focus_file = _focus_id(shell_state, level="file")
+    active_document = None
+    if selected_id:
+        active_document = selected_document
+    elif anchor_id and (shell_state is None or focus_file):
+        active_document = anchor_document
+    active_summary = _document_summary(active_document)
+    collection_cards = _gallery_cards(
+        documents,
+        sandbox_id=sandbox_id,
+        selected_document_id=as_text(active_summary.get("document_id")),
+    )
 
     payload: dict[str, Any] = {
         "schema": PORTAL_SHELL_REGION_DATUM_FILE_WORKBENCH_SCHEMA,
@@ -472,33 +487,31 @@ def build_datum_file_workbench(
         "title": title,
         "subtitle": subtitle,
         "visible": visible,
-        "mode": mode,
         "sandbox": {
             "id": sandbox_id,
             "label": sandbox_label or sandbox_id,
         },
-        "anchor": anchor_summary or None,
-        "selected_document": selected_summary or None,
+        "state_reflection": _state_reflection(
+            shell_state=shell_state,
+            sandbox_id=sandbox_id,
+            active_document_summary=active_summary,
+            extra_payload=extra_payload,
+        ),
+        "document_collection": {
+            "sandbox_id": sandbox_id,
+            "anchor_document": anchor_summary or None,
+            "documents": collection_cards,
+        },
+        "active_document": active_summary or None,
         "portal_scope": portal_scope.to_dict() if isinstance(portal_scope, PortalScope) else {},
     }
 
-    if mode == WORKBENCH_MODE_GALLERY:
-        payload["gallery"] = {
-            "sandbox_id": sandbox_id,
-            "documents": _gallery_cards(
-                documents,
-                sandbox_id=sandbox_id,
-                selected_document_id=selected_summary.get("document_id") or "",
-            ),
-        }
-    elif mode in (WORKBENCH_MODE_ANCHOR, WORKBENCH_MODE_SELECTED_DOCUMENT):
-        focal_document = anchor_document if mode == WORKBENCH_MODE_ANCHOR else selected_document
-        if focal_document is not None:
-            payload["layered_datum_table"] = _layered_table_for_document(
-                focal_document,
-                sandbox_id=sandbox_id,
-                selected_datum_id=_selected_datum_id(shell_state),
-            )
+    if active_document is not None:
+        payload["layered_datum_table"] = _layered_table_for_document(
+            active_document,
+            sandbox_id=sandbox_id,
+            selected_datum_id=_selected_datum_id(shell_state),
+        )
 
     if isinstance(extra_payload, dict):
         for key, value in extra_payload.items():
@@ -515,8 +528,4 @@ __all__ = [
     "build_datum_file_workbench",
     "PORTAL_SHELL_REGION_DATUM_FILE_WORKBENCH_SCHEMA",
     "DATUM_FILE_WORKBENCH_KIND",
-    "WORKBENCH_MODE_ANCHOR",
-    "WORKBENCH_MODE_GALLERY",
-    "WORKBENCH_MODE_SELECTED_DOCUMENT",
-    "WORKBENCH_MODES",
 ]

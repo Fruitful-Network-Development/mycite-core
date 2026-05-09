@@ -7,7 +7,10 @@ This repository describes one portal shell and one application authority model.
 - Canonical public entry: `/portal` -> `/portal/system`
 - Canonical shell endpoint: `/portal/api/v2/shell`
 - Canonical tool work pages: `/portal/system/tools/<tool_slug>`
+- Canonical AWS service tool: `/portal/system/tools/aws-csm`
+- Canonical FND-DCM service tool: `/portal/system/tools/fnd-dcm`
 - SQL-backed authority is the expected posture for migrated `SYSTEM` surfaces
+- `/portal/system/tools/workbench-ui` is the read-only two-pane SQL authority lens
 
 If you are orienting to repo responsibility first, read:
 
@@ -74,6 +77,8 @@ Related repos and roots:
   [`docs/contracts/samras_structural_model.md`](contracts/samras_structural_model.md),
   [`docs/contracts/samras_validity_and_mutation.md`](contracts/samras_validity_and_mutation.md),
   [`docs/contracts/mutation_contract.md`](contracts/mutation_contract.md)
+- mediation surface archetype:
+  [`docs/contracts/tool_mediation_surface_archetype.md`](contracts/tool_mediation_surface_archetype.md)
 - planning system posture:
   [`docs/plans/README.md`](plans/README.md)
 

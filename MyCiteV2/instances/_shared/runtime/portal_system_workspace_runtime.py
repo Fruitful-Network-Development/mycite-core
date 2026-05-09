@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import OrderedDict
+from collections.abc import Mapping
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -14,7 +15,6 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     attach_region_family_contract,
 )
 from MyCiteV2.instances._shared.runtime.portal_workbench import (
-    WORKBENCH_MODE_GALLERY,
     build_datum_file_workbench,
 )
 from MyCiteV2.packages.adapters.sql import (
@@ -35,7 +35,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FOCUS_LEVEL_FILE,
     FOCUS_LEVEL_OBJECT,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
     PortalShellState,
@@ -72,6 +72,16 @@ def _path_or_none(value: str | Path | None) -> Path | None:
     if value is None:
         return None
     return Path(value)
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {as_text(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return as_text(value)
 
 
 def _workbench_cache_key(*, tenant_id: str, authority_db_file: str | Path | None) -> tuple[str, str, int] | None:
@@ -1483,40 +1493,31 @@ def _file_entries_to_navigation_groups(
     return out
 
 
-_ALLOWED_WORKBENCH_MODES = {"anchor", "gallery", "selected_document"}
-
-
 def _workbench_state_context_row(workbench_state: dict[str, Any] | None) -> dict[str, Any] | None:
-    """Project a ``workbench_state`` dict as a single context-conditions row.
-
-    Schema:
-    ``{"mode": "anchor"|"gallery"|"selected_document",
-       "anchor_document_id": <canonical id>,
-       "selected_document_id": <canonical id> (for selected_document mode)}``
-    """
-
     if not isinstance(workbench_state, dict):
         return None
-    mode = as_text(workbench_state.get("mode"))
-    if mode not in _ALLOWED_WORKBENCH_MODES:
+    reflection = workbench_state.get("state_reflection")
+    if not isinstance(reflection, dict):
+        reflection = workbench_state
+    current_file = as_text(reflection.get("current_file"))
+    current_datum = as_text(reflection.get("current_datum"))
+    current_object = as_text(reflection.get("current_object"))
+    current_sandbox = as_text(reflection.get("current_sandbox"))
+    value = current_object or current_datum or current_file or current_sandbox
+    if not value:
         return None
-    anchor_id = as_text(workbench_state.get("anchor_document_id"))
-    selected_id = as_text(workbench_state.get("selected_document_id"))
-    if mode == "anchor":
-        value = anchor_id or "anchor"
-    elif mode == "gallery":
-        value = "gallery"
-    else:
-        value = selected_id or anchor_id or "selected"
     return {
         "level": "workbench_state",
         "label": "Workbench",
         "value": value,
-        "state": mode,
+        "state": "reflecting",
         "metadata": {
-            "mode": mode,
-            "anchor_document_id": anchor_id,
-            "selected_document_id": selected_id,
+            "current_sandbox": current_sandbox,
+            "current_file": current_file,
+            "current_datum": current_datum,
+            "current_object": current_object,
+            "aitas": _json_safe(reflection.get("aitas")),
+            "nimm": _json_safe(reflection.get("nimm")),
         },
     }
 
@@ -1754,8 +1755,8 @@ def build_system_workspace_bundle(
         if _is_system_anchor_document(active_document):
             document_payload["presentation"] = "anthology_layered_table"
             document_payload["summary"] = "Canonical system anchor file rendered as a layered datum table."
-            document_payload["inspector_hint"] = (
-                "Select a datum row to inspect its structural coordinates, bindings, and raw payload."
+            document_payload["interface_panel_hint"] = (
+                "Select a datum row to view its structural coordinates, bindings, and raw payload."
             )
             document_payload["layer_groups"] = _anthology_layer_groups(
                 active_document,
@@ -1784,16 +1785,24 @@ def build_system_workspace_bundle(
             )
         )
 
-    if not active_file_key:
-        system_workbench_mode = "gallery"
-    elif active_file_key == SYSTEM_ANCHOR_FILE_KEY:
-        system_workbench_mode = "anchor"
-    else:
-        system_workbench_mode = "selected_document"
+    workbench_attention = selected_object_id or selected_datum_id or active_file_key or "system"
     system_workbench_state = {
-        "mode": system_workbench_mode,
-        "anchor_document_id": SYSTEM_ANCHOR_FILE_KEY,
-        "selected_document_id": active_file_key if system_workbench_mode == "selected_document" else "",
+        "state_reflection": {
+            "current_sandbox": "system",
+            "current_file": active_file_key or "",
+            "current_datum": selected_datum_id or "",
+            "current_object": selected_object_id or "",
+            "aitas": {
+                "attention": workbench_attention,
+                "intention": shell_state.verb or VERB_NAVIGATE,
+                "time": "current",
+                "archetype": "system_workspace",
+            },
+            "nimm": {
+                "directive": shell_state.verb or VERB_NAVIGATE,
+                "actions": [action.get("action_kind") or action.get("kind") or action.get("label") for action in actions],
+            },
+        },
     }
 
     file_navigation_groups = _file_entries_to_navigation_groups(
@@ -1832,9 +1841,9 @@ def build_system_workspace_bundle(
         actions=actions,
         workbench_state=system_workbench_state,
     )
-    inspector = attach_region_family_contract(
+    interface_panel = attach_region_family_contract(
         {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
         "summary": "Mediation is bound to the current focus subject." if shell_state.verb == VERB_MEDIATE else "The interface panel stays collapsed during ordinary navigation.",
@@ -1866,8 +1875,7 @@ def build_system_workspace_bundle(
         surface_id=SYSTEM_ROOT_SURFACE_ID,
     )
     if directive_context is not None:
-        inspector["sections"].append(_directive_context_section(directive_context))
-    explicit_workbench_mode = WORKBENCH_MODE_GALLERY if not active_file_key else None
+        interface_panel["sections"].append(_directive_context_section(directive_context))
     workbench = build_datum_file_workbench(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1877,11 +1885,14 @@ def build_system_workspace_bundle(
         anchor_document=anchor_document,
         selected_document=active_document,
         sandbox_documents=system_documents,
-        explicit_mode=explicit_workbench_mode,
         title="System Datum-File Workbench",
         subtitle="SYSTEM owns the core datum-file workbench for the system sandbox.",
         visible=True,
-        extra_payload={"surface_payload": surface_payload},
+        extra_payload={
+            "surface_payload": surface_payload,
+            "aitas": system_workbench_state["state_reflection"]["aitas"],
+            "nimm": system_workbench_state["state_reflection"]["nimm"],
+        },
     )
     return {
         "page_title": "System",
@@ -1889,7 +1900,7 @@ def build_system_workspace_bundle(
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
-        "inspector": inspector,
+        "interface_panel": interface_panel,
         "active_document": active_document,
         "selected_datum": selected_datum,
         "selected_object": selected_object,

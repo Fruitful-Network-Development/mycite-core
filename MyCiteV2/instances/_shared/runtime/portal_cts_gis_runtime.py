@@ -64,7 +64,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_FILE,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     TOOL_ANCHOR_FILE_KEY,
@@ -3656,9 +3656,9 @@ def build_portal_cts_gis_surface_bundle(
         visible=show_workbench,
         extra_payload={"forced_visible": forced_visible},
     )
-    inspector = attach_region_family_contract(
+    interface_panel = attach_region_family_contract(
         {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "mediation_panel",
         "title": "CTS-GIS",
         "summary": "CTS-GIS projects one mediation posture through structural navigation and correlated spatial evidence.",
@@ -3699,7 +3699,7 @@ def build_portal_cts_gis_surface_bundle(
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
-        "inspector": inspector,
+        "interface_panel": interface_panel,
         "shell_state": shell_state,
         "route": CTS_GIS_TOOL_ROUTE,
     }

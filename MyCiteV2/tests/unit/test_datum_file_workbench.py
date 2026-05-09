@@ -10,15 +10,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.instances._shared.runtime.portal_workbench import (
     DATUM_FILE_WORKBENCH_KIND,
-    WORKBENCH_MODE_ANCHOR,
-    WORKBENCH_MODE_GALLERY,
-    WORKBENCH_MODE_SELECTED_DOCUMENT,
     build_datum_file_workbench,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     PortalScope,
+    PortalShellState,
     SYSTEM_ROOT_SURFACE_ID,
 )
 
@@ -51,7 +49,7 @@ class DatumFileWorkbenchTests(unittest.TestCase):
     def setUp(self) -> None:
         self.portal_scope = PortalScope(scope_id="fnd")
 
-    def test_anchor_mode_emits_layered_datum_table(self) -> None:
+    def test_anchor_focus_emits_state_reflection_and_layered_datum_table(self) -> None:
         anchor = _document(
             document_id="lv.fnd.system.anthology.deadbeef",
             document_name="anthology.json",
@@ -67,12 +65,15 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             anchor_document=anchor,
         )
         self.assertEqual(region["kind"], DATUM_FILE_WORKBENCH_KIND)
-        self.assertEqual(region["mode"], WORKBENCH_MODE_ANCHOR)
-        self.assertEqual(region["anchor"]["document_id"], anchor["document_id"])
+        self.assertNotIn("mode", region)
+        self.assertEqual(region["state_reflection"]["current_sandbox"], "system")
+        self.assertEqual(region["state_reflection"]["current_file"], anchor["document_id"])
+        self.assertEqual(region["document_collection"]["anchor_document"]["document_id"], anchor["document_id"])
+        self.assertEqual(region["active_document"]["document_id"], anchor["document_id"])
         self.assertIn("layered_datum_table", region)
         self.assertEqual(len(region["layered_datum_table"]["rows"]), 2)
 
-    def test_gallery_mode_lists_sandbox_documents_with_anchor_first(self) -> None:
+    def test_document_collection_lists_sandbox_documents_with_anchor_first(self) -> None:
         anchor = _document(
             document_id="lv.fnd.cts_gis.anchor.aaaa",
             document_name="tool.3-2-3.cts-gis.json",
@@ -99,10 +100,9 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             sandbox_id="cts_gis",
             anchor_document=None,
             sandbox_documents=[secondary, anchor, tertiary],
-            explicit_mode=WORKBENCH_MODE_GALLERY,
         )
-        self.assertEqual(region["mode"], WORKBENCH_MODE_GALLERY)
-        cards = region["gallery"]["documents"]
+        self.assertNotIn("mode", region)
+        cards = region["document_collection"]["documents"]
         self.assertEqual(cards[0]["document_id"], anchor["document_id"])
         self.assertEqual(cards[0]["label"], "anchor")
         self.assertEqual(cards[1]["label"], "address_nodes")
@@ -111,8 +111,10 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             [card["document_id"] for card in cards],
             [anchor["document_id"], tertiary["document_id"], secondary["document_id"]],
         )
+        self.assertIsNone(region["active_document"])
+        self.assertNotIn("layered_datum_table", region)
 
-    def test_selected_document_mode_emits_layered_datum_table_for_selection(self) -> None:
+    def test_selected_file_emits_active_document_layered_datum_table(self) -> None:
         anchor = _document(
             document_id="lv.fnd.aws_csm.anchor.aaaa",
             document_name="anchor.json",
@@ -133,12 +135,12 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             anchor_document=anchor,
             selected_document=selected,
         )
-        self.assertEqual(region["mode"], WORKBENCH_MODE_SELECTED_DOCUMENT)
-        self.assertEqual(region["selected_document"]["document_id"], selected["document_id"])
+        self.assertNotIn("mode", region)
+        self.assertEqual(region["active_document"]["document_id"], selected["document_id"])
         self.assertEqual(region["layered_datum_table"]["document"]["document_id"], selected["document_id"])
         self.assertEqual(len(region["layered_datum_table"]["rows"]), 1)
 
-    def test_projection_bundle_input_emits_gallery_card_and_layer_groups(self) -> None:
+    def test_projection_bundle_input_emits_collection_card_and_layer_groups(self) -> None:
         bundle = {
             "document_summary": {
                 "document_id": "lv.fnd.cts_gis.natural_entity.bbbb",
@@ -153,15 +155,14 @@ class DatumFileWorkbenchTests(unittest.TestCase):
                 ]
             },
         }
-        gallery = build_datum_file_workbench(
+        collection = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
             sandbox_id="cts_gis",
             sandbox_documents=[bundle],
-            explicit_mode=WORKBENCH_MODE_GALLERY,
         )
-        self.assertEqual(gallery["gallery"]["documents"][0]["document_id"], "lv.fnd.cts_gis.natural_entity.bbbb")
+        self.assertEqual(collection["document_collection"]["documents"][0]["document_id"], "lv.fnd.cts_gis.natural_entity.bbbb")
         selected = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
@@ -176,7 +177,7 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         self.assertEqual(table["layer_groups"][0]["value_groups"][0]["value_group"], 3)
         self.assertEqual(table["layer_groups"][0]["value_groups"][0]["row_count"], 2)
 
-    def test_explicit_gallery_overrides_anchor_resolution(self) -> None:
+    def test_sandbox_level_focus_emits_collection_without_active_table(self) -> None:
         anchor = _document(
             document_id="lv.fnd.system.anthology.aaaa",
             document_name="anthology.json",
@@ -184,20 +185,24 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             canonical_name="anthology",
             is_anchor=True,
         )
+        shell_state = PortalShellState(
+            active_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            focus_path=[{"level": "sandbox", "id": "system"}],
+        )
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
-            shell_state=None,
+            shell_state=shell_state,
             surface_id=SYSTEM_ROOT_SURFACE_ID,
             sandbox_id="system",
             anchor_document=anchor,
             sandbox_documents=[anchor],
-            explicit_mode=WORKBENCH_MODE_GALLERY,
         )
-        self.assertEqual(region["mode"], WORKBENCH_MODE_GALLERY)
-        self.assertIn("gallery", region)
+        self.assertNotIn("mode", region)
+        self.assertIsNone(region["active_document"])
+        self.assertEqual(region["document_collection"]["documents"][0]["document_id"], anchor["document_id"])
         self.assertNotIn("layered_datum_table", region)
 
-    def test_anchor_only_sandbox_still_resolves_anchor_mode(self) -> None:
+    def test_anchor_only_sandbox_still_reflects_anchor_file(self) -> None:
         anchor = _document(
             document_id="lv.fnd.cts_gis.anchor.aaaa",
             document_name="tool.3-2-3.cts-gis.json",
@@ -214,8 +219,8 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             anchor_document=anchor,
             sandbox_documents=[anchor],
         )
-        self.assertEqual(region["mode"], WORKBENCH_MODE_ANCHOR)
-        self.assertEqual(region["anchor"]["canonical_name"], "anchor")
+        self.assertEqual(region["active_document"]["canonical_name"], "anchor")
+        self.assertEqual(region["document_collection"]["anchor_document"]["canonical_name"], "anchor")
 
     def test_attaches_region_family_contract(self) -> None:
         region = build_datum_file_workbench(
@@ -224,7 +229,6 @@ class DatumFileWorkbenchTests(unittest.TestCase):
             surface_id=CTS_GIS_TOOL_SURFACE_ID,
             sandbox_id="cts_gis",
             anchor_document=None,
-            explicit_mode=WORKBENCH_MODE_GALLERY,
         )
         self.assertIn("family_contract", region)
         self.assertEqual(region["family_contract"]["family"], "reflective_workspace")

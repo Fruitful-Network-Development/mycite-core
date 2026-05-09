@@ -11,7 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
-    build_portal_workbench_ui_surface_bundle,
+    build_portal_workbench_ui_bundle,
     run_portal_workbench_ui,
 )
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
@@ -158,7 +158,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["surface_id"], "system.tools.workbench_ui")
             self.assertEqual(envelope["shell_state"], {"schema": "mycite.v2.portal.shell.state.v1"})
             self.assertIsNone(envelope["shell_composition"]["shell_state"])
-            self.assertEqual(envelope["surface_payload"]["kind"], "workbench_ui_surface")
+            self.assertEqual(envelope["surface_payload"]["kind"], "sql_authority_lens")
             self.assertIn("document", envelope["canonical_query"])
             for key in ("file", "datum", "object", "verb"):
                 self.assertNotIn(key, envelope["canonical_query"])
@@ -422,7 +422,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 tenant_id="fnd",
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -475,7 +475,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 document_id="system:anthology",
             )["version_hash"]
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -531,7 +531,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 datum_address="1-1-2",
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -595,7 +595,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 }
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -603,7 +603,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 surface_query={"document": "system:anthology", "row": "1-1-2", "overlay": "show"},
             )
 
-            overlay_section = next(section for section in bundle["inspector"]["sections"] if section["title"] == "Directive Overlay")
+            overlay_section = next(section for section in bundle["interface_panel"]["sections"] if section["title"] == "Directive Overlay")
             self.assertEqual(overlay_section["rows"][0]["value"], "loaded")
             catalog = datum_store.read_authoritative_datum_documents({"tenant_id": "fnd"})
             document = next(item for item in catalog.documents if item.document_id == "system:anthology")
@@ -635,7 +635,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 tenant_id="fnd",
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -652,7 +652,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             document_table = workspace["document_table"]
             datum_grid = workspace["datum_grid"]
-            inspector_titles = [section["title"] for section in bundle["inspector"]["sections"]]
+            interface_panel_titles = [section["title"] for section in bundle["interface_panel"]["sections"]]
 
             self.assertEqual(workspace["query"]["group"], "layer_value_group")
             self.assertEqual(workspace["query"]["workbench_lens"], "raw")
@@ -670,7 +670,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertLessEqual(len(workspace["selected_row"]["hyphae_hash_short"]), 12)
             self.assertIn("raw_preview", [column["key"] for column in datum_grid["columns"]])
             self.assertNotIn("labels", [column["key"] for column in datum_grid["columns"]])
-            self.assertNotIn("Source Metadata", inspector_titles)
+            self.assertNotIn("Source Metadata", interface_panel_titles)
 
     def test_workbench_ui_supports_iteration_matrix_and_hyphae_identity_projection(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -698,7 +698,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 tenant_id="fnd",
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
@@ -713,7 +713,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             datum_grid = workspace["datum_grid"]
             selected_row = workspace["selected_row"]
-            inspector_titles = [section["title"] for section in bundle["inspector"]["sections"]]
+            interface_panel_titles = [section["title"] for section in bundle["interface_panel"]["sections"]]
 
             self.assertEqual(datum_grid["group_mode"], "layer_value_group_iteration")
             self.assertEqual([layer["title"] for layer in datum_grid["layers"]], ["Layer 4"])
@@ -729,8 +729,8 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(selected_row["display_value"], "BETA STREET")
             self.assertEqual(selected_row["hyphae_policy"], "mos.hyphae_chain_v1")
             self.assertIn("4-2-2", selected_row["hyphae_chain_addresses"])
-            self.assertIn("Lens Resolution", inspector_titles)
-            self.assertIn("Hyphae Identity", inspector_titles)
+            self.assertIn("Lens Resolution", interface_panel_titles)
+            self.assertIn("Hyphae Identity", interface_panel_titles)
 
     def test_workbench_ui_runtime_projects_navigation_requests_for_documents_and_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -761,7 +761,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 tenant_id="fnd",
             )
 
-            bundle = build_portal_workbench_ui_surface_bundle(
+            bundle = build_portal_workbench_ui_bundle(
                 portal_scope=PortalScope(scope_id="fnd", capabilities=("datum_recognition",)),
                 portal_domain="fruitfulnetworkdevelopment.com",
                 shell_state=None,
