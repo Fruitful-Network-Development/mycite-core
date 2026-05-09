@@ -1,14 +1,10 @@
 # Portal Vocabulary Glossary
 
-Canonical vocabulary for v2.5.3 shell/docs/runtime alignment.
+Canonical vocabulary for shell/docs/runtime alignment after the AITAS/NIMM workbench contract break.
 
-| Legacy or Parallel Term | Canonical Term | Status in v2.5.3 | Deprecation Target |
+| Retired or Parallel Term | Canonical Term | Status | Replacement |
 |---|---|---|---|
-| `inspector` (public shell term) | `Interface Panel` | Kept as compatibility alias in payload and internal code paths | Remove public alias in next schema revision |
-| `regions.inspector` | `regions.interface_panel` | Both emitted; `regions.interface_panel` is canonical public name | Remove alias in next schema revision |
-| `inspector_collapsed` | `interface_panel_collapsed` | Both emitted; `interface_panel_collapsed` is canonical public name | Remove alias in next schema revision |
-| `mycite.layout.inspector.width` / `mycite.layout.inspector.open` | `mycite.layout.interface_panel.width` / `mycite.layout.interface_panel.open` | Legacy storage keys still readable; canonical keys remain source of truth | Remove legacy storage reads after compatibility window |
-| `mycite:v2:inspector-toggle-request` / `mycite:v2:inspector-dismiss-request` | `mycite:v2:interface-panel-toggle-request` / `mycite:v2:interface-panel-dismiss-request` | Legacy event names still accepted | Remove legacy event aliases after compatibility window |
+| public right-rail compatibility aliases | `Interface Panel` | Retired from emitted shell payloads | `regions.interface_panel` and `interface_panel_collapsed` |
 | Header text buttons for `Control Panel` / `Workbench` | Menubar icon-toggle trio: `Control Panel`, `Workbench`, `Interface Panel` | Canonical | N/A |
 | Tool free-form panel coexistence wording | Tool default single-click exclusivity + double-click route lock mode | Canonical | N/A |
 | `stacked_focus_panel` | `focus_selection_panel` | Legacy removed; canonical contract retained | Removed |
@@ -26,12 +22,25 @@ The word `workbench` is overloaded. The canonical disambiguation is:
 | Term | Definition |
 |---|---|
 | `Workbench` (region-family) | The center region of the three-panel portal layout. Every surface emits a region-family-`workbench` content payload. |
-| `datum-file workbench` | The shared workbench renderer used on every surface (SYSTEM and every tool surface) that operates over one active sandbox of canonical `lv.` datum documents. Tri-state: `mode=anchor`, `mode=gallery`, `mode=selected_document`. Region kind: `datum_file_workbench`, schema `mycite.v2.portal.shell.region.workbench.v2`. |
+| `datum-file workbench` | The shared workbench renderer used on every surface (SYSTEM and every tool surface). It is **purely reflective**: it materializes the current MyCite state (sandbox → file → datum → object) through `state_reflection`, `document_collection`, `active_document`, and optional `layered_datum_table` fields. The workbench has **no discrete modes** — content is determined by which focus-stack levels the AITAS Space value contains. When no active document is in focus, `document_collection.documents` is rendered as a card list; when a document is focused, `layered_datum_table` is rendered. Region kind: `datum_file_workbench`, schema `mycite.v2.portal.shell.region.workbench.v2`. |
+| `AITAS Space value` | The engine behind the workbench's reaction. Updated on every navigation event (in, out, left, right within a level). The AITAS fields `attention`, `intention`, `time`, `archetype` describe the current observational posture. When `intention === "investigate"` and `current_datum` is set, the Interface Panel automatically displays the datum focus widget. |
+| `NIMM directive` | A preloaded, state-contextualized action script that backs control panel buttons and workbench interactions. Each `nimm.actions` entry carries `{action_id, directive, script_hint}`. Controls must not encode action semantics in the renderer; they read them from `nimm.actions`. |
 | `sandbox` | The highest datum-document grouping inside a portal `msn_id`. A datum-file workbench may focus only one sandbox at a time. |
 | `SYSTEM datum-file workbench` | The datum-file workbench instantiated against the `system` sandbox only (anchor `anthology`). Reachable at `/portal/system`. |
 | `tool datum-file workbench` | The same shared workbench instantiated against a tool sandbox such as `cts-gis`; its default anchor token is `anchor`. |
-| `Workbench UI` (tool) | The separate SQL authority inspector surface at `/portal/system/tools/workbench-ui`. Documented exception in `surface_catalog.md`: keeps the SQL row grid as workbench-primary; it does **not** replace `SYSTEM` and it does **not** cover all deployed files. |
+| `Workbench UI` (tool) | The SQL authority lens at `/portal/system/tools/workbench-ui`. Purely reflective: its workbench materializes the SQL authority data through the same `state_reflection` contract. It is not a primary or stand-alone tool; its data flows through the state machine and is observed through the interface surface. |
 | `NETWORK system-log workbench` | The system-log surface workbench renderer (region-family-`workbench`). Distinct from the datum-file workbench; logs are not datum documents. |
+
+## Interface Panel vs Inspector (retired)
+
+`Inspector` is a retired term. The canonical name for the right-rail observation region is **Interface Panel** (`regions.interface_panel`, CSS class `ide-interfacePanel`).
+
+The Interface Panel serves two roles depending on AITAS state:
+
+1. **Widget/section mode** (system and non-tool surfaces): Displayed beside the workbench simultaneously. Shows tool-specific widgets and section content.
+2. **Datum focus mode** (when `aitas.intention === "investigate"` and `current_datum` is set): Displays the `renderDatumFocusWidget` — a structured view of the focused datum's row data, hyphae hash, and available NIMM directive actions.
+
+**Toggle exclusivity rule:** On tool surfaces (`shell-composition === "tool"`), opening the Interface Panel closes the Workbench, and vice versa. On non-tool (system) surfaces, both panels can be visible simultaneously. The user may override the exclusivity by choosing to lock both panels open.
 
 ## Disambiguation: MSS (document version hash vs SAMRAS magnitude)
 

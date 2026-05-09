@@ -12,7 +12,6 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.portal_host.app import PORTAL_SHELL_ASSET_MANIFEST_SCHEMA, PORTAL_SHELL_MODULE_FILES, build_shell_asset_manifest
 from MyCiteV2.packages.state_machine.portal_shell import (
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     build_portal_tool_registry_entries,
 )
 
@@ -30,11 +29,11 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         workbench_renderers_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
         ).read_text(encoding="utf-8")
-        inspector_renderers_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_host.js"
+        interface_panel_renderers_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_host.js"
         ).read_text(encoding="utf-8")
-        cts_gis_inspector_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+        cts_gis_interface_panel_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8")
 
         self.assertIn("PORTAL_REGION_FAMILY_DIRECTIVE_PANEL", runtime_platform_source)
@@ -45,10 +44,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("resolvePresentationSurfaceMode", tool_adapter_source)
         self.assertNotIn("surface_label ===", region_renderers_source)
         self.assertNotIn("surfacePayload.kind ===", workbench_renderers_source)
-        self.assertNotIn("region.kind ===", inspector_renderers_source)
-        self.assertNotIn("region.interface_body.kind ===", inspector_renderers_source)
-        self.assertNotIn("region.kind ===", cts_gis_inspector_source)
-        self.assertNotIn("region.interface_body.kind ===", cts_gis_inspector_source)
+        self.assertNotIn("region.kind ===", interface_panel_renderers_source)
+        self.assertNotIn("region.interface_body.kind ===", interface_panel_renderers_source)
+        self.assertNotIn("region.kind ===", cts_gis_interface_panel_source)
+        self.assertNotIn("region.interface_body.kind ===", cts_gis_interface_panel_source)
 
     def test_retired_split_artifacts_are_absent(self) -> None:
         retired_history_dir = REPO_ROOT / ("MyCite" + "V" + "1")
@@ -186,7 +185,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         for source in runtime_sources:
             self.assertIn("attach_region_family_contract(", source)
 
-    def test_shell_runtime_forwards_runtime_owned_workbench_ui_surface_query(self) -> None:
+    def test_shell_runtime_forwards_runtime_owned_sql_authority_lens_query(self) -> None:
         shell_runtime_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_shell_runtime.py"
         ).read_text(encoding="utf-8")
@@ -195,7 +194,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             shell_runtime_source,
             re.compile(
                 r"def _build_workbench_ui_tool_bundle\([\s\S]*?"
-                r"build_portal_workbench_ui_surface_bundle\([\s\S]*?"
+                r"build_portal_workbench_ui_bundle\([\s\S]*?"
                 r"surface_query=surface_query,",
                 re.MULTILINE,
             ),
@@ -238,7 +237,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         for tool_id in ("aws_csm", "cts_gis", "fnd_dcm", "fnd_ebi"):
             self.assertEqual(registry[tool_id].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
             self.assertFalse(registry[tool_id].default_workbench_visible)
-        self.assertEqual(registry["workbench_ui"].surface_posture, SURFACE_POSTURE_WORKBENCH_PRIMARY)
+        self.assertEqual(registry["workbench_ui"].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertTrue(registry["workbench_ui"].default_workbench_visible)
 
     def test_shell_asset_manifest_is_canonical_and_loader_reads_it_dynamically(self) -> None:
@@ -254,7 +253,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "system_workspace",
             "network_workspace",
             "workbench_renderers",
-            "inspector_renderers",
+            "interface_panel_renderers",
             "cts_gis_surface",
             "cts_gis_workspace",
             "shell_core",
@@ -272,7 +271,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         )
         startup_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "startup_critical"]
         deferred_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "deferred"]
-        self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "inspector_renderers", "shell_core", "shell_watchdog"])
+        self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "interface_panel_renderers", "shell_core", "shell_watchdog"])
         self.assertEqual(
             deferred_module_ids,
             [
@@ -328,8 +327,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "v2_portal_system_workspace.js": "system_workspace",
             "v2_portal_network_workspace.js": "network_workspace",
             "v2_portal_workbench_renderers.js": "workbench_renderers",
-            "v2_portal_inspector_host.js": "inspector_renderers",
-            "v2_portal_inspector_renderers.js": "cts_gis_surface",
+            "v2_portal_interface_panel_host.js": "interface_panel_renderers",
+            "v2_portal_interface_panel_renderers.js": "cts_gis_surface",
             "v2_portal_shell_core.js": "shell_core",
             "v2_portal_shell_watchdog.js": "shell_watchdog",
         }
@@ -338,7 +337,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             self.assertIn(f'__MYCITE_V2_REGISTER_SHELL_MODULE("{module_id}")', source, filename)
 
         workbench_source = (static_root / "v2_portal_workbench_renderers.js").read_text(encoding="utf-8")
-        inspector_source = (static_root / "v2_portal_inspector_host.js").read_text(encoding="utf-8")
+        interface_panel_source = (static_root / "v2_portal_interface_panel_host.js").read_text(encoding="utf-8")
         core_source = (static_root / "v2_portal_shell_core.js").read_text(encoding="utf-8")
 
         self.assertIn("resolveReflectiveWorkspaceModuleSpec", workbench_source)
@@ -346,8 +345,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("__MYCITE_V2_GET_SHELL_MODULE_DIAGNOSTICS", workbench_source)
         self.assertIn("__MYCITE_V2_LOAD_SHELL_MODULE", workbench_source)
         self.assertNotIn("window.PortalSystemWorkspaceRenderer &&", workbench_source)
-        self.assertIn("__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT", inspector_source)
-        self.assertIn("__MYCITE_V2_LOAD_SHELL_MODULE", inspector_source)
+        self.assertIn("__MYCITE_V2_RESOLVE_SHELL_MODULE_EXPORT", interface_panel_source)
+        self.assertIn("__MYCITE_V2_LOAD_SHELL_MODULE", interface_panel_source)
         self.assertIn("module_registration_missing", core_source)
         self.assertIn('resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers")', core_source)
 
@@ -394,7 +393,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
     def test_mutation_capable_ui_sources_dispatch_only_without_authoritative_writes(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
         aws_workspace = (static_root / "v2_portal_aws_workspace.js").read_text(encoding="utf-8")
-        inspector_renderers = (static_root / "v2_portal_inspector_renderers.js").read_text(encoding="utf-8")
+        interface_panel_renderers = (static_root / "v2_portal_interface_panel_renderers.js").read_text(encoding="utf-8")
         forbidden_write_tokens = (
             "replace_authoritative_document",
             "save_profile(",
@@ -405,8 +404,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "fetch(\"/portal/api/v2/mutations/apply\"",
         )
         self.assertIn("loadRuntimeView", aws_workspace)
-        self.assertIn("dispatchToolAction", inspector_renderers)
-        for source in (aws_workspace, inspector_renderers):
+        self.assertIn("dispatchToolAction", interface_panel_renderers)
+        for source in (aws_workspace, interface_panel_renderers):
             for token in forbidden_write_tokens:
                 self.assertNotIn(token, source)
 
@@ -447,16 +446,16 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
     def test_presentation_surface_host_dispatches_by_family_contract_without_top_level_kind_branching(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
-        inspector_renderers = (static_root / "v2_portal_inspector_host.js").read_text(encoding="utf-8")
+        interface_panel_renderers = (static_root / "v2_portal_interface_panel_host.js").read_text(encoding="utf-8")
         tool_adapter = (static_root / "v2_portal_tool_surface_adapter.js").read_text(encoding="utf-8")
 
-        self.assertIn("resolvePresentationSurfaceMode", inspector_renderers)
-        self.assertIn("resolvePresentationSurfaceModuleSpec", inspector_renderers)
-        self.assertIn('family === "presentation_surface"', inspector_renderers)
-        self.assertIn("renderPresentationSurfaceHost", inspector_renderers)
-        self.assertIn("renderRegisteredPresentationSurface", inspector_renderers)
-        self.assertNotIn("region.kind ===", inspector_renderers)
-        self.assertNotIn("region.interface_body.kind ===", inspector_renderers)
+        self.assertIn("resolvePresentationSurfaceMode", interface_panel_renderers)
+        self.assertIn("resolvePresentationSurfaceModuleSpec", interface_panel_renderers)
+        self.assertIn('family === "presentation_surface"', interface_panel_renderers)
+        self.assertIn("renderPresentationSurfaceHost", interface_panel_renderers)
+        self.assertIn("renderRegisteredPresentationSurface", interface_panel_renderers)
+        self.assertNotIn("region.kind ===", interface_panel_renderers)
+        self.assertNotIn("region.interface_body.kind ===", interface_panel_renderers)
 
         self.assertIn("function resolvePresentationSurfaceMode(region, surfacePayload)", tool_adapter)
         self.assertIn("function resolvePresentationSurfaceModuleSpec(region, surfacePayload)", tool_adapter)
@@ -491,8 +490,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("mycite.layout.workbench.open", portal_js)
         self.assertIn("mycite.layout.interface_panel.width", portal_js)
         self.assertIn("mycite.layout.interface_panel.open", portal_js)
-        self.assertIn("mycite.layout.inspector.width", portal_js)
-        self.assertIn("mycite.layout.inspector.open", portal_js)
+        self.assertNotIn("mycite.layout.inspector.width", portal_js)
+        self.assertNotIn("mycite.layout.inspector.open", portal_js)
         self.assertIn("mycite:v2:workbench-toggle-request", portal_js)
         self.assertIn("mycite:v2:interface-panel-toggle-request", portal_js)
         self.assertIn("data-tool-panel-lock", portal_js)
@@ -518,7 +517,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("PortalToolSurfaceAdapter", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertNotIn("PortalFndEbi", (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
@@ -532,34 +531,34 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn('data-workbench-collapsed="true"', portal_css)
         self.assertIn("minmax(0, 1fr)", portal_css)
         self.assertIn("normalizeCtsGisInterfaceBody", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("Diktataograph", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("Garland", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("navigation_canvas", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("garland_split_projection", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("renderPresentationTabs", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("data-interface-tab", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("renderDirectoryDropdownCanvas", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn('"directory_dropdowns"', (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("renderGeospatialStage", (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8"))
         self.assertIn("cts-gis-garlandSplit__geospatial", portal_css)
         self.assertIn("cts-gis-directoryCanvas", portal_css)
@@ -598,7 +597,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             REPO_ROOT / "MyCiteV2" / "packages" / "modules" / "cross_domain" / "cts_gis" / "contracts.py"
         ).read_text(encoding="utf-8")
         renderer_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
         ).read_text(encoding="utf-8")
 
         self.assertIn("CTS_GIS_NAV_MODE_DIRECTORY", runtime_source)
@@ -740,7 +739,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         """Phase D5: opening the Interface Panel re-asserts focus on the sandbox anchor.
 
         The shell core must call a sandbox-focus dispatch when the IP toggles
-        from closed to open while the workbench is not in anchor mode, so
+        from closed to open while the reflected file is not the anchor, so
         directive scripts running in the IP can assume the anchor + msn-SAMRAS
         frame.
         """
@@ -757,8 +756,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
         The workbench renderer must implement a top-level dispatch on the
         ``datum_file_workbench`` region kind and provide both
-        ``renderLayeredDatumTable`` and ``renderSandboxDocumentGallery`` paths
-        for the three workbench modes. Legacy CTS-GIS secondary-evidence
+        ``renderLayeredDatumTable`` and ``renderSandboxDocumentCollection`` paths
+        for row-bearing files and sandbox document collections. Legacy CTS-GIS secondary-evidence
         renderers must be retired.
         """
 
@@ -767,17 +766,17 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('region.kind) === "datum_file_workbench"', workbench_source)
         self.assertIn("renderLayeredDatumTable", workbench_source)
-        self.assertIn("renderSandboxDocumentGallery", workbench_source)
+        self.assertIn("renderSandboxDocumentCollection", workbench_source)
         self.assertNotIn("renderSecondaryEvidenceSurface", workbench_source)
         self.assertNotIn("renderCtsGisToolSummary", workbench_source)
         self.assertNotIn("renderCtsGisIdleHelp", workbench_source)
         self.assertNotIn("renderCtsGisManipulationState", workbench_source)
 
-    def test_tool_inspector_carries_tool_specific_surface_payload(self) -> None:
-        """Phase D4: tool-specific UI lives in the Interface Panel (inspector).
+    def test_tool_interface_panel_carries_tool_specific_surface_payload(self) -> None:
+        """Phase D4: tool-specific UI lives in the Interface Panel.
 
         Each migrated tool runtime that previously projected tool chrome into
-        the workbench must now route that chrome through the inspector's
+        the workbench must now route that chrome through the Interface Panel's
         ``surface_payload`` so the workbench can stay the unified
         ``datum_file_workbench``.
         """

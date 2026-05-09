@@ -18,7 +18,7 @@ PORTAL_SHELL_COMPOSITION_SCHEMA = "mycite.v2.portal.shell.composition.v1"
 PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA = "mycite.v2.portal.shell.region.activity_bar.v1"
 PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA = "mycite.v2.portal.shell.region.control_panel.v1"
 PORTAL_SHELL_REGION_WORKBENCH_SCHEMA = "mycite.v2.portal.shell.region.workbench.v1"
-PORTAL_SHELL_REGION_INSPECTOR_SCHEMA = "mycite.v2.portal.shell.region.inspector.v1"
+PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA = "mycite.v2.portal.shell.region.interface_panel.v1"
 PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA = "mycite.v2.portal.surface_catalog.entry.v1"
 PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 
@@ -64,7 +64,6 @@ SYSTEM_PROFILE_BASICS_FILE_KEY = "profile_basics"
 SYSTEM_SANDBOX_QUERY_FILE_TOKEN = "sandbox"
 
 PORTAL_SCOPE_DEFAULT_ID = "fnd"
-SURFACE_POSTURE_WORKBENCH_PRIMARY = "workbench_primary"
 SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY = "interface_panel_primary"
 TOOL_KIND_GENERAL = "general_tool"
 TOOL_KIND_SERVICE = "service_tool"
@@ -624,7 +623,7 @@ class PortalToolRegistryEntry:
             raise ValueError("tool_registry.surface_id must be a known tool surface")
         if self.tool_kind not in {TOOL_KIND_GENERAL, TOOL_KIND_SERVICE, TOOL_KIND_HOST_ALIAS}:
             raise ValueError("tool_registry.tool_kind is invalid")
-        if self.surface_posture not in {SURFACE_POSTURE_WORKBENCH_PRIMARY, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY}:
+        if self.surface_posture not in {SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY}:
             raise ValueError("tool_registry.surface_posture is invalid")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("tool_registry.read_write_posture must be read-only or write")
@@ -837,7 +836,7 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
             route=WORKBENCH_UI_TOOL_ROUTE,
             tool_kind=TOOL_KIND_GENERAL,
-            surface_posture=SURFACE_POSTURE_WORKBENCH_PRIMARY,
+            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
             read_write_posture="read-only",
             required_capabilities=("datum_recognition",),
             default_enabled=True,
@@ -1846,7 +1845,7 @@ def surface_posture_for_surface(active_surface_id: str) -> str:
         entry = resolve_portal_tool_registry_entry(surface_id=active_surface_id)
         if entry is not None:
             return entry.surface_posture
-    return SURFACE_POSTURE_WORKBENCH_PRIMARY
+    return SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
 
 
 def default_workbench_visible_for_surface(active_surface_id: str) -> bool:
@@ -1865,7 +1864,7 @@ def foreground_region_for_surface(
     workbench_visible: bool = True,
 ) -> str:
     if is_tool_surface(active_surface_id):
-        if surface_posture_for_surface(active_surface_id) == SURFACE_POSTURE_WORKBENCH_PRIMARY and workbench_visible:
+        if workbench_visible and default_workbench_visible_for_surface(active_surface_id):
             return "center-workbench"
         return "interface-panel"
     if active_surface_id == SYSTEM_ROOT_SURFACE_ID and isinstance(shell_state, (PortalShellState, dict)):
@@ -1885,8 +1884,8 @@ def apply_surface_posture_to_composition(composition: dict[str, Any]) -> None:
     if not isinstance(regions, dict):
         return
     workbench = regions.get("workbench")
-    inspector = regions.get("inspector")
-    if not isinstance(workbench, dict) or not isinstance(inspector, dict):
+    interface_panel = regions.get("interface_panel")
+    if not isinstance(workbench, dict) or not isinstance(interface_panel, dict):
         return
     workbench_visible = workbench.get("visible", True) is not False
     shell_state = composition.get("shell_state") if isinstance(composition.get("shell_state"), dict) else None
@@ -1912,7 +1911,7 @@ def build_shell_composition_payload(
     activity_items: list[dict[str, Any]],
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
-    inspector: dict[str, Any],
+    interface_panel: dict[str, Any],
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
@@ -1923,48 +1922,48 @@ def build_shell_composition_payload(
     surface_posture = surface_posture_for_surface(active_surface_id)
     workbench_region = dict(workbench or {})
     workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
-    inspector_region = dict(inspector or {})
-    inspector_region.setdefault("schema", PORTAL_SHELL_REGION_INSPECTOR_SCHEMA)
+    interface_panel_region = dict(interface_panel or {})
+    interface_panel_region.setdefault("schema", PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA)
     workbench_visible = _region_visible(
         workbench_region.get("visible"),
         default=default_workbench_visible_for_surface(active_surface_id),
     )
     force_workbench_visible = workbench_region.get("forced_visible") is True
-    requested_workbench_visible = workbench_region.get("visible") is True or force_workbench_visible
     interface_open = bool(tool_surface)
     if not interface_open and state is not None:
         interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
-    requested_inspector_visible = inspector_region.get("visible") is True
+    requested_interface_panel_visible = interface_panel_region.get("visible") is True
     if tool_surface:
         # First-load tool posture is composition-owned. Runtime payload visibility
         # hints are treated as content metadata, not posture authority, except for
         # explicit forced-visible diagnostic workbench flows such as staged preview/apply.
         if surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
             workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-            inspector_visible = True
+            interface_panel_visible = True
         else:
             workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-            inspector_visible = True
+            interface_panel_visible = True
     else:
-        inspector_visible = bool(interface_open or requested_inspector_visible)
+        interface_panel_visible = bool(interface_open or requested_interface_panel_visible)
     workbench_region["visible"] = workbench_visible
-    inspector_region["visible"] = inspector_visible
-    inspector_region["primary_surface"] = bool(
-        (interface_open and surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        or inspector_region.get("primary_surface") is True
+    interface_panel_region["visible"] = interface_panel_visible
+    interface_panel_primary = bool(
+        interface_open
+        and surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
+        and not default_workbench_visible_for_surface(active_surface_id)
     )
-    inspector_region["layout_mode"] = (
+    interface_panel_region["primary_surface"] = bool(
+        interface_panel_primary or interface_panel_region.get("primary_surface") is True
+    )
+    interface_panel_region["layout_mode"] = (
         "dominant"
-        if interface_open and surface_posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
-        else (_as_text(inspector_region.get("layout_mode")) or "sidebar")
+        if interface_panel_primary
+        else (_as_text(interface_panel_region.get("layout_mode")) or "sidebar")
     )
-    inspector_collapsed = not inspector_visible
+    interface_panel_collapsed = not interface_panel_visible
     workbench_collapsed = not bool(workbench_visible)
     workbench_region["collapsed"] = workbench_collapsed
-    inspector_region["collapsed"] = inspector_collapsed
-    # `inspector` remains the legacy compatibility alias for the public
-    # Interface Panel contract during this normalization pass.
-    interface_panel_region = dict(inspector_region)
+    interface_panel_region["collapsed"] = interface_panel_collapsed
     composition = {
         "schema": PORTAL_SHELL_COMPOSITION_SCHEMA,
         "composition_mode": shell_composition_mode_for_surface(active_surface_id),
@@ -1977,8 +1976,7 @@ def build_shell_composition_payload(
             workbench_visible=workbench_visible,
         ),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "inspector_collapsed": inspector_collapsed,
-        "interface_panel_collapsed": inspector_collapsed,
+        "interface_panel_collapsed": interface_panel_collapsed,
         "workbench_collapsed": workbench_collapsed,
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
@@ -1992,7 +1990,6 @@ def build_shell_composition_payload(
             },
             "control_panel": dict(control_panel or {}),
             "workbench": workbench_region,
-            "inspector": inspector_region,
             "interface_panel": interface_panel_region,
         },
     }
@@ -2031,7 +2028,7 @@ __all__ = [
     "PORTAL_SHELL_ENTRYPOINT_ID",
     "PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
     "PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA",
-    "PORTAL_SHELL_REGION_INSPECTOR_SCHEMA",
+    "PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_WORKBENCH_SCHEMA",
     "PORTAL_SHELL_REQUEST_SCHEMA",
     "PORTAL_SHELL_STATE_SCHEMA",
@@ -2047,7 +2044,6 @@ __all__ = [
     "PortalSurfaceCatalogEntry",
     "PortalToolRegistryEntry",
     "SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY",
-    "SURFACE_POSTURE_WORKBENCH_PRIMARY",
     "SYSTEM_ACTIVITY_FILE_KEY",
     "SYSTEM_ANCHOR_FILE_KEY",
     "SYSTEM_PROFILE_BASICS_FILE_KEY",

@@ -159,21 +159,21 @@
   function renderDatumInspector(documentPayload) {
     var selectedDatum = (documentPayload && documentPayload.selected_datum) || null;
     var hint =
-      (documentPayload && documentPayload.inspector_hint) ||
+      (documentPayload && documentPayload.interface_panel_hint) ||
       "Select a datum row to inspect its structural coordinates, bindings, and raw payload.";
     if (!selectedDatum) {
       return (
-        '<aside class="data-tool__anthologyInspector">' +
-        '<div class="data-tool__paneHead data-tool__paneHead--compact"><div class="card__title">Datum Inspector</div></div>' +
-        '<div class="data-tool__anthologyInspectorBody">' +
-        '<p class="data-tool__inspectorHint ide-controlpanel__empty">' + escapeHtml(hint) + "</p>" +
+        '<aside class="data-tool__anthologyDetail">' +
+        '<div class="data-tool__paneHead data-tool__paneHead--compact"><div class="card__title">Datum Detail</div></div>' +
+        '<div class="data-tool__anthologyDetailBody">' +
+        '<p class="data-tool__detailHint ide-controlpanel__empty">' + escapeHtml(hint) + "</p>" +
         "</div></aside>"
       );
     }
     return (
-      '<aside class="data-tool__anthologyInspector">' +
+      '<aside class="data-tool__anthologyDetail">' +
       '<div class="data-tool__paneHead data-tool__paneHead--compact">' +
-      '<div class="card__title">Datum Inspector</div>' +
+      '<div class="card__title">Datum Detail</div>' +
       "<p>" +
       escapeHtml(selectedDatum.label || selectedDatum.datum_id || "Datum") +
       "</p>" +
@@ -200,12 +200,12 @@
         { label: "labels", value: (selectedDatum.labels || []).join(", ") || "—" },
       ]) +
       '<section class="data-tool__anthologyInvSection">' +
-      '<h4 class="data-tool__inspectorSectionTitle">Reference Bindings</h4>' +
+      '<h4 class="data-tool__detailSectionTitle">Reference Bindings</h4>' +
       renderReferenceBindings(selectedDatum) +
       "</section>" +
       '<section class="data-tool__anthologyInvSection">' +
-      '<h4 class="data-tool__inspectorSectionTitle">Read-Only Posture</h4>' +
-      '<p class="data-tool__inspectorHint">Editing is intentionally deferred in this pass so the canonical SYSTEM datum-file workbench stays stable while the reducer-owned model settles.</p>' +
+      '<h4 class="data-tool__detailSectionTitle">Read-Only Posture</h4>' +
+      '<p class="data-tool__detailHint">Editing is intentionally deferred in this pass so the canonical SYSTEM datum-file workbench stays stable while the reducer-owned model settles.</p>' +
       "</section>" +
       '<details class="data-tool__anthologyInvSection">' +
       "<summary>Raw Datum</summary>" +
@@ -223,7 +223,7 @@
     if (!layerGroups.length) return '<p class="ide-controlpanel__empty">No anthology rows were available for the anchor file.</p>';
     return (
       '<div class="data-tool__anthologyWorkbench">' +
-      '<div class="data-tool__workbenchWithInspector">' +
+      '<div class="data-tool__workbenchWithDetail">' +
       '<div class="data-tool__workbenchCenter">' +
       '<article class="data-tool__tablePane data-tool__anthologyTableHost">' +
       '<div class="data-tool__paneHead">' +

@@ -105,7 +105,7 @@
         "region_renderers",
         "tool_surface_adapter",
         "workbench_renderers",
-        "inspector_renderers",
+        "interface_panel_renderers",
         "shell_core",
       ]);
       if (

@@ -1,5 +1,5 @@
 /**
- * Startup-critical inspector host for the one-shell portal.
+ * Startup-critical interface panel host for the one-shell portal.
  *
  * Heavy CTS-GIS rendering lives in a deferred module to keep initial boot lean.
  */
@@ -180,7 +180,52 @@
     return window[globalName] || null;
   }
 
-  function renderGenericInspectorSurface(target, region, surfacePayload) {
+  function renderDatumFocusWidget(target, region) {
+    var stateReflection = asObject(region.state_reflection);
+    var aitas = asObject(stateReflection.aitas);
+    var nimm = asObject(stateReflection.nimm);
+    var currentDatum = asText(stateReflection.current_datum);
+    var currentFile = asText(stateReflection.current_file);
+    var nimmActions = Array.isArray(nimm.actions) ? nimm.actions : [];
+    var rows = [
+      { label: "Datum", value: currentDatum || "—" },
+      { label: "Document", value: currentFile || "—" },
+      { label: "Intention", value: asText(aitas.intention) || "investigate" },
+      { label: "Archetype", value: asText(aitas.archetype) || "—" },
+    ];
+    var actionsHtml = nimmActions.length
+      ? '<section class="v2-card" style="margin-top:12px"><h3>Available Directives</h3><dl class="v2-surface-dl">' +
+        nimmActions
+          .map(function (a) {
+            var action = a && typeof a === "object" ? a : {};
+            return (
+              "<dt>" + escapeHtml(asText(action.action_id) || "action") + "</dt>" +
+              "<dd><strong>" + escapeHtml(asText(action.directive) || "—") + "</strong>" +
+              (action.script_hint ? "<br /><code>" + escapeHtml(asText(action.script_hint)) + "</code>" : "") +
+              "</dd>"
+            );
+          })
+          .join("") +
+        "</dl></section>"
+      : "";
+    target.innerHTML =
+      '<div class="v2-interfacePanel-stack">' +
+      '<section class="v2-card"><h3>Datum Focus</h3>' +
+      '<dl class="v2-surface-dl">' +
+      rows
+        .map(function (row) {
+          return (
+            "<dt>" + escapeHtml(row.label) + "</dt>" +
+            "<dd><strong>" + escapeHtml(row.value) + "</strong></dd>"
+          );
+        })
+        .join("") +
+      "</dl></section>" +
+      actionsHtml +
+      "</div>";
+  }
+
+  function renderGenericInterfacePanelSurface(target, region, surfacePayload) {
     var sections = region.sections || [];
     var interfaceBody = asObject(region.interface_body);
     var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], interfaceBody.default_tab_id);
@@ -238,7 +283,7 @@
         }
 
         return (
-          '<div class="v2-inspector-stack">' +
+          '<div class="v2-interfacePanel-stack">' +
           (region.subject
             ? '<section class="v2-card"><h3>Subject</h3>' +
               renderRows([
@@ -374,10 +419,10 @@
       );
       return;
     }
-    renderGenericInspectorSurface(target, region, surfacePayload);
+    renderGenericInterfacePanelSurface(target, region, surfacePayload);
   }
 
-  window.PortalShellInspectorRenderer = {
+  window.PortalShellInterfacePanelRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
@@ -400,10 +445,17 @@
         renderPresentationSurfaceHost(ctx, target, region, surfacePayload);
         return;
       }
-      renderGenericInspectorSurface(target, region, surfacePayload);
+      // When a datum is in focus under investigation intention, show the datum focus widget
+      var stateReflection = asObject(region.state_reflection);
+      var aitas = asObject(stateReflection.aitas);
+      if (asText(stateReflection.current_datum) && asText(aitas.intention) === "investigate") {
+        renderDatumFocusWidget(target, region);
+        return;
+      }
+      renderGenericInterfacePanelSurface(target, region, surfacePayload);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
-    window.__MYCITE_V2_REGISTER_SHELL_MODULE("inspector_renderers");
+    window.__MYCITE_V2_REGISTER_SHELL_MODULE("interface_panel_renderers");
   }
 })();

@@ -14,7 +14,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_DCM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-    SURFACE_POSTURE_WORKBENCH_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_ANCHOR_FILE_KEY,
@@ -148,7 +147,7 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertFalse(registry_entries["fnd_dcm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
-        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_WORKBENCH_PRIMARY)
+        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
 
     def test_tool_composition_hides_workbench_even_when_runtime_projects_it_visible(self) -> None:
@@ -160,7 +159,7 @@ class PortalShellContractTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={"visible": True},
-            inspector={},
+            interface_panel={},
             shell_state=None,
         )
         self.assertTrue(composition["workbench_collapsed"])
@@ -169,7 +168,7 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertFalse(composition["regions"]["workbench"]["visible"])
         self.assertTrue(composition["regions"]["interface_panel"]["visible"])
 
-    def test_workbench_ui_tool_composition_keeps_workbench_primary(self) -> None:
+    def test_workbench_ui_tool_composition_keeps_default_visible_workbench(self) -> None:
         composition = build_shell_composition_payload(
             active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
@@ -178,7 +177,7 @@ class PortalShellContractTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={"visible": True},
-            inspector={},
+            interface_panel={},
             shell_state=None,
         )
         self.assertFalse(composition["workbench_collapsed"])
@@ -367,7 +366,7 @@ class PortalShellContractTests(unittest.TestCase):
         for key in ("file", "datum", "object", "verb"):
             self.assertNotIn(key, selection.canonical_query)
 
-    def test_workbench_ui_surface_query_keeps_supported_runtime_owned_keys(self) -> None:
+    def test_workbench_ui_query_keeps_supported_runtime_owned_keys(self) -> None:
         raw_query = {
             "document": "system:anthology",
             "document_filter": "abc123",

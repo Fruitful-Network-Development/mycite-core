@@ -27,7 +27,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_DCM_TOOL_ROUTE,
     FND_DCM_TOOL_SURFACE_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
@@ -460,7 +460,7 @@ def _build_inspector(
             f"Board profile normalization preview found {int(board_profile_preview.get('count') or 0)} profiles and {int(board_profile_preview.get('summary_count') or 0)} summaries."
         )
     return {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": "FND-DCM",
         "summary": "Hosted manifest inspection and collection normalization.",
@@ -568,7 +568,7 @@ def build_portal_fnd_dcm_surface_bundle(
             subtitle="Layered datum table for the active FND-DCM sandbox file.",
             visible=False,
         ),
-        "inspector": attach_region_family_contract(
+        "interface_panel": attach_region_family_contract(
             _build_inspector(tool_status=tool_status, workspace=workspace),
             family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
             surface_id=FND_DCM_TOOL_SURFACE_ID,

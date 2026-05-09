@@ -7,17 +7,11 @@ Cross-tool operating invariants (region families, posture authority, and normali
 ## Shared Datum-File Workbench
 
 Every SYSTEM surface — the `system.root` anthology workspace and every tool surface
-listed below except `Workbench UI` — emits the same workbench renderer. The shared
-renderer is `datum_file_workbench` (region kind
-`mycite.v2.portal.shell.region.workbench.v2`) and is a tri-state state machine over
-the focused sandbox:
-
-- `mode = anchor` — the layered datum table for the sandbox's anchor document.
-  Default mode whenever a sandbox is focused without a non-anchor file selection.
-- `mode = gallery` — a card grid of every `lv.<msn>.<sandbox>.*` document owned by
-  the focused sandbox. Reached by `back_out` from the anchor.
-- `mode = selected_document` — the layered datum table for a selected non-anchor
-  sandbox source.
+listed below emits a reflective workbench payload. The shared renderer is
+`datum_file_workbench` (region kind
+`mycite.v2.portal.shell.region.workbench.v2`) and materializes the current MyCite
+state through `state_reflection`, `document_collection`, `active_document`, and
+optional `layered_datum_table` content.
 
 Tool-specific UI (Diktataograph, Garland, Staged Insert, Domain Gallery, Manifest
 tree, Analytics body, PayPal body) lives in the `Interface Panel` only. Tool surfaces
@@ -30,9 +24,8 @@ Tool surfaces are bound to their named sandbox only. URL route slugs use hyphens
 underscores (`cts_gis`, `aws_csm`). Cross-sandbox datum-file navigation is not a
 supported shell state.
 
-`Workbench UI` is the documented `workbench_primary` exception (see its section
-below). It keeps the SQL row grid as workbench-primary; it does not adopt the shared
-`datum_file_workbench` renderer.
+`Workbench UI` remains a SYSTEM tool route but uses a SQL authority lens in the
+standard reflective-workspace family rather than a special posture.
 
 ## SYSTEM
 
@@ -77,7 +70,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
   - `File: tool.<msn>.aws-csm.json`
   - `Mediation: spec.json`
 - Its default posture is interface-panel-led.
-- Its workbench is the shared `datum_file_workbench` over the AWS-CSM sandbox. Default mode is `anchor`, rendering the layered datum table for `lv.<msn>.aws-csm.anchor.<hash>`.
+- Its workbench is the shared `datum_file_workbench` over the AWS-CSM sandbox. The default reflected file is the sandbox anchor, rendering the layered datum table for `lv.<msn>.aws-csm.anchor.<hash>`.
 - Its canonical query keys are:
   - `view`
   - `domain`
@@ -96,11 +89,11 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - `system.tools.workbench_ui`
 
-`Workbench UI` is one `SYSTEM` child read-only two-pane SQL authority inspector surface.
+`Workbench UI` is one `SYSTEM` child read-only two-pane SQL authority lens.
 
 - Its canonical route is `/portal/system/tools/workbench-ui`.
-- Its default posture is workbench-primary.
-- Its workbench is the primary spreadsheet-like SQL datum grid and stays visible on first composition.
+- Its default posture uses the shared tool registry value.
+- Its workbench is the default-visible spreadsheet-like SQL datum grid and stays visible on first composition through `default_workbench_visible=true`.
 - It does not replace the reducer-owned `/portal/system` anthology workspace.
 - It inspects authoritative SQL-backed documents only; retained host-bound/private assets and `NETWORK` derived materializations remain outside its corpus unless separately ported.
 - Its `Interface Panel` shows selected-row semantic identity plus additive directive overlay summaries.
@@ -153,8 +146,8 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - Its default posture is interface-panel-led.
 - Its workbench is the shared `datum_file_workbench` over the CTS-GIS sandbox.
   Default shell focus is `file=anchor`; if no materialized CTS-GIS anchor document
-  exists, the workbench opens anchor mode. Gallery fallback is reserved for a
-  sandbox that truly has no materialized anchor document.
+  exists, the workbench reflects the sandbox document collection until anchor row
+  material is available.
 - Its dominant `presentation_surface` Interface Panel mounts one CTS-GIS-local body on the shared tab host. Diktataograph, Staged Insert, and Garland are Interface Panel content; they are not workbench renderers.
 - `tab_host=shared_interface_tabs`.
 - `tabs` currently materialize as `diktataograph` and `garland`.
@@ -207,7 +200,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/fnd-dcm`.
 - Its default posture is interface-panel-led.
-- Its workbench is the shared `datum_file_workbench` over the FND-DCM sandbox. Default mode is `anchor`, rendering the layered datum table for `lv.<msn>.fnd-dcm.anchor.<hash>`.
+- Its workbench is the shared `datum_file_workbench` over the FND-DCM sandbox. The default reflected file is the sandbox anchor, rendering the layered datum table for `lv.<msn>.fnd-dcm.anchor.<hash>`.
 - Its canonical query keys are:
   - `site`
   - `view`
@@ -235,7 +228,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/fnd-ebi`.
 - Its default posture is interface-panel-led.
-- Its workbench is the shared `datum_file_workbench` over the FND-EBI sandbox. Default mode is `anchor`, rendering the layered datum table for `lv.<msn>.fnd-ebi.anchor.<hash>`.
+- Its workbench is the shared `datum_file_workbench` over the FND-EBI sandbox. The default reflected file is the sandbox anchor, rendering the layered datum table for `lv.<msn>.fnd-ebi.anchor.<hash>`.
 - Its analytics body, summary cards, and ad-hoc evidence renderers live in the Interface Panel. They are not workbench renderers.
 - Its `Control Panel` projects the unified directive panel, with FND-EBI analytics filters delivered through `tool_extensions.fnd_ebi_analytics_filters`.
 
@@ -247,7 +240,7 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 
 - Its canonical route is `/portal/system/tools/paypal-csm`.
 - Its default posture is interface-panel-led.
-- Its workbench is the shared `datum_file_workbench` over the PayPal-CSM sandbox. Default mode is `anchor`, rendering the layered datum table for `lv.<msn>.paypal-csm.anchor.<hash>`.
+- Its workbench is the shared `datum_file_workbench` over the PayPal-CSM sandbox. The default reflected file is the sandbox anchor, rendering the layered datum table for `lv.<msn>.paypal-csm.anchor.<hash>`.
 - Its tool body (account summary, transaction listings) lives in the Interface Panel. It is not a workbench renderer.
 
 ## NETWORK
@@ -288,9 +281,8 @@ The top menubar is the only shell header.
   - `reflective_workspace`
   - `presentation_surface`
 - Tool registry defaults are interface-panel-led.
-- `workbench_ui` is the approved workbench-primary exception.
 - Tool registry posture metadata is descriptive only; shell composition remains authoritative for first-load tool posture.
-- Tool workbench visibility defaults to `false`.
+- Tool workbench visibility is hidden by default (`false`).
 - `workbench_ui` defaults to `true` because its primary surface is the SQL-backed datum grid.
 - Retired scoped fallback keys are not part of the active surface catalog or tool posture contract.
 - Tool surfaces use mutually exclusive single-click behavior between `Workbench` and `Interface Panel` by default.

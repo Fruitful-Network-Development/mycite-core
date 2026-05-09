@@ -154,12 +154,12 @@
 
     if (family === "reflective_workspace") {
       if (moduleSpec.moduleId) return "registered_workspace";
-      if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+      if (surfaceId === "system.tools.workbench_ui") return "generic_surface";
       if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
       return "generic_surface";
     }
     if (moduleSpec.moduleId) return "registered_workspace";
-    if (surfaceId === "system.tools.workbench_ui") return "workbench_ui_surface";
+    if (surfaceId === "system.tools.workbench_ui") return "generic_surface";
     if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
     return "generic_surface";
   }
@@ -169,23 +169,23 @@
     var moduleSpecs = {
       "system.tools.cts_gis": {
         moduleId: "cts_gis_surface",
-        globalName: "PortalCtsGisInspectorRenderer",
+        globalName: "PortalCtsGisInterfacePanelRenderer",
         label: "CTS-GIS interface panel",
       },
       "network.root": {
         moduleId: "network_workspace",
-        globalName: "PortalNetworkInspectorRenderer",
+        globalName: "PortalNetworkInterfacePanelRenderer",
         label: "NETWORK detail",
       },
       "system.tools.aws_csm": {
         moduleId: "aws_workspace",
-        globalName: "PortalAwsCsmInspectorRenderer",
+        globalName: "PortalAwsCsmInterfacePanelRenderer",
         label: "AWS-CSM interface panel",
       },
       // "system.tools.fnd_ebi": deferred — renderer module v2_portal_fnd_ebi_workspace.js not yet created
       "system.tools.paypal_csm": {
         moduleId: "paypal_workspace",
-        globalName: "PortalPaypalCsmInspectorRenderer",
+        globalName: "PortalPaypalCsmInterfacePanelRenderer",
         label: "PayPal-CSM interface panel",
       },
     };

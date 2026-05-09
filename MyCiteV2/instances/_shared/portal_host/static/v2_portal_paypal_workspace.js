@@ -93,35 +93,35 @@
   };
 
   // -----------------------------------------------------------------------
-  // Inspector renderer — presentation_surface / interface panel region
+  // Interface Panel renderer — presentation_surface / interface panel region
   // -----------------------------------------------------------------------
 
-  var PortalPaypalCsmInspectorRenderer = {
+  var PortalPaypalCsmInterfacePanelRenderer = {
     render: function render(ctx, target, surfacePayload) {
       if (!target) return;
       var payload = asObject(surfacePayload);
       var sections = asList(payload.sections);
       var domainProfile = asObject(payload.domain_profile);
 
-      var html = '<div class="paypal-csm-inspector">';
-      html += '<h3 class="paypal-csm-inspector__heading">PayPal-CSM</h3>';
+      var html = '<div class="paypal-csm-interfacePanel">';
+      html += '<h3 class="paypal-csm-interfacePanel__heading">PayPal-CSM</h3>';
 
       if (sections.length > 0) {
         for (var si = 0; si < sections.length; si++) {
           var section = asObject(sections[si]);
           var rows = asList(section.rows);
-          html += '<section class="paypal-csm-inspector__section">';
+          html += '<section class="paypal-csm-interfacePanel__section">';
           if (section.title) {
-            html += '<h4 class="paypal-csm-inspector__section-title">' + escapeHtml(asText(section.title)) + '</h4>';
+            html += '<h4 class="paypal-csm-interfacePanel__section-title">' + escapeHtml(asText(section.title)) + '</h4>';
           }
           if (rows.length > 0) {
-            html += '<dl class="paypal-csm-inspector__dl">';
+            html += '<dl class="paypal-csm-interfacePanel__dl">';
             for (var ri = 0; ri < rows.length; ri++) {
               var row = asObject(rows[ri]);
               html += '<dt>' + escapeHtml(asText(row.label)) + '</dt>';
               html += '<dd>' + escapeHtml(asText(row.value));
               if (row.detail) {
-                html += '<span class="paypal-csm-inspector__detail"> — ' + escapeHtml(asText(row.detail)) + '</span>';
+                html += '<span class="paypal-csm-interfacePanel__detail"> — ' + escapeHtml(asText(row.detail)) + '</span>';
               }
               html += '</dd>';
             }
@@ -131,15 +131,15 @@
         }
       } else if (domainProfile.domain) {
         // Fallback: render domain profile fields directly if sections not provided
-        html += '<section class="paypal-csm-inspector__section">';
-        html += '<dl class="paypal-csm-inspector__dl">';
+        html += '<section class="paypal-csm-interfacePanel__section">';
+        html += '<dl class="paypal-csm-interfacePanel__dl">';
         html += '<dt>Domain</dt><dd>' + escapeHtml(asText(domainProfile.domain)) + '</dd>';
         html += '<dt>Environment</dt><dd>' + escapeHtml(asText(domainProfile.environment)) + '</dd>';
         html += '<dt>Configured</dt><dd>' + (domainProfile.configured ? 'yes' : 'no') + '</dd>';
         html += '</dl>';
         html += '</section>';
       } else {
-        html += '<p class="paypal-csm-inspector__empty">No profile data available.</p>';
+        html += '<p class="paypal-csm-interfacePanel__empty">No profile data available.</p>';
       }
 
       html += '</div>';
@@ -152,7 +152,7 @@
   // -----------------------------------------------------------------------
 
   window.PortalPaypalCsmWorkspaceRenderer = PortalPaypalCsmWorkspaceRenderer;
-  window.PortalPaypalCsmInspectorRenderer = PortalPaypalCsmInspectorRenderer;
+  window.PortalPaypalCsmInterfacePanelRenderer = PortalPaypalCsmInterfacePanelRenderer;
 
   var registry = resolveModuleRegistry();
   if (typeof registry.register === "function") {

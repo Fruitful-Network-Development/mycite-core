@@ -59,7 +59,6 @@
     data-tool-panel-lock="false"
     data-control-panel-collapsed="false"
     data-workbench-collapsed="false"
-    data-inspector-collapsed="true"
     data-interface-panel-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
@@ -170,39 +169,39 @@
         </section>
       </main>
 
-      <button type="button" class="ide-splitter ide-splitter--inspector" data-splitter="inspector" aria-label="Resize interface panel"></button>
+      <button type="button" class="ide-splitter ide-splitter--interface-panel" data-splitter="interface-panel" aria-label="Resize interface panel"></button>
 
       <aside
-        id="portalInspector"
-        class="ide-inspector is-collapsed"
+        id="portalInterfacePanel"
+        class="ide-interfacePanel is-collapsed"
         data-shell-region="interface-panel"
         data-primary-surface="false"
         data-surface-layout="sidebar"
         aria-label="Interface panel"
         aria-hidden="true"
       >
-        <header class="ide-inspector__header">
+        <header class="ide-interfacePanel__header">
           <div>
-            <div class="ide-inspector__kicker">Interface Panel</div>
-            <div id="portalInspectorTitle" class="ide-inspector__title">Overview</div>
+            <div class="ide-interfacePanel__kicker">Interface Panel</div>
+            <div id="portalInterfacePanelTitle" class="ide-interfacePanel__title">Overview</div>
           </div>
-          <button type="button" class="ide-inspector__close" data-inspector-close>Close Panel</button>
+          <button type="button" class="ide-interfacePanel__close" data-interface-panel-close>Close Panel</button>
         </header>
         <section
-          id="portalInspectorContent"
-          class="ide-inspector__content"
+          id="portalInterfacePanelContent"
+          class="ide-interfacePanel__content"
           data-interface-panel-scroll-root="true"
           data-interface-panel-active-root="system"
         >
-          <div id="v2-inspector-dynamic">
+          <div id="v2-interface-panel-dynamic">
             <section class="v2-card">
               <h3>Interface Panel</h3>
               <p>Select an item to load interface panel content.</p>
             </section>
           </div>
           <div
-            id="portalInspectorTransientMount"
-            class="ide-inspector__transient"
+            id="portalInterfacePanelTransientMount"
+            class="ide-interfacePanel__transient"
             data-interface-panel-root="transient"
             hidden
             aria-hidden="true"

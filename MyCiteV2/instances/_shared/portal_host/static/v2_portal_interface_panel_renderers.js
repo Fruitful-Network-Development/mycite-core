@@ -1651,7 +1651,7 @@
     });
   }
 
-  function renderCtsGisInspector(ctx, target, region) {
+  function renderCtsGisInterfacePanel(ctx, target, region) {
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var navigationCanvas = interfaceBody.navigation_canvas || {};
     var stagingWidget = interfaceBody.staging_widget || {};
@@ -1863,7 +1863,7 @@
     bindGeospatialZoomControls(target, ctx, geospatialProjection);
   }
 
-  function renderGenericInspectorSurface(target, region, surfacePayload) {
+  function renderGenericInterfacePanelSurface(target, region, surfacePayload) {
     var sections = region.sections || [];
     var interfaceBody = asObject(region.interface_body);
     var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], interfaceBody.default_tab_id);
@@ -1921,7 +1921,7 @@
         }
 
         return (
-          '<div class="v2-inspector-stack">' +
+          '<div class="v2-interfacePanel-stack">' +
           (region.subject
             ? '<section class="v2-card"><h3>Subject</h3>' +
               renderRows([
@@ -2044,7 +2044,7 @@
       return;
     }
     if (mode === "structured_interface_body") {
-      renderCtsGisInspector(ctx, target, region);
+      renderCtsGisInterfacePanel(ctx, target, region);
       return;
     }
     if (mode === "unsupported_interface_body") {
@@ -2061,10 +2061,10 @@
       );
       return;
     }
-    renderGenericInspectorSurface(target, region, surfacePayload);
+    renderGenericInterfacePanelSurface(target, region, surfacePayload);
   }
 
-  window.PortalCtsGisInspectorRenderer = {
+  window.PortalCtsGisInterfacePanelRenderer = {
     render: function (ctx) {
       var target = ctx.target;
       var region = ctx.region || {};
@@ -2073,7 +2073,7 @@
         target.innerHTML = "";
         return;
       }
-      renderCtsGisInspector(ctx, target, region);
+      renderCtsGisInterfacePanel(ctx, target, region);
     },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
@@ -2087,7 +2087,7 @@
       if (!target) return;
 
       // For CTS-GIS, workbench is primarily the diktataograph navigation canvas
-      // Delegate to the inspector renderer's navigation canvas rendering
+      // Delegate to the interface panel renderer's navigation canvas rendering
       var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
       var navigationCanvas = interfaceBody.navigation_canvas || {};
       var stagingWidget = interfaceBody.staging_widget || {};

@@ -163,7 +163,7 @@
     },
   };
 
-  window.PortalNetworkInspectorRenderer = {
+  window.PortalNetworkInterfacePanelRenderer = {
     render: function (ctx, target, surfacePayload) {
       var workspace = (surfacePayload && surfacePayload.workspace) || {};
       var record = workspace.selected_record || null;
@@ -180,7 +180,7 @@
             hasContent: false,
             message: "Select a system-log row to inspect its canonical payload and any linked contract summary.",
           }),
-          '<div class="v2-inspector-stack"><section class="v2-card"><h3>Log Record</h3><p>Select a system-log row to inspect its canonical payload and any linked contract summary.</p></section></div>'
+          '<div class="v2-interfacePanel-stack"><section class="v2-card"><h3>Log Record</h3><p>Select a system-log row to inspect its canonical payload and any linked contract summary.</p></section></div>'
         );
         return;
       }
@@ -192,7 +192,7 @@
           title: "NETWORK Detail",
           hasContent: true,
         }),
-        '<div class="v2-inspector-stack">' +
+        '<div class="v2-interfacePanel-stack">' +
         '<section class="v2-card"><h3>Record Summary</h3>' +
         '<dl class="v2-surface-dl">' +
         "<dt>datum</dt><dd><strong>" + escapeHtml(record.datum_address || "—") + "</strong></dd>" +
@@ -204,11 +204,11 @@
         "<dt>source</dt><dd><strong>" + escapeHtml(record.source_kind || "—") + "</strong><br />" + escapeHtml(record.source_timestamp || "—") + "</dd>" +
         "</dl></section>" +
         (contract
-          ? '<section class="v2-card" style="margin-top:12px"><h3>Linked Contract</h3><pre class="v2-networkInspector__json">' +
+          ? '<section class="v2-card" style="margin-top:12px"><h3>Linked Contract</h3><pre class="v2-networkDetail__json">' +
             escapeHtml(prettyJson(contract)) +
             "</pre></section>"
           : "") +
-        '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkInspector__json">' +
+        '<section class="v2-card" style="margin-top:12px"><h3>Raw Payload</h3><pre class="v2-networkDetail__json">' +
         escapeHtml(prettyJson(record.raw || {})) +
         "</pre></section></div>"
       );

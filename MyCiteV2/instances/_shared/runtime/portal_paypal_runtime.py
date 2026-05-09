@@ -25,7 +25,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
     PAYPAL_CSM_TOOL_ROUTE,
     PAYPAL_CSM_TOOL_SURFACE_ID,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
@@ -281,9 +281,9 @@ def build_portal_paypal_csm_surface_bundle(
         },
     ]
 
-    inspector = attach_region_family_contract(
+    interface_panel = attach_region_family_contract(
         {
-            "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+            "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
             "kind": "summary_panel",
             "title": "PayPal-CSM",
             "summary": "PayPal order mediation and donation profile.",
@@ -310,7 +310,7 @@ def build_portal_paypal_csm_surface_bundle(
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
-        "inspector": inspector,
+        "interface_panel": interface_panel,
         "shell_state": shell_state,
         "route": PAYPAL_CSM_TOOL_ROUTE,
     }

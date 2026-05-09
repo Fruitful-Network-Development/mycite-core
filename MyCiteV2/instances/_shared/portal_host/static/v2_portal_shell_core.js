@@ -210,20 +210,16 @@
   function applyChrome(composition, options) {
     var shell = qs(".ide-shell");
     var workbench = qs(".ide-workbench");
-    var inspector = qs("#portalInspector");
-    var inspectorContent = qs("#portalInspectorContent");
+    var interfacePanel = qs("#portalInterfacePanel");
+    var interfacePanelContent = qs("#portalInterfacePanelContent");
     var menubarTitle = qs(".ide-menubar__pageTitle");
     var menubarSub = qs(".ide-menubar__pageSub");
-    var inspectorRegion =
-      ((composition.regions && composition.regions.interface_panel) ||
-        (composition.regions && composition.regions.inspector)) ||
-      {};
+    var interfacePanelRegion = (composition.regions && composition.regions.interface_panel) || {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
     var routeKey = (options && options.routeKey) || routeKeyFromUrl((lastEnvelope && lastEnvelope.canonical_url) || "");
     var workbenchVisible = !(composition.workbench_collapsed === true || workbenchRegion.visible === false);
-    var inspectorVisible =
-      inspectorRegion.visible !== false &&
-      !(composition.interface_panel_collapsed === true || composition.inspector_collapsed === true);
+    var interfacePanelVisible =
+      interfacePanelRegion.visible !== false && !(composition.interface_panel_collapsed === true);
     if (!shell) return;
 
     shell.setAttribute("data-active-service", composition.active_service || "system");
@@ -231,8 +227,7 @@
     shell.setAttribute("data-foreground-shell-region", composition.foreground_shell_region || "center-workbench");
     shell.setAttribute("data-control-panel-collapsed", composition.control_panel_collapsed ? "true" : "false");
     shell.setAttribute("data-workbench-collapsed", workbenchVisible ? "false" : "true");
-    shell.setAttribute("data-inspector-collapsed", inspectorVisible ? "false" : "true");
-    shell.setAttribute("data-interface-panel-collapsed", inspectorVisible ? "false" : "true");
+    shell.setAttribute("data-interface-panel-collapsed", interfacePanelVisible ? "false" : "true");
 
     if (menubarTitle && composition.page_title) menubarTitle.textContent = composition.page_title;
     if (menubarSub) {
@@ -251,12 +246,12 @@
     if (workbench) {
       workbench.setAttribute("data-active-service", composition.active_service || "system");
     }
-    if (inspector) {
-      inspector.setAttribute("data-primary-surface", inspectorRegion.primary_surface ? "true" : "false");
-      inspector.setAttribute("data-surface-layout", inspectorRegion.layout_mode || "sidebar");
+    if (interfacePanel) {
+      interfacePanel.setAttribute("data-primary-surface", interfacePanelRegion.primary_surface ? "true" : "false");
+      interfacePanel.setAttribute("data-surface-layout", interfacePanelRegion.layout_mode || "sidebar");
     }
-    if (inspectorContent) {
-      inspectorContent.setAttribute(
+    if (interfacePanelContent) {
+      interfacePanelContent.setAttribute(
         "data-interface-panel-active-root",
         (composition.composition_mode || "system") === "tool" ? "tool" : "system"
       );
@@ -293,11 +288,8 @@
   function renderRegions(composition) {
     var chromeRenderers = resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers") || {};
     var workbenchRenderer = resolveRegisteredModuleExport("workbench_renderers", "PortalShellWorkbenchRenderer");
-    var inspectorRenderer = resolveRegisteredModuleExport("inspector_renderers", "PortalShellInspectorRenderer");
-    var interfacePanelRegion =
-      ((composition.regions && composition.regions.interface_panel) ||
-        (composition.regions && composition.regions.inspector)) ||
-      {};
+    var interfacePanelRenderer = resolveRegisteredModuleExport("interface_panel_renderers", "PortalShellInterfacePanelRenderer");
+    var interfacePanelRegion = (composition.regions && composition.regions.interface_panel) || {};
     if (typeof chromeRenderers.renderActivityBar !== "function") {
       throw buildModuleRegistrationError(
         "Activity-bar",
@@ -322,18 +314,18 @@
         "render"
       );
     }
-    if (!inspectorRenderer || typeof inspectorRenderer.render !== "function") {
+    if (!interfacePanelRenderer || typeof interfacePanelRenderer.render !== "function") {
       throw buildModuleRegistrationError(
-        "Inspector",
-        "inspector_renderers",
-        "PortalShellInspectorRenderer",
+        "Interface Panel",
+        "interface_panel_renderers",
+        "PortalShellInterfacePanelRenderer",
         "render"
       );
     }
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    inspectorRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-inspector-dynamic")));
+    interfacePanelRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-interface-panel-dynamic")));
   }
 
   function syncHistory(envelope, historyPayload, options) {
@@ -528,11 +520,13 @@
         (envelope.composition && envelope.composition) ||
         {};
       var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
-      var workbenchMode =
-        (workbenchRegion && workbenchRegion.mode) ||
-        (workbenchRegion.surface_payload && workbenchRegion.surface_payload.mode) ||
-        "";
-      if (workbenchMode === "anchor" || !workbenchMode) return;
+      var reflection = (workbenchRegion && workbenchRegion.state_reflection) || {};
+      var currentFile = (reflection && reflection.current_file) || "";
+      var collection = (workbenchRegion && workbenchRegion.document_collection) || {};
+      var anchorDocument = (collection && collection.anchor_document) || {};
+      var anchorId = (anchorDocument && anchorDocument.document_id) || "";
+      var anchorName = (anchorDocument && anchorDocument.canonical_name) || "";
+      if (!currentFile || currentFile === "anchor" || currentFile === "anthology" || currentFile === anchorId || currentFile === anchorName) return;
       var sandbox = (workbenchRegion && workbenchRegion.sandbox) || {};
       var sandboxId =
         (sandbox && sandbox.id) ||
@@ -543,12 +537,20 @@
       dispatchTransition({ kind: "focus_sandbox", sandbox_id: sandboxId });
     }
 
+    function isToolCompositionActive() {
+      var shell = qs(".ide-shell");
+      return shell ? shell.getAttribute("data-shell-composition") === "tool" : false;
+    }
+
     function handleInterfacePanelToggle() {
       var shell = qs(".ide-shell");
       if (!shell) return;
-      var isToolComposition = shell.getAttribute("data-shell-composition") === "tool";
-      if (isToolComposition) {
+      if (isToolCompositionActive()) {
         var isOpenOnTool = shell.getAttribute("data-interface-panel-collapsed") !== "true";
+        if (!isOpenOnTool) {
+          // opening interface panel on a tool surface closes the workbench
+          setWorkbenchOpenLocal(false);
+        }
         setInterfacePanelOpenLocal(!isOpenOnTool);
         return;
       }
@@ -580,16 +582,16 @@
       dispatchTransition({ kind: "close_interface_panel" });
     }
 
-    ["mycite:v2:interface-panel-toggle-request", "mycite:v2:inspector-toggle-request"].forEach(function (eventName) {
-      document.addEventListener(eventName, handleInterfacePanelToggle);
-    });
-    ["mycite:v2:interface-panel-dismiss-request", "mycite:v2:inspector-dismiss-request"].forEach(function (eventName) {
-      document.addEventListener(eventName, handleInterfacePanelDismiss);
-    });
+    document.addEventListener("mycite:v2:interface-panel-toggle-request", handleInterfacePanelToggle);
+    document.addEventListener("mycite:v2:interface-panel-dismiss-request", handleInterfacePanelDismiss);
     document.addEventListener("mycite:v2:workbench-toggle-request", function () {
       var shell = qs(".ide-shell");
       if (!shell) return;
       var isOpenLocal = shell.getAttribute("data-workbench-collapsed") !== "true";
+      if (isToolCompositionActive() && !isOpenLocal) {
+        // opening workbench on a tool surface closes the interface panel
+        setInterfacePanelOpenLocal(false);
+      }
       setWorkbenchOpenLocal(!isOpenLocal);
     });
     document.addEventListener("mycite:v2:control-panel-toggle-request", function () {

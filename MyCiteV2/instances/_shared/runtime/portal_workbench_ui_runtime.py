@@ -17,7 +17,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PortalScope,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
@@ -167,7 +167,7 @@ def _decorate_workspace_navigation(
             item.update(_surface_request(portal_scope=portal_scope, surface_query=item_query))
 
 
-def build_portal_workbench_ui_surface_bundle(
+def build_portal_workbench_ui_bundle(
     *,
     portal_scope: PortalScope,
     portal_domain: str,
@@ -184,9 +184,9 @@ def build_portal_workbench_ui_surface_bundle(
     model = {
         "surface_payload": {
             "schema": WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
-            "kind": "workbench_ui_surface",
+            "kind": "sql_authority_lens",
             "title": "Workbench UI",
-            "subtitle": "Read-only two-pane SQL-backed spreadsheet.",
+            "subtitle": "Reflective view of the SQL authority lens state.",
             "sections": [],
             "notes": ["The SQL authority database is required for this surface."],
         },
@@ -208,7 +208,7 @@ def build_portal_workbench_ui_surface_bundle(
         "selected_row": {},
         "selected_row_hyphae_hash_short": "",
         "navigation": {},
-        "inspector_sections": [],
+        "interface_panel_sections": [],
     }
     authority_path = _path_or_none(authority_db_file)
     if authority_path is not None and runtime_error is None:
@@ -400,9 +400,22 @@ def build_portal_workbench_ui_surface_bundle(
         ]
     selected_row_address = _as_text((model.get("selected_row") or {}).get("datum_address"))
     workbench_ui_workbench_state = {
-        "mode": "selected_document" if selected_row_address else "anchor",
-        "anchor_document_id": _as_text(model.get("document_id")),
-        "selected_document_id": _as_text(model.get("document_id")) if selected_row_address else "",
+        "state_reflection": {
+            "current_sandbox": "workbench_ui",
+            "current_file": _as_text(model.get("document_id")),
+            "current_datum": selected_row_address,
+            "current_object": "",
+            "aitas": {
+                "attention": selected_row_address or _as_text(model.get("document_id")),
+                "intention": _as_text(model.get("workbench_lens")) or "interpreted",
+                "time": "current",
+                "archetype": "sql_authority_lens",
+            },
+            "nimm": {
+                "directive": "observe_state",
+                "actions": ["select_document", "select_row", "filter", "sort", "group"],
+            },
+        },
     }
     control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
@@ -435,18 +448,24 @@ def build_portal_workbench_ui_surface_bundle(
     workbench = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-        "kind": "surface_payload",
+        "kind": "sql_authority_lens",
         "title": "Workbench UI",
-        "subtitle": "Read-only two-pane SQL-backed spreadsheet.",
+        "subtitle": "Reflective view of the SQL authority lens state.",
         "visible": True,
+        "state_reflection": workbench_ui_workbench_state["state_reflection"],
+        "document_collection": {
+            "sandbox_id": "workbench_ui",
+            "documents": list(model.get("document_rows") or []),
+        },
+        "active_document": ((model.get("surface_payload") or {}).get("workspace") or {}).get("selected_document"),
         "surface_payload": model["surface_payload"],
         },
         family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
     )
-    inspector = attach_region_family_contract(
+    interface_panel = attach_region_family_contract(
         {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": "Selection",
         "summary": "Selected document/version metadata, row semantics, and additive directive overlays.",
@@ -455,7 +474,7 @@ def build_portal_workbench_ui_surface_bundle(
             "level": "datum",
             "id": _as_text((model.get("selected_row") or {}).get("datum_address")) or _as_text(model.get("document_id")),
         },
-        "sections": list(model.get("inspector_sections") or []),
+        "sections": list(model.get("interface_panel_sections") or []),
         },
         family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -464,12 +483,12 @@ def build_portal_workbench_ui_surface_bundle(
         "entrypoint_id": WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
         "read_write_posture": "read-only",
         "page_title": "Workbench UI",
-        "page_subtitle": "Read-only two-pane SQL-backed spreadsheet.",
+        "page_subtitle": "Reflective view of the SQL authority lens state.",
         "canonical_query": active_query,
         "surface_payload": model["surface_payload"],
         "control_panel": control_panel,
         "workbench": workbench,
-        "inspector": inspector,
+        "interface_panel": interface_panel,
         "route": WORKBENCH_UI_TOOL_ROUTE,
     }
 
@@ -501,6 +520,6 @@ def run_portal_workbench_ui(
 
 
 __all__ = [
-    "build_portal_workbench_ui_surface_bundle",
+    "build_portal_workbench_ui_bundle",
     "run_portal_workbench_ui",
 ]

@@ -669,22 +669,24 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     "region_renderers",
                     "tool_surface_adapter",
                     "aws_workspace",
+                    "paypal_workspace",
                     "system_workspace",
                     "network_workspace",
                     "workbench_renderers",
-                    "inspector_renderers",
+                    "interface_panel_renderers",
                     "cts_gis_surface",
+                    "cts_gis_workspace",
                     "shell_core",
                     "shell_watchdog",
                 ],
             )
             self.assertEqual(
                 [entry["module_id"] for entry in shell_modules if entry["load_phase"] == "deferred"],
-                ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"],
+                ["aws_workspace", "paypal_workspace", "system_workspace", "network_workspace", "cts_gis_surface", "cts_gis_workspace"],
             )
             self.assertEqual(
                 health_payload["shell_asset_manifest"]["budget_policy"]["deferred_module_ids"],
-                ["aws_workspace", "system_workspace", "network_workspace", "cts_gis_surface"],
+                ["aws_workspace", "paypal_workspace", "system_workspace", "network_workspace", "cts_gis_surface", "cts_gis_workspace"],
             )
             self.assertEqual(
                 health_payload["shell_asset_manifest"]["cache_policy"]["invalidation_mode"],
@@ -737,13 +739,9 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(payload["canonical_route"], "/portal/system")
             self.assertEqual(payload["canonical_query"]["file"], "anthology")
             self.assertEqual(payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
-            self.assertTrue(payload["shell_composition"]["inspector_collapsed"])
             self.assertTrue(payload["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(payload["shell_composition"]["workbench_collapsed"])
-            self.assertEqual(
-                payload["shell_composition"]["regions"]["interface_panel"],
-                payload["shell_composition"]["regions"]["inspector"],
-            )
+            self.assertNotIn("inspector", payload["shell_composition"]["regions"])
             activity_items = payload["shell_composition"]["regions"]["activity_bar"]["items"]
             self.assertNotIn("system.root", [item["item_id"] for item in activity_items])
             aws_items = [item for item in activity_items if item["item_id"] == "system.tools.aws_csm"]
@@ -775,7 +773,6 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertEqual(network_payload["canonical_query"], {"view": "system_logs"})
             self.assertEqual(network_payload["surface_payload"]["kind"], "network_system_log_workspace")
             self.assertEqual(network_payload["shell_composition"]["regions"]["control_panel"]["kind"], "focus_selection_panel")
-            self.assertTrue(network_payload["shell_composition"]["inspector_collapsed"])
             self.assertTrue(network_payload["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(network_payload["shell_composition"]["workbench_collapsed"])
 
@@ -814,10 +811,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 aws_shell_payload["surface_payload"]["workspace"]["create_domain_defaults"]["region"],
                 "us-east-1",
             )
-            self.assertEqual(
-                aws_shell_payload["shell_composition"]["regions"]["interface_panel"],
-                aws_shell_payload["shell_composition"]["regions"]["inspector"],
-            )
+            self.assertNotIn("inspector", aws_shell_payload["shell_composition"]["regions"])
 
             tool_response = client.post(
                 "/portal/api/v2/system/tools/aws-csm",
@@ -854,8 +848,8 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             cts_gis_payload = cts_gis_ok.get_json()
             self.assertEqual(cts_gis_payload["surface_id"], "system.tools.cts_gis")
             shell_regions = dict((cts_gis_payload.get("shell_composition") or {}).get("regions") or {})
-            inspector_region = dict(shell_regions.get("inspector") or {})
-            interface_body = dict(inspector_region.get("interface_body") or {})
+            interface_panel_region = dict(shell_regions.get("interface_panel") or {})
+            interface_body = dict(interface_panel_region.get("interface_body") or {})
             garland_projection = dict(interface_body.get("garland_split_projection") or {})
             geospatial_projection = dict(garland_projection.get("geospatial_projection") or {})
             if geospatial_projection:

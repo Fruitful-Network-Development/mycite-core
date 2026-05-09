@@ -18,7 +18,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_EBI_TOOL_ENTRYPOINT_ID,
     FND_EBI_TOOL_ROUTE,
     FND_EBI_TOOL_SURFACE_ID,
-    PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
@@ -206,9 +206,9 @@ def build_portal_fnd_ebi_surface_bundle(
         subtitle="Layered datum table for the active FND-EBI sandbox file.",
         visible=workbench_visible,
     )
-    inspector = attach_region_family_contract(
+    interface_panel = attach_region_family_contract(
         {
-        "schema": PORTAL_SHELL_REGION_INSPECTOR_SCHEMA,
+        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "summary_panel",
         "title": "FND-EBI",
         "summary": "Shared hosted visibility posture.",
@@ -247,7 +247,7 @@ def build_portal_fnd_ebi_surface_bundle(
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
-        "inspector": inspector,
+        "interface_panel": interface_panel,
         "shell_state": shell_state,
         "route": FND_EBI_TOOL_ROUTE,
     }

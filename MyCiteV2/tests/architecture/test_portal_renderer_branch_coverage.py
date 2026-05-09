@@ -16,8 +16,8 @@ WORKBENCH_SOURCE = (
     REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_workbench_renderers.js"
 ).read_text(encoding="utf-8")
 
-INSPECTOR_SOURCE = (
-    REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_inspector_renderers.js"
+INTERFACE_PANEL_SOURCE = (
+    REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
 ).read_text(encoding="utf-8")
 
 AWS_SOURCE = (
@@ -142,21 +142,23 @@ class RendererBranchCoverageTests(unittest.TestCase):
 
 
 class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):
-    """Verify that the CTS-GIS workbench secondary evidence block and the inspector
-    staging widget are intentionally separate surfaces (diagnostic vs. interactive),
-    not accidental duplication."""
+    """Verify that CTS-GIS tool chrome stays out of the reflective Workbench."""
 
-    def test_workbench_has_secondary_evidence_renderer(self) -> None:
-        self.assertIn("renderSecondaryEvidenceSurface", WORKBENCH_SOURCE,
-                      "Workbench must have a secondary evidence renderer for CTS-GIS diagnostic view")
+    def test_workbench_has_state_reflective_datum_file_renderer(self) -> None:
+        self.assertIn("renderDatumFileWorkbench", WORKBENCH_SOURCE,
+                      "Workbench must render the shared datum-file reflection")
+        self.assertIn("renderSandboxDocumentCollection", WORKBENCH_SOURCE,
+                      "Workbench must render sandbox document collections")
+        self.assertNotIn("renderSecondaryEvidenceSurface", WORKBENCH_SOURCE,
+                         "CTS-GIS secondary evidence must not re-enter the Workbench renderer")
 
-    def test_workbench_cts_gis_block_reads_source_evidence(self) -> None:
-        self.assertIn("source_evidence", WORKBENCH_SOURCE,
-                      "Workbench CTS-GIS block must read from source_evidence (diagnostic path)")
+    def test_workbench_cts_gis_block_does_not_read_source_evidence(self) -> None:
+        self.assertNotIn("source_evidence", WORKBENCH_SOURCE,
+                         "Workbench CTS-GIS block must not read tool-specific source evidence")
 
-    def test_inspector_has_interactive_staging_widget(self) -> None:
-        self.assertIn("renderCtsGisStagingWidget", INSPECTOR_SOURCE,
-                      "Inspector must own the interactive staging widget renderer")
+    def test_interface_panel_has_interactive_staging_widget(self) -> None:
+        self.assertIn("renderCtsGisStagingWidget", INTERFACE_PANEL_SOURCE,
+                      "Interface Panel must own the interactive staging widget renderer")
 
     def test_staging_widget_not_duplicated_in_workbench(self) -> None:
         self.assertNotIn("renderCtsGisStagingWidget", WORKBENCH_SOURCE,
@@ -164,8 +166,8 @@ class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):
                          "workbench shows read-only diagnostic view only")
 
     def test_workbench_cts_gis_block_does_not_read_interface_body(self) -> None:
-        # The workbench diagnostic view must not reach into interface_body.staging_widget;
-        # that payload is inspector-only.
+        # The workbench must not reach into interface_body.staging_widget; that
+        # payload is Interface Panel-only.
         self.assertNotIn("interface_body.staging_widget", WORKBENCH_SOURCE,
                          "Workbench CTS-GIS block must not read from interface_body.staging_widget")
 
@@ -179,19 +181,19 @@ class CtsGisGarlandRedesignTests(unittest.TestCase):
         diktataograph_garland_split (AC-1: thin-column bug fix)."""
         self.assertIn(
             'cts-gis-interface--split',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderCtsGisInspector must apply cts-gis-interface--split class for split layout",
         )
         # The gate condition must be present in source
         self.assertIn(
             'isSplitLayout',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderCtsGisInspector must use isSplitLayout gate variable",
         )
         # Split panels must be rendered when split layout is active
         self.assertIn(
             'cts-gis-interface__splitPanel',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderCtsGisInspector must render cts-gis-interface__splitPanel divs for split layout",
         )
 
@@ -200,23 +202,23 @@ class CtsGisGarlandRedesignTests(unittest.TestCase):
         when overlay_layers are present (AC-2: summary object replaces static block)."""
         self.assertIn(
             'function renderGarlandSummaryObject(',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGarlandSummaryObject must be defined in inspector renderer",
         )
         self.assertIn(
             'cts-gis-garlandSummary',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGarlandSummaryObject must produce cts-gis-garlandSummary section",
         )
         self.assertIn(
             'cts-gis-overlayToggle',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGarlandSummaryObject must render overlay toggle buttons",
         )
         # Static 'Current Profile' heading must be removed
         self.assertNotIn(
             '<h5>Current Profile</h5>',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "Static 'Current Profile' section heading must be removed in favour of renderGarlandSummaryObject",
         )
 
@@ -225,32 +227,32 @@ class CtsGisGarlandRedesignTests(unittest.TestCase):
         be lowered to 50 (AC-3: zoom controls + precinct zoom)."""
         self.assertIn(
             'cts-gis-mapStage__controls',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGeospatialStage must render cts-gis-mapStage__controls container",
         )
         self.assertIn(
             'data-cts-gis-zoom="fit"',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGeospatialStage must render a fit-all zoom button",
         )
         self.assertIn(
             'data-cts-gis-zoom="focus"',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "renderGeospatialStage must render a zoom-to-focus button",
         )
         # Focus threshold must be 50, not the old 200
         self.assertIn(
             'globalArea / focusArea > 50',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "Focus bounds area ratio threshold must be 50 (was 200) for aggressive precinct zoom",
         )
         self.assertNotIn(
             'globalArea / focusArea > 200',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "Old 200 focus bounds threshold must be removed",
         )
         self.assertIn(
             'function bindGeospatialZoomControls(',
-            INSPECTOR_SOURCE,
+            INTERFACE_PANEL_SOURCE,
             "bindGeospatialZoomControls must be defined for zoom button event binding",
         )
