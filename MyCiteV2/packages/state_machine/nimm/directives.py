@@ -80,6 +80,28 @@ def normalize_nimm_verb(value: object, *, field_name: str = "nimm.verb") -> str:
     return NIMM_VERB_ALIASES.get(token, token)
 
 
+NIMM_DIRECTIVE_TEXT_FORMAT = "verb;target_authority:datum_address  (e.g. med;cts_gis:1-1-2)"
+
+
+def parse_directive_text(text: str) -> dict[str, str]:
+    """Validate and parse directive terminal input.
+
+    Returns {"verb": canonical_verb, "target_text": rest, "raw": original}.
+    Raises ValueError on empty input, missing ";", or unrecognized verb.
+    """
+    text = _as_text(text)
+    if not text:
+        raise ValueError("Directive text cannot be empty.")
+    if ";" not in text:
+        raise ValueError(
+            f"Invalid directive format: {text!r}. "
+            f"Expected {NIMM_DIRECTIVE_TEXT_FORMAT}."
+        )
+    verb_part, _, target_part = text.partition(";")
+    verb = normalize_nimm_verb(verb_part)
+    return {"verb": verb, "target_text": target_part.strip(), "raw": text}
+
+
 @dataclass(frozen=True)
 class NimmTargetAddress:
     file_key: str = ""
@@ -202,11 +224,17 @@ def handle_nimm_mediate(directive: NimmDirective | dict[str, Any]) -> NimmDirect
     normalized = validate_nimm_directive_payload(directive)
     if normalized.verb != VERB_MEDIATE:
         raise ValueError("mediate handler requires verb=mediate")
-    raise NotImplementedError("NIMM mediate semantics are deferred to a later phase.")
+    # Validation passes; resolution is delegated to the tool-specific runtime handler.
+    # The caller uses the normalized directive's target_authority and payload to dispatch
+    # to the appropriate mediation builder (e.g. nimm.mediate_handlers for cts_gis).
+    return normalized
 
 
 def handle_nimm_manipulate(directive: NimmDirective | dict[str, Any]) -> NimmDirective:
     normalized = validate_nimm_directive_payload(directive)
     if normalized.verb != VERB_MANIPULATE:
         raise ValueError("manipulate handler requires verb=manipulate")
-    raise NotImplementedError("NIMM manipulate semantics are runtime-owned and deferred.")
+    # Validation passes; resolution is delegated to the tool-specific runtime handler.
+    # The caller uses the normalized directive's target_authority and payload to dispatch
+    # to the appropriate mutation handler (e.g. datum_workbench for rename/delete).
+    return normalized

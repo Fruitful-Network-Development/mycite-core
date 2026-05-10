@@ -11,6 +11,7 @@ from MyCiteV2.packages.state_machine.nimm import (
     NimmTargetAddress,
     normalize_nimm_verb,
 )
+from . import shell_registry as _shell_registry
 
 PORTAL_SHELL_REQUEST_SCHEMA = "mycite.v2.portal.shell.request.v1"
 PORTAL_SHELL_STATE_SCHEMA = "mycite.v2.portal.shell.state.v1"
@@ -668,182 +669,11 @@ class PortalShellResolution:
 
 
 def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
-    return (
-        PortalSurfaceCatalogEntry(
-            surface_id=SYSTEM_ROOT_SURFACE_ID,
-            label="System",
-            route=SYSTEM_ROOT_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="system_workspace",
-            page_owner="system",
-            default_surface=True,
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=NETWORK_ROOT_SURFACE_ID,
-            label="Network",
-            route=NETWORK_ROOT_ROUTE,
-            root_surface_id=NETWORK_ROOT_SURFACE_ID,
-            surface_kind="network_root",
-            page_owner="network",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=UTILITIES_ROOT_SURFACE_ID,
-            label="Utilities",
-            route=UTILITIES_ROOT_ROUTE,
-            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
-            surface_kind="utilities_root",
-            page_owner="utilities",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-            label="Tool Exposure",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
-            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
-            surface_kind="utilities_tool_exposure",
-            page_owner="utilities",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=UTILITIES_INTEGRATIONS_SURFACE_ID,
-            label="Integrations",
-            route=UTILITIES_INTEGRATIONS_ROUTE,
-            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
-            surface_kind="utilities_integrations",
-            page_owner="utilities",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            label="AWS-CSM",
-            route=AWS_CSM_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="aws_csm",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            label="CTS-GIS",
-            route=CTS_GIS_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="cts_gis",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=FND_DCM_TOOL_SURFACE_ID,
-            label="FND-DCM",
-            route=FND_DCM_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="fnd_dcm",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=FND_EBI_TOOL_SURFACE_ID,
-            label="FND-EBI",
-            route=FND_EBI_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="fnd_ebi",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
-            label="PayPal-CSM",
-            route=PAYPAL_CSM_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="paypal_csm",
-        ),
-        PortalSurfaceCatalogEntry(
-            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-            label="Workbench UI",
-            route=WORKBENCH_UI_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="workbench_ui",
-        ),
-    )
+    return _shell_registry.build_portal_surface_catalog()
 
 
 def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
-    return (
-        PortalToolRegistryEntry(
-            tool_id="aws_csm",
-            label="AWS-CSM",
-            surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            entrypoint_id=AWS_CSM_TOOL_ENTRYPOINT_ID,
-            route=AWS_CSM_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
-            required_capabilities=("fnd_peripheral_routing",),
-            summary="Unified domain gallery with mailbox onboarding and newsletter state.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="cts_gis",
-            label="CTS-GIS",
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            entrypoint_id=CTS_GIS_TOOL_ENTRYPOINT_ID,
-            route=CTS_GIS_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_GENERAL,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="write",
-            required_capabilities=("datum_recognition", "spatial_projection"),
-            summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="fnd_dcm",
-            label="FND-DCM",
-            surface_id=FND_DCM_TOOL_SURFACE_ID,
-            entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,
-            route=FND_DCM_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
-            required_capabilities=("hosted_site_manifest_visibility", "fnd_peripheral_routing"),
-            summary="Hosted manifest inspection and collection normalization.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="fnd_ebi",
-            label="FND-EBI",
-            surface_id=FND_EBI_TOOL_SURFACE_ID,
-            entrypoint_id=FND_EBI_TOOL_ENTRYPOINT_ID,
-            route=FND_EBI_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
-            required_capabilities=("hosted_site_visibility", "fnd_peripheral_routing"),
-            summary="Hosted site operational visibility.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="paypal_csm",
-            label="PayPal-CSM",
-            surface_id=PAYPAL_CSM_TOOL_SURFACE_ID,
-            entrypoint_id=PAYPAL_CSM_TOOL_ENTRYPOINT_ID,
-            route=PAYPAL_CSM_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            summary="PayPal order mediation and donation profile management.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="workbench_ui",
-            label="Workbench UI",
-            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-            entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
-            route=WORKBENCH_UI_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_GENERAL,
-            surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            read_write_posture="read-only",
-            required_capabilities=("datum_recognition",),
-            default_enabled=True,
-            default_workbench_visible=True,
-            summary="Read-only SQL datum grid with additive directive-overlay inspection.",
-        ),
-    )
+    return _shell_registry.build_portal_tool_registry_entries()
 
 
 def resolve_portal_surface(surface_id: object) -> PortalSurfaceCatalogEntry | None:
