@@ -954,17 +954,27 @@
           var documentId = asText(cardObj.document_id);
           var canonicalName = stripJsonSuffix(asText(cardObj.canonical_name) || asText(cardObj.label));
           var rawName = stripJsonSuffix(asText(cardObj.document_name) || asText(cardObj.secondary_label) || asText(cardObj.relative_path));
+          var isAnchor = !!cardObj.is_anchor;
           return (
-            '<article class="v2-card' +
+            '<article class="v2-card v2-wb-docCard' +
             (cardObj.selected ? " is-selected" : "") +
-            (cardObj.is_anchor ? " is-anchor" : "") +
+            (isAnchor ? " is-anchor" : "") +
             '" tabindex="0" role="button" data-shell-transition-kind="focus_file" data-shell-file-key="' +
             escapeHtml(documentId) +
             '">' +
-            "<h3>" +
+            '<div class="v2-wb-docCard__header">' +
+            '<h3 class="v2-wb-docCard__name">' +
             escapeHtml(canonicalName || documentId || "Document") +
-            (cardObj.is_anchor ? ' <small>(anchor)</small>' : "") +
+            (isAnchor ? ' <small>(anchor)</small>' : "") +
             "</h3>" +
+            '<span class="v2-wb-docCard__actions">' +
+            '<button class="v2-wb-renameBtn" data-rename-document-id="' + escapeHtml(documentId) + '" title="Rename" aria-label="Rename">✎</button>' +
+            (!isAnchor
+              ? '<button class="v2-wb-deleteBtn" data-delete-document-id="' + escapeHtml(documentId) + '" data-document-is-anchor="false" title="Delete" aria-label="Delete">×</button>'
+              : '<button class="v2-wb-deleteBtn" data-delete-document-id="' + escapeHtml(documentId) + '" data-document-is-anchor="true" title="Anchor cannot be deleted" aria-label="Delete" disabled>×</button>'
+            ) +
+            "</span>" +
+            "</div>" +
             ((rawName || documentId)
               ? "<p><small>" + escapeHtml(rawName || documentId) + "</small></p>"
               : "") +
@@ -980,6 +990,75 @@
     );
   }
 
+  function bindDocumentCardActions(target, ctx) {
+    Array.prototype.forEach.call(target.querySelectorAll("[data-rename-document-id]"), function (btn) {
+      btn.addEventListener("click", function (event) {
+        event.stopPropagation();
+        event.preventDefault();
+        var documentId = btn.getAttribute("data-rename-document-id") || "";
+        var card = btn.closest(".v2-wb-docCard");
+        if (!card) return;
+        var nameEl = card.querySelector(".v2-wb-docCard__name");
+        if (!nameEl || card.querySelector(".v2-wb-renameInput")) return;
+        var currentName = nameEl.textContent.replace(/\s*\(anchor\)\s*$/, "").trim();
+        var input = document.createElement("input");
+        input.className = "v2-wb-renameInput";
+        input.value = currentName;
+        input.setAttribute("data-document-id", documentId);
+        nameEl.replaceWith(input);
+        input.focus();
+        input.select();
+        function commit() {
+          var newName = input.value.trim();
+          var restoredEl = document.createElement("h3");
+          restoredEl.className = "v2-wb-docCard__name";
+          restoredEl.textContent = newName || currentName;
+          input.replaceWith(restoredEl);
+          if (newName && newName !== currentName && typeof ctx.dispatchToolAction === "function") {
+            ctx.dispatchToolAction({ action_kind: "rename_document", document_id: documentId, new_name: newName });
+          }
+        }
+        input.addEventListener("blur", commit);
+        input.addEventListener("keydown", function (e) {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") {
+            var restoredEl = document.createElement("h3");
+            restoredEl.className = "v2-wb-docCard__name";
+            restoredEl.textContent = currentName;
+            input.removeEventListener("blur", commit);
+            input.replaceWith(restoredEl);
+          }
+        });
+      });
+    });
+    Array.prototype.forEach.call(target.querySelectorAll("[data-delete-document-id]"), function (btn) {
+      btn.addEventListener("click", function (event) {
+        event.stopPropagation();
+        event.preventDefault();
+        var isAnchor = btn.getAttribute("data-document-is-anchor") === "true";
+        if (isAnchor) {
+          var card = btn.closest(".v2-wb-docCard");
+          if (card) {
+            var warn = card.querySelector(".v2-wb-anchorWarn");
+            if (!warn) {
+              warn = document.createElement("p");
+              warn.className = "v2-wb-anchorWarn";
+              warn.style.color = "var(--color-warning, #c77)";
+              warn.textContent = "Anchor cannot be deleted.";
+              card.appendChild(warn);
+              setTimeout(function () { if (warn.parentNode) warn.parentNode.removeChild(warn); }, 3000);
+            }
+          }
+          return;
+        }
+        var documentId = btn.getAttribute("data-delete-document-id") || "";
+        if (documentId && typeof ctx.dispatchToolAction === "function") {
+          ctx.dispatchToolAction({ action_kind: "delete_document", document_id: documentId });
+        }
+      });
+    });
+  }
+
   function renderDatumFileWorkbench(ctx, target, region) {
     var activeDocument = asObject(region && region.active_document);
     var table = asObject(region && region.layered_datum_table);
@@ -988,6 +1067,7 @@
       : renderSandboxDocumentCollection(region);
     target.innerHTML = renderDatumFileWorkbenchHeader(region) + body;
     bindDatumFileWorkbenchEvents(ctx, target, region);
+    bindDocumentCardActions(target, ctx);
   }
 
   function bindDatumFileWorkbenchEvents(ctx, target, region) {
@@ -1003,6 +1083,14 @@
       }
       node.addEventListener("click", activate);
       node.addEventListener("keydown", activate);
+      node.addEventListener("dblclick", function (event) {
+        var kind = node.getAttribute("data-shell-transition-kind") || "";
+        var fileKey = node.getAttribute("data-shell-file-key") || "";
+        if (kind === "focus_file" && fileKey && typeof ctx.dispatchTransition === "function") {
+          event.preventDefault();
+          ctx.dispatchTransition({ kind: "focus_file", file_key: fileKey });
+        }
+      });
     });
     // Wire NIMM directive actions: buttons with data-nimm-action-id dispatch the
     // corresponding transition directive from state_reflection.nimm.actions

@@ -164,14 +164,28 @@ For migrated portals, authoritative `SYSTEM` datum/workbench/profile/grant postu
 - `navigation_canvas.decode_state` blocks when magnitude decode or node bindings are invalid.
 - `navigation_canvas.dropdowns` carries one dropdown per resolved structural depth.
 - `navigation_canvas.active_path` carries the resolved lineage.
-- `Garland` is the CTS-GIS correlated projection surface (`garland_split_projection`) with dominant `geospatial_projection` and secondary `profile_projection`.
-- Garland remains visible and stateful once a structural selection exists.
-- `profile_projection` may show the current selected node with blank values when no matching profile source has been resolved yet.
-- `geospatial_projection` stays blank until the selected node or its widened intention scope resolves valid profile and HOPS evidence.
-- node-focused widened intention keeps the selected node as the active profile while Garland may overlay multiple in-scope projectable source documents.
+- `Garland` is the CTS-GIS correlated projection surface. It renders as a list of
+  **component frames** (`interface_body.component_frames`), each carrying a typed payload
+  and an initializer directive spec. See `docs/contracts/interface_panel_component_frame_contract.md`.
+- The primary frame is a `profile` component representing the administrative entity at the
+  current attention node; its `subject_slot` contains a `geospatial_projection` component.
+- Legacy payload: `garland_split_projection` with `geospatial_projection` and `profile_projection`
+  is preserved as a backwards-compatibility fallback and is the source of truth when
+  `component_frames` is absent. The frontend normalization path synthesizes empty frames
+  when only the legacy payload is present.
+- Garland remains visible and stateful once a structural selection exists. Component frames
+  are frozen after initial render; a changed `render_key` triggers re-render.
+- `profile` frame may show blank field values when no matching profile source is resolved yet.
+- `geospatial_projection` frame stays blank until the attention node or its widened intention
+  resolves valid HOPS evidence.
+- Node-focused widened intention keeps the selected node as the active profile while Garland
+  may overlay multiple in-scope projectable source documents.
 - Title fallback is blank-only when ASCII title decode is unavailable.
-- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while preserving the same contract.
-- CTS-GIS mediates on the selected anchor-file datum and projects correlated source-file evidence into the Interface Panel.
+- In narrow posture, the CTS-GIS-local body may fall back to a vertical stack while
+  preserving the same contract.
+- CTS-GIS mediates on the selected anchor-file datum (`1-1-2`, msn-SAMRAS magnitude) and
+  projects correlated source-file evidence into the Interface Panel. This mediation does
+  NOT change the AITAS spatial value. See `docs/contracts/portal_panel_state_distinction.md`.
 - CTS-GIS tool-local navigation does not widen the shared shell focus stack. The shell focus remains `sandbox -> file -> datum -> object`.
 - Tool-local state is body-carried through CTS-GIS `tool_state`, not projected through new query keys.
 - CTS-GIS staged insert state is carried in `tool_state.staged_insert`.

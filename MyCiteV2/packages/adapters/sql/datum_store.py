@@ -758,6 +758,26 @@ class SqliteSystemDatumStoreAdapter(
             updated_document=normalized_document,
         )
 
+    def delete_authoritative_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        catalog = self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+        remaining = [d for d in catalog.documents if d.document_id != _as_text(document_id)]
+        if len(remaining) == len(catalog.documents):
+            raise ValueError("authoritative_document_missing")
+        next_catalog = AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=catalog.tenant_id,
+            documents=tuple(remaining),
+            source_files=dict(catalog.source_files),
+            readiness_status=dict(catalog.readiness_status),
+            warnings=tuple(catalog.warnings),
+        )
+        self.store_authoritative_catalog(next_catalog)
+        return self.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
+
     def preview_document_insert(
         self,
         *,

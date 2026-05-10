@@ -40,6 +40,19 @@ def _cts_gis_interface_body(request_payload: dict) -> dict:
     )
 
 
+def _cts_gis_regions(request_payload: dict) -> dict:
+    data_dir, private_dir = _preferred_fnd_paths()
+    envelope = run_portal_cts_gis(
+        request_payload,
+        data_dir=str(data_dir),
+        private_dir=str(private_dir),
+        tool_exposure_policy=None,
+        portal_instance_id="fnd",
+        portal_domain="fruitfulnetworkdevelopment.com",
+    )
+    return dict(envelope["shell_composition"]["regions"])  # type: ignore[index]
+
+
 def _without_phase_timings(value):
     if isinstance(value, dict):
         return {
@@ -147,6 +160,59 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
 
         self.assertIn("invalid_active_path", diagnostic_codes)
         self.assertIn("unresolved_node_binding", diagnostic_codes)
+
+    def test_garland_emits_modular_component_shells_and_context_controls(self) -> None:
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        frames = list(interface_body.get("component_frames") or [])
+        self.assertIn("garland_split_projection", interface_body)
+        self.assertTrue(frames)
+        garland_group = frames[0]
+        self.assertEqual(garland_group.get("component_type"), "component_group")
+        self.assertFalse(garland_group.get("frozen"))
+        children = list((garland_group.get("payload") or {}).get("children") or [])
+        child_ids = {child.get("frame_id") for child in children}
+        self.assertEqual(
+            child_ids,
+            {
+                "administrative_node_profile",
+                "administrative_log_entry_listing",
+                "precinct_profile",
+                "log_listing_other_voters",
+                "election_history",
+                "voter_profile",
+            },
+        )
+        self.assertEqual(
+            {child.get("component_type") for child in children},
+            {"profile", "listing", "chronology_matrix"},
+        )
+        for child in children:
+            initializer = dict(child.get("initializer") or {})
+            self.assertEqual(initializer.get("verb"), "mediate")
+            self.assertEqual(initializer.get("target_authority"), "cts_gis")
+
+        controls = list((regions["control_panel"].get("nimm_aitas_control") or {}).get("context_controls") or [])
+        self.assertEqual(
+            [control.get("context_id") for control in controls],
+            ["attention", "intention", "time", "archetype", "spatial"],
+        )
+        self.assertEqual([control.get("control_type") for control in controls], ["select", "stepper", "directional", "select", "directional"])
 
 
 if __name__ == "__main__":

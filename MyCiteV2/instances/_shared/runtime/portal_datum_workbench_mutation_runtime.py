@@ -275,4 +275,74 @@ def run_datum_workbench_mutation_action(
     )
 
 
-__all__ = ["DATUM_WORKBENCH_MUTATION_SCHEMA", "run_datum_workbench_mutation_action"]
+_DOCUMENT_ACTION_KINDS = {"rename_document", "delete_document"}
+
+
+def run_document_workbench_action(
+    action_kind: str,
+    payload: Mapping[str, Any] | None,
+    *,
+    authority_db_file: str | Path | None,
+    portal_instance_id: str,
+) -> dict[str, Any]:
+    normalized = dict(payload or {})
+    action_kind = _as_text(action_kind).lower()
+    if action_kind not in _DOCUMENT_ACTION_KINDS:
+        return _error("unsupported_document_action", f"Unsupported document workbench action: {action_kind}")
+    if authority_db_file is None:
+        return _error("authority_db_required", "authority_db_file is required.", status_code=503)
+    document_id = _as_text(normalized.get("document_id"))
+    if not document_id:
+        return _error("document_id_required", "document_id is required.")
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
+    tenant_id = _as_text(portal_instance_id) or "fnd"
+    try:
+        document = _document_for_mutation(store, tenant_id=tenant_id, document_id=document_id)
+    except ValueError as exc:
+        return _error("document_not_found", str(exc))
+    if action_kind == "rename_document":
+        new_name = _as_text(normalized.get("new_name"))
+        if not new_name:
+            return _error("new_name_required", "new_name is required.")
+        updated_document = AuthoritativeDatumDocument(
+            document_id=document.document_id,
+            source_kind=document.source_kind,
+            document_name=new_name,
+            relative_path=document.relative_path,
+            canonical_name=new_name,
+            tool_id=document.tool_id,
+            source_authority=document.source_authority,
+            document_metadata=document.document_metadata,
+            is_anchor=document.is_anchor,
+            anchor_document_name=document.anchor_document_name,
+            anchor_document_path=document.anchor_document_path,
+            anchor_document_metadata=document.anchor_document_metadata,
+            anchor_rows=document.anchor_rows,
+            rows=document.rows,
+            warnings=document.warnings,
+        )
+        try:
+            store.replace_authoritative_document(
+                tenant_id=tenant_id,
+                document_id=document.document_id,
+                updated_document=updated_document,
+            )
+        except ValueError as exc:
+            return _error("rename_failed", str(exc))
+        return _ok("rename_document", {"document_id": document.document_id, "new_name": new_name})
+    if action_kind == "delete_document":
+        if document.is_anchor:
+            return _error("anchor_delete_forbidden", "Anchor documents cannot be deleted.", status_code=403)
+        try:
+            store.delete_authoritative_document(tenant_id=tenant_id, document_id=document.document_id)
+        except ValueError as exc:
+            return _error("delete_failed", str(exc))
+        return _ok("delete_document", {"document_id": document.document_id, "deleted": True})
+    return _error("unsupported_document_action", f"Unsupported document workbench action: {action_kind}")
+
+
+__all__ = [
+    "DATUM_WORKBENCH_MUTATION_SCHEMA",
+    "run_datum_workbench_mutation_action",
+    "run_document_workbench_action",
+]

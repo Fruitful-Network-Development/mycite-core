@@ -748,6 +748,14 @@ class AuthoritativeDatumDocumentMutationPort(AuthoritativeDatumDocumentPort, Pro
     ) -> AuthoritativeDatumDocumentCatalogResult:
         """Persist one fully materialized authoritative document replacement transactionally."""
 
+    def delete_authoritative_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        """Remove one authoritative document from the catalog transactionally."""
+
 
 @runtime_checkable
 class PublicationTenantSummaryPort(Protocol):
