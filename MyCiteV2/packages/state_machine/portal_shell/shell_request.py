@@ -11,7 +11,7 @@ from MyCiteV2.packages.state_machine.nimm import (
     NimmDirectiveEnvelope,
     NimmTargetAddress,
 )
-from MyCiteV2.packages.modules.shared.scalars import as_text
+from MyCiteV2.packages.core.scalars import as_text
 
 from .shell_schemas import (
     AWS_CSM_TOOL_SURFACE_ID,
