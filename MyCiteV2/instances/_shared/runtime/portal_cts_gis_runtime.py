@@ -3040,6 +3040,7 @@ def _build_cts_gis_structured_interface_body(
                 "document_id": "",
             },
             "hierarchy": active_path_entries,
+            "district_precinct_collections": district_precinct_collections,
             "summary_rows": [
                 {"label": "Supporting document", "value": supporting_document_name},
                 {"label": "Projection document", "value": "—"},
