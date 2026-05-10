@@ -160,7 +160,7 @@ class PortalShellSqlAuthorityTests(unittest.TestCase):
             self.assertEqual(envelope["portal_scope"]["capabilities"], ["datum_recognition"])
             compatible_section = next(
                 section
-                for section in envelope["shell_composition"]["regions"]["inspector"]["sections"]
+                for section in envelope["shell_composition"]["regions"]["interface_panel"]["sections"]
                 if section["title"] == "Compatible tool surfaces"
             )
             fnd_ebi_row = next(row for row in compatible_section["rows"] if row["label"] == "FND-EBI")
