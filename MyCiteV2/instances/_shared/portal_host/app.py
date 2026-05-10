@@ -49,6 +49,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
@@ -126,6 +127,23 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
             },
             {
                 "global": "PortalAwsCsmInterfacePanelRenderer",
+                "required_callables": ("render",),
+            },
+        ),
+    },
+    {
+        "module_id": "fnd_csm_workspace",
+        "file": "v2_portal_fnd_csm_workspace.js",
+        "load_phase": "deferred",
+        "loading_scope": ("system.tools.fnd_csm",),
+        "budget_group": "deferred_tool_renderers",
+        "exports": (
+            {
+                "global": "PortalFndCsmWorkspaceRenderer",
+                "required_callables": ("render",),
+            },
+            {
+                "global": "PortalFndCsmInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -532,6 +550,7 @@ class V2PortalHostConfig:
 TOOL_SLUG_TO_SURFACE_ID = {
     "aws-csm": AWS_CSM_TOOL_SURFACE_ID,
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
+    "fnd-csm": FND_CSM_TOOL_SURFACE_ID,
     "fnd-dcm": FND_DCM_TOOL_SURFACE_ID,
     "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
     "paypal-csm": PAYPAL_CSM_TOOL_SURFACE_ID,
@@ -973,6 +992,50 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     private_dir=host_config.private_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                     audit_storage_file=host_config.portal_audit_storage_file,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/fnd-csm")
+    def portal_fnd_csm() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm
+        from MyCiteV2.instances._shared.runtime.runtime_platform import FND_CSM_TOOL_REQUEST_SCHEMA
+
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = FND_CSM_TOOL_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_fnd_csm(
+                    payload,
+                    private_dir=host_config.private_dir,
+                    webapps_root=host_config.webapps_root,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
+                )
+            )
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+
+    @app.post("/portal/api/v2/system/tools/fnd-csm/actions")
+    def portal_fnd_csm_actions() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm_action
+        from MyCiteV2.instances._shared.runtime.runtime_platform import FND_CSM_TOOL_ACTION_REQUEST_SCHEMA
+
+        try:
+            payload = _json_payload()
+            if "schema" not in payload:
+                payload["schema"] = FND_CSM_TOOL_ACTION_REQUEST_SCHEMA
+            return _runtime_response(
+                run_portal_fnd_csm_action(
+                    payload,
+                    private_dir=host_config.private_dir,
+                    webapps_root=host_config.webapps_root,
+                    portal_instance_id=host_config.portal_instance_id,
+                    portal_domain=host_config.portal_domain,
+                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:
