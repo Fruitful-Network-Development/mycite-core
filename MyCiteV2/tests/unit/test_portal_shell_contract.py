@@ -10,15 +10,13 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.ports.network_root_read_model import normalize_network_surface_query
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
+    CTS_GIS_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_ANCHOR_FILE_KEY,
-    CTS_GIS_TOOL_SURFACE_ID,
-    PAYPAL_CSM_TOOL_SURFACE_ID,
     PortalScope,
     TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
@@ -64,10 +62,9 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertNotIn("/portal/system/profile-basics", routes)
 
     def test_state_machine_is_limited_to_system_workspace_and_tool_surfaces(self) -> None:
-        self.assertEqual(canonical_route_for_surface(AWS_CSM_TOOL_SURFACE_ID), "/portal/system/tools/aws-csm")
+        self.assertEqual(canonical_route_for_surface(FND_CSM_TOOL_SURFACE_ID), "/portal/system/tools/fnd-csm")
         self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
-        self.assertFalse(requires_shell_state_machine(AWS_CSM_TOOL_SURFACE_ID))
-        self.assertFalse(requires_shell_state_machine(FND_DCM_TOOL_SURFACE_ID))
+        self.assertTrue(requires_shell_state_machine(FND_CSM_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -139,22 +136,18 @@ class PortalShellContractTests(unittest.TestCase):
             entry["tool_id"]: entry
             for entry in (entry.to_dict() for entry in build_portal_tool_registry_entries())
         }
-        self.assertEqual(registry_entries["aws_csm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        self.assertFalse(registry_entries["aws_csm"]["default_workbench_visible"])
+        self.assertEqual(registry_entries["fnd_csm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry_entries["fnd_csm"]["default_workbench_visible"])
         self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        self.assertFalse(registry_entries["cts_gis"]["default_workbench_visible"])
-        self.assertEqual(registry_entries["fnd_dcm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        self.assertFalse(registry_entries["fnd_dcm"]["default_workbench_visible"])
-        self.assertEqual(registry_entries["fnd_ebi"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        self.assertFalse(registry_entries["fnd_ebi"]["default_workbench_visible"])
+        self.assertTrue(registry_entries["cts_gis"]["default_workbench_visible"])
         self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
 
     def test_tool_composition_hides_workbench_even_when_runtime_projects_it_visible(self) -> None:
         composition = build_shell_composition_payload(
-            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
-            page_title="AWS-CSM",
+            page_title="FND-CSM",
             page_subtitle="",
             activity_items=[],
             control_panel={},
@@ -196,7 +189,7 @@ class PortalShellContractTests(unittest.TestCase):
             shell_state=state,
         )
         self.assertIn(SYSTEM_ROOT_SURFACE_ID, dispatch)
-        self.assertNotIn(AWS_CSM_TOOL_SURFACE_ID, dispatch)
+        self.assertNotIn(WORKBENCH_UI_TOOL_SURFACE_ID, dispatch)
         self.assertNotIn(NETWORK_ROOT_SURFACE_ID, dispatch)
         self.assertEqual(dispatch[SYSTEM_ROOT_SURFACE_ID]["portal_scope"]["capabilities"], ["fnd_peripheral_routing", "datum_recognition"])
 
@@ -204,10 +197,8 @@ class PortalShellContractTests(unittest.TestCase):
         # Canonical sandbox tokens use underscores; URL slugs (cts-gis) are separate.
         self.assertEqual(sandbox_id_for_surface(SYSTEM_ROOT_SURFACE_ID), "system")
         self.assertEqual(sandbox_id_for_surface(CTS_GIS_TOOL_SURFACE_ID), "cts_gis")
-        self.assertEqual(sandbox_id_for_surface(AWS_CSM_TOOL_SURFACE_ID), "aws_csm")
-        self.assertEqual(sandbox_id_for_surface(FND_DCM_TOOL_SURFACE_ID), "fnd_dcm")
+        self.assertEqual(sandbox_id_for_surface(FND_CSM_TOOL_SURFACE_ID), "fnd_csm")
         self.assertEqual(sandbox_id_for_surface(WORKBENCH_UI_TOOL_SURFACE_ID), "workbench_ui")
-        self.assertEqual(sandbox_id_for_surface(PAYPAL_CSM_TOOL_SURFACE_ID), "paypal_csm")
         self.assertEqual(sandbox_id_for_surface("unknown.surface"), "system")
 
     def test_tool_focus_sandbox_transition_seeds_tool_anchor_under_target_sandbox(self) -> None:
@@ -402,105 +393,12 @@ class PortalShellContractTests(unittest.TestCase):
         )
 
     def test_runtime_request_payload_helper_normalizes_surface_query_with_legacy_fallback_keys(self) -> None:
-        aws_query = canonical_query_for_runtime_request_payload(
-            {"domain": "Example.com", "section": "NEWSLETTER"},
-            surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            legacy_query_keys=("view", "domain", "profile", "section"),
+        workbench_query = canonical_query_for_runtime_request_payload(
+            {"document": "sandbox:cts_gis:sc.example.json", "group": "documents"},
+            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            legacy_query_keys=("document", "group"),
         )
-        self.assertEqual(
-            aws_query,
-            {
-                "view": "domains",
-                "domain": "example.com",
-                "section": "newsletter",
-            },
-        )
-
-        fnd_query = canonical_query_for_runtime_request_payload(
-            {"site": "TrappFamilyFarm.com", "view": "collections", "collection": "newsletters"},
-            surface_id=FND_DCM_TOOL_SURFACE_ID,
-            legacy_query_keys=("site", "view", "page", "collection"),
-        )
-        self.assertEqual(
-            fnd_query,
-            {
-                "site": "trappfamilyfarm.com",
-                "view": "collections",
-                "collection": "newsletters",
-            },
-        )
-
-    def test_aws_csm_surface_query_is_runtime_owned_and_domain_driven(self) -> None:
-        selection = resolve_portal_shell_request(
-            {
-                "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": AWS_CSM_TOOL_SURFACE_ID,
-                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                "surface_query": {
-                    "view": "domains",
-                    "domain": "FruitfulNetworkDevelopment.com",
-                    "profile": "aws-csm.fnd.dylan",
-                    "section": "newsletter",
-                    "ignored": "yes",
-                },
-            }
-        )
-        self.assertTrue(selection.allowed)
-        self.assertFalse(selection.reducer_owned)
-        self.assertEqual(selection.active_surface_id, AWS_CSM_TOOL_SURFACE_ID)
-        self.assertEqual(
-            selection.canonical_query,
-            {
-                "view": "domains",
-                "domain": "fruitfulnetworkdevelopment.com",
-                "profile": "aws-csm.fnd.dylan",
-                "section": "newsletter",
-            },
-        )
-        self.assertEqual(
-            canonical_query_for_surface_query(
-                {"domain": "Example.com", "profile": "p1", "section": "users"},
-                surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            ),
-            {"view": "domains", "domain": "example.com", "profile": "p1", "section": "users"},
-        )
-
-    def test_fnd_dcm_surface_query_is_runtime_owned_and_manifest_driven(self) -> None:
-        selection = resolve_portal_shell_request(
-            {
-                "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": FND_DCM_TOOL_SURFACE_ID,
-                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                "surface_query": {
-                    "site": "TrappFamilyFarm.com",
-                    "view": "collections",
-                    "collection": "newsletters",
-                    "page": "ignored",
-                },
-            }
-        )
-        self.assertTrue(selection.allowed)
-        self.assertFalse(selection.reducer_owned)
-        self.assertEqual(selection.active_surface_id, FND_DCM_TOOL_SURFACE_ID)
-        self.assertEqual(
-            selection.canonical_query,
-            {
-                "site": "trappfamilyfarm.com",
-                "view": "collections",
-                "collection": "newsletters",
-            },
-        )
-        self.assertEqual(
-            canonical_query_for_surface_query(
-                {"view": "pages", "page": "people"},
-                surface_id=FND_DCM_TOOL_SURFACE_ID,
-            ),
-            {
-                "site": "cuyahogavalleycountrysideconservancy.org",
-                "view": "pages",
-                "page": "people",
-            },
-        )
+        self.assertEqual(workbench_query, {"document": "sandbox:cts_gis:sc.example.json"})
 
     def test_unknown_removed_surface_resolves_as_unknown_and_falls_back_to_system(self) -> None:
         selection = resolve_portal_shell_request(

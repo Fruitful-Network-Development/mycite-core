@@ -17,11 +17,6 @@ from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
     run_portal_cts_gis,
     run_portal_cts_gis_action,
 )
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import (
-    _project_domain_readiness,
-    build_portal_aws_surface_bundle,
-    run_portal_aws_csm,
-)
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_system_workspace_bundle,
@@ -31,7 +26,7 @@ from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
 from MyCiteV2.packages.core.structures.samras import encode_canonical_structure_from_addresses
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     FOCUS_LEVEL_OBJECT,
     FOCUS_LEVEL_SANDBOX,
     NETWORK_ROOT_SURFACE_ID,
@@ -54,48 +49,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
-def _domain_readiness_payload() -> dict[str, object]:
-    return {
-        "schema": "mycite.service_tool.aws_csm.domain.v1",
-        "identity": {
-            "tenant_id": "cvccboard",
-            "domain": "cvccboard.org",
-            "region": "us-east-1",
-            "hosted_zone_id": "Z05968042395KDRPX4PLG",
-        },
-        "dns": {
-            "hosted_zone_present": True,
-            "nameserver_match": True,
-            "registrar_nameservers": ["ns-1.example.com"],
-            "hosted_zone_nameservers": ["ns-1.example.com"],
-            "mx_record_present": True,
-            "mx_record_values": ["10 inbound-smtp.us-east-1.amazonaws.com"],
-            "dkim_records_present": True,
-            "dkim_record_values": [
-                "token-1.dkim.amazonses.com",
-                "token-2.dkim.amazonses.com",
-                "token-3.dkim.amazonses.com",
-            ],
-        },
-        "ses": {
-            "identity_exists": True,
-            "identity_status": "verified",
-            "verified_for_sending_status": True,
-            "dkim_status": "verified",
-            "dkim_tokens": ["token-1", "token-2", "token-3"],
-        },
-        "receipt": {
-            "status": "ok",
-            "rule_name": "portal-capture-cvccboard-org",
-            "expected_recipient": "cvccboard.org",
-            "expected_lambda_name": "newsletter-inbound-capture",
-            "bucket": "ses-inbound-fnd-mail",
-            "prefix": "inbound/cvccboard.org/",
-        },
-        "observation": {"last_checked_at": "2026-04-18T00:00:00+00:00"},
-    }
 
 
 def _ascii_bits(text: str) -> str:
@@ -570,120 +523,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             "descendants_depth_1_or_2",
         )
 
-    def test_aws_tool_runtime_keeps_workbench_hidden_on_first_shell_composition(self) -> None:
-        bundle = build_portal_aws_surface_bundle(
-            surface_id="system.tools.aws_csm",
-            portal_scope=PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",)),
-            shell_state=None,
-            surface_query=None,
-            private_dir=None,
-        )
-        self.assertFalse(bundle["workbench"]["visible"])
-        self.assertEqual(bundle["control_panel"]["family_contract"]["family"], "directive_panel")
-        self.assertEqual(bundle["workbench"]["family_contract"]["family"], "reflective_workspace")
-        self.assertEqual(bundle["interface_panel"]["family_contract"]["family"], "presentation_surface")
-
-        envelope = run_portal_shell_entry(
-            {
-                "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": "system.tools.aws_csm",
-                "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-            },
-            portal_instance_id="fnd",
-            portal_domain="fruitfulnetworkdevelopment.com",
-            data_dir=None,
-            public_dir=None,
-            private_dir=None,
-            audit_storage_file=None,
-            webapps_root=None,
-            tool_exposure_policy=None,
-        )
-        composition = envelope["shell_composition"]
-        self.assertTrue(composition["workbench_collapsed"])
-        self.assertFalse(composition["interface_panel_collapsed"])
-        self.assertEqual(composition["foreground_shell_region"], "interface-panel")
-        self.assertFalse(composition["regions"]["workbench"]["visible"])
-        self.assertNotIn("inspector", composition["regions"])
-        self.assertEqual(composition["regions"]["control_panel"]["family_contract"]["family"], "directive_panel")
-        self.assertEqual(composition["regions"]["workbench"]["family_contract"]["family"], "reflective_workspace")
-        self.assertEqual(composition["regions"]["interface_panel"]["family_contract"]["family"], "presentation_surface")
-
-    def test_direct_aws_csm_endpoint_matches_shell_runtime_envelope(self) -> None:
-        request_payload = {
-            "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
-            "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-            "surface_query": {
-                "domain": "FruitfulNetworkDevelopment.com",
-                "section": "newsletter",
-            },
-        }
-
-        direct_envelope = run_portal_aws_csm(
-            request_payload,
-            private_dir=None,
-            tool_exposure_policy=None,
-            portal_instance_id="fnd",
-            portal_domain="fruitfulnetworkdevelopment.com",
-        )
-        shell_envelope = run_portal_shell_entry(
-            {
-                "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": "system.tools.aws_csm",
-                "portal_scope": request_payload["portal_scope"],
-                "surface_query": request_payload["surface_query"],
-            },
-            portal_instance_id="fnd",
-            portal_domain="fruitfulnetworkdevelopment.com",
-            data_dir=None,
-            public_dir=None,
-            private_dir=None,
-            audit_storage_file=None,
-            webapps_root=None,
-            tool_exposure_policy=None,
-        )
-
-        self.assertEqual(direct_envelope, shell_envelope)
-
-    def test_aws_csm_domain_readiness_projects_identity_missing(self) -> None:
-        payload = _domain_readiness_payload()
-        payload["ses"]["identity_exists"] = False
-        payload["ses"]["identity_status"] = "not_started"
-        payload["ses"]["dkim_status"] = "not_started"
-        payload["dns"]["mx_record_present"] = True
-        payload["dns"]["dkim_records_present"] = False
-
-        readiness = _project_domain_readiness(payload)
-
-        self.assertEqual(readiness["state"], "identity_missing")
-        self.assertIn("SES domain identity has not been created yet.", readiness["blockers"])
-
-    def test_aws_csm_domain_readiness_projects_dns_pending(self) -> None:
-        payload = _domain_readiness_payload()
-        payload["dns"]["dkim_records_present"] = False
-        payload["dns"]["dkim_record_values"] = []
-        payload["ses"]["identity_status"] = "pending"
-        payload["ses"]["dkim_status"] = "pending"
-
-        readiness = _project_domain_readiness(payload)
-
-        self.assertEqual(readiness["state"], "dns_pending")
-        self.assertIn("The SES DKIM CNAME records are incomplete in Route 53.", readiness["blockers"])
-
-    def test_aws_csm_domain_readiness_projects_receipt_pending(self) -> None:
-        payload = _domain_readiness_payload()
-        payload["receipt"]["status"] = "not_ready"
-
-        readiness = _project_domain_readiness(payload)
-
-        self.assertEqual(readiness["state"], "receipt_pending")
-        self.assertIn("The bare-domain receipt rule is not configured yet.", readiness["blockers"])
-
-    def test_aws_csm_domain_readiness_projects_ready_for_mailboxes(self) -> None:
-        readiness = _project_domain_readiness(_domain_readiness_payload())
-
-        self.assertEqual(readiness["state"], "ready_for_mailboxes")
-        self.assertEqual(readiness["blockers"], [])
-
     def test_shell_composition_builder_owns_root_and_tool_visibility_defaults(self) -> None:
         root_composition = build_shell_composition_payload(
             active_surface_id=SYSTEM_ROOT_SURFACE_ID,
@@ -704,9 +543,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertNotIn("inspector", root_composition["regions"])
 
         aws_tool_composition = build_shell_composition_payload(
-            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
-            page_title="AWS-CSM",
+            page_title="FND-CSM",
             page_subtitle="",
             activity_items=[],
             control_panel={},
@@ -722,9 +561,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertNotIn("inspector", aws_tool_composition["regions"])
 
         evidence_composition = build_shell_composition_payload(
-            active_surface_id=AWS_CSM_TOOL_SURFACE_ID,
+            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
-            page_title="AWS-CSM",
+            page_title="FND-CSM",
             page_subtitle="",
             activity_items=[],
             control_panel={},
@@ -883,7 +722,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "3-2-3-17-77-0-0",
             )
             self.assertNotIn("kind", envelope["shell_composition"]["regions"]["interface_panel"]["interface_body"])
-            self.assertTrue(envelope["shell_composition"]["workbench_collapsed"])
+            self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
 
     def test_cts_gis_node_navigation_shell_request_preserves_source_document_pin(self) -> None:

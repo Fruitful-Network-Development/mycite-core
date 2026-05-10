@@ -32,6 +32,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_CSM_TOOL_ROUTE,
     FND_CSM_TOOL_SURFACE_ID,
     PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
+    PORTAL_SHELL_REQUEST_SCHEMA,
     PortalScope,
     PortalShellState,
     resolve_portal_tool_registry_entry,
@@ -748,12 +749,14 @@ def run_portal_fnd_csm(
     authority_db_file: str | Path | None = None,
     data_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
-    tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
+    shell_request = dict(request_payload or {})
+    shell_request["schema"] = PORTAL_SHELL_REQUEST_SCHEMA
+    shell_request.setdefault("requested_surface_id", FND_CSM_TOOL_SURFACE_ID)
     return run_portal_shell_entry(
-        request_payload,
+        shell_request,
         portal_instance_id=portal_instance_id,
         portal_domain=portal_domain,
         private_dir=private_dir,
@@ -761,7 +764,6 @@ def run_portal_fnd_csm(
         authority_db_file=authority_db_file,
         data_dir=data_dir,
         tool_exposure_policy=tool_exposure_policy,
-        tool_rows=tool_rows,
     )
 
 
@@ -775,12 +777,14 @@ def run_portal_fnd_csm_action(
     authority_db_file: str | Path | None = None,
     data_dir: str | Path | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
-    tool_rows: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
+    shell_request = dict(request_payload or {})
+    shell_request["schema"] = PORTAL_SHELL_REQUEST_SCHEMA
+    shell_request.setdefault("requested_surface_id", FND_CSM_TOOL_SURFACE_ID)
     return run_portal_shell_entry(
-        request_payload,
+        shell_request,
         portal_instance_id=portal_instance_id,
         portal_domain=portal_domain,
         private_dir=private_dir,
@@ -788,5 +792,4 @@ def run_portal_fnd_csm_action(
         authority_db_file=authority_db_file,
         data_dir=data_dir,
         tool_exposure_policy=tool_exposure_policy,
-        tool_rows=tool_rows,
     )

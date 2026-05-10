@@ -13,8 +13,8 @@ from MyCiteV2.instances._shared.runtime.portal_workbench import (
     build_datum_file_workbench,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     PortalScope,
     PortalShellState,
     SYSTEM_ROOT_SURFACE_ID,
@@ -130,8 +130,8 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
-            surface_id=AWS_CSM_TOOL_SURFACE_ID,
-            sandbox_id="aws_csm",
+            surface_id=FND_CSM_TOOL_SURFACE_ID,
+            sandbox_id="fnd_csm",
             anchor_document=anchor,
             selected_document=selected,
         )

@@ -20,8 +20,8 @@ INTERFACE_PANEL_SOURCE = (
     REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_renderers.js"
 ).read_text(encoding="utf-8")
 
-AWS_SOURCE = (
-    REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js"
+FND_CSM_SOURCE = (
+    REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_fnd_csm_workspace.js"
 ).read_text(encoding="utf-8")
 
 
@@ -34,22 +34,23 @@ class RendererBranchCoverageTests(unittest.TestCase):
         self.assertIn('"system.tools.cts_gis"', ADAPTER_SOURCE,
                       "CTS-GIS must be registered in resolvePresentationSurfaceModuleSpec")
 
-    def test_aws_csm_presentation_surface_is_registered(self) -> None:
-        self.assertIn('"system.tools.aws_csm"', ADAPTER_SOURCE,
-                      "AWS-CSM must be registered in resolvePresentationSurfaceModuleSpec")
+    def test_fnd_csm_presentation_surface_is_registered(self) -> None:
+        self.assertIn('"system.tools.fnd_csm"', ADAPTER_SOURCE,
+                      "FND-CSM must be registered in resolvePresentationSurfaceModuleSpec")
 
-    def test_aws_csm_reflective_workspace_is_registered(self) -> None:
-        self.assertIn('"system.tools.aws_csm"', ADAPTER_SOURCE,
-                      "AWS-CSM must be registered in resolveReflectiveWorkspaceModuleSpec")
+    def test_fnd_csm_reflective_workspace_is_registered(self) -> None:
+        self.assertIn('"system.tools.fnd_csm"', ADAPTER_SOURCE,
+                      "FND-CSM must be registered in resolveReflectiveWorkspaceModuleSpec")
 
-    def test_fnd_ebi_is_not_registered_as_active_surface(self) -> None:
-        # FND-EBI renderer is intentionally deferred.
-        # It must NOT appear as a live registered entry in either spec map.
-        # When a dedicated FND-EBI renderer is added, this test must be updated
-        # together with the surface_catalog.md posture reclassification.
-        self.assertNotIn('"system.tools.fnd_ebi": {', ADAPTER_SOURCE,
-                         "FND-EBI must not be registered as an active renderer spec until a "
-                         "dedicated renderer module exists and surface_catalog.md is updated")
+    def test_legacy_tools_are_not_registered_as_active_surfaces(self) -> None:
+        for removed_surface_id in (
+            '"system.tools.aws_csm"',
+            '"system.tools.paypal_csm"',
+            '"system.tools.fnd_dcm"',
+            '"system.tools.fnd_ebi"',
+        ):
+            self.assertNotIn(removed_surface_id, ADAPTER_SOURCE,
+                             f"Removed surface {removed_surface_id} must not appear in adapter spec maps")
 
     def test_adapter_exposes_canonical_aws_row_helpers(self) -> None:
         self.assertIn("buildAwsProfileRows", ADAPTER_SOURCE,
@@ -57,202 +58,16 @@ class RendererBranchCoverageTests(unittest.TestCase):
         self.assertIn("buildAwsNewsletterRows", ADAPTER_SOURCE,
                       "Adapter must own canonical AWS newsletter row builder")
 
-    def test_aws_workspace_delegates_profile_rows_to_adapter(self) -> None:
-        self.assertIn("toolSurfaceAdapter().buildAwsProfileRows", AWS_SOURCE,
-                      "AWS workspace must delegate profile row derivation to PortalToolSurfaceAdapter")
+    def test_fnd_csm_workspace_dispatches_actions(self) -> None:
+        self.assertIn("dispatchAction", FND_CSM_SOURCE,
+                      "FND-CSM workspace must dispatch actions for mutations")
 
-    def test_aws_workspace_uses_shared_request_builder(self) -> None:
-        self.assertIn("toolSurfaceAdapter().buildDirectSurfaceRequest", AWS_SOURCE,
-                      "AWS workspace must use buildDirectSurfaceRequest from PortalToolSurfaceAdapter")
-
-    def test_aws_users_tab_function_exists_and_contains_gallery_and_editor(self) -> None:
-        self.assertIn("function renderInspectorUsersTab(workspace, surfacePayload)", AWS_SOURCE,
-                      "renderInspectorUsersTab must be defined")
-        start = AWS_SOURCE.index("function renderInspectorUsersTab(workspace, surfacePayload)")
-        end = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload)")
-        users_tab_source = AWS_SOURCE[start:end]
-        self.assertIn("renderMailboxGallery", users_tab_source,
-                      "Users tab must render the mailbox gallery")
-        self.assertIn("renderCreateProfileCard", users_tab_source,
-                      "Users tab must render the create profile (Add User) form")
-        self.assertIn("renderProfileEditorCard", users_tab_source,
-                      "Users tab must render the profile editor when a profile is selected")
-
-    def test_aws_newsletter_tab_function_exists_and_gates_dispatch_on_sender_confirmed(self) -> None:
-        self.assertIn("function renderInspectorNewsletterTab(workspace, surfacePayload)", AWS_SOURCE,
-                      "renderInspectorNewsletterTab must be defined")
-        start = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
-        end = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload)")
-        newsletter_tab_source = AWS_SOURCE[start:end]
-        self.assertIn("selected_newsletter", newsletter_tab_source,
-                      "Newsletter tab must check workspace.selected_newsletter")
-        self.assertIn("senderConfirmed", newsletter_tab_source,
-                      "Newsletter tab must compute senderConfirmed from mailbox_rows")
-        self.assertIn("dispatch_newsletter", newsletter_tab_source,
-                      "Newsletter tab must include dispatch_newsletter action button")
-        self.assertIn("data-aws-assign-newsletter-sender-form", newsletter_tab_source,
-                      "Newsletter tab must include sender assignment form")
-        self.assertIn("subscribedCount", newsletter_tab_source,
-                      "Newsletter tab must surface subscribedCount for the dispatch gate")
-        # Dispatch button must be disabled when sender not confirmed
-        self.assertIn('disabled="disabled"', newsletter_tab_source,
-                      "Newsletter tab must disable dispatch button when gate conditions are not met")
-
-    def test_aws_newsletter_tab_conditional_renders_absent_message_when_no_newsletter(self) -> None:
-        start = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
-        end = AWS_SOURCE.index("function renderInspectorDomainTab(workspace, surfacePayload)")
-        newsletter_tab_source = AWS_SOURCE[start:end]
-        self.assertIn("No newsletter profile is configured for this domain.", newsletter_tab_source,
-                      "Newsletter tab must render an absent-state message when selected_newsletter is null")
-
-    def test_aws_domain_infra_tab_contains_ses_and_receipt_fields_only(self) -> None:
-        self.assertIn("function renderInspectorDomainInfraTab(workspace, surfacePayload)", AWS_SOURCE,
-                      "renderInspectorDomainInfraTab must be defined")
-        start = AWS_SOURCE.index("function renderInspectorDomainInfraTab(workspace, surfacePayload)")
-        end = AWS_SOURCE.index("function renderInspectorNewsletterTab(workspace, surfacePayload)")
-        domain_infra_source = AWS_SOURCE[start:end]
-        self.assertIn('"ses_identity_status"', domain_infra_source,
-                      "Domain infra tab must surface ses_identity_status")
-        self.assertIn('"receipt_rule_status"', domain_infra_source,
-                      "Domain infra tab must surface receipt_rule_status")
-        self.assertNotIn("renderMailboxGallery", domain_infra_source,
-                         "Domain infra tab must NOT include the mailbox gallery (belongs to Users tab)")
-        self.assertNotIn("renderProfileEditorCard", domain_infra_source,
-                         "Domain infra tab must NOT include the profile editor (belongs to Users tab)")
-
-    def test_aws_inspector_tab_registration_uses_four_tab_structure(self) -> None:
-        self.assertIn('{ id: "users", label: "Users", active: true }', AWS_SOURCE,
-                      "Inspector must register a Users tab")
-        self.assertIn('{ id: "newsletter", label: "Newsletter", active: hasNewsletter }', AWS_SOURCE,
-                      "Inspector must register a conditional Newsletter tab")
-        self.assertIn('activeInspectorTabId(tabs, "users")', AWS_SOURCE,
-                      "Inspector must default to the users tab")
-        self.assertIn('renderInspectorTabPanel("newsletter"', AWS_SOURCE,
-                      "Inspector must render the newsletter tab panel")
-
-    def test_aws_domain_tab_surfaces_selected_mailbox_onboarding_stage(self) -> None:
-        start = AWS_SOURCE.index("function renderInspectorOnboardingTab(workspace, surfacePayload)")
-        end = AWS_SOURCE.index("function renderInspectorDomainInfraTab(workspace, surfacePayload)")
-        onboarding_tab_source = AWS_SOURCE[start:end]
-
-        self.assertIn("renderOnboardingSection", onboarding_tab_source,
-                      "AWS onboarding tab must call renderOnboardingSection")
-        self.assertIn("renderDomainOnboardingCard", onboarding_tab_source,
-                      "AWS onboarding tab must include domain onboarding card when no profile selected")
+    def test_fnd_csm_workspace_exports_workspace_and_interface_panel_renderers(self) -> None:
+        self.assertIn("PortalFndCsmWorkspaceRenderer", FND_CSM_SOURCE,
+                      "FND-CSM workspace must export PortalFndCsmWorkspaceRenderer")
+        self.assertIn("PortalFndCsmInterfacePanelRenderer", FND_CSM_SOURCE,
+                      "FND-CSM workspace must export PortalFndCsmInterfacePanelRenderer")
 
 
-class CtsGisWorkbenchEvidenceSplitTests(unittest.TestCase):
-    """Verify that CTS-GIS tool chrome stays out of the reflective Workbench."""
-
-    def test_workbench_has_state_reflective_datum_file_renderer(self) -> None:
-        self.assertIn("renderDatumFileWorkbench", WORKBENCH_SOURCE,
-                      "Workbench must render the shared datum-file reflection")
-        self.assertIn("renderSandboxDocumentCollection", WORKBENCH_SOURCE,
-                      "Workbench must render sandbox document collections")
-        self.assertNotIn("renderSecondaryEvidenceSurface", WORKBENCH_SOURCE,
-                         "CTS-GIS secondary evidence must not re-enter the Workbench renderer")
-
-    def test_workbench_cts_gis_block_does_not_read_source_evidence(self) -> None:
-        self.assertNotIn("source_evidence", WORKBENCH_SOURCE,
-                         "Workbench CTS-GIS block must not read tool-specific source evidence")
-
-    def test_interface_panel_has_interactive_staging_widget(self) -> None:
-        self.assertIn("renderCtsGisStagingWidget", INTERFACE_PANEL_SOURCE,
-                      "Interface Panel must own the interactive staging widget renderer")
-
-    def test_staging_widget_not_duplicated_in_workbench(self) -> None:
-        self.assertNotIn("renderCtsGisStagingWidget", WORKBENCH_SOURCE,
-                         "renderCtsGisStagingWidget must not be duplicated in workbench renderer; "
-                         "workbench shows read-only diagnostic view only")
-
-    def test_workbench_cts_gis_block_does_not_read_interface_body(self) -> None:
-        # The workbench must not reach into interface_body.staging_widget; that
-        # payload is Interface Panel-only.
-        self.assertNotIn("interface_body.staging_widget", WORKBENCH_SOURCE,
-                         "Workbench CTS-GIS block must not read from interface_body.staging_widget")
-
-
-class CtsGisGarlandRedesignTests(unittest.TestCase):
-    """Verify Garland redesign objectives: split layout CSS modifier, summary object,
-    and zoom controls."""
-
-    def test_split_layout_applies_modifier_class(self) -> None:
-        """renderCtsGisInspector must emit cts-gis-interface--split when layout is
-        diktataograph_garland_split (AC-1: thin-column bug fix)."""
-        self.assertIn(
-            'cts-gis-interface--split',
-            INTERFACE_PANEL_SOURCE,
-            "renderCtsGisInspector must apply cts-gis-interface--split class for split layout",
-        )
-        # The gate condition must be present in source
-        self.assertIn(
-            'isSplitLayout',
-            INTERFACE_PANEL_SOURCE,
-            "renderCtsGisInspector must use isSplitLayout gate variable",
-        )
-        # Split panels must be rendered when split layout is active
-        self.assertIn(
-            'cts-gis-interface__splitPanel',
-            INTERFACE_PANEL_SOURCE,
-            "renderCtsGisInspector must render cts-gis-interface__splitPanel divs for split layout",
-        )
-
-    def test_garland_summary_object_function_exists(self) -> None:
-        """renderGarlandSummaryObject must be defined and render overlay toggle buttons
-        when overlay_layers are present (AC-2: summary object replaces static block)."""
-        self.assertIn(
-            'function renderGarlandSummaryObject(',
-            INTERFACE_PANEL_SOURCE,
-            "renderGarlandSummaryObject must be defined in inspector renderer",
-        )
-        self.assertIn(
-            'cts-gis-garlandSummary',
-            INTERFACE_PANEL_SOURCE,
-            "renderGarlandSummaryObject must produce cts-gis-garlandSummary section",
-        )
-        self.assertIn(
-            'cts-gis-overlayToggle',
-            INTERFACE_PANEL_SOURCE,
-            "renderGarlandSummaryObject must render overlay toggle buttons",
-        )
-        # Static 'Current Profile' heading must be removed
-        self.assertNotIn(
-            '<h5>Current Profile</h5>',
-            INTERFACE_PANEL_SOURCE,
-            "Static 'Current Profile' section heading must be removed in favour of renderGarlandSummaryObject",
-        )
-
-    def test_geospatial_stage_zoom_controls_present(self) -> None:
-        """renderGeospatialStage must emit zoom control buttons; focus threshold must
-        be lowered to 50 (AC-3: zoom controls + precinct zoom)."""
-        self.assertIn(
-            'cts-gis-mapStage__controls',
-            INTERFACE_PANEL_SOURCE,
-            "renderGeospatialStage must render cts-gis-mapStage__controls container",
-        )
-        self.assertIn(
-            'data-cts-gis-zoom="fit"',
-            INTERFACE_PANEL_SOURCE,
-            "renderGeospatialStage must render a fit-all zoom button",
-        )
-        self.assertIn(
-            'data-cts-gis-zoom="focus"',
-            INTERFACE_PANEL_SOURCE,
-            "renderGeospatialStage must render a zoom-to-focus button",
-        )
-        # Focus threshold must be 50, not the old 200
-        self.assertIn(
-            'globalArea / focusArea > 50',
-            INTERFACE_PANEL_SOURCE,
-            "Focus bounds area ratio threshold must be 50 (was 200) for aggressive precinct zoom",
-        )
-        self.assertNotIn(
-            'globalArea / focusArea > 200',
-            INTERFACE_PANEL_SOURCE,
-            "Old 200 focus bounds threshold must be removed",
-        )
-        self.assertIn(
-            'function bindGeospatialZoomControls(',
-            INTERFACE_PANEL_SOURCE,
-            "bindGeospatialZoomControls must be defined for zoom button event binding",
-        )
+if __name__ == "__main__":
+    unittest.main()

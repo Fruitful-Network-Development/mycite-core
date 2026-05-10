@@ -9,9 +9,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -25,9 +24,7 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
         matrix_doc = (REPO_ROOT / "docs" / "plans" / "one_shell_stabilization_matrix.md").read_text(encoding="utf-8")
         for route in (
             "/portal/system",
-            "/portal/system/tools/aws-csm",
             "/portal/system/tools/cts-gis",
-            "/portal/system/tools/fnd-dcm",
             "/portal/system/tools/workbench-ui",
             "/portal/network",
             "/portal/utilities",
@@ -57,12 +54,15 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
         self.assertFalse(system["workbench_collapsed"])
         self.assertTrue(system["interface_panel_collapsed"])
 
-        aws = composition_for(AWS_CSM_TOOL_SURFACE_ID)
+        fnd_csm = composition_for(FND_CSM_TOOL_SURFACE_ID)
+        self.assertTrue(fnd_csm["workbench_collapsed"])
+        self.assertFalse(fnd_csm["interface_panel_collapsed"])
+
         cts = composition_for(CTS_GIS_TOOL_SURFACE_ID)
-        fnd = composition_for(FND_DCM_TOOL_SURFACE_ID)
-        for tool_composition in (aws, cts, fnd):
-            self.assertTrue(tool_composition["workbench_collapsed"])
-            self.assertFalse(tool_composition["interface_panel_collapsed"])
+        # CTS-GIS has default_workbench_visible=True — workbench is center foreground
+        self.assertFalse(cts["workbench_collapsed"])
+        self.assertFalse(cts["interface_panel_collapsed"])
+        self.assertEqual(cts["foreground_shell_region"], "center-workbench")
 
         workbench_ui = composition_for(WORKBENCH_UI_TOOL_SURFACE_ID)
         self.assertFalse(workbench_ui["workbench_collapsed"])

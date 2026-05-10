@@ -9,15 +9,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
-from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
-from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
+from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -77,20 +75,22 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
 
     def test_tool_routes_emit_family_contract_markers(self) -> None:
         with TemporaryDirectory() as temp_dir:
-            webapps_root = Path(temp_dir) / "webapps"
-            webapps_root.mkdir(parents=True, exist_ok=True)
-
-            aws_envelope = run_portal_aws_csm(
+            fnd_csm_envelope = run_portal_fnd_csm(
                 {
-                    "schema": "mycite.v2.portal.system.tools.aws_csm.request.v1",
+                    "schema": "mycite.v2.portal.system.tools.fnd_csm.request.v1",
                     "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    "shell_state": initial_portal_shell_state(
+                        surface_id=FND_CSM_TOOL_SURFACE_ID,
+                        portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
+                    ).to_dict(),
                 },
                 private_dir=None,
+                webapps_root=None,
                 tool_exposure_policy=None,
                 portal_instance_id="fnd",
                 portal_domain="fruitfulnetworkdevelopment.com",
             )
-            _assert_region_family_contracts(self, aws_envelope, expected_surface_id="system.tools.aws_csm")
+            _assert_region_family_contracts(self, fnd_csm_envelope, expected_surface_id=FND_CSM_TOOL_SURFACE_ID)
 
             cts_envelope = run_portal_cts_gis(
                 {
@@ -112,36 +112,6 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
                 cts_envelope,
                 expected_surface_id=CTS_GIS_TOOL_SURFACE_ID,
             )
-
-            fnd_dcm_envelope = run_portal_fnd_dcm(
-                {
-                    "schema": "mycite.v2.portal.system.tools.fnd_dcm.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                },
-                webapps_root=Path(temp_dir) / "missing-webapps",
-                private_dir=None,
-                tool_exposure_policy=None,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            _assert_region_family_contracts(self, fnd_dcm_envelope, expected_surface_id="system.tools.fnd_dcm")
-
-            fnd_ebi_envelope = run_portal_fnd_ebi(
-                {
-                    "schema": "mycite.v2.portal.system.tools.fnd_ebi.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                    "shell_state": initial_portal_shell_state(
-                        surface_id=FND_EBI_TOOL_SURFACE_ID,
-                        portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                    ).to_dict(),
-                },
-                webapps_root=webapps_root,
-                private_dir=None,
-                tool_exposure_policy=None,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            _assert_region_family_contracts(self, fnd_ebi_envelope, expected_surface_id=FND_EBI_TOOL_SURFACE_ID)
 
             workbench_ui_envelope = run_portal_workbench_ui(
                 {

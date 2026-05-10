@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 from dataclasses import dataclass
 import glob
 import json
@@ -33,27 +34,17 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_system_profile_basics_action,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
-    AWS_CSM_TOOL_REQUEST_SCHEMA,
     CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
     CTS_GIS_TOOL_REQUEST_SCHEMA,
-    FND_DCM_TOOL_REQUEST_SCHEMA,
-    FND_EBI_TOOL_REQUEST_SCHEMA,
-    PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA,
-    PAYPAL_CSM_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     build_tool_exposure_policy,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FND_CSM_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    PAYPAL_CSM_TOOL_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -115,23 +106,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
-        "module_id": "aws_workspace",
-        "file": "v2_portal_aws_workspace.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.tools.aws_csm",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalAwsCsmWorkspaceRenderer",
-                "required_callables": ("render",),
-            },
-            {
-                "global": "PortalAwsCsmInterfacePanelRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
         "module_id": "fnd_csm_workspace",
         "file": "v2_portal_fnd_csm_workspace.js",
         "load_phase": "deferred",
@@ -144,23 +118,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
             },
             {
                 "global": "PortalFndCsmInterfacePanelRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
-        "module_id": "paypal_workspace",
-        "file": "v2_portal_paypal_workspace.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.tools.paypal_csm",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalPaypalCsmWorkspaceRenderer",
-                "required_callables": ("render",),
-            },
-            {
-                "global": "PortalPaypalCsmInterfacePanelRenderer",
                 "required_callables": ("render",),
             },
         ),
@@ -548,12 +505,8 @@ class V2PortalHostConfig:
 
 
 TOOL_SLUG_TO_SURFACE_ID = {
-    "aws-csm": AWS_CSM_TOOL_SURFACE_ID,
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
     "fnd-csm": FND_CSM_TOOL_SURFACE_ID,
-    "fnd-dcm": FND_DCM_TOOL_SURFACE_ID,
-    "fnd-ebi": FND_EBI_TOOL_SURFACE_ID,
-    "paypal-csm": PAYPAL_CSM_TOOL_SURFACE_ID,
     "workbench-ui": WORKBENCH_UI_TOOL_SURFACE_ID,
 }
 
@@ -860,6 +813,84 @@ def _fnd_newsletter_request_field(field: str) -> str:
     return str(request.form.get(field) or "").strip()
 
 
+# ---------------------------------------------------------------------------
+# PayPal order peripheral helpers (peripheral donation routes only)
+# ---------------------------------------------------------------------------
+
+
+def _load_domain_profile(private_dir: Path, domain: str) -> dict[str, Any] | None:
+    tool_dir = private_dir / "utilities" / "tools" / "paypal-csm"
+    domain_lower = _as_text(domain).lower()
+    for path in sorted(glob.glob(str(tool_dir / "paypal-csm.*.json"))):
+        try:
+            payload = json.loads(Path(path).read_text(encoding="utf-8"))
+            if isinstance(payload, dict) and _as_text(payload.get("domain")).lower() == domain_lower:
+                return payload
+        except Exception:
+            continue
+    return None
+
+
+def _load_tenant_config(private_dir: Path, tenant_ref: str) -> dict[str, Any] | None:
+    tenant_path = private_dir / "utilities" / "tools" / "paypal-csm" / "tenants" / f"{tenant_ref}.json"
+    if not tenant_path.exists():
+        return None
+    try:
+        payload = json.loads(tenant_path.read_text(encoding="utf-8"))
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+
+
+def _resolve_paypal_credentials(tenant_config: dict[str, Any]) -> tuple[str, str] | None:
+    credentials_ref = _as_text(tenant_config.get("credentials_ref"))
+    if not credentials_ref or credentials_ref in {"1", "set-locally-in-state-or-runtime"}:
+        client_id = _as_text(os.environ.get("PAYPAL_CLIENT_ID"))
+        client_secret = _as_text(os.environ.get("PAYPAL_CLIENT_SECRET"))
+    else:
+        ref_upper = credentials_ref.upper().replace("-", "_")
+        client_id = _as_text(os.environ.get(f"PAYPAL_CLIENT_ID_{ref_upper}"))
+        client_secret = _as_text(os.environ.get(f"PAYPAL_CLIENT_SECRET_{ref_upper}"))
+    if client_id and client_secret:
+        return (client_id, client_secret)
+    return None
+
+
+def _paypal_base_url(environment: str) -> str:
+    if _as_text(environment).lower() == "production":
+        return "https://api-m.paypal.com"
+    return "https://api-m.sandbox.paypal.com"
+
+
+def _get_paypal_access_token(client_id: str, client_secret: str, base_url: str) -> str:
+    import urllib.parse
+    import urllib.request as _urllib_request
+
+    credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+    data = urllib.parse.urlencode({"grant_type": "client_credentials"}).encode()
+    req = _urllib_request.Request(
+        f"{base_url}/v1/oauth2/token",
+        data=data,
+        headers={
+            "Authorization": f"Basic {credentials}",
+            "Content-Type": "application/x-www-form-urlencoded",
+        },
+        method="POST",
+    )
+    with _urllib_request.urlopen(req, timeout=15) as resp:
+        result = json.loads(resp.read().decode())
+    return _as_text(result.get("access_token"))
+
+
+def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, separators=(",", ":")) + "\n")
+    except Exception:
+        pass
+
+
 def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     if _FLASK_IMPORT_ERROR is not None:
         raise ModuleNotFoundError("flask is required to create the portal host") from _FLASK_IMPORT_ERROR
@@ -890,8 +921,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/portal/system/tools/<tool_slug>")
     def portal_system_tool(tool_slug: str) -> str:
-        if tool_slug in {"aws", "aws-narrow-write", "aws-csm-sandbox", "aws-csm-onboarding"}:
-            return redirect("/portal/system/tools/aws-csm", code=302)
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
         if surface_id is None:
             abort(404)
@@ -953,45 +982,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     public_dir=host_config.public_dir,
                     audit_storage_file=host_config.portal_audit_storage_file,
                     authority_db_file=host_config.authority_db_file,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/aws-csm")
-    def portal_aws_csm() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = AWS_CSM_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_aws_csm(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/aws-csm/actions")
-    def portal_aws_csm_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm_action
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_aws_csm_action(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    audit_storage_file=host_config.portal_audit_storage_file,
                 )
             )
         except ValueError as exc:
@@ -1100,7 +1090,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
             run_datum_workbench_mutation_action,
         )
-        from MyCiteV2.instances._shared.runtime.portal_aws_runtime import run_portal_aws_csm_action
         from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 
         try:
@@ -1122,19 +1111,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                         portal_domain=host_config.portal_domain,
                     )
                 )
-            if target_authority in {"aws_csm", "aws-cts", "aws_cts"}:
-                return _runtime_response(
-                    run_portal_aws_csm_action(
-                        _tool_payload_for_mutation(
-                            action,
-                            payload,
-                            request_schema=AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA,
-                        ),
-                        private_dir=host_config.private_dir,
-                        tool_exposure_policy=host_config.tool_exposure_policy,
-                        audit_storage_file=host_config.portal_audit_storage_file,
-                    )
-                )
             if target_authority in {"datum_workbench", "datum_document"}:
                 result = run_datum_workbench_mutation_action(
                     action,
@@ -1145,7 +1121,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return jsonify(result), int(result.get("status_code") or (200 if result.get("ok") else 400))
             return _error_response(
                 "unsupported_mutation_target",
-                "Mutation target_authority must be cts_gis, aws_csm, or datum_workbench.",
+                "Mutation target_authority must be cts_gis or datum_workbench.",
             )
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
@@ -1154,87 +1130,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             if _legacy is not None:
                 return _legacy
             raise
-
-    @app.post("/portal/api/v2/system/tools/fnd-ebi")
-    def portal_fnd_ebi() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import run_portal_fnd_ebi
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = FND_EBI_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_fnd_ebi(
-                    payload,
-                    webapps_root=host_config.webapps_root,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/paypal-csm")
-    def portal_paypal_csm() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import run_portal_paypal_csm
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = PAYPAL_CSM_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_paypal_csm(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/paypal-csm/actions")
-    def portal_paypal_csm_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import run_portal_paypal_csm_action
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = PAYPAL_CSM_TOOL_ACTION_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_paypal_csm_action(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    audit_storage_file=host_config.portal_audit_storage_file,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/fnd-dcm")
-    def portal_fnd_dcm() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import run_portal_fnd_dcm
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = FND_DCM_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_fnd_dcm(
-                    payload,
-                    webapps_root=host_config.webapps_root,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
 
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:
@@ -1434,14 +1329,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/create-order")
     def fnd_paypal_create_order() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import (
-            _load_domain_profile,
-            _load_tenant_config,
-            _resolve_credentials,
-            _paypal_base_url,
-            _get_paypal_access_token,
-            _append_to_ndjson,
-        )
         import urllib.request
         import urllib.error
 
@@ -1465,7 +1352,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
 
-        credentials = _resolve_credentials(tenant_config)
+        credentials = _resolve_paypal_credentials(tenant_config)
         if credentials is None:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 
@@ -1542,14 +1429,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/capture-order")
     def fnd_paypal_capture_order() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_paypal_runtime import (
-            _load_domain_profile,
-            _load_tenant_config,
-            _resolve_credentials,
-            _paypal_base_url,
-            _get_paypal_access_token,
-            _append_to_ndjson,
-        )
         import urllib.request
         import urllib.error
 
@@ -1570,7 +1449,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
 
-        credentials = _resolve_credentials(tenant_config)
+        credentials = _resolve_paypal_credentials(tenant_config)
         if credentials is None:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 

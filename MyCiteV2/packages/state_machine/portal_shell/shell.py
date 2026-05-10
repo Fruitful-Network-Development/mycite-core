@@ -581,11 +581,8 @@ def requires_shell_state_machine(surface_id: object) -> bool:
 
 
 _TOOL_SURFACE_TO_SANDBOX_ID: dict[str, str] = {
-    AWS_CSM_TOOL_SURFACE_ID: "aws_csm",
     CTS_GIS_TOOL_SURFACE_ID: "cts_gis",
-    FND_DCM_TOOL_SURFACE_ID: "fnd_dcm",
-    FND_EBI_TOOL_SURFACE_ID: "fnd_ebi",
-    PAYPAL_CSM_TOOL_SURFACE_ID: "paypal_csm",
+    FND_CSM_TOOL_SURFACE_ID: "fnd_csm",
     WORKBENCH_UI_TOOL_SURFACE_ID: "workbench_ui",
 }
 
@@ -1085,29 +1082,6 @@ def canonical_query_for_surface_query(
         surface_query,
         field_name="portal_shell_request.surface_query",
     )
-    if surface_id == AWS_CSM_TOOL_SURFACE_ID:
-        query = {"view": "domains"}
-        if _as_text(normalized.get("domain")):
-            query["domain"] = _as_text(normalized.get("domain")).lower()
-        if _as_text(normalized.get("profile")):
-            query["profile"] = _as_text(normalized.get("profile"))
-        section = _as_text(normalized.get("section")).lower()
-        if section in {"users", "onboarding", "newsletter"}:
-            query["section"] = section
-        return query
-    if surface_id == FND_DCM_TOOL_SURFACE_ID:
-        view = _as_text(normalized.get("view")).lower()
-        if view not in {"overview", "pages", "collections", "issues"}:
-            view = "overview"
-        query = {
-            "site": _as_text(normalized.get("site")).lower() or FND_DCM_DEFAULT_SITE,
-            "view": view,
-        }
-        if view == "pages" and _as_text(normalized.get("page")):
-            query["page"] = _as_text(normalized.get("page"))
-        if view == "collections" and _as_text(normalized.get("collection")):
-            query["collection"] = _as_text(normalized.get("collection"))
-        return query
     if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         query: dict[str, str] = {}
         document_id = _as_text(normalized.get("document"))
@@ -1505,18 +1479,10 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "network"
     if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID, UTILITIES_INTEGRATIONS_SURFACE_ID}:
         return "utilities"
-    if normalized_surface_id in {
-        AWS_CSM_TOOL_SURFACE_ID,
-    }:
-        return "aws"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return "cts_gis"
-    if normalized_surface_id == FND_DCM_TOOL_SURFACE_ID:
-        return "fnd_dcm"
-    if normalized_surface_id == FND_EBI_TOOL_SURFACE_ID:
-        return "fnd_ebi"
-    if normalized_surface_id == PAYPAL_CSM_TOOL_SURFACE_ID:
-        return "paypal_csm"
+    if normalized_surface_id == FND_CSM_TOOL_SURFACE_ID:
+        return "fnd_csm"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         return "workbench_ui"
     return "generic"
@@ -1695,25 +1661,12 @@ def build_shell_composition_payload(
 
 
 __all__ = [
-    "AWS_CSM_TOOL_ENTRYPOINT_ID",
-    "AWS_CSM_TOOL_ROUTE",
-    "AWS_CSM_TOOL_SURFACE_ID",
     "CTS_GIS_TOOL_ENTRYPOINT_ID",
     "CTS_GIS_TOOL_ROUTE",
     "CTS_GIS_TOOL_SURFACE_ID",
     "FND_CSM_TOOL_ENTRYPOINT_ID",
     "FND_CSM_TOOL_ROUTE",
     "FND_CSM_TOOL_SURFACE_ID",
-    "FND_DCM_DEFAULT_SITE",
-    "FND_DCM_TOOL_ENTRYPOINT_ID",
-    "FND_DCM_TOOL_ROUTE",
-    "FND_DCM_TOOL_SURFACE_ID",
-    "FND_EBI_TOOL_ENTRYPOINT_ID",
-    "FND_EBI_TOOL_ROUTE",
-    "FND_EBI_TOOL_SURFACE_ID",
-    "PAYPAL_CSM_TOOL_ENTRYPOINT_ID",
-    "PAYPAL_CSM_TOOL_ROUTE",
-    "PAYPAL_CSM_TOOL_SURFACE_ID",
     "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
     "WORKBENCH_UI_TOOL_ROUTE",
     "WORKBENCH_UI_TOOL_SURFACE_ID",
