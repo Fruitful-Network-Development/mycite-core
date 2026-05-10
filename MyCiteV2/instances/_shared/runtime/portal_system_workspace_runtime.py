@@ -1385,11 +1385,10 @@ def _build_terminal_control_interface(
     ``tool_extensions["directive_terminal_enabled"]=True`` to
     ``build_unified_control_panel``.
 
-    Backend routes for ``Validate``, ``Clear Overlay``, and ``Export
-    Envelope`` are not wired yet; those quick-actions are emitted with
-    ``disabled=True`` so the frontend renders them as inert. ``Inject``
-    is also disabled until the directive backend route lands (tracked
-    out-of-scope per the convergence plan).
+    When enabled, the ``inject_directive`` quick-action is wired to dispatch
+    ``action_kind="inject_directive"`` with the terminal textarea value as
+    ``directive_text``. Other quick-actions (Validate, Clear Overlay, Export)
+    remain disabled until their backend routes are implemented.
     """
 
     return {
@@ -1399,18 +1398,21 @@ def _build_terminal_control_interface(
         "default_state": "expanded" if enabled else "collapsed",
         "interface": {
             "mode": "command",
-            "placeholder": "> inject directive...",
-            "help_text": "Enter NIMM directive or AITAS control command",
-            "disabled": True,
-            "disabled_reason": "directive_inject_route_not_wired",
+            "placeholder": "> inject directive... (e.g. med;cts_gis:1-1-2)",
+            "help_text": "Enter a NIMM directive. Ctrl+Enter to inject.",
+            "disabled": not enabled,
+            "disabled_reason": None if enabled else "directive_terminal_not_enabled",
         },
         "quick_actions": [
             {
                 "action_id": "inject_directive",
                 "label": "Inject",
                 "shortcut": "Ctrl+Enter",
-                "disabled": True,
-                "disabled_reason": "directive_inject_route_not_wired",
+                "disabled": not enabled,
+                "disabled_reason": None if enabled else "directive_terminal_not_enabled",
+                # When enabled, the frontend reads textarea value and dispatches:
+                # ctx.dispatchToolAction({ action_kind: "inject_directive", directive_text: <value> })
+                "action_kind": "inject_directive" if enabled else None,
             },
             {
                 "action_id": "validate_context",
@@ -1539,6 +1541,7 @@ def build_unified_control_panel(
     actions: list[dict[str, Any]] | None = None,
     workbench_state: dict[str, Any] | None = None,
     tool_extensions: dict[str, Any] | None = None,
+    context_controls: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build the unified control panel following canonical contract v2.
 
@@ -1580,6 +1583,8 @@ def build_unified_control_panel(
         surface_id=surface_id,
         file_entries=file_entries,
     )
+    if context_controls is not None:
+        nimm_aitas_control["context_controls"] = list(context_controls)
 
     extensions = dict(tool_extensions or {})
     terminal_enabled = bool(extensions.pop("directive_terminal_enabled", False))

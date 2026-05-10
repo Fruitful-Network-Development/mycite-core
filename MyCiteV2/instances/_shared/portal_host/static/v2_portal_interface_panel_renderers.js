@@ -1145,8 +1145,6 @@
         },
         body.staging_widget || {}
       );
-      body.tabs = normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph");
-      body.default_tab_id = activePresentationTabId(body.tabs, "diktataograph");
       body.tab_host = asText(body.tab_host) || "shared_interface_tabs";
       return body;
     }
@@ -1238,6 +1236,9 @@
           has_real_projection: false,
         },
       },
+      // Pass through component_frames so the new rendering path is not lost
+      // when normalization falls back to this reconstructed object.
+      component_frames: Array.isArray(body.component_frames) ? body.component_frames : [],
     };
   }
 
@@ -1651,19 +1652,92 @@
     });
   }
 
+  // Standalone geospatial projection content renderer.
+  // Accepts a component frame whose payload is a geospatial_projection object
+  // (as defined in cts_gis_garland_projection_lens.md).
+  // Registered with PortalComponentLibrary so the component library can delegate here.
+  function renderGeospatialFrameContent(frame) {
+    var geospatialProjection = (frame && frame.payload) || {};
+    var decodeSummary = geospatialProjection.decode_summary || {};
+    var hasRealGeospatialProjection = !!geospatialProjection.has_real_projection;
+    return hasRealGeospatialProjection
+      ? '<div class="cts-gis-mapCanvas">' +
+        '<div class="cts-gis-mapCanvas__state">' +
+        '<span class="cts-gis-mapCanvas__status">state: ' +
+        escapeHtml(geospatialProjection.projection_state || "inspect_only") +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">source: ' +
+        escapeHtml(geospatialProjection.projection_source || "none") +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">features: ' +
+        escapeHtml(String(geospatialProjection.feature_count || 0)) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">rows: ' +
+        escapeHtml(String(geospatialProjection.render_row_count || 0)) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">decoded: ' +
+        escapeHtml(
+          String(decodeSummary.decoded_coordinate_count || 0) +
+            "/" +
+            String(decodeSummary.reference_binding_count || 0)
+        ) +
+        "</span>" +
+        '<span class="cts-gis-mapCanvas__status">failed: ' +
+        escapeHtml(String(decodeSummary.failed_token_count || 0)) +
+        "</span>" +
+        "</div>" +
+        renderGeospatialStage(geospatialProjection) +
+        ((geospatialProjection.collection_bounds || []).length
+          ? '<p class="cts-gis-mapCanvas__meta">collection bounds: ' +
+            escapeHtml((geospatialProjection.collection_bounds || []).join(", ")) +
+            "</p>"
+          : "") +
+        ((geospatialProjection.selected_feature_id || "")
+          ? '<p class="cts-gis-mapCanvas__meta">selected feature: ' +
+            escapeHtml(geospatialProjection.selected_feature_id || "") +
+            (geospatialProjection.selected_feature_geometry_type
+              ? " (" + escapeHtml(geospatialProjection.selected_feature_geometry_type || "") + ")"
+              : "") +
+            "</p>"
+          : "") +
+        ((geospatialProjection.selected_feature_bounds || []).length
+          ? '<p class="cts-gis-mapCanvas__meta">selected bounds: ' +
+            escapeHtml((geospatialProjection.selected_feature_bounds || []).join(", ")) +
+            "</p>"
+          : "") +
+        '<div class="cts-gis-mapCanvas__featureList">' +
+        renderRequestButtons(geospatialProjection.features || [], "feature", {
+          listClass: "cts-gis-mapCanvas__featureEntries",
+          buttonClass: "cts-gis-entryButton cts-gis-entryButton--feature",
+          emptyMessage: geospatialProjection.empty_message || "No projected geometry is available for the current navigation root.",
+        }) +
+        "</div>" +
+        renderWarningList(geospatialProjection.warnings || []) +
+        "</div>"
+      : '<div class="cts-gis-mapCanvas cts-gis-mapCanvas--empty">' +
+        renderProjectionPlaceholder(
+          geospatialProjection.empty_message || "No projected geometry is available until the active path resolves real CTS-GIS evidence.",
+          "cts-gis-mapCanvas__empty"
+        ) +
+        "</div>";
+  }
+
   function renderCtsGisInterfacePanel(ctx, target, region) {
+    var existingActiveTab = target && target.querySelector("[data-interface-tab].is-active");
+    var existingActiveTabId = existingActiveTab ? (existingActiveTab.getAttribute("data-interface-tab") || "") : "";
     var interfaceBody = normalizeCtsGisInterfaceBody(region.interface_body || {});
     var navigationCanvas = interfaceBody.navigation_canvas || {};
     var stagingWidget = interfaceBody.staging_widget || {};
     var navMode = navigationCanvas.mode || "directory_dropdowns";
     var garlandSplit = interfaceBody.garland_split_projection || {};
+    var componentFrames = Array.isArray(interfaceBody.component_frames) ? interfaceBody.component_frames : [];
     var interfaceTabs = normalizePresentationTabs(
       interfaceBody.tabs,
       [
         { id: "diktataograph", label: navigationCanvas.title || "Diktataograph", active: true },
         { id: "garland", label: garlandSplit.title || "Garland" },
       ],
-      interfaceBody.default_tab_id || "diktataograph"
+      existingActiveTabId || interfaceBody.default_tab_id || "diktataograph"
     );
     var activeTabId = activePresentationTabId(interfaceTabs, "diktataograph");
     var geospatialProjection = garlandSplit.geospatial_projection || {};
@@ -1816,26 +1890,41 @@
       "</section>" +
       renderCtsGisStagingWidget(stagingWidget) +
       "</section>";
-    var garlandPanel =
-      '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
-      '<header class="cts-gis-pane__header"><h3>' +
-      escapeHtml(garlandSplit.title || "Garland") +
-      "</h3><p>" +
-      escapeHtml(garlandSplit.summary || "") +
-      "</p></header>" +
-      '<div class="cts-gis-garlandSplit cts-gis-garlandSplit--stacked">' +
-      '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
-      escapeHtml(geospatialProjection.title || "Geospatial Projection") +
-      "</h4>" +
-      geospatialMarkup +
-      "</section>" +
-      '<section class="cts-gis-garlandSplit__profile"><h4>' +
-      escapeHtml(profileProjection.title || "Profile Projection") +
-      "</h4>" +
-      profileMarkup +
-      "</section>" +
-      "</div>" +
-      "</section>";
+    var garlandPanel;
+    var useComponentFrames = componentFrames.length > 0 && !!(window.PortalComponentLibrary);
+    if (useComponentFrames) {
+      // Component frame path: delegate garland content to the component library.
+      var renderFrameList = typeof window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST === "function"
+        ? window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST
+        : window.PortalComponentLibrary.renderComponentFrameList;
+      garlandPanel =
+        '<section class="v2-card cts-gis-pane cts-gis-pane--garland cts-gis-pane--frames">' +
+        '<header class="cts-gis-pane__header"><h3>Garland</h3></header>' +
+        renderFrameList(componentFrames) +
+        "</section>";
+    } else {
+      // Legacy fallback: render from garland_split_projection.
+      garlandPanel =
+        '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
+        '<header class="cts-gis-pane__header"><h3>' +
+        escapeHtml(garlandSplit.title || "Garland") +
+        "</h3><p>" +
+        escapeHtml(garlandSplit.summary || "") +
+        "</p></header>" +
+        '<div class="cts-gis-garlandSplit cts-gis-garlandSplit--stacked">' +
+        '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
+        escapeHtml(geospatialProjection.title || "Geospatial Projection") +
+        "</h4>" +
+        geospatialMarkup +
+        "</section>" +
+        '<section class="cts-gis-garlandSplit__profile"><h4>' +
+        escapeHtml(profileProjection.title || "Profile Projection") +
+        "</h4>" +
+        profileMarkup +
+        "</section>" +
+        "</div>" +
+        "</section>";
+    }
     var isSplitLayout = (interfaceBody.layout === "diktataograph_garland_split");
     target.innerHTML =
       '<div class="system-tool-interface cts-gis-interface' +
@@ -1861,6 +1950,9 @@
     bindStagedDiktataographEnhancement(target);
     bindCtsGisStagingWidget(target, ctx, stagingWidget);
     bindGeospatialZoomControls(target, ctx, geospatialProjection);
+    if (useComponentFrames && typeof window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT === "function") {
+      window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT(target, ctx);
+    }
   }
 
   function renderGenericInterfacePanelSurface(target, region, surfacePayload) {
@@ -2062,6 +2154,12 @@
       return;
     }
     renderGenericInterfacePanelSurface(target, region, surfacePayload);
+  }
+
+  // Register the geospatial projection renderer with PortalComponentLibrary so
+  // component frames of type "geospatial_projection" get the full CTS-GIS map canvas.
+  if (window.PortalComponentLibrary && typeof window.PortalComponentLibrary.rendererRegistry.register === "function") {
+    window.PortalComponentLibrary.rendererRegistry.register("geospatial_projection", renderGeospatialFrameContent);
   }
 
   window.PortalCtsGisInterfacePanelRenderer = {

@@ -343,6 +343,19 @@ def _state_reflection(
         {"action_id": "focus_object", "directive": "nav;object:select", "script_hint": "daemon(\"nav;object:select\")"},
         {"action_id": "back_out", "directive": "nav;self:out", "script_hint": "daemon(\"nav;self:out\")"},
     ]
+    if current_file and not current_datum:
+        nimm_actions.extend([
+            {
+                "action_id": "rename_document",
+                "directive": f"man;datum_workbench:rename_document '{current_file}'",
+                "script_hint": f"daemon(manipulate;datum_workbench:rename_document '{current_file}' '<new_name>')",
+            },
+            {
+                "action_id": "delete_document",
+                "directive": f"man;datum_workbench:delete_document '{current_file}'",
+                "script_hint": f"daemon(manipulate;datum_workbench:delete_document '{current_file}')",
+            },
+        ])
     if current_datum:
         nimm_actions = [
             {"action_id": "open_datum_panel", "directive": "investigate;datum:open_panel", "script_hint": "daemon(\"investigate;datum:open_panel\")"},

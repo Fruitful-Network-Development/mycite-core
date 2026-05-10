@@ -710,10 +710,126 @@
     return '<div class="ide-controlpanel__toolExtensions">' + blocks + "</div>";
   }
 
+  function contextControlHasDispatch(source) {
+    return !!(source && (source.shell_request || source.action || source.action_kind || source.route || source.request_schema));
+  }
+
+  function renderContextControlButton(ctx, control, controlIndex, buttonIndex) {
+    var disabled = control.disabled || !contextControlHasDispatch(control);
+    return (
+      '<button type="button" class="ide-controlpanel__contextButton"' +
+      ' data-context-control-index="' + String(controlIndex) + '"' +
+      ' data-context-control-button-index="' + String(buttonIndex) + '"' +
+      (disabled ? " disabled" : "") +
+      ">" +
+      ctx.escapeHtml(control.label || "") +
+      "</button>"
+    );
+  }
+
+  function renderContextControls(ctx, controls) {
+    if (!controls || !controls.length) return "";
+    return (
+      '<div class="ide-controlpanel__contextControls">' +
+      controls.map(function (control, controlIndex) {
+        var options = control.options || [];
+        var buttons = control.controls || [];
+        var controlType = String(control.control_type || "disabled");
+        var selectorHtml = "";
+        var buttonsHtml = "";
+        if (controlType === "select") {
+          selectorHtml =
+            '<select class="ide-controlpanel__contextSelect" data-context-control-index="' + String(controlIndex) + '"' +
+            (options.some(contextControlHasDispatch) ? "" : " disabled") +
+            ">" +
+            (options.length
+              ? options.map(function (option, optionIndex) {
+                  return (
+                    '<option value="' + String(optionIndex) + '"' +
+                    (option.active ? " selected" : "") +
+                    (option.disabled || !contextControlHasDispatch(option) ? " disabled" : "") +
+                    ">" +
+                    ctx.escapeHtml(option.label || option.value || "") +
+                    "</option>"
+                  );
+                }).join("")
+              : '<option value="" selected disabled>' + ctx.escapeHtml(control.empty_message || "No options") + "</option>") +
+            "</select>";
+        }
+        if (controlType === "stepper" || controlType === "directional") {
+          buttonsHtml =
+            '<div class="ide-controlpanel__contextButtons ide-controlpanel__contextButtons--' +
+            ctx.escapeHtml(controlType) +
+            '">' +
+            buttons.map(function (button, buttonIndex) {
+              return renderContextControlButton(ctx, button, controlIndex, buttonIndex);
+            }).join("") +
+            "</div>";
+        }
+        return (
+          '<section class="ide-controlpanel__contextControl" data-context-id="' +
+          ctx.escapeHtml(control.context_id || "") +
+          '">' +
+          '<div class="ide-controlpanel__contextControlText">' +
+          '<h4 class="ide-controlpanel__contextControlTitle">' + ctx.escapeHtml(control.label || control.context_id || "Context") + "</h4>" +
+          '<span class="ide-controlpanel__contextCurrent">' + ctx.escapeHtml(control.current_value || "<context_value>") + "</span>" +
+          "</div>" +
+          '<div class="ide-controlpanel__contextControlInput">' +
+          selectorHtml +
+          buttonsHtml +
+          "</div>" +
+          "</section>"
+        );
+      }).join("") +
+      "</div>"
+    );
+  }
+
+  function dispatchContextControl(source, ctx) {
+    if (!source || source.disabled) return;
+    if (source.shell_request && typeof ctx.loadShell === "function") {
+      ctx.loadShell(source.shell_request);
+      return;
+    }
+    if (source.action && source.action.shell_request && typeof ctx.loadShell === "function") {
+      ctx.loadShell(source.action.shell_request);
+      return;
+    }
+    if (source.action && typeof ctx.dispatchToolAction === "function") {
+      ctx.dispatchToolAction(source.action);
+      return;
+    }
+    if ((source.action_kind || source.route || source.request_schema) && typeof ctx.dispatchToolAction === "function") {
+      ctx.dispatchToolAction(source);
+    }
+  }
+
+  function bindContextControls(root, ctx, controls) {
+    Array.prototype.forEach.call(root.querySelectorAll("select[data-context-control-index]"), function (node) {
+      node.addEventListener("change", function () {
+        var controlIndex = Number(node.getAttribute("data-context-control-index"));
+        var optionIndex = Number(node.value);
+        var control = (controls || [])[controlIndex] || {};
+        var option = (control.options || [])[optionIndex] || {};
+        dispatchContextControl(option, ctx);
+      });
+    });
+    Array.prototype.forEach.call(root.querySelectorAll("button[data-context-control-index]"), function (node) {
+      node.addEventListener("click", function () {
+        var controlIndex = Number(node.getAttribute("data-context-control-index"));
+        var buttonIndex = Number(node.getAttribute("data-context-control-button-index"));
+        var control = (controls || [])[controlIndex] || {};
+        var button = (control.controls || [])[buttonIndex] || {};
+        dispatchContextControl(button, ctx);
+      });
+    });
+  }
+
   function renderUnifiedDirectivePanel(ctx, root, region) {
     var portalIdentity = region.portal_identity || {};
     var contextConditions = region.context_conditions || [];
     var nimmAitasControl = region.nimm_aitas_control || {};
+    var contextControls = nimmAitasControl.context_controls || [];
     var terminalControl = region.terminal_control || {};
     var navigationGroups = region.navigation_groups || [];
     var actions = region.actions || [];
@@ -746,8 +862,37 @@
       html += "</div>";
     }
 
-    // NIMM-AITAS Control Section (stacked facets)
-    if (nimmAitasControl.facets && nimmAitasControl.facets.length) {
+    // Terminal Control Interface
+    if (terminalControl.interface) {
+      html +=
+        '<div class="ide-controlpanel__terminal">' +
+        '<header class="ide-controlpanel__sectionHeader">' +
+        ctx.escapeHtml(terminalControl.title || "Terminal") +
+        "</header>" +
+        '<textarea class="ide-controlpanel__terminalInput" placeholder="' +
+        ctx.escapeHtml(terminalControl.interface.placeholder || "> inject directive...") +
+        '"></textarea>' +
+        '<div class="ide-controlpanel__terminalActions">';
+
+      (terminalControl.quick_actions || []).forEach(function (action, index) {
+        html +=
+          '<button class="ide-controlpanel__terminalAction" data-terminal-action-index="' +
+          String(index) +
+          '"' +
+          (action.disabled ? ' disabled title="' + ctx.escapeHtml(action.disabled_reason || "unavailable") + '"' : "") +
+          ">" +
+          ctx.escapeHtml(action.label || "") +
+          (action.shortcut ? ' <kbd>' + ctx.escapeHtml(action.shortcut) + "</kbd>" : "") +
+          "</button>";
+      });
+
+      html += "</div></div>";
+    }
+
+    html += renderContextControls(ctx, contextControls);
+
+    // NIMM-AITAS Control Section (legacy stacked facets fallback)
+    if ((!contextControls || !contextControls.length) && nimmAitasControl.facets && nimmAitasControl.facets.length) {
       html +=
         '<div class="ide-controlpanel__directiveControl">' +
         '<header class="ide-controlpanel__sectionHeader">' +
@@ -815,32 +960,6 @@
 
       html += "</div>";
     }
-
-    // Terminal Control Interface
-    if (terminalControl.interface) {
-      html +=
-        '<div class="ide-controlpanel__terminal">' +
-        '<header class="ide-controlpanel__sectionHeader">' +
-        ctx.escapeHtml(terminalControl.title || "Terminal") +
-        "</header>" +
-        '<textarea class="ide-controlpanel__terminalInput" placeholder="' +
-        ctx.escapeHtml(terminalControl.interface.placeholder || "> inject directive...") +
-        '"></textarea>' +
-        '<div class="ide-controlpanel__terminalActions">';
-
-      (terminalControl.quick_actions || []).forEach(function (action, index) {
-        html +=
-          '<button class="ide-controlpanel__terminalAction" data-terminal-action-index="' +
-          String(index) +
-          '">' +
-          ctx.escapeHtml(action.label || "") +
-          (action.shortcut ? ' <kbd>' + ctx.escapeHtml(action.shortcut) + "</kbd>" : "") +
-          "</button>";
-      });
-
-      html += "</div></div>";
-    }
-
     // Navigation Groups
     navigationGroups.forEach(function (group) {
       html +=
@@ -915,14 +1034,38 @@
         if (request) ctx.loadShell(request);
       });
     });
+    bindContextControls(root, ctx, contextControls);
+    var terminalTextarea = root.querySelector(".ide-controlpanel__terminalInput");
+
+    function dispatchTerminalAction(action) {
+      if (!action || action.disabled) return;
+      if (action.action_kind && typeof ctx.dispatchToolAction === "function") {
+        var directiveText = terminalTextarea ? (terminalTextarea.value || "").trim() : "";
+        ctx.dispatchToolAction(Object.assign({}, action, { directive_text: directiveText }));
+        return;
+      }
+      if (action.shell_request) ctx.loadShell(action.shell_request);
+    }
+
     Array.prototype.forEach.call(root.querySelectorAll("[data-terminal-action-index]"), function (node) {
       node.addEventListener("click", function () {
         var index = Number(node.getAttribute("data-terminal-action-index"));
         var action = (terminalControl.quick_actions || [])[index] || {};
-        if (action.disabled) return;
-        if (action.shell_request) ctx.loadShell(action.shell_request);
+        dispatchTerminalAction(action);
       });
     });
+
+    if (terminalTextarea) {
+      terminalTextarea.addEventListener("keydown", function (e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+          e.preventDefault();
+          var injectAction = (terminalControl.quick_actions || []).find(function (a) {
+            return a.action_id === "inject_directive" && !a.disabled;
+          });
+          if (injectAction) dispatchTerminalAction(injectAction);
+        }
+      });
+    }
 
     // Bind actions
     Array.prototype.forEach.call(root.querySelectorAll("[data-control-action-index]"), function (node) {

@@ -135,5 +135,51 @@ class TestShiftIteration(unittest.TestCase):
         self.assertEqual(remap, {})
 
 
+class TestRoundTripVersionHash(unittest.TestCase):
+    """AC-3: insert → hash changes; delete same datum → hash returns to original."""
+
+    def _compute_hash(self, rows: list) -> str:
+        import hashlib
+        import json
+        sorted_rows = sorted(rows, key=lambda r: tuple(int(p) for p in r["datum_address"].split("-")))
+        payload = json.dumps([r["raw"] for r in sorted_rows], sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode()).hexdigest()
+
+    def test_insert_changes_hash_delete_restores_it(self) -> None:
+        original_rows = [_row("0-0-1", label="a"), _row("0-0-2", label="b")]
+        hash_before = self._compute_hash(original_rows)
+
+        new_datum = _row("0-0-2", label="inserted")
+        after_insert, _ = insert_datum(original_rows, new_datum)
+        hash_after_insert = self._compute_hash(after_insert)
+        self.assertNotEqual(hash_before, hash_after_insert, "Hash must change after insert")
+        self.assertEqual(len(after_insert), 3)
+
+        # Delete the inserted datum (now at 0-0-2 after shift, inserted at 0-0-2 → others shifted)
+        inserted_addr = new_datum["datum_address"]
+        after_delete, _ = delete_datum(after_insert, inserted_addr)
+        hash_after_delete = self._compute_hash(after_delete)
+        self.assertEqual(len(after_delete), 2)
+        self.assertEqual(hash_before, hash_after_delete, "Hash must return to original after deleting inserted datum")
+
+    def test_delete_changes_hash(self) -> None:
+        # Verify that deleting any datum produces a different hash.
+        # Note: re-inserting a freshly-constructed row does NOT necessarily restore the
+        # original hash because insert_datum cascades reference-remap across the new row's
+        # raw payload (including its embedded self-address). The correct round-trip uses
+        # the insert→delete direction (covered by test_insert_changes_hash_delete_restores_it).
+        original_rows = [_row("0-0-1", label="a"), _row("0-0-2", label="b"), _row("0-0-3", label="c")]
+        hash_before = self._compute_hash(original_rows)
+
+        after_delete, _ = delete_datum(original_rows, "0-0-2")
+        hash_after_delete = self._compute_hash(after_delete)
+        self.assertNotEqual(hash_before, hash_after_delete, "Hash must change after delete")
+        self.assertEqual(len(after_delete), 2)
+
+        after_delete_last, _ = delete_datum(after_delete, "0-0-2")
+        hash_after_both = self._compute_hash(after_delete_last)
+        self.assertNotEqual(hash_after_delete, hash_after_both, "Each deletion produces distinct hash")
+
+
 if __name__ == "__main__":
     unittest.main()

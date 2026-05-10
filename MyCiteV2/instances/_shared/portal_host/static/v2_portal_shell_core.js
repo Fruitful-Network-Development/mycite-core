@@ -12,6 +12,9 @@
 
   var lastShellRequest = null;
   var lastEnvelope = null;
+  var _lastRegionRenderKeys = {};
+  var _lastRenderedSurfaceId = "";
+  var TOOL_STATE_SESSION_PREFIX = "mycite_v2_tool_state__";
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -191,6 +194,52 @@
     }
   }
 
+  function persistToolStateForSurface(surfaceId, toolState) {
+    var normalizedSurfaceId = asText(surfaceId);
+    if (!normalizedSurfaceId || !toolState) return;
+    try {
+      if (window.sessionStorage) {
+        window.sessionStorage.setItem(TOOL_STATE_SESSION_PREFIX + normalizedSurfaceId, JSON.stringify(toolState));
+      }
+    } catch (_) {}
+  }
+
+  function readPersistedToolStateForSurface(surfaceId) {
+    var normalizedSurfaceId = asText(surfaceId);
+    if (!normalizedSurfaceId) return null;
+    try {
+      if (!window.sessionStorage) return null;
+      var raw = window.sessionStorage.getItem(TOOL_STATE_SESSION_PREFIX + normalizedSurfaceId);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function persistToolStateFromEnvelope(envelope) {
+    var surfacePayload = (envelope && envelope.surface_payload) || {};
+    var requestContract = surfacePayload.request_contract || {};
+    if (requestContract.tool_state_supported && surfacePayload.tool_state) {
+      persistToolStateForSurface(envelope.surface_id, surfacePayload.tool_state);
+    }
+  }
+
+  function hydrateShellRequestToolState(shellRequest) {
+    var requestBody = cloneRequest(shellRequest || {});
+    if (requestBody.tool_state) return requestBody;
+    var targetSurfaceId =
+      asText(requestBody.requested_surface_id) ||
+      asText(requestBody.surface_id) ||
+      asText(lastEnvelope && lastEnvelope.surface_id);
+    var persistedToolState = readPersistedToolStateForSurface(targetSurfaceId);
+    if (persistedToolState) {
+      requestBody.tool_state = cloneRequest(persistedToolState);
+    }
+    return requestBody;
+  }
+
   function canonicalShellRequestFromEnvelope(envelope) {
     if (!envelope || !envelope.reducer_owned || !envelope.shell_state) return null;
     var requestBody = {
@@ -285,6 +334,14 @@
     };
   }
 
+  function shouldSkipRegionRender(regionName, region) {
+    var key = asText(region && region.render_key);
+    if (!key) return false;
+    if (_lastRegionRenderKeys[regionName] === key) return true;
+    _lastRegionRenderKeys[regionName] = key;
+    return false;
+  }
+
   function renderRegions(composition) {
     var chromeRenderers = resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers") || {};
     var workbenchRenderer = resolveRegisteredModuleExport("workbench_renderers", "PortalShellWorkbenchRenderer");
@@ -325,7 +382,9 @@
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    interfacePanelRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-interface-panel-dynamic")));
+    if (!shouldSkipRegionRender("interface_panel", interfacePanelRegion)) {
+      interfacePanelRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-interface-panel-dynamic")));
+    }
   }
 
   function syncHistory(envelope, historyPayload, options) {
@@ -351,8 +410,14 @@
     if (envelope.error && envelope.error.message) {
       console.warn("Portal runtime warning:", envelope.error.message);
     }
+    var surfaceId = asText(envelope.surface_id);
+    if (surfaceId !== _lastRenderedSurfaceId) {
+      _lastRegionRenderKeys = {};
+      _lastRenderedSurfaceId = surfaceId;
+    }
     lastEnvelope = envelope;
     lastShellRequest = canonicalShellRequestFromEnvelope(envelope) || lastShellRequest;
+    persistToolStateFromEnvelope(envelope);
     applyChrome(envelope.shell_composition, { routeKey: routeKeyFromUrl(envelope.canonical_url) });
     try {
       renderRegions(envelope.shell_composition);
@@ -371,7 +436,7 @@
   }
 
   function loadShell(shellRequest, options) {
-    var requestBody = cloneRequest(shellRequest);
+    var requestBody = hydrateShellRequestToolState(shellRequest);
     lastShellRequest = requestBody;
     return postJson(SHELL_URL, requestBody).then(function (result) {
       if (!result.ok || !result.json) {
@@ -467,6 +532,11 @@
       shell_state: cloneRequest(envelope.shell_state || {}),
       transition: cloneRequest(transition || {}),
     };
+    var surfacePayload = envelope.surface_payload || {};
+    var requestContract = surfacePayload.request_contract || {};
+    if (requestContract.tool_state_supported && surfacePayload.tool_state) {
+      requestBody.tool_state = cloneRequest(surfacePayload.tool_state || {});
+    }
     return loadShell(requestBody);
   }
 
@@ -626,6 +696,7 @@
     showFatal("Bootstrap shell request was not embedded into the page.", "bootstrap_missing");
     return;
   }
+  bootstrapRequest = hydrateShellRequestToolState(bootstrapRequest);
 
   loadShell(bootstrapRequest, { replaceHistory: true }).catch(function (err) {
     showFatal(err && err.message ? err.message : "The shell request failed before the runtime returned.", "shell_post_failed");

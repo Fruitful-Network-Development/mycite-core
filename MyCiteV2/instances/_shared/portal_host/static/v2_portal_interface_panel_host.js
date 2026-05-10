@@ -146,6 +146,102 @@
     bindTabs: bindPresentationTabs,
   };
 
+  // ---------------------------------------------------------------------------
+  // Component Frame Registry
+  //
+  // Tracks rendered component frames so frozen frames are not re-rendered when
+  // a new surface payload arrives with a matching render_key.
+  // Registry persists across panel switches within a session; cleared on page reload.
+  // ---------------------------------------------------------------------------
+
+  var _componentFrameRegistry = Object.create(null);
+
+  var componentFrameRegistry = {
+    register: function (frameId, html, renderKey) {
+      _componentFrameRegistry[frameId] = { html: html, key: renderKey };
+    },
+    isFrozen: function (frameId, incomingKey) {
+      var existing = _componentFrameRegistry[frameId];
+      return !!(existing && existing.key === incomingKey);
+    },
+    getCached: function (frameId) {
+      var existing = _componentFrameRegistry[frameId];
+      return existing ? existing.html : null;
+    },
+    clear: function (frameId) {
+      delete _componentFrameRegistry[frameId];
+    },
+    clearAll: function () {
+      _componentFrameRegistry = Object.create(null);
+    },
+  };
+
+  function resolveComponentLibrary() {
+    return (typeof window !== "undefined" && window.PortalComponentLibrary) || null;
+  }
+
+  function renderSingleFrameToHtml(frame) {
+    var lib = resolveComponentLibrary();
+    if (lib && typeof lib.renderComponentFrame === "function") {
+      return lib.renderComponentFrame(frame);
+    }
+    // Minimal fallback if library not yet loaded.
+    return (
+      '<div class="v2-component-frame v2-component-frame--pending"' +
+      ' data-frame-id="' + asText(frame.frame_id) + '">' +
+      "<p>Component renderer loading…</p>" +
+      "</div>"
+    );
+  }
+
+  function renderComponentFrameRecursive(rawFrame) {
+      var frame = asObject(rawFrame);
+      var frameId = asText(frame.frame_id);
+      var renderKey = asText(frame.render_key);
+      var frozen = frame.frozen === true;
+      if (frozen && frameId && componentFrameRegistry.isFrozen(frameId, renderKey)) {
+        var cached = componentFrameRegistry.getCached(frameId);
+        if (cached !== null) return cached;
+      }
+      var html = renderSingleFrameToHtml(frame);
+      if (frameId) componentFrameRegistry.register(frameId, html, renderKey);
+      return html;
+  }
+
+  function renderComponentFramesSection(frames) {
+    var list = Array.isArray(frames) ? frames : [];
+    if (!list.length) return "";
+    return list.map(function (rawFrame) {
+      return renderComponentFrameRecursive(rawFrame);
+    }).join("");
+  }
+
+  function bindComponentFrameEngagement(target, ctx) {
+    if (!target) return;
+    var btns = Array.prototype.slice.call(target.querySelectorAll("[data-engage-frame]"));
+    btns.forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var frameId = asText(btn.getAttribute("data-engage-frame"));
+        if (!frameId) return;
+        // Clear the cached entry so the incoming fresh render_key causes a re-render.
+        componentFrameRegistry.clear(frameId);
+        // Fire the tool action. The backend detects action_kind="engage_component_frame"
+        // and returns a fresh render_key for the matching frame via action_result.
+        // Sibling frames are unaffected (their render_keys are unchanged).
+        if (ctx && typeof ctx.dispatchToolAction === "function") {
+          ctx.dispatchToolAction({ action_kind: "engage_component_frame", frame_id: frameId });
+        } else if (ctx && typeof ctx.reload === "function") {
+          ctx.reload();
+        }
+      });
+    });
+  }
+
+  window.__MYCITE_V2_COMPONENT_FRAME_REGISTRY = componentFrameRegistry;
+  window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT = bindComponentFrameEngagement;
+  window.__MYCITE_V2_RENDER_COMPONENT_FRAME_RECURSIVE = renderComponentFrameRecursive;
+  window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST = renderComponentFramesSection;
+
   function renderRows(rows) {
     if (!rows || !rows.length) {
       return '<p class="ide-controlpanel__empty">No interface panel details.</p>';
@@ -228,7 +324,10 @@
   function renderGenericInterfacePanelSurface(target, region, surfacePayload) {
     var sections = region.sections || [];
     var interfaceBody = asObject(region.interface_body);
-    var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], interfaceBody.default_tab_id);
+    var componentFrames = Array.isArray(interfaceBody.component_frames) ? interfaceBody.component_frames : [];
+    var existingActiveTab = target && target.querySelector("[data-interface-tab].is-active");
+    var existingActiveTabId = existingActiveTab ? (existingActiveTab.getAttribute("data-interface-tab") || "") : "";
+    var interfaceTabs = normalizePresentationTabs(interfaceBody.tabs, [], existingActiveTabId || interfaceBody.default_tab_id);
     var adapter = toolSurfaceAdapter();
     var rendered = adapter.renderWrappedSurface(
       target,
@@ -236,10 +335,21 @@
         region: region,
         surfacePayload: surfacePayload,
         title: region.title || "Interface Panel",
-        hasContent: !!region.subject || !!sections.length,
+        hasContent: !!region.subject || !!sections.length || !!componentFrames.length,
         message: region.summary || "Select an item to load interface panel content.",
       }),
       (function () {
+        // Component frames path: when interface_body.component_frames is present,
+        // render using the ComponentFrameRegistry + PortalComponentLibrary.
+        // Falls through to the section/tab path when absent (backwards compat).
+        if (componentFrames.length) {
+          return (
+            '<div class="v2-interfacePanel-stack v2-interfacePanel-stack--frames">' +
+            renderComponentFramesSection(componentFrames) +
+            "</div>"
+          );
+        }
+
         function renderSectionCards(sectionList) {
           return (sectionList || [])
             .map(function (section) {
@@ -305,6 +415,7 @@
       })()
     );
     if (rendered && interfaceTabs.length) bindPresentationTabs(target);
+    if (rendered && componentFrames.length) bindComponentFrameEngagement(target, null);
   }
 
   function renderRegisteredPresentationSurface(ctx, target, region, surfacePayload, spec) {

@@ -174,7 +174,11 @@ The frontend binds `[data-nimm-action-id]` elements to `dispatchTransition({ kin
   - datums when the user is at file level
   - datum aspects or objects when the user is at datum level
 - Verb switching remains a compact tab row inside the same control panel.
-- The interface panel is mediation-owned.
+- The interface panel displays **mediation output**: it reflects results from NIMM mediate
+  directives against the current AITAS state. It does not own navigation state and does not
+  change the AITAS spatial value. Components on the interface panel are frozen after initial
+  render and re-engaged by explicit user action. See `docs/contracts/portal_panel_state_distinction.md`
+  and `docs/contracts/interface_panel_component_frame_contract.md`.
 - On `system.root`, `verb=mediate` opens the interface panel and binds it to the current mediation subject.
 
 ## NETWORK Workspace
