@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from MyCiteV2.packages.modules.shared.scalars import as_text
+from MyCiteV2.packages.core.scalars import as_text
 
 from .shell_schemas import (
     AWS_CSM_TOOL_SURFACE_ID,

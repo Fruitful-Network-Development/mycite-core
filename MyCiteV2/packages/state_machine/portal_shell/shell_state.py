@@ -9,7 +9,7 @@ from MyCiteV2.packages.state_machine.nimm import (
     NimmDirectiveEnvelope,
     normalize_nimm_verb,
 )
-from MyCiteV2.packages.modules.shared.scalars import as_text
+from MyCiteV2.packages.core.scalars import as_text
 
 from .shell_schemas import (
     FOCUS_LEVEL_INDEX,

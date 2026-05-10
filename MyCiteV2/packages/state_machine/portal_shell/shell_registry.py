@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from MyCiteV2.packages.modules.shared.scalars import as_text
+from MyCiteV2.packages.core.scalars import as_text
 
 from .shell_schemas import (
     AWS_CSM_TOOL_ENTRYPOINT_ID,
@@ -169,6 +169,7 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             surface_posture=SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
             read_write_posture="write",
             required_capabilities=("datum_recognition", "spatial_projection"),
+            default_workbench_visible=True,
             summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
         ),
         PortalToolRegistryEntry(
