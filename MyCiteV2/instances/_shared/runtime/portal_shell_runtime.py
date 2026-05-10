@@ -29,6 +29,7 @@ from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_SURFACE_ID,
     FND_DCM_TOOL_SURFACE_ID,
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
@@ -729,6 +730,32 @@ def _build_cts_gis_tool_bundle(
     )
 
 
+def _build_fnd_csm_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState | None,
+    request_payload: dict[str, Any] | None,
+    private_dir: str | Path | None,
+    webapps_root: str | Path | None,
+    tool_exposure_policy: dict[str, Any] | None,
+    tool_rows: list[dict[str, Any]],
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import build_portal_fnd_csm_surface_bundle
+
+    if shell_state is None:
+        raise ValueError("FND-CSM shell bundle requires reducer-owned shell_state")
+    return build_portal_fnd_csm_surface_bundle(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        private_dir=private_dir,
+        webapps_root=webapps_root,
+        request_payload=request_payload,
+        tool_exposure_policy=tool_exposure_policy,
+        tool_rows=tool_rows,
+    )
+
+
 def _build_fnd_dcm_tool_bundle(
     *,
     portal_scope: PortalScope,
@@ -802,6 +829,7 @@ def _build_workbench_ui_tool_bundle(
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
     AWS_CSM_TOOL_SURFACE_ID: _build_aws_tool_bundle,
     CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
+    FND_CSM_TOOL_SURFACE_ID: _build_fnd_csm_tool_bundle,
     FND_DCM_TOOL_SURFACE_ID: _build_fnd_dcm_tool_bundle,
     FND_EBI_TOOL_SURFACE_ID: _build_fnd_ebi_tool_bundle,
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,

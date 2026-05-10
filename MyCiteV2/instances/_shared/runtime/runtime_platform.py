@@ -10,6 +10,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
+    FND_CSM_TOOL_ENTRYPOINT_ID,
+    FND_CSM_TOOL_ROUTE,
+    FND_CSM_TOOL_SURFACE_ID,
     FND_DCM_TOOL_ENTRYPOINT_ID,
     FND_DCM_TOOL_ROUTE,
     FND_DCM_TOOL_SURFACE_ID,
@@ -54,6 +57,7 @@ UTILITIES_TOOL_EXPOSURE_SURFACE_SCHEMA = "mycite.v2.portal.utilities.tool_exposu
 UTILITIES_INTEGRATIONS_SURFACE_SCHEMA = "mycite.v2.portal.utilities.integrations.surface.v1"
 AWS_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
+FND_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.surface.v1"
 FND_DCM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.surface.v1"
 FND_EBI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.surface.v1"
 PAYPAL_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.surface.v1"
@@ -63,6 +67,8 @@ AWS_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.request.v1"
 AWS_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.aws_csm.action.request.v1"
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
 CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.request.v1"
+FND_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.request.v1"
+FND_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.action.request.v1"
 FND_DCM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_dcm.request.v1"
 FND_EBI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_ebi.request.v1"
 PAYPAL_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.paypal_csm.request.v1"
@@ -329,6 +335,26 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             surface_schema=CTS_GIS_TOOL_SURFACE_SCHEMA,
             read_write_posture="write",
             required_configuration=("authority_db_file",),
+        ),
+        PortalRuntimeEntrypointDescriptor(
+            entrypoint_id=FND_CSM_TOOL_ENTRYPOINT_ID,
+            callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime.run_portal_fnd_csm",
+            surface_id=FND_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/fnd-csm",
+            request_schema=FND_CSM_TOOL_REQUEST_SCHEMA,
+            surface_schema=FND_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
+        ),
+        PortalRuntimeEntrypointDescriptor(
+            entrypoint_id="portal.system.tools.fnd_csm.actions",
+            callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime.run_portal_fnd_csm_action",
+            surface_id=FND_CSM_TOOL_SURFACE_ID,
+            route="/portal/api/v2/system/tools/fnd-csm/actions",
+            request_schema=FND_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+            surface_schema=FND_CSM_TOOL_SURFACE_SCHEMA,
+            read_write_posture="write",
+            required_configuration=(),
         ),
         PortalRuntimeEntrypointDescriptor(
             entrypoint_id=FND_DCM_TOOL_ENTRYPOINT_ID,

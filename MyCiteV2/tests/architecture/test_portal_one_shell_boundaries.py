@@ -257,6 +257,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "region_renderers",
             "tool_surface_adapter",
             "aws_workspace",
+            "fnd_csm_workspace",
             "paypal_workspace",
             "system_workspace",
             "network_workspace",
@@ -284,6 +285,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             deferred_module_ids,
             [
                 "aws_workspace",
+                "fnd_csm_workspace",
                 "paypal_workspace",
                 "system_workspace",
                 "network_workspace",
@@ -294,7 +296,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertEqual(manifest["budget_policy"]["startup_module_ids"], startup_module_ids)
         self.assertEqual(manifest["budget_policy"]["deferred_module_ids"], deferred_module_ids)
         self.assertEqual(manifest["cache_policy"]["invalidation_mode"], "query_versioned_static_assets")
-        system_module = manifest["scripts"]["shell_modules"][4]
+        system_module = next(m for m in manifest["scripts"]["shell_modules"] if m["module_id"] == "system_workspace")
         self.assertEqual(system_module["module_id"], "system_workspace")
         self.assertEqual(system_module["load_phase"], "deferred")
         self.assertEqual(system_module["loading_scope"], ["system.root"])

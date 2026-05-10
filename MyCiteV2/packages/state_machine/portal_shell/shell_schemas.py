@@ -20,6 +20,7 @@ UTILITIES_INTEGRATIONS_SURFACE_ID = "utilities.integrations"
 
 AWS_CSM_TOOL_SURFACE_ID = "system.tools.aws_csm"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
+FND_CSM_TOOL_SURFACE_ID = "system.tools.fnd_csm"
 FND_DCM_TOOL_SURFACE_ID = "system.tools.fnd_dcm"
 FND_EBI_TOOL_SURFACE_ID = "system.tools.fnd_ebi"
 PAYPAL_CSM_TOOL_SURFACE_ID = "system.tools.paypal_csm"
@@ -28,6 +29,7 @@ WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 AWS_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.aws_csm"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
+FND_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_csm"
 FND_DCM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_dcm"
 FND_EBI_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_ebi"
 PAYPAL_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.paypal_csm"
@@ -41,6 +43,7 @@ UTILITIES_INTEGRATIONS_ROUTE = "/portal/utilities/integrations"
 
 AWS_CSM_TOOL_ROUTE = "/portal/system/tools/aws-csm"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
+FND_CSM_TOOL_ROUTE = "/portal/system/tools/fnd-csm"
 FND_DCM_TOOL_ROUTE = "/portal/system/tools/fnd-dcm"
 FND_EBI_TOOL_ROUTE = "/portal/system/tools/fnd-ebi"
 PAYPAL_CSM_TOOL_ROUTE = "/portal/system/tools/paypal-csm"
@@ -114,6 +117,7 @@ TOOL_SURFACE_IDS = frozenset(
     {
         AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
+        FND_CSM_TOOL_SURFACE_ID,
         FND_DCM_TOOL_SURFACE_ID,
         FND_EBI_TOOL_SURFACE_ID,
         PAYPAL_CSM_TOOL_SURFACE_ID,
