@@ -27,11 +27,8 @@ from MyCiteV2.packages.adapters.sql import (
 )
 from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
-    AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FND_CSM_TOOL_SURFACE_ID,
-    FND_DCM_TOOL_SURFACE_ID,
-    FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
@@ -245,8 +242,6 @@ def _tool_posture_rows(
         )
         integration_name = {
             "cts_gis": "data_dir",
-            "fnd_dcm": "webapps_root",
-            "fnd_ebi": "webapps_root",
         }.get(entry.tool_id, "")
         missing_integrations = []
         if integration_name and not integration_flags.get(integration_name, False):
@@ -280,10 +275,8 @@ def _activity_items(
 ) -> list[dict[str, Any]]:
     dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
     visible_surface_ids = [
-        AWS_CSM_TOOL_SURFACE_ID,
         CTS_GIS_TOOL_SURFACE_ID,
-        FND_DCM_TOOL_SURFACE_ID,
-        FND_EBI_TOOL_SURFACE_ID,
+        FND_CSM_TOOL_SURFACE_ID,
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
     ]
@@ -680,28 +673,6 @@ def _generic_interface_panel(surface_payload: dict[str, Any]) -> dict[str, Any]:
 ToolSurfaceBundleBuilder = Callable[..., dict[str, Any]]
 
 
-def _build_aws_tool_bundle(
-    *,
-    surface_id: str,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState | None,
-    surface_query: dict[str, str] | None,
-    private_dir: str | Path | None,
-    tool_exposure_policy: dict[str, Any] | None,
-    **_: Any,
-) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_aws_runtime import build_portal_aws_surface_bundle
-
-    return build_portal_aws_surface_bundle(
-        surface_id=surface_id,
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        surface_query=surface_query,
-        private_dir=private_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-
-
 def _build_cts_gis_tool_bundle(
     *,
     portal_scope: PortalScope,
@@ -756,52 +727,6 @@ def _build_fnd_csm_tool_bundle(
     )
 
 
-def _build_fnd_dcm_tool_bundle(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState | None,
-    surface_query: dict[str, str] | None,
-    webapps_root: str | Path | None,
-    private_dir: str | Path | None,
-    tool_exposure_policy: dict[str, Any] | None,
-    **_: Any,
-) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_fnd_dcm_runtime import build_portal_fnd_dcm_surface_bundle
-
-    return build_portal_fnd_dcm_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        surface_query=surface_query,
-        webapps_root=webapps_root,
-        private_dir=private_dir,
-        tool_exposure_policy=tool_exposure_policy,
-    )
-
-
-def _build_fnd_ebi_tool_bundle(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState | None,
-    webapps_root: str | Path | None,
-    private_dir: str | Path | None,
-    tool_exposure_policy: dict[str, Any] | None,
-    tool_rows: list[dict[str, Any]],
-    **_: Any,
-) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_fnd_ebi_runtime import build_portal_fnd_ebi_surface_bundle
-
-    if shell_state is None:
-        raise ValueError("FND-EBI shell bundle requires reducer-owned shell_state")
-    return build_portal_fnd_ebi_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        webapps_root=webapps_root,
-        private_dir=private_dir,
-        tool_exposure_policy=tool_exposure_policy,
-        tool_rows=tool_rows,
-    )
-
-
 def _build_workbench_ui_tool_bundle(
     *,
     portal_scope: PortalScope,
@@ -827,18 +752,13 @@ def _build_workbench_ui_tool_bundle(
 
 
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
-    AWS_CSM_TOOL_SURFACE_ID: _build_aws_tool_bundle,
     CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
     FND_CSM_TOOL_SURFACE_ID: _build_fnd_csm_tool_bundle,
-    FND_DCM_TOOL_SURFACE_ID: _build_fnd_dcm_tool_bundle,
-    FND_EBI_TOOL_SURFACE_ID: _build_fnd_ebi_tool_bundle,
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
 }
 
 _RUNTIME_OWNED_TOOL_SURFACE_IDS = frozenset(
     {
-        AWS_CSM_TOOL_SURFACE_ID,
-        FND_DCM_TOOL_SURFACE_ID,
         WORKBENCH_UI_TOOL_SURFACE_ID,
     }
 )

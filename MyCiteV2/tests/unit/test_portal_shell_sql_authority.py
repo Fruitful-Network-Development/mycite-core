@@ -32,19 +32,15 @@ def _seed_sql_authority(*, data_dir: Path, public_dir: Path, db_file: Path) -> N
                 "hosted_site_visibility",
             ],
             "tool_exposure_policy": {
-                "known_tool_ids": ["aws_csm", "cts_gis", "fnd_dcm", "fnd_ebi", "workbench_ui"],
+                "known_tool_ids": ["cts_gis", "fnd_csm", "workbench_ui"],
                 "configured_tools": {
-                    "aws_csm": True,
                     "cts_gis": True,
-                    "fnd_dcm": True,
-                    "fnd_ebi": True,
+                    "fnd_csm": True,
                     "workbench_ui": True,
                 },
                 "enabled_tools": {
-                    "aws_csm": True,
                     "cts_gis": True,
-                    "fnd_dcm": True,
-                    "fnd_ebi": True,
+                    "fnd_csm": True,
                     "workbench_ui": True,
                 },
                 "policy_source": "test_seed",
@@ -138,8 +134,8 @@ class PortalShellSqlAuthorityTests(unittest.TestCase):
                     "scope_id": "fnd",
                     "capabilities": ["datum_recognition"],
                     "tool_exposure_policy": {
-                        "configured_tools": {"fnd_ebi": True, "workbench_ui": True},
-                        "enabled_tools": {"fnd_ebi": True, "workbench_ui": True},
+                        "configured_tools": {"fnd_csm": True, "workbench_ui": True},
+                        "enabled_tools": {"fnd_csm": True, "workbench_ui": True},
                         "policy_source": "sql_override",
                     },
                     "ownership_posture": "portal_instance",
@@ -163,8 +159,8 @@ class PortalShellSqlAuthorityTests(unittest.TestCase):
                 for section in envelope["shell_composition"]["regions"]["interface_panel"]["sections"]
                 if section["title"] == "Compatible tool surfaces"
             )
-            fnd_ebi_row = next(row for row in compatible_section["rows"] if row["label"] == "FND-EBI")
-            self.assertIn("fnd_peripheral_routing", fnd_ebi_row["detail"])
+            fnd_csm_row = next(row for row in compatible_section["rows"] if row["label"] == "FND-CSM")
+            self.assertIn("fnd_peripheral_routing", fnd_csm_row["detail"])
 
 
 if __name__ == "__main__":

@@ -67,17 +67,11 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         app_source = (REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "app.py").read_text(encoding="utf-8")
         runtime_source = (REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "runtime_platform.py").read_text(encoding="utf-8")
         shell_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell.py").read_text(encoding="utf-8")
-        aws_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
-        ).read_text(encoding="utf-8")
         cts_gis_runtime_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
         ).read_text(encoding="utf-8")
-        fnd_ebi_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_ebi_runtime.py"
-        ).read_text(encoding="utf-8")
-        fnd_dcm_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py"
+        fnd_csm_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_csm_runtime.py"
         ).read_text(encoding="utf-8")
         workbench_ui_runtime_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
@@ -97,28 +91,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("/portal/system/profile-basics", app_source)
         self.assertNotIn("trusted" + "_tenant", runtime_source)
         self.assertNotIn("admin" + " shell", shell_source.lower())
-        self.assertRegex(
-            aws_runtime_source,
-            re.compile(
-                r"def run_portal_aws_csm\([\s\S]*?"
-                r"run_portal_shell_entry\(",
-                re.MULTILINE,
-            ),
-        )
-        self.assertRegex(
-            aws_runtime_source,
-            re.compile(
-                r"def run_portal_aws_csm_action\([\s\S]*?"
-                r"_runtime_envelope_from_bundle\(",
-                re.MULTILINE,
-            ),
-        )
         self.assertIn("run_portal_shell_entry(", cts_gis_runtime_source)
         self.assertNotIn("build_portal_runtime_envelope(", cts_gis_runtime_source)
-        self.assertIn("run_portal_shell_entry(", fnd_ebi_runtime_source)
-        self.assertNotIn("build_portal_runtime_envelope(", fnd_ebi_runtime_source)
-        self.assertIn("run_portal_shell_entry(", fnd_dcm_runtime_source)
-        self.assertNotIn("build_portal_runtime_envelope(", fnd_dcm_runtime_source)
+        self.assertIn("run_portal_shell_entry(", fnd_csm_runtime_source)
+        self.assertNotIn("build_portal_runtime_envelope(", fnd_csm_runtime_source)
         self.assertIn("run_portal_shell_entry(", workbench_ui_runtime_source)
         self.assertNotIn("build_portal_runtime_envelope(", workbench_ui_runtime_source)
 
@@ -137,18 +113,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertNotIn("if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:", shell_runtime_source)
 
     def test_runtime_owned_tool_query_normalization_uses_single_runtime_request_helper(self) -> None:
-        aws_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
-        ).read_text(encoding="utf-8")
-        fnd_dcm_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py"
-        ).read_text(encoding="utf-8")
         workbench_ui_runtime_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("canonical_query_for_runtime_request_payload", aws_runtime_source)
-        self.assertIn("canonical_query_for_runtime_request_payload", fnd_dcm_runtime_source)
         self.assertIn("canonical_query_for_runtime_request_payload", workbench_ui_runtime_source)
 
     def test_runtime_emitters_attach_region_family_contract_markers(self) -> None:
@@ -163,16 +131,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
                 REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_shell_runtime.py"
             ).read_text(encoding="utf-8"),
             (
-                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
-            ).read_text(encoding="utf-8"),
-            (
                 REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
             ).read_text(encoding="utf-8"),
             (
-                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_dcm_runtime.py"
-            ).read_text(encoding="utf-8"),
-            (
-                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_ebi_runtime.py"
+                REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_fnd_csm_runtime.py"
             ).read_text(encoding="utf-8"),
             (
                 REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
@@ -239,9 +201,9 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
     def test_tool_registry_keeps_explicit_surface_posture_contracts(self) -> None:
         registry = {entry.tool_id: entry for entry in build_portal_tool_registry_entries()}
-        for tool_id in ("aws_csm", "fnd_dcm", "fnd_ebi"):
-            self.assertEqual(registry[tool_id].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-            self.assertFalse(registry[tool_id].default_workbench_visible)
+        # FND-CSM is a service tool with interface-panel-primary posture, workbench hidden by default
+        self.assertEqual(registry["fnd_csm"].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertFalse(registry["fnd_csm"].default_workbench_visible)
         # CTS-GIS uses interface-panel-primary posture but has a visible workbench by default
         self.assertEqual(registry["cts_gis"].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertTrue(registry["cts_gis"].default_workbench_visible)
@@ -256,9 +218,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         expected_module_ids = [
             "region_renderers",
             "tool_surface_adapter",
-            "aws_workspace",
             "fnd_csm_workspace",
-            "paypal_workspace",
             "system_workspace",
             "network_workspace",
             "workbench_renderers",
@@ -284,9 +244,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertEqual(
             deferred_module_ids,
             [
-                "aws_workspace",
                 "fnd_csm_workspace",
-                "paypal_workspace",
                 "system_workspace",
                 "network_workspace",
                 "cts_gis_surface",
@@ -333,7 +291,6 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         expected_registrations = {
             "v2_portal_shell_region_renderers.js": "region_renderers",
             "v2_portal_tool_surface_adapter.js": "tool_surface_adapter",
-            "v2_portal_aws_workspace.js": "aws_workspace",
             "v2_portal_system_workspace.js": "system_workspace",
             "v2_portal_network_workspace.js": "network_workspace",
             "v2_portal_workbench_renderers.js": "workbench_renderers",
@@ -386,23 +343,9 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("readiness: readiness", tool_adapter)
         self.assertIn("resolveToolId: resolveToolId", tool_adapter)
 
-    def test_aws_workspace_renderer_uses_adapter_navigation_and_surface_state_parity(self) -> None:
-        aws_workspace = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("buildDirectSurfaceRequest", aws_workspace)
-        self.assertIn("buildAwsProfileRows", aws_workspace)
-        self.assertIn("buildAwsNewsletterRows", aws_workspace)
-        self.assertIn("hasWorkspaceContent", aws_workspace)
-        self.assertIn("hasContent: contentReady", aws_workspace)
-        self.assertIn("hasContent: inspectorHasContent", aws_workspace)
-        self.assertIn("data-aws-domain-clear", aws_workspace)
-        self.assertIn("domain: null, profile: null, section: null", aws_workspace)
-
     def test_mutation_capable_ui_sources_dispatch_only_without_authoritative_writes(self) -> None:
         static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
-        aws_workspace = (static_root / "v2_portal_aws_workspace.js").read_text(encoding="utf-8")
+        fnd_csm_workspace = (static_root / "v2_portal_fnd_csm_workspace.js").read_text(encoding="utf-8")
         interface_panel_renderers = (static_root / "v2_portal_interface_panel_renderers.js").read_text(encoding="utf-8")
         forbidden_write_tokens = (
             "replace_authoritative_document",
@@ -413,9 +356,8 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "sqlite",
             "fetch(\"/portal/api/v2/mutations/apply\"",
         )
-        self.assertIn("loadRuntimeView", aws_workspace)
         self.assertIn("dispatchToolAction", interface_panel_renderers)
-        for source in (aws_workspace, interface_panel_renderers):
+        for source in (fnd_csm_workspace, interface_panel_renderers):
             for token in forbidden_write_tokens:
                 self.assertNotIn(token, source)
 
@@ -627,9 +569,6 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         workbench_ui_source = (
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
         ).read_text(encoding="utf-8")
-        aws_runtime_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_aws_runtime.py"
-        ).read_text(encoding="utf-8")
 
         self.assertIn("sql_authority_required", shell_runtime_source)
         self.assertIn("sql_authority_uninitialized", shell_runtime_source)
@@ -638,25 +577,6 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("sql_authority_required", workbench_ui_source)
         self.assertIn("SqliteSystemDatumStoreAdapter", workbench_ui_source)
         self.assertNotIn("FilesystemSystemDatumStoreAdapter", workbench_ui_source)
-
-        # Non-datum JSON config/tool artifacts remain allowed for operational metadata.
-        self.assertIn("FilesystemAwsCsmNewsletterStateAdapter", aws_runtime_source)
-        self.assertIn("tool.*.aws-csm.json", aws_runtime_source)
-        self.assertIn("spec.json", aws_runtime_source)
-        self.assertNotIn('glob("aws-csm.*.json")', aws_runtime_source)
-        self.assertNotIn('glob("newsletter.*.profile.json")', aws_runtime_source)
-
-    def test_aws_csm_workspace_uses_delegated_event_binding_for_render_reuse(self) -> None:
-        aws_workspace_source = (
-            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_aws_workspace.js"
-        ).read_text(encoding="utf-8")
-
-        self.assertIn("target.__awsCsmRenderState", aws_workspace_source)
-        self.assertIn("target.__awsCsmDelegatedBindings", aws_workspace_source)
-        self.assertIn('target.addEventListener("submit"', aws_workspace_source)
-        self.assertIn('target.addEventListener("click"', aws_workspace_source)
-        self.assertNotIn('target.querySelectorAll("[data-aws-domain]")', aws_workspace_source)
-        self.assertNotIn('target.querySelectorAll("[data-aws-profile]")', aws_workspace_source)
 
     def test_active_repo_text_does_not_reference_retired_split_routes(self) -> None:
         forbidden_tokens = (
@@ -720,21 +640,16 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
                     violations.append(f"{path.relative_to(REPO_ROOT)} imports {token}")
         self.assertEqual(violations, [])
 
-    def test_unified_directive_panel_kind_is_used_by_all_six_tool_runtimes(self) -> None:
-        """Phase C4: every migrated tool runtime emits ``unified_directive_panel``.
+    def test_unified_directive_panel_kind_is_used_by_all_tool_runtimes(self) -> None:
+        """Phase C4: every tool runtime emits ``unified_directive_panel``.
 
-        Verified by checking each of the six tool runtimes calls
-        ``build_unified_control_panel`` and that the unified builder is
-        the only function emitting the ``unified_directive_panel`` kind.
+        Verified by checking each tool runtime calls ``build_unified_control_panel``.
         """
 
         runtime_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime"
         required_runtimes = [
             "portal_cts_gis_runtime.py",
-            "portal_aws_runtime.py",
-            "portal_fnd_dcm_runtime.py",
-            "portal_fnd_ebi_runtime.py",
-            "portal_paypal_runtime.py",
+            "portal_fnd_csm_runtime.py",
             "portal_workbench_ui_runtime.py",
         ]
         missing: list[str] = []
@@ -810,20 +725,16 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
     def test_tool_interface_panel_carries_tool_specific_surface_payload(self) -> None:
         """Phase D4: tool-specific UI lives in the Interface Panel.
 
-        Each migrated tool runtime that previously projected tool chrome into
-        the workbench must now route that chrome through the Interface Panel's
+        Each tool runtime must route chrome through the Interface Panel's
         ``surface_payload`` so the workbench can stay the unified
         ``datum_file_workbench``.
         """
 
         runtime_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime"
         for filename in (
-            "portal_fnd_dcm_runtime.py",
-            "portal_fnd_ebi_runtime.py",
-            "portal_paypal_runtime.py",
+            "portal_fnd_csm_runtime.py",
         ):
             text = (runtime_root / filename).read_text(encoding="utf-8")
-            self.assertIn("build_datum_file_workbench", text, msg=filename)
             self.assertIn("surface_payload", text, msg=filename)
 
     def test_cts_gis_interface_panel_preserves_existing_active_tab(self) -> None:

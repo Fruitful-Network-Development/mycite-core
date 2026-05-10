@@ -132,15 +132,10 @@
         globalName: "PortalNetworkWorkspaceRenderer",
         label: "NETWORK workspace",
       },
-      "system.tools.aws_csm": {
-        moduleId: "aws_workspace",
-        globalName: "PortalAwsCsmWorkspaceRenderer",
-        label: "AWS-CSM workspace",
-      },
-      "system.tools.paypal_csm": {
-        moduleId: "paypal_workspace",
-        globalName: "PortalPaypalCsmWorkspaceRenderer",
-        label: "PayPal-CSM workspace",
+      "system.tools.fnd_csm": {
+        moduleId: "fnd_csm_workspace",
+        globalName: "PortalFndCsmWorkspaceRenderer",
+        label: "FND-CSM workspace",
       },
     };
 
@@ -177,16 +172,10 @@
         globalName: "PortalNetworkInterfacePanelRenderer",
         label: "NETWORK detail",
       },
-      "system.tools.aws_csm": {
-        moduleId: "aws_workspace",
-        globalName: "PortalAwsCsmInterfacePanelRenderer",
-        label: "AWS-CSM interface panel",
-      },
-      // "system.tools.fnd_ebi": deferred — renderer module v2_portal_fnd_ebi_workspace.js not yet created
-      "system.tools.paypal_csm": {
-        moduleId: "paypal_workspace",
-        globalName: "PortalPaypalCsmInterfacePanelRenderer",
-        label: "PayPal-CSM interface panel",
+      "system.tools.fnd_csm": {
+        moduleId: "fnd_csm_workspace",
+        globalName: "PortalFndCsmInterfacePanelRenderer",
+        label: "FND-CSM interface panel",
       },
     };
 
