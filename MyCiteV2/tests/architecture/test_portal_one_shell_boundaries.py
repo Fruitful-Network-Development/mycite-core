@@ -83,12 +83,14 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_workbench_ui_runtime.py"
         ).read_text(encoding="utf-8")
 
+        shell_schemas_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell_schemas.py").read_text(encoding="utf-8")
         self.assertIn("/portal/api/v2/shell", app_source)
         self.assertIn('@app.get("/portal")', app_source)
         self.assertIn("/portal/system/tools/<tool_slug>", app_source)
-        self.assertIn("/portal/system", shell_source)
-        self.assertIn("/portal/network", shell_source)
-        self.assertIn("/portal/utilities", shell_source)
+        # Route constants are defined in shell_schemas.py (canonical); shell.py re-exports them
+        self.assertIn("/portal/system", shell_schemas_source)
+        self.assertIn("/portal/network", shell_schemas_source)
+        self.assertIn("/portal/utilities", shell_schemas_source)
         self.assertNotIn("/portal/api/v2/" + "tenant", app_source)
         self.assertNotIn("/portal/api/v2/" + "admin" + "/shell", app_source)
         self.assertNotIn("/portal/system/activity", app_source)
@@ -225,7 +227,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
     def test_shell_contracts_enforce_workspace_and_tool_behavior(self) -> None:
         shell_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell.py").read_text(encoding="utf-8")
-        self.assertIn('SYSTEM_ANCHOR_FILE_KEY = "anthology"', shell_source)
+        shell_schemas_source = (REPO_ROOT / "MyCiteV2" / "packages" / "state_machine" / "portal_shell" / "shell_schemas.py").read_text(encoding="utf-8")
+        # Constant definitions live in shell_schemas.py (canonical); shell.py re-exports via wildcard import
+        self.assertIn('SYSTEM_ANCHOR_FILE_KEY = "anthology"', shell_schemas_source)
+        # Constants are referenced throughout shell.py logic
         self.assertIn("TRANSITION_BACK_OUT", shell_source)
         self.assertIn("SYSTEM_SANDBOX_QUERY_FILE_TOKEN", shell_source)
         self.assertIn("default_workbench_visible: bool = False", shell_source)
@@ -234,9 +239,12 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
 
     def test_tool_registry_keeps_explicit_surface_posture_contracts(self) -> None:
         registry = {entry.tool_id: entry for entry in build_portal_tool_registry_entries()}
-        for tool_id in ("aws_csm", "cts_gis", "fnd_dcm", "fnd_ebi"):
+        for tool_id in ("aws_csm", "fnd_dcm", "fnd_ebi"):
             self.assertEqual(registry[tool_id].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
             self.assertFalse(registry[tool_id].default_workbench_visible)
+        # CTS-GIS uses interface-panel-primary posture but has a visible workbench by default
+        self.assertEqual(registry["cts_gis"].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertTrue(registry["cts_gis"].default_workbench_visible)
         self.assertEqual(registry["workbench_ui"].surface_posture, SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
         self.assertTrue(registry["workbench_ui"].default_workbench_visible)
 
@@ -751,6 +759,31 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("focus_sandbox", shell_core_source)
         self.assertIn("handleInterfacePanelToggle", shell_core_source)
 
+    def test_modular_component_and_context_control_renderers_are_registered(self) -> None:
+        component_library = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_component_library.js"
+        ).read_text(encoding="utf-8")
+        interface_host = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_interface_panel_host.js"
+        ).read_text(encoding="utf-8")
+        region_renderers = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_region_renderers.js"
+        ).read_text(encoding="utf-8")
+
+        for token in [
+            "renderComponentGroupComponent",
+            "renderListingComponent",
+            "renderChronologyMatrixComponent",
+            'case "component_group"',
+            'case "listing"',
+            'case "chronology_matrix"',
+        ]:
+            self.assertIn(token, component_library)
+        self.assertIn("__MYCITE_V2_RENDER_COMPONENT_FRAME_RECURSIVE", interface_host)
+        self.assertIn("__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST", interface_host)
+        self.assertIn("renderContextControls", region_renderers)
+        self.assertIn("bindContextControls", region_renderers)
+
     def test_workbench_renderer_dispatches_on_datum_file_workbench(self) -> None:
         """Phase D6: workbench frontend dispatches on ``region.kind=datum_file_workbench``.
 
@@ -790,6 +823,62 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             text = (runtime_root / filename).read_text(encoding="utf-8")
             self.assertIn("build_datum_file_workbench", text, msg=filename)
             self.assertIn("surface_payload", text, msg=filename)
+
+    def test_cts_gis_interface_panel_preserves_existing_active_tab(self) -> None:
+        static_root = REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static"
+        interface_panel_source = (static_root / "v2_portal_interface_panel_host.js").read_text(encoding="utf-8")
+        cts_gis_renderer_source = (static_root / "v2_portal_interface_panel_renderers.js").read_text(encoding="utf-8")
+
+        # Generic host preserves active tab from DOM
+        self.assertIn("existingActiveTabId || interfaceBody.default_tab_id", interface_panel_source)
+        self.assertNotIn("interfaceBody.default_tab_id || existingActiveTabId", interface_panel_source)
+
+        # CTS-GIS renderer must also read DOM state before falling back to server default
+        self.assertIn(
+            'existingActiveTabId || interfaceBody.default_tab_id || "diktataograph"',
+            cts_gis_renderer_source,
+        )
+        # CTS-GIS renderer must read the active tab from the DOM target before normalizing
+        self.assertIn(
+            'target.querySelector("[data-interface-tab].is-active")',
+            cts_gis_renderer_source,
+        )
+
+    def test_shell_transitions_and_bootstrap_preserve_tool_state(self) -> None:
+        shell_core_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+        dispatch_transition_source = shell_core_source.split("function dispatchTransition", 1)[1].split("function onPopState", 1)[0]
+
+        self.assertIn("TOOL_STATE_SESSION_PREFIX", shell_core_source)
+        self.assertIn('"mycite_v2_tool_state__"', shell_core_source)
+        self.assertIn("persistToolStateFromEnvelope(envelope)", shell_core_source)
+        self.assertIn("hydrateShellRequestToolState(shellRequest)", shell_core_source)
+        self.assertIn("bootstrapRequest = hydrateShellRequestToolState(bootstrapRequest)", shell_core_source)
+        self.assertIn("requestContract.tool_state_supported", dispatch_transition_source)
+        self.assertIn("requestBody.tool_state = cloneRequest(surfacePayload.tool_state || {})", dispatch_transition_source)
+
+    def test_shell_region_render_key_skip_is_optional_and_surface_scoped(self) -> None:
+        shell_core_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "portal_host" / "static" / "v2_portal_shell_core.js"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function shouldSkipRegionRender", shell_core_source)
+        self.assertIn("if (!key) return false;", shell_core_source)
+        self.assertIn("_lastRegionRenderKeys = {}", shell_core_source)
+        self.assertIn("_lastRenderedSurfaceId = surfaceId", shell_core_source)
+        self.assertIn('if (!shouldSkipRegionRender("interface_panel", interfacePanelRegion))', shell_core_source)
+        self.assertIn("workbenchRenderer.render(buildRendererContext(composition.regions.workbench", shell_core_source)
+
+    def test_cts_gis_runtime_emits_interface_panel_render_key(self) -> None:
+        cts_gis_runtime_source = (
+            REPO_ROOT / "MyCiteV2" / "instances" / "_shared" / "runtime" / "portal_cts_gis_runtime.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("cts_gis_interface_panel_render_key", cts_gis_runtime_source)
+        self.assertIn('"render_key": cts_gis_interface_panel_render_key', cts_gis_runtime_source)
+        self.assertIn("precinct_district_overlay_enabled", cts_gis_runtime_source)
+        self.assertIn("selected_feature_id", cts_gis_runtime_source)
 
 
 if __name__ == "__main__":
