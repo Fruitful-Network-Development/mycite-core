@@ -4,7 +4,11 @@ from time import perf_counter
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+    run_document_workbench_action,
+)
 from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    _nimm_navigation_shell_requests,
     build_unified_control_panel,
 )
 from MyCiteV2.instances._shared.runtime.portal_workbench import (
@@ -51,7 +55,6 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     CTS_GIS_NAV_MODE_DIRECTORY as _CTS_GIS_NAV_MODE_DIRECTORY,
     DEFAULT_ARCHETYPE_FAMILY_ID as _DEFAULT_ARCHETYPE_FAMILY_ID,
     DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_RULE_ID,
-    DEFAULT_NIMM_DIRECTIVE as _DEFAULT_NIMM_DIRECTIVE,
     DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
     DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
     as_text as _as_text,
@@ -81,9 +84,16 @@ from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
 from MyCiteV2.packages.state_machine.nimm import (
     CTS_GIS_CANONICAL_ACTIONS,
     CTS_GIS_MUTATION_ACTION_ALIASES,
+    NIMM_VERB_FRAME_ENGAGEMENT,
     StagingArea,
+    build_chronology_matrix_component_frame,
+    build_component_group_frame,
+    build_geospatial_component_frame,
+    build_listing_component_frame,
+    build_profile_component_frame,
     cts_gis_runtime_action_kind,
     normalize_mutation_lifecycle_action,
+    parse_directive_text,
 )
 
 _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
@@ -199,6 +209,10 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "reorder_datum",
         "validate_manipulation_stage",
         "soundness_check",
+        "engage_component_frame",
+        "inject_directive",
+        "rename_document",
+        "delete_document",
     }
 )
 
@@ -624,8 +638,7 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
     ]
     requested_selected_node_id_raw = _as_text(raw_tool_state.get("selected_node_id"))
     return {
-        "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive"))
-        or _DEFAULT_NIMM_DIRECTIVE,
+        "nimm_directive": _as_text(raw_tool_state.get("nimm_directive") or normalized_payload.get("nimm_directive")),
         "active_path": active_path,
         "selected_node_id": selected_node_id,
         "aitas": {
@@ -1120,7 +1133,6 @@ def _resolved_tool_state(
     ):
         fallback_selected_node_id = (
             _as_text(selection_summary.get("selected_profile_node_id"))
-            or _as_text((service_surface.get("attention_profile") or {}).get("node_id"))
             or _as_text(mediation_state.get("attention_node_id"))
         )
     active_path, selected_node_id = _canonical_staged_selection_state(
@@ -1133,7 +1145,7 @@ def _resolved_tool_state(
         requested_tool_state.get("aitas", {}).get("intention_rule_id")
     )
     return {
-        "nimm_directive": _as_text(requested_tool_state.get("nimm_directive")) or _DEFAULT_NIMM_DIRECTIVE,
+        "nimm_directive": _as_text(requested_tool_state.get("nimm_directive")),
         "active_path": active_path,
         "selected_node_id": selected_node_id,
         "aitas": {
@@ -1345,6 +1357,13 @@ def _node_shell_request(
     )
 
 
+def _clear_selection_state(tool_state: dict[str, Any]) -> None:
+    tool_state["selection"]["selected_row_address"] = ""
+    tool_state["selection"]["selected_feature_id"] = ""
+    tool_state["selection"]["selected_row_explicit"] = False
+    tool_state["selection"]["selected_feature_explicit"] = False
+
+
 def _intention_shell_request(
     *,
     portal_scope: PortalScope,
@@ -1358,10 +1377,7 @@ def _intention_shell_request(
         intention_rule_id,
         attention_node_id=_as_text(next_state.get("selected_node_id") or next_state.get("aitas", {}).get("attention_node_id")),
     )
-    next_state["selection"]["selected_row_address"] = ""
-    next_state["selection"]["selected_feature_id"] = ""
-    next_state["selection"]["selected_row_explicit"] = False
-    next_state["selection"]["selected_feature_explicit"] = False
+    _clear_selection_state(next_state)
     return _tool_state_request(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1384,10 +1400,7 @@ def _attention_shell_request(
         _as_text(next_state.get("aitas", {}).get("intention_rule_id")) or "self",
         attention_node_id=attention_node_id,
     )
-    next_state["selection"]["selected_row_address"] = ""
-    next_state["selection"]["selected_feature_id"] = ""
-    next_state["selection"]["selected_row_explicit"] = False
-    next_state["selection"]["selected_feature_explicit"] = False
+    _clear_selection_state(next_state)
     return _tool_state_request(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1406,10 +1419,7 @@ def _time_shell_request(
 ) -> dict[str, Any]:
     next_state = _tool_state_clone(tool_state)
     next_state["aitas"]["time_directive"] = _as_text(time_directive)
-    next_state["selection"]["selected_row_address"] = ""
-    next_state["selection"]["selected_feature_id"] = ""
-    next_state["selection"]["selected_row_explicit"] = False
-    next_state["selection"]["selected_feature_explicit"] = False
+    _clear_selection_state(next_state)
     return _tool_state_request(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1429,10 +1439,7 @@ def _precinct_overlay_shell_request(
     next_state = _tool_state_clone(tool_state)
     next_state.setdefault("source", {})
     next_state["source"]["precinct_district_overlay_enabled"] = bool(enabled)
-    next_state["selection"]["selected_row_address"] = ""
-    next_state["selection"]["selected_feature_id"] = ""
-    next_state["selection"]["selected_row_explicit"] = False
-    next_state["selection"]["selected_feature_explicit"] = False
+    _clear_selection_state(next_state)
     return _tool_state_request(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1452,10 +1459,7 @@ def _document_shell_request(
     next_state = _tool_state_clone(tool_state)
     _apply_selected_node_state(next_state, "")
     next_state["source"]["attention_document_id"] = _as_text(attention_document_id)
-    next_state["selection"]["selected_row_address"] = ""
-    next_state["selection"]["selected_feature_id"] = ""
-    next_state["selection"]["selected_row_explicit"] = False
-    next_state["selection"]["selected_feature_explicit"] = False
+    _clear_selection_state(next_state)
     return _tool_state_request(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1492,6 +1496,151 @@ def _context_items_from_base_panel(base_panel: dict[str, Any], source_evidence: 
     if tool_anchor_file and len(items) >= 2:
         items[1] = {"label": "File", "value": tool_anchor_file}
     return items
+
+
+def _context_option_from_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    option = {
+        "label": _as_text(entry.get("label")) or _as_text(entry.get("prefix")) or "Option",
+        "value": _as_text(entry.get("prefix") or entry.get("meta") or entry.get("label")),
+        "meta": _as_text(entry.get("meta")),
+        "active": bool(entry.get("active")),
+    }
+    if isinstance(entry.get("shell_request"), dict):
+        option["shell_request"] = dict(entry["shell_request"])
+    if isinstance(entry.get("action"), dict):
+        option["action"] = dict(entry["action"])
+    if not (option.get("shell_request") or option.get("action")):
+        option["disabled"] = True
+    return option
+
+
+def _context_control_button(
+    *,
+    label: str,
+    control_id: str,
+    entry: dict[str, Any] | None = None,
+    shell_request: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    button: dict[str, Any] = {
+        "label": label,
+        "control_id": control_id,
+        "disabled": True,
+    }
+    source = dict(entry or {})
+    request = shell_request if shell_request is not None else source.get("shell_request")
+    if isinstance(request, dict):
+        button["shell_request"] = dict(request)
+        button["disabled"] = False
+    if isinstance(source.get("action"), dict):
+        button["action"] = dict(source["action"])
+        button["disabled"] = False
+    if _as_text(source.get("meta")):
+        button["meta"] = _as_text(source.get("meta"))
+    return button
+
+
+def _build_cts_gis_context_controls(
+    *,
+    portal_scope: PortalScope,
+    shell_state: PortalShellState,
+    file_entries: list[dict[str, Any]],
+    attention_entries: list[dict[str, Any]],
+    intention_entries: list[dict[str, Any]],
+    time_entries: list[dict[str, Any]],
+    current_attention_node_id: str,
+    current_intention_rule_id: str,
+    current_time_directive: str,
+    archetype_family_id: str,
+) -> list[dict[str, Any]]:
+    attention_options = [_context_option_from_entry(entry) for entry in attention_entries if _as_text(entry.get("prefix"))]
+    intention_options = [_context_option_from_entry(entry) for entry in intention_entries if _as_text(entry.get("prefix"))]
+    time_options = [_context_option_from_entry(entry) for entry in time_entries if _as_text(entry.get("prefix"))]
+
+    active_intention_index = next((index for index, item in enumerate(intention_options) if item.get("active")), -1)
+    previous_intention = intention_entries[active_intention_index - 1] if active_intention_index > 0 else None
+    next_intention = (
+        intention_entries[active_intention_index + 1]
+        if active_intention_index >= 0 and active_intention_index + 1 < len(intention_entries)
+        else None
+    )
+
+    active_time_index = next((index for index, item in enumerate(time_options) if item.get("active")), -1)
+    previous_time = time_entries[active_time_index - 1] if active_time_index > 0 else None
+    next_time = time_entries[active_time_index + 1] if active_time_index >= 0 and active_time_index + 1 < len(time_entries) else None
+    first_time = time_entries[0] if time_entries else None
+    last_time = time_entries[-1] if time_entries else None
+
+    nav_requests = _nimm_navigation_shell_requests(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
+        file_entries=file_entries,
+    )
+
+    return [
+        {
+            "context_id": "attention",
+            "label": "Attention",
+            "current_value": current_attention_node_id or "unresolved",
+            "control_type": "select",
+            "options": attention_options,
+            "empty_message": "No alternate attention contexts are available.",
+        },
+        {
+            "context_id": "intention",
+            "label": "Intention",
+            "current_value": current_intention_rule_id or _DEFAULT_INTENTION_RULE_ID,
+            "control_type": "stepper",
+            "options": intention_options,
+            "controls": [
+                _context_control_button(label="−", control_id="intention_previous", entry=previous_intention),
+                _context_control_button(label="+", control_id="intention_next", entry=next_intention),
+            ],
+            "empty_message": "No intention controls are available.",
+        },
+        {
+            "context_id": "time",
+            "label": "Time",
+            "current_value": current_time_directive or _DEFAULT_TIME_DIRECTIVE,
+            "control_type": "directional",
+            "options": time_options,
+            "controls": [
+                _context_control_button(label="<", control_id="time_previous", entry=previous_time),
+                _context_control_button(label=">", control_id="time_next", entry=next_time),
+                _context_control_button(label="^", control_id="time_up", entry=first_time),
+                _context_control_button(label="v", control_id="time_down", entry=last_time),
+                _context_control_button(label="<<", control_id="time_first", entry=first_time),
+                _context_control_button(label=">>", control_id="time_last", entry=last_time),
+            ],
+        },
+        {
+            "context_id": "archetype",
+            "label": "Archetype",
+            "current_value": archetype_family_id or _DEFAULT_ARCHETYPE_FAMILY_ID,
+            "control_type": "select",
+            "options": [
+                {
+                    "label": archetype_family_id or _DEFAULT_ARCHETYPE_FAMILY_ID,
+                    "value": archetype_family_id or _DEFAULT_ARCHETYPE_FAMILY_ID,
+                    "active": True,
+                    "disabled": True,
+                }
+            ],
+            "empty_message": "Archetype switching is not wired for CTS-GIS yet.",
+        },
+        {
+            "context_id": "spatial",
+            "label": "Spatial",
+            "current_value": _as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id,
+            "control_type": "directional",
+            "controls": [
+                _context_control_button(label="Out", control_id="nav_out", shell_request=nav_requests.get("nav_out")),
+                _context_control_button(label="<", control_id="shift_left", shell_request=nav_requests.get("shift_left")),
+                _context_control_button(label=">", control_id="shift_right", shell_request=nav_requests.get("shift_right")),
+                _context_control_button(label="Attention In", control_id="nav_in", shell_request=nav_requests.get("nav_in")),
+            ],
+        },
+    ]
 
 
 def _build_cts_gis_directive_panel(
@@ -1698,6 +1847,7 @@ def _build_cts_gis_directive_panel(
     ]
     aitas_overlay = dict(resolved_tool_state.get("aitas") or {})
     tool_extensions: dict[str, Any] = {
+        "directive_terminal_enabled": True,
         "cts_gis_attention": attention_entries,
         "cts_gis_intention": intention_entries,
         "cts_gis_time": time_entries,
@@ -1725,6 +1875,18 @@ def _build_cts_gis_directive_panel(
         documents=_cts_gis_workbench_documents(service_surface),
         requested_surface_id=CTS_GIS_TOOL_SURFACE_ID,
     )
+    context_controls = _build_cts_gis_context_controls(
+        portal_scope=portal_scope,
+        shell_state=shell_state,
+        file_entries=file_entries,
+        attention_entries=attention_entries,
+        intention_entries=intention_entries,
+        time_entries=time_entries,
+        current_attention_node_id=current_attention_node_id,
+        current_intention_rule_id=current_intention_rule_id,
+        current_time_directive=current_time_directive,
+        archetype_family_id=_as_text(aitas_overlay.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
+    )
 
     panel = build_unified_control_panel(
         portal_scope=portal_scope,
@@ -1738,6 +1900,7 @@ def _build_cts_gis_directive_panel(
         navigation_groups=base_navigation_groups,
         actions=stage_actions,
         tool_extensions=tool_extensions,
+        context_controls=context_controls,
     )
 
     panel_context = list(panel.get("context_conditions") or [])
@@ -1783,6 +1946,13 @@ def _looks_like_msn_node_id(value: object) -> bool:
     return all(part.isdigit() for part in parts if part != "")
 
 
+def _row_data_tokens(raw_row: object) -> list[Any]:
+    if not isinstance(raw_row, list) or not raw_row:
+        return []
+    data_tokens = raw_row[0] if isinstance(raw_row[0], list) else raw_row
+    return list(data_tokens) if isinstance(data_tokens, list) else []
+
+
 def _decode_ascii_title_babelette(value: object) -> str:
     token = _as_text(value)
     if not token:
@@ -1801,19 +1971,6 @@ def _decode_ascii_title_babelette(value: object) -> str:
     if any(ord(ch) < 32 or ord(ch) > 126 for ch in decoded):
         return ""
     return decoded.strip()
-
-
-def _row_data_tokens(raw_row: object) -> list[Any]:
-    if not isinstance(raw_row, list) or not raw_row:
-        return []
-    data_tokens = raw_row[0] if isinstance(raw_row[0], list) else raw_row
-    return list(data_tokens) if isinstance(data_tokens, list) else []
-
-
-def _row_label_tokens(raw_row: object) -> list[str]:
-    if not isinstance(raw_row, list) or len(raw_row) < 2 or not isinstance(raw_row[1], list):
-        return []
-    return [_as_text(item) for item in raw_row[1] if _as_text(item)]
 
 
 def _samras_structure_authorities(source_evidence: dict[str, Any]) -> list[Any]:
@@ -2896,6 +3053,186 @@ def _build_cts_gis_structured_interface_body(
             "lens_state": lens_state,
         }
 
+    # Build component frames for the garland tab.
+    # lens_key is derived from the selected node so the render_key changes when attention changes.
+    # When a frame engagement action arrived (engage_component_frame), action_result carries
+    # engaged_frame_id for THIS cycle only (not persisted to tool_state). The matching frame
+    # gets a unique render_key suffix so the client registry sees a mismatch and re-renders it.
+    _engaged_frame_id = _as_text((action_result.get("details") or {}).get("engaged_frame_id"))
+    _lens_key = _as_text(selected_node_id)
+    _attention_context = _as_text(attention_profile_node_id) or _as_text(selected_node_id) or "unresolved"
+
+    def _frame_lens(frame_id: str) -> str:
+        return f"{_lens_key}:engaged" if _engaged_frame_id == frame_id else _lens_key
+
+    _profile_frame_id = "administrative_node_profile"
+    _geo_frame_id = f"{_profile_frame_id}__geospatial"
+    _geo_frame = build_geospatial_component_frame(
+        attention_node_id=_attention_context,
+        geospatial_projection=geospatial_projection,
+        parent_frame_id=_profile_frame_id,
+        lens_key=_frame_lens(_geo_frame_id),
+    )
+    if has_real_profile:
+        _profile_fields: list[dict[str, str]] = [
+            {"label": "TITLE", "value": _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id},
+            {"label": "MSN_ID", "value": _as_text(attention_profile.get("node_id")) or selected_node_id},
+            {"label": "CAPITAL_MSN_ID", "value": _as_text(attention_profile.get("capital_msn_id")) or "—"},
+            {"label": "FEATURE_COUNT", "value": str(int(attention_profile.get("feature_count") or 0))},
+            {"label": "CHILD_COUNT", "value": str(int(attention_profile.get("child_count") or 0))},
+        ]
+        if district_precinct_collections:
+            _profile_fields.append({"label": "DISTRICT_COLLECTIONS", "value": str(len(district_precinct_collections))})
+        _profile_label = _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id
+    else:
+        _profile_fields = [
+            {"label": "TITLE", "value": selected_label or selected_node_id or "—"},
+            {"label": "MSN_ID", "value": selected_node_id or "—"},
+            {"label": "CAPITAL_MSN_ID", "value": "—"},
+            {"label": "STATE", "value": "awaiting_real_projection" if selected_node_id else "no_selection"},
+        ]
+        _profile_label = selected_label or selected_node_id or "—"
+    _district_items: list[dict[str, str]] = []
+    for index, collection in enumerate(district_precinct_collections, start=1):
+        member_labels = list(collection.get("member_labels") or [])
+        member_node_ids = list(collection.get("member_node_ids") or [])
+        preview_source = member_labels or member_node_ids
+        _district_items.append(
+            {
+                "label": _as_text(collection.get("label") or collection.get("timeframe_token")) or f"DISTRICT_LIST_{index:02d}",
+                "value": _as_text(collection.get("summary_state")) or str(collection.get("precinct_count") or ""),
+                "detail": ", ".join(_as_text(item) for item in preview_source[:4] if _as_text(item)),
+            }
+        )
+    _district_collections = [
+        {
+            "label": "DISTRICT_COLLECTIONS",
+            "items": _district_items,
+            "empty_message": "No district list source is available for this administrative node yet.",
+        }
+    ]
+    _admin_profile_frame = build_profile_component_frame(
+        frame_id=_profile_frame_id,
+        attention_node_id=_attention_context,
+        label=_profile_label,
+        fields=_profile_fields,
+        variant="administrative_node",
+        layout_slot="administrative_node_profile",
+        collections=_district_collections,
+        geospatial_frame=_geo_frame,
+        lens_key=_frame_lens(_profile_frame_id),
+        initializer_intent="resolve_administrative_node_profile",
+    )
+    _admin_log_frame = build_listing_component_frame(
+        frame_id="administrative_log_entry_listing",
+        label="Administrative Log Entry Listing",
+        columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "LOG ENTRY"}],
+        rows=[],
+        attention_node_id=_attention_context,
+        lens_key=_frame_lens("administrative_log_entry_listing"),
+        layout_slot="administrative_log_entry_listing",
+        source_kind="administrative_log",
+        empty_message="Administrative log entries are not wired yet.",
+        initializer_intent="resolve_administrative_log_listing",
+    )
+    _precinct_geo_frame = build_geospatial_component_frame(
+        attention_node_id=_attention_context,
+        geospatial_projection=geospatial_projection,
+        parent_frame_id="precinct_profile",
+        lens_key=_frame_lens("precinct_profile__geospatial"),
+    )
+    _precinct_profile_frame = build_profile_component_frame(
+        frame_id="precinct_profile",
+        attention_node_id=_attention_context,
+        label="Precinct Profile",
+        fields=[
+            {"label": "TITLE", "value": "—"},
+            {"label": "MSN_ID", "value": "—"},
+            {"label": "CAPITAL_MSN_ID", "value": "—"},
+        ],
+        variant="precinct",
+        layout_slot="precinct_profile",
+        collections=[
+            {
+                "label": "PRECINCT_COLLECTIONS",
+                "items": _district_items,
+                "empty_message": "No selected precinct collection is available yet.",
+            }
+        ],
+        geospatial_frame=_precinct_geo_frame,
+        lens_key=_frame_lens("precinct_profile"),
+        initializer_intent="resolve_precinct_profile",
+    )
+    _other_voters_frame = build_listing_component_frame(
+        frame_id="log_listing_other_voters",
+        label="Log Listing Of Other Voters",
+        columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "VOTER"}],
+        rows=[],
+        attention_node_id=_attention_context,
+        lens_key=_frame_lens("log_listing_other_voters"),
+        layout_slot="log_listing_other_voters",
+        source_kind="voter_log",
+        empty_message="Other voter listings are not wired yet.",
+        initializer_intent="resolve_other_voter_listing",
+    )
+    _election_history_frame = build_chronology_matrix_component_frame(
+        frame_id="election_history",
+        label="Election History / Election Types Across Time",
+        row_headers=[
+            {"key": "DISTRICT_31", "label": "DISTRICT_31"},
+            {"key": "DISTRICT_32", "label": "DISTRICT_32"},
+            {"key": "DISTRICT_33", "label": "DISTRICT_33"},
+            {"key": "SPECIAL_ELECTION", "label": "SPECIAL ELECTION"},
+            {"key": "REFERENDUM", "label": "REFERENDUM"},
+        ],
+        column_headers=["2012", "2013", "2014", "2016", "2018", "2020", "2022", "2023", "2024"],
+        events=[],
+        attention_node_id=_attention_context,
+        lens_key=_frame_lens("election_history"),
+        layout_slot="election_history",
+        empty_message="Election history sources are not wired yet.",
+        initializer_intent="resolve_election_history",
+    )
+    _voter_profile_frame = build_profile_component_frame(
+        frame_id="voter_profile",
+        attention_node_id=_attention_context,
+        label="Voter Profile",
+        fields=[
+            {"label": "SOS_VOTERID", "value": ""},
+            {"label": "FIRST_NAME", "value": ""},
+            {"label": "MIDDLE_NAME", "value": ""},
+            {"label": "LAST_NAME", "value": ""},
+            {"label": "RESIDENTIAL_ADDRESS1 + RESIDENTIAL_SECONDARY_ADDR", "value": ""},
+            {"label": "RESIDENTIAL_ZIP_PLUS4", "value": ""},
+            {"label": "RESIDENTIAL_HOPS_GEOSPATIAL_ADDRESS", "value": ""},
+            {"label": "MAILING_ADDRESS1 + MAILING_SECONDARY_ADDRESS", "value": ""},
+            {"label": "MAILING_ZIP_PLUS4", "value": ""},
+            {"label": "PARTY_AFFILIATION", "value": ""},
+            {"label": "REGISTRATION_DATE", "value": ""},
+        ],
+        variant="voter",
+        layout_slot="voter_profile",
+        collections=[{"label": "BALLOT_LIST", "items": [], "empty_message": "No selected voter ballot list is loaded."}],
+        lens_key=_frame_lens("voter_profile"),
+        initializer_intent="resolve_voter_profile",
+    )
+    _garland_frame = build_component_group_frame(
+        frame_id="garland_component_group",
+        label="Garland",
+        children=[
+            _admin_profile_frame,
+            _admin_log_frame,
+            _precinct_profile_frame,
+            _other_voters_frame,
+            _election_history_frame,
+            _voter_profile_frame,
+        ],
+        attention_node_id=_attention_context,
+        lens_key=_frame_lens("garland_component_group"),
+        layout="garland_wireframe",
+        initializer_intent="compose_garland_component_shells",
+    )
+
     return {
         "tab_host": "shared_interface_tabs",
         "default_tab_id": "diktataograph",
@@ -2911,6 +3248,12 @@ def _build_cts_gis_structured_interface_body(
                 "label": "Garland",
                 "summary": "Correlated projection surface that shows provenance, decode health, and document context for the selected SAMRAS node.",
                 "active": False,
+                "initializer": {
+                    "verb": "mediate",
+                    "target_authority": "cts_gis",
+                    "datum_address": "1-1-2",
+                    "intent": "resolve_profile_for_attention",
+                },
             },
         ],
         "layout": "diktataograph_garland_split",
@@ -2932,6 +3275,7 @@ def _build_cts_gis_structured_interface_body(
             "geospatial_projection": geospatial_projection,
             "profile_projection": profile_projection,
         },
+        "component_frames": [_garland_frame],
         "voterid_datum_section": _build_voterid_datum_section(source_evidence),
     }
 
@@ -3656,10 +4000,41 @@ def build_portal_cts_gis_surface_bundle(
         visible=show_workbench,
         extra_payload={"forced_visible": forced_visible},
     )
+    cts_gis_aitas_state = dict(resolved_tool_state.get("aitas") or {})
+    cts_gis_source_state = dict(resolved_tool_state.get("source") or {})
+    cts_gis_selection_state = dict(resolved_tool_state.get("selection") or {})
+    cts_gis_stage_payload = dict(stage_state_public.get("normalized_payload") or {})
+    cts_gis_stage_validation = dict(stage_state_public.get("last_validation") or {})
+    cts_gis_stage_preview = dict(stage_state_public.get("last_preview") or {})
+    cts_gis_interface_panel_render_key = "|".join(
+        [
+            "cts_gis_interface_panel",
+            _as_text(resolved_tool_state.get("selected_node_id")),
+            "/".join(_as_text(item) for item in list(resolved_tool_state.get("active_path") or []) if _as_text(item)),
+            _as_text(cts_gis_aitas_state.get("intention_rule_id")),
+            _as_text(cts_gis_aitas_state.get("time_directive")),
+            "overlay:1" if bool(cts_gis_source_state.get("precinct_district_overlay_enabled")) else "overlay:0",
+            _as_text(cts_gis_source_state.get("attention_document_id")),
+            _as_text(cts_gis_selection_state.get("selected_row_address")),
+            _as_text(cts_gis_selection_state.get("selected_feature_id")),
+            "stage:"
+            + ":".join(
+                [
+                    _as_text(cts_gis_stage_payload.get("document_id")),
+                    str(len(list(cts_gis_stage_payload.get("datums") or []))),
+                    _as_text(cts_gis_stage_validation.get("expected_document_version_hash")),
+                    str(len(list(cts_gis_stage_preview.get("proposed_inserted_rows") or []))),
+                ]
+            ),
+            _as_text(action_result.get("action_kind")),
+            _as_text((action_result.get("details") or {}).get("engaged_frame_id")),
+        ]
+    )
     interface_panel = attach_region_family_contract(
         {
         "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
         "kind": "mediation_panel",
+        "render_key": cts_gis_interface_panel_render_key,
         "title": "CTS-GIS",
         "summary": "CTS-GIS projects one mediation posture through structural navigation and correlated spatial evidence.",
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
@@ -3726,6 +4101,64 @@ def _apply_cts_gis_action(
     force_live_read = False
 
     try:
+        if action_kind == "inject_directive":
+            # Delegate all parsing and verb normalization to the canonical NIMM parser.
+            # Frame engagement routing comes from NIMM_VERB_FRAME_ENGAGEMENT so rules
+            # are not duplicated here.
+            directive_text = _as_text(action_payload.get("directive_text")).strip()
+            try:
+                parsed = parse_directive_text(directive_text)
+            except ValueError as exc:
+                action_result = _cts_gis_action_result(
+                    action_kind=action_kind,
+                    status="rejected",
+                    message=str(exc),
+                    details={"directive_text": directive_text},
+                )
+                return next_tool_state, action_result, force_live_read
+            engaged_frame_id = NIMM_VERB_FRAME_ENGAGEMENT.get(parsed["verb"], "")
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Directive injected: {directive_text}",
+                details={
+                    "directive_text": directive_text,
+                    "verb": parsed["verb"],
+                    "engaged_frame_id": engaged_frame_id,
+                },
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "engage_component_frame":
+            # Signal the requested frame for re-engagement via action_result (ephemeral
+            # per request cycle — does NOT persist to tool_state). The interface body
+            # builder reads engaged_frame_id from action_result.details and forces a
+            # fresh render_key for that frame so the client registry sees a mismatch.
+            # Sibling frames are unaffected.
+            frame_id = _as_text(action_payload.get("frame_id"))
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted",
+                message=f"Component frame engagement accepted: {frame_id}",
+                details={"engaged_frame_id": frame_id},
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind in {"rename_document", "delete_document"}:
+            result = run_document_workbench_action(
+                action_kind,
+                action_payload,
+                authority_db_file=authority_db_file,
+                portal_instance_id=portal_scope.scope_id,
+            )
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted" if result.get("ok") else "rejected",
+                message=result.get("error", {}).get("message", action_kind) if not result.get("ok") else action_kind,
+                details=dict(result),
+            )
+            return next_tool_state, action_result, True  # force_live_read refreshes workbench catalog
+
         if action_kind == "toggle_overlay":
             next_tool_state.setdefault("source", {})
             requested_enabled = action_payload.get("enabled")
@@ -3735,10 +4168,7 @@ def _apply_cts_gis_action(
                 else not bool(next_tool_state.get("source", {}).get("precinct_district_overlay_enabled"))
             )
             next_tool_state["source"]["precinct_district_overlay_enabled"] = overlay_enabled
-            next_tool_state["selection"]["selected_row_address"] = ""
-            next_tool_state["selection"]["selected_feature_id"] = ""
-            next_tool_state["selection"]["selected_row_explicit"] = False
-            next_tool_state["selection"]["selected_feature_explicit"] = False
+            _clear_selection_state(next_tool_state)
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
                 status="accepted",
