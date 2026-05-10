@@ -584,6 +584,13 @@ def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple
     return jsonify({"schema": V2_PORTAL_ERROR_SCHEMA, "ok": False, "error": {"code": code, "message": message}}), status_code
 
 
+def _check_legacy_maps_error(exc: Exception) -> tuple[Any, int] | None:
+    code = _as_text(getattr(exc, "code", ""))
+    if code == "legacy_maps_alias_unsupported":
+        return _error_response(code, str(exc), status_code=400)
+    return None
+
+
 def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
     envelope_payload = payload.get("nimm_envelope")
     if isinstance(envelope_payload, Mapping):
@@ -907,9 +914,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
-            if legacy_maps_code == "legacy_maps_alias_unsupported":
-                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            _legacy = _check_legacy_maps_error(exc)
+            if _legacy is not None:
+                return _legacy
             raise
 
     @app.post("/portal/api/v2/system/workspace/profile-basics")
@@ -993,9 +1000,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
-            if legacy_maps_code == "legacy_maps_alias_unsupported":
-                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            _legacy = _check_legacy_maps_error(exc)
+            if _legacy is not None:
+                return _legacy
             raise
 
     @app.post("/portal/api/v2/system/tools/cts-gis/actions")
@@ -1020,9 +1027,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
-            if legacy_maps_code == "legacy_maps_alias_unsupported":
-                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            _legacy = _check_legacy_maps_error(exc)
+            if _legacy is not None:
+                return _legacy
             raise
 
     @app.post("/portal/api/v2/mutations/<action>")
@@ -1080,9 +1087,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
         except Exception as exc:
-            legacy_maps_code = _as_text(getattr(exc, "code", ""))
-            if legacy_maps_code == "legacy_maps_alias_unsupported":
-                return _error_response(legacy_maps_code, str(exc), status_code=400)
+            _legacy = _check_legacy_maps_error(exc)
+            if _legacy is not None:
+                return _legacy
             raise
 
     @app.post("/portal/api/v2/system/tools/fnd-ebi")
