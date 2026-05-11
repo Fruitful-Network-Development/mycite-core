@@ -58,9 +58,11 @@ class RendererBranchCoverageTests(unittest.TestCase):
         self.assertIn("buildAwsNewsletterRows", ADAPTER_SOURCE,
                       "Adapter must own canonical AWS newsletter row builder")
 
-    def test_fnd_csm_workspace_dispatches_actions(self) -> None:
-        self.assertIn("dispatchAction", FND_CSM_SOURCE,
-                      "FND-CSM workspace must dispatch actions for mutations")
+    def test_fnd_csm_workspace_uses_canonical_component_frame_rendering(self) -> None:
+        self.assertIn("__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST", FND_CSM_SOURCE,
+                      "FND-CSM workspace must delegate rendering to canonical component frame list function")
+        self.assertIn("__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT", FND_CSM_SOURCE,
+                      "FND-CSM workspace must bind component frame engagement via canonical helper")
 
     def test_fnd_csm_workspace_exports_workspace_and_interface_panel_renderers(self) -> None:
         self.assertIn("PortalFndCsmWorkspaceRenderer", FND_CSM_SOURCE,

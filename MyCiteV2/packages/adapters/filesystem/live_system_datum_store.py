@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,9 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStoreRequest,
     SystemDatumWorkbenchResult,
 )
+
+_PARALLEL_PREFETCH_MAX_WORKERS = 8
+_PARALLEL_PREFETCH_WARM_THRESHOLD = 0.8
 
 _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CTS_GIS_CANONICAL_TOOL_SLUG = "cts-gis"
@@ -311,6 +315,31 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         self._anchor_document_cache[cache_key] = (signature, result)
         return result
 
+    def _prefetch_sandbox_source_documents(self, tool_dirs: list[Path]) -> None:
+        paths: list[Path] = []
+        for tool_dir in tool_dirs:
+            source_dir = tool_dir / "sources"
+            if not source_dir.exists() or not source_dir.is_dir():
+                continue
+            public_tool_id = _canonical_tool_public_id(tool_dir.name)
+            paths.extend(_iter_sandbox_source_files(source_dir, tool_id=public_tool_id))
+        if not paths:
+            return
+        cold_paths = [path for path in paths if str(path) not in self._rows_metadata_cache]
+        warm_ratio = (len(paths) - len(cold_paths)) / len(paths)
+        if warm_ratio >= _PARALLEL_PREFETCH_WARM_THRESHOLD:
+            return
+        worker_count = min(_PARALLEL_PREFETCH_MAX_WORKERS, len(cold_paths))
+
+        def _prime(path: Path) -> None:
+            try:
+                self._cached_read_document_rows_and_metadata(path)
+            except Exception:
+                pass
+
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            list(pool.map(_prime, cold_paths))
+
     def read_authoritative_datum_documents(
         self,
         request: AuthoritativeDatumDocumentRequest,
@@ -369,7 +398,9 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         seen_sandbox_document_ids: set[str] = set()
         sandbox_root = self._resolve_path("sandbox_root_dir", self._data_dir / "sandbox")
         if sandbox_root.exists() and sandbox_root.is_dir():
-            for tool_dir in sorted(path for path in sandbox_root.iterdir() if path.is_dir()):
+            sorted_tool_dirs = sorted(path for path in sandbox_root.iterdir() if path.is_dir())
+            self._prefetch_sandbox_source_documents(sorted_tool_dirs)
+            for tool_dir in sorted_tool_dirs:
                 source_dir = tool_dir / "sources"
                 anchor_file = _find_tool_anchor_file(tool_dir)
                 if (not source_dir.exists() or not source_dir.is_dir()) and anchor_file is None:

@@ -24,6 +24,19 @@ NIMM_VERB_FRAME_ENGAGEMENT: dict[str, str] = {
 }
 
 
+def _maybe_attach_tab_id(frame: dict[str, Any], tab_id: str) -> dict[str, Any]:
+    """Attach an optional tab_id to a frame dict so interface panel renderers
+    can partition component_frames by active tab.
+
+    Frames without a tab_id render in every tab (legacy / tab-agnostic). Frames
+    with a tab_id render only while that tab is active. See
+    docs/contracts/interface_panel_component_frame_contract.md.
+    """
+    if tab_id:
+        frame["tab_id"] = str(tab_id)
+    return frame
+
+
 def build_profile_component_frame(
     *,
     attention_node_id: str,
@@ -39,6 +52,7 @@ def build_profile_component_frame(
     lens_key: str = "",
     initializer_intent: str = "resolve_profile_for_attention",
     datum_address: str = "1-1-2",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a profile component frame from pre-resolved service data.
 
@@ -71,7 +85,7 @@ def build_profile_component_frame(
         payload["subject_slot"] = geospatial_frame
     if children is not None:
         payload["children"] = list(children)
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "profile",
         "label": label,
@@ -84,7 +98,7 @@ def build_profile_component_frame(
         "payload": payload,
         "frozen": True,
         "render_key": render_key,
-    }
+    }, tab_id)
 
 
 def build_geospatial_component_frame(
@@ -93,6 +107,7 @@ def build_geospatial_component_frame(
     geospatial_projection: dict[str, Any],
     parent_frame_id: str = "administrative_profile",
     lens_key: str = "",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a geospatial projection component frame from a pre-resolved projection payload.
 
@@ -112,7 +127,7 @@ def build_geospatial_component_frame(
         Component frame dict conforming to interface_panel_component_frame_contract.md.
     """
     render_key = f"{attention_node_id}::geospatial::{lens_key}"
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": f"{parent_frame_id}__geospatial",
         "component_type": "geospatial_projection",
         "label": "Spatial Projection",
@@ -125,7 +140,7 @@ def build_geospatial_component_frame(
         "payload": geospatial_projection,
         "frozen": True,
         "render_key": render_key,
-    }
+    }, tab_id)
 
 
 def build_characteristic_set_component_frame(
@@ -135,6 +150,8 @@ def build_characteristic_set_component_frame(
     items: list[dict[str, str]],
     attention_node_id: str,
     lens_key: str = "",
+    target_authority: str = "cts_gis",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a characteristic set component frame from a list of labeled items.
 
@@ -149,13 +166,13 @@ def build_characteristic_set_component_frame(
         Component frame dict conforming to interface_panel_component_frame_contract.md.
     """
     render_key = f"{attention_node_id}::characteristic_set::{frame_id}::{lens_key}"
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "characteristic_set",
         "label": label,
         "initializer": {
             "verb": "mediate",
-            "target_authority": "cts_gis",
+            "target_authority": target_authority,
             "intent": "resolve_characteristic_set",
             "characteristic_set_id": frame_id,
         },
@@ -165,7 +182,7 @@ def build_characteristic_set_component_frame(
         },
         "frozen": True,
         "render_key": render_key,
-    }
+    }, tab_id)
 
 
 def build_component_group_frame(
@@ -179,6 +196,8 @@ def build_component_group_frame(
     layout_slot: str = "",
     initializer_intent: str = "compose_component_group",
     datum_address: str = "1-1-2",
+    target_authority: str = "cts_gis",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a nested component group frame for interface panel compositions."""
     render_key = f"{attention_node_id}::component_group::{frame_id}::{lens_key}"
@@ -190,20 +209,20 @@ def build_component_group_frame(
         payload["layout"] = layout
     if layout_slot:
         payload["layout_slot"] = layout_slot
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "component_group",
         "label": label,
         "initializer": {
             "verb": "mediate",
-            "target_authority": "cts_gis",
+            "target_authority": target_authority,
             "datum_address": datum_address,
             "intent": initializer_intent,
         },
         "payload": payload,
         "frozen": False,
         "render_key": render_key,
-    }
+    }, tab_id)
 
 
 def build_listing_component_frame(
@@ -219,6 +238,8 @@ def build_listing_component_frame(
     empty_message: str = "No entries available.",
     initializer_intent: str = "resolve_listing",
     datum_address: str = "1-1-2",
+    target_authority: str = "cts_gis",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a reusable tabular/listing component frame."""
     render_key = f"{attention_node_id}::listing::{frame_id}::{lens_key}"
@@ -232,13 +253,13 @@ def build_listing_component_frame(
         payload["layout_slot"] = layout_slot
     if source_kind:
         payload["source_kind"] = source_kind
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "listing",
         "label": label,
         "initializer": {
             "verb": "mediate",
-            "target_authority": "cts_gis",
+            "target_authority": target_authority,
             "datum_address": datum_address,
             "intent": initializer_intent,
             "source_kind": source_kind,
@@ -246,7 +267,7 @@ def build_listing_component_frame(
         "payload": payload,
         "frozen": True,
         "render_key": render_key,
-    }
+    }, tab_id)
 
 
 def build_chronology_matrix_component_frame(
@@ -262,6 +283,7 @@ def build_chronology_matrix_component_frame(
     empty_message: str = "No chronological events available.",
     initializer_intent: str = "resolve_chronology_matrix",
     datum_address: str = "1-1-2",
+    tab_id: str = "",
 ) -> dict[str, Any]:
     """Build a reusable chronology matrix component frame."""
     render_key = f"{attention_node_id}::chronology_matrix::{frame_id}::{lens_key}"
@@ -274,7 +296,7 @@ def build_chronology_matrix_component_frame(
     }
     if layout_slot:
         payload["layout_slot"] = layout_slot
-    return {
+    return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "chronology_matrix",
         "label": label,
@@ -287,4 +309,4 @@ def build_chronology_matrix_component_frame(
         "payload": payload,
         "frozen": True,
         "render_key": render_key,
-    }
+    }, tab_id)

@@ -128,10 +128,10 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         active_profile = dict(profile_projection.get("active_profile") or {})
 
         self.assertEqual(interface_body.get("tab_host"), "shared_interface_tabs")
-        self.assertEqual(interface_body.get("default_tab_id"), "diktataograph")
+        self.assertEqual(interface_body.get("default_tab_id"), "garland")
         self.assertEqual(
             [tab.get("id") for tab in list(interface_body.get("tabs") or [])],
-            ["diktataograph", "garland"],
+            ["garland", "diktataograph"],
         )
         self.assertEqual(navigation.get("decode_state"), "ready")
         self.assertEqual(navigation.get("active_node_id"), "3-2-3-17")
@@ -180,10 +180,13 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         )
         interface_body = dict(regions["interface_panel"]["interface_body"])
         frames = list(interface_body.get("component_frames") or [])
-        self.assertIn("garland_split_projection", interface_body)
+        self.assertEqual(interface_body.get("layout"), "garland_tabbed")
+        self.assertEqual(interface_body.get("narrow_layout"), "garland_tabbed")
+        self.assertNotEqual(interface_body.get("layout"), "diktataograph_garland_split")
         self.assertTrue(frames)
         garland_group = frames[0]
         self.assertEqual(garland_group.get("component_type"), "component_group")
+        self.assertEqual(garland_group.get("tab_id"), "garland")
         self.assertFalse(garland_group.get("frozen"))
         children = list((garland_group.get("payload") or {}).get("children") or [])
         child_ids = {child.get("frame_id") for child in children}

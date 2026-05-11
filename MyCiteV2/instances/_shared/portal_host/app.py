@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any, Mapping
 
 try:
-    from flask import Flask, abort, jsonify, redirect, render_template, request
+    from flask import Flask, abort, jsonify, make_response, redirect, render_template, request
     _FLASK_IMPORT_ERROR: ModuleNotFoundError | None = None
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency-light test environments
     Flask = Any  # type: ignore[misc,assignment]
@@ -21,7 +21,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in dependency
     def _raise_flask_import_error(*_args: Any, **_kwargs: Any) -> Any:
         raise ModuleNotFoundError("flask is required to run the portal host") from _FLASK_IMPORT_ERROR
 
-    abort = jsonify = redirect = render_template = _raise_flask_import_error
+    abort = jsonify = make_response = redirect = render_template = _raise_flask_import_error
 
     class _MissingRequest:
         def get_json(self, *args: Any, **kwargs: Any) -> Any:
@@ -534,6 +534,38 @@ def _runtime_status_code(envelope: dict[str, Any]) -> int:
     return 400
 
 
+_SERVER_TIMING_TOKEN_RE = re.compile(r"[^A-Za-z0-9!#$%&'*+\-.^_`|~]")
+
+
+def _phase_timings_to_server_timing(phase_timings_ms: dict[str, float] | None) -> str | None:
+    if not phase_timings_ms:
+        return None
+    parts: list[str] = []
+    for raw_name, raw_value in phase_timings_ms.items():
+        name = _SERVER_TIMING_TOKEN_RE.sub("_", _as_text(raw_name))
+        if not name:
+            continue
+        try:
+            duration = float(raw_value)
+        except (TypeError, ValueError):
+            continue
+        parts.append(f"{name};dur={duration:g}")
+    if not parts:
+        return None
+    return ", ".join(parts)
+
+
+def _phase_timings_from_envelope(envelope: dict[str, Any]) -> dict[str, float] | None:
+    surface_payload = envelope.get("surface_payload")
+    if not isinstance(surface_payload, dict):
+        return None
+    diagnostics = surface_payload.get("runtime_diagnostics")
+    if not isinstance(diagnostics, dict):
+        return None
+    timings = diagnostics.get("phase_timings_ms")
+    return timings if isinstance(timings, dict) else None
+
+
 def _runtime_response(envelope: dict[str, Any]) -> tuple[Any, int]:
     if envelope.get("schema") != PORTAL_RUNTIME_ENVELOPE_SCHEMA:
         return (
@@ -549,52 +581,13 @@ def _runtime_response(envelope: dict[str, Any]) -> tuple[Any, int]:
             ),
             502,
         )
-    response = jsonify(envelope)
-    server_timing = _envelope_server_timing(envelope)
-    if server_timing:
-        response.headers["Server-Timing"] = server_timing
-    return response, _runtime_status_code(envelope)
-
-
-def _envelope_server_timing(envelope: dict[str, Any]) -> str:
-    timings = _extract_phase_timings_ms(envelope)
-    if not timings:
-        return ""
-    parts: list[str] = []
-    for name, duration in timings.items():
-        try:
-            value = float(duration)
-        except (TypeError, ValueError):
-            continue
-        safe_name = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in str(name))
-        if not safe_name:
-            continue
-        parts.append(f"{safe_name};dur={value:.3f}")
-    return ", ".join(parts)
-
-
-def _extract_phase_timings_ms(envelope: dict[str, Any]) -> dict[str, Any]:
-    surface_payload = envelope.get("surface_payload")
-    if isinstance(surface_payload, dict):
-        diagnostics = surface_payload.get("runtime_diagnostics")
-        if isinstance(diagnostics, dict):
-            timings = diagnostics.get("phase_timings_ms")
-            if isinstance(timings, dict) and timings:
-                return timings
-    shell_composition = envelope.get("shell_composition")
-    if isinstance(shell_composition, dict):
-        regions = shell_composition.get("regions")
-        if isinstance(regions, dict):
-            interface_panel = regions.get("interface_panel")
-            if isinstance(interface_panel, dict):
-                nested_payload = interface_panel.get("surface_payload")
-                if isinstance(nested_payload, dict):
-                    diagnostics = nested_payload.get("runtime_diagnostics")
-                    if isinstance(diagnostics, dict):
-                        timings = diagnostics.get("phase_timings_ms")
-                        if isinstance(timings, dict) and timings:
-                            return timings
-    return {}
+    status = _runtime_status_code(envelope)
+    server_timing = _phase_timings_to_server_timing(_phase_timings_from_envelope(envelope))
+    if server_timing is None:
+        return jsonify(envelope), status
+    response = make_response(jsonify(envelope), status)
+    response.headers["Server-Timing"] = server_timing
+    return response, status
 
 
 def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple[Any, int]:
@@ -660,8 +653,10 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
 
 
 def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
-    # Warm the heavy system-workbench projection cache so first portal open
-    # does not pay full datum-recognition cost on request path.
+    # Pre-warm the datum projection caches. With gunicorn --preload, this runs
+    # once in the master process before workers are forked; all workers inherit
+    # the warm cache via copy-on-write and pay no per-worker cold-start cost.
+    # Without --preload, the first CTS-GIS request per worker pays the cold cost.
     try:
         from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
             read_system_workbench_projection,
@@ -675,8 +670,25 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
             authority_mode="sql_primary",
         )
     except Exception:
-        # Best-effort warmup only; health/error routes remain source of truth.
-        return
+        pass
+
+    # CTS-GIS workbench projection cache (datum recognition for 413 documents).
+    if config.authority_db_file is not None:
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+                _datum_store_for_authority_db,
+                _hydrate_compiled_workbench_documents,
+            )
+
+            datum_store = _datum_store_for_authority_db(config.authority_db_file)
+            if datum_store is not None:
+                _hydrate_compiled_workbench_documents(
+                    service_surface={},
+                    datum_store=datum_store,
+                    tenant_id=config.portal_instance_id,
+                )
+        except Exception:
+            pass
 
 
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:

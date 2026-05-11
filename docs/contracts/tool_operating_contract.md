@@ -247,3 +247,20 @@ Each canonical route must be covered by shell-boundary matrix tests asserting:
 - allowed directive action set
 
 This matrix is the regression guard against drift between shell, runtime, and tool renderers.
+
+## Service Tool Specifics
+
+Service tools (tool_kind = TOOL_KIND_SERVICE) follow the general operating contract above
+with additional requirements specific to external service management:
+
+- Interface panel is the primary surface; workbench is hidden by default.
+- Surface payload includes `request_contract` sub-object used by JS workspace for
+  all route/schema resolution (no hardcoded values in JS).
+- Interface panel uses the canonical component_frames model with one component_group
+  frame per tab; each tab carries a declarative `initializer` spec (server-side only).
+- Peripheral data lives in `{private_dir}/utilities/tools/{tool-slug}/` outside MOS SQL.
+- Standard tool state fields: `active_tab`, `engaged_frame_id` (transient, cleared each cycle).
+- Standard action kinds: `select_tab`, `engage_component_frame`.
+
+Full specification: `docs/contracts/service_tool_peripheral_package_contract.md`
+Reference implementation: FND-CSM (`portal_fnd_csm_runtime.py`)

@@ -41,6 +41,11 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAwsCsmNewsletterStateAdapter,
     FilesystemAwsCsmToolProfileStore,
 )
+from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
+    build_characteristic_set_component_frame,
+    build_component_group_frame,
+    build_listing_component_frame,
+)
 
 FND_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.surface.v1"
 FND_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.request.v1"
@@ -290,12 +295,13 @@ def _build_paypal_tab(
 # Tool state normalization
 # ---------------------------------------------------------------------------
 
-def _normalize_tool_state(request_payload: dict[str, Any]) -> dict[str, Any]:
+def _normalize_fnd_csm_tool_state(request_payload: dict[str, Any]) -> dict[str, Any]:
     tool_state = _as_dict(request_payload.get("tool_state"))
     return {
         "selected_grantee_msn": _as_text(tool_state.get("selected_grantee_msn")),
         "selected_domain": _as_text(tool_state.get("selected_domain")),
         "active_tab": _as_text(tool_state.get("active_tab")) or "email",
+        "engaged_frame_id": _as_text(tool_state.get("engaged_frame_id")),
     }
 
 
@@ -329,6 +335,15 @@ def _apply_fnd_csm_action(
         tab = _as_text(action_payload.get("tab_id"))
         next_state["active_tab"] = tab
         result["message"] = f"Tab selected: {tab}"
+
+    elif action_kind == "engage_component_frame":
+        frame_id = _as_text(action_payload.get("frame_id"))
+        if frame_id:
+            next_state["engaged_frame_id"] = frame_id
+            result["message"] = f"Frame {frame_id} queued for re-render"
+        else:
+            result["status"] = "rejected"
+            result["message"] = "frame_id is required"
 
     elif action_kind == "assign_newsletter_sender":
         domain = _as_text(action_payload.get("domain")).lower()
@@ -407,157 +422,333 @@ def _apply_fnd_csm_action(
 
 
 # ---------------------------------------------------------------------------
-# Interface panel assembly
+# Interface panel frame builders
 # ---------------------------------------------------------------------------
+
+def _fnd_csm_render_key(
+    grantee_msn: str,
+    domain: str,
+    frame_id: str,
+    engaged_frame_id: str,
+) -> str:
+    base = f"{grantee_msn}::{domain}::{frame_id}"
+    if engaged_frame_id and engaged_frame_id == frame_id:
+        return f"{base}::engaged"
+    return base
+
+
+def _build_email_component_group(
+    email_tab: dict[str, Any],
+    grantee_msn: str,
+    domain: str,
+    engaged_frame_id: str,
+) -> dict[str, Any]:
+    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    profiles = _as_list(email_tab.get("profiles"))
+    mailbox_items = (
+        [
+            {
+                "label": _as_text(p.get("send_as")) or _as_text(p.get("mailbox")) or "—",
+                "value": _as_text(p.get("role")) or "—",
+                "detail": _as_text(p.get("lifecycle")) or "—",
+            }
+            for p in profiles
+        ]
+        if profiles
+        else [{"label": "status", "value": "No profiles found for domain"}]
+    )
+    domain_record = _as_dict(email_tab.get("domain_record"))
+    domain_items = [
+        {"label": k, "value": _as_text(v)}
+        for k, v in domain_record.items()
+        if isinstance(v, (str, int, float, bool))
+    ]
+    children: list[dict[str, Any]] = [
+        build_characteristic_set_component_frame(
+            frame_id="fnd_csm.email.mailboxes",
+            label="Mailboxes",
+            items=mailbox_items,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.email.mailboxes"),
+            target_authority="fnd_csm",
+        ),
+    ]
+    if domain_items:
+        children.append(
+            build_characteristic_set_component_frame(
+                frame_id="fnd_csm.email.domain_status",
+                label="Domain Status",
+                items=domain_items,
+                attention_node_id=grantee_msn or "fnd_csm",
+                lens_key=rk("fnd_csm.email.domain_status"),
+                target_authority="fnd_csm",
+            )
+        )
+    return build_component_group_frame(
+        frame_id="fnd_csm.tab.email",
+        label="Email",
+        children=children,
+        attention_node_id=grantee_msn or "fnd_csm",
+        lens_key=rk("fnd_csm.tab.email"),
+        initializer_intent="resolve_email_profile",
+        target_authority="fnd_csm",
+    )
+
+
+def _build_analytics_component_group(
+    analytics_tab: dict[str, Any],
+    grantee_msn: str,
+    domain: str,
+    engaged_frame_id: str,
+) -> dict[str, Any]:
+    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    summary = _as_dict(analytics_tab.get("summary"))
+    summary_items = [
+        {"label": "page views", "value": str(summary.get("page_view", 0))},
+        {"label": "form submits", "value": str(summary.get("form_submit", 0))},
+        {"label": "ops probes", "value": str(summary.get("ops_probe", 0))},
+        {"label": "other", "value": str(summary.get("other", 0))},
+    ]
+    recent = _as_list(analytics_tab.get("recent_events"))
+    event_rows = [
+        {
+            "event_type": _as_text(e.get("event_type")),
+            "path": _as_text(e.get("path")) or "—",
+            "timestamp": _as_text(e.get("timestamp")),
+        }
+        for e in recent[:20]
+    ]
+    children: list[dict[str, Any]] = [
+        build_characteristic_set_component_frame(
+            frame_id="fnd_csm.analytics.summary",
+            label="Event Summary",
+            items=summary_items,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.analytics.summary"),
+            target_authority="fnd_csm",
+        ),
+        build_listing_component_frame(
+            frame_id="fnd_csm.analytics.events",
+            label="Recent Events",
+            columns=[
+                {"key": "event_type", "label": "Type"},
+                {"key": "path", "label": "Path"},
+                {"key": "timestamp", "label": "Time"},
+            ],
+            rows=event_rows,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.analytics.events"),
+            empty_message="No events recorded.",
+            initializer_intent="resolve_analytics_summary",
+            target_authority="fnd_csm",
+        ),
+    ]
+    return build_component_group_frame(
+        frame_id="fnd_csm.tab.analytics",
+        label="Analytics",
+        children=children,
+        attention_node_id=grantee_msn or "fnd_csm",
+        lens_key=rk("fnd_csm.tab.analytics"),
+        initializer_intent="resolve_analytics_summary",
+        target_authority="fnd_csm",
+    )
+
+
+def _build_newsletter_component_group(
+    newsletter_tab: dict[str, Any],
+    grantee_msn: str,
+    domain: str,
+    engaged_frame_id: str,
+) -> dict[str, Any]:
+    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    sender_items = [
+        {
+            "label": "current sender",
+            "value": _as_text(newsletter_tab.get("current_sender")) or "— not assigned —",
+        },
+        {"label": "subscribed", "value": str(newsletter_tab.get("subscribed_count", 0))},
+        {"label": "unsubscribed", "value": str(newsletter_tab.get("unsubscribed_count", 0))},
+    ]
+    contact_rows = [
+        {
+            "email": _as_text(c.get("email")),
+            "subscribed": "yes" if c.get("subscribed") else "no",
+            "source": _as_text(c.get("source")),
+            "last_sent": _as_text(c.get("last_sent")),
+            "send_count": str(c.get("send_count", 0)),
+        }
+        for c in _as_list(newsletter_tab.get("contact_rows"))
+    ]
+    children: list[dict[str, Any]] = [
+        build_characteristic_set_component_frame(
+            frame_id="fnd_csm.newsletter.sender",
+            label="Sender Assignment",
+            items=sender_items,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.newsletter.sender"),
+            target_authority="fnd_csm",
+        ),
+        build_listing_component_frame(
+            frame_id="fnd_csm.newsletter.contacts",
+            label="Contact List",
+            columns=[
+                {"key": "email", "label": "Email"},
+                {"key": "subscribed", "label": "Subscribed"},
+                {"key": "source", "label": "Source"},
+                {"key": "last_sent", "label": "Last Sent"},
+                {"key": "send_count", "label": "Sends"},
+            ],
+            rows=contact_rows,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.newsletter.contacts"),
+            empty_message="No contacts recorded.",
+            initializer_intent="resolve_newsletter_state",
+            target_authority="fnd_csm",
+        ),
+    ]
+    return build_component_group_frame(
+        frame_id="fnd_csm.tab.newsletter",
+        label="Newsletter",
+        children=children,
+        attention_node_id=grantee_msn or "fnd_csm",
+        lens_key=rk("fnd_csm.tab.newsletter"),
+        initializer_intent="resolve_newsletter_state",
+        target_authority="fnd_csm",
+    )
+
+
+def _build_paypal_component_group(
+    paypal_tab: dict[str, Any],
+    grantee_msn: str,
+    domain: str,
+    engaged_frame_id: str,
+) -> dict[str, Any]:
+    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    webhook_items = [
+        {
+            "label": "webhook URL",
+            "value": _as_text(paypal_tab.get("webhook_url")) or "— not configured —",
+        }
+    ]
+    orders = _as_list(paypal_tab.get("orders"))
+    order_rows = [
+        {
+            "event": _as_text(o.get("event")),
+            "order_id": _as_text(o.get("order_id")),
+            "amount": _as_text(o.get("amount")),
+            "currency": _as_text(o.get("currency")),
+            "status": _as_text(o.get("status")),
+            "domain": _as_text(o.get("domain")),
+        }
+        for o in orders
+    ]
+    children: list[dict[str, Any]] = [
+        build_characteristic_set_component_frame(
+            frame_id="fnd_csm.paypal.webhook",
+            label="Webhook Configuration",
+            items=webhook_items,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.paypal.webhook"),
+            target_authority="fnd_csm",
+        ),
+        build_listing_component_frame(
+            frame_id="fnd_csm.paypal.orders",
+            label="Recent Orders",
+            columns=[
+                {"key": "event", "label": "Event"},
+                {"key": "order_id", "label": "Order ID"},
+                {"key": "amount", "label": "Amount"},
+                {"key": "currency", "label": "Currency"},
+                {"key": "status", "label": "Status"},
+            ],
+            rows=order_rows,
+            attention_node_id=grantee_msn or "fnd_csm",
+            lens_key=rk("fnd_csm.paypal.orders"),
+            empty_message="No orders recorded.",
+            initializer_intent="resolve_paypal_orders",
+            target_authority="fnd_csm",
+        ),
+    ]
+    return build_component_group_frame(
+        frame_id="fnd_csm.tab.paypal",
+        label="PayPal",
+        children=children,
+        attention_node_id=grantee_msn or "fnd_csm",
+        lens_key=rk("fnd_csm.tab.paypal"),
+        initializer_intent="resolve_paypal_orders",
+        target_authority="fnd_csm",
+    )
+
 
 def _build_interface_panel(
     *,
     grantee: dict[str, Any],
     domain: str,
+    grantee_msn: str,
+    engaged_frame_id: str,
     email_tab: dict[str, Any],
     analytics_tab: dict[str, Any],
     newsletter_tab: dict[str, Any],
     paypal_tab: dict[str, Any],
     tool_state: dict[str, Any],
     shell_state: PortalShellState,
+    surface_payload: dict[str, Any],
 ) -> dict[str, Any]:
     active_tab = _as_text(tool_state.get("active_tab")) or "email"
-
-    # Email sections
-    email_sections: list[dict[str, Any]] = []
-    profiles = _as_list(email_tab.get("profiles"))
-    if profiles:
-        for prof in profiles:
-            email_sections.append({
-                "tab_id": "email",
-                "title": f"Mailbox: {prof.get('send_as', prof.get('mailbox', '—'))}",
-                "rows": [
-                    {"label": "send-as", "value": _as_text(prof.get("send_as"))},
-                    {"label": "role", "value": _as_text(prof.get("role"))},
-                    {"label": "lifecycle", "value": _as_text(prof.get("lifecycle")) or "—"},
-                    {"label": "inbound", "value": _as_text(prof.get("inbound")) or "—"},
-                ],
-            })
-    else:
-        email_sections.append({
-            "tab_id": "email",
-            "title": "Email",
-            "rows": [{"label": "status", "value": "No profiles found for domain"}],
-        })
-
-    # Analytics sections
-    summary = _as_dict(analytics_tab.get("summary"))
-    analytics_sections: list[dict[str, Any]] = [
-        {
-            "tab_id": "analytics",
-            "title": "Event Summary",
-            "rows": [
-                {"label": "page views", "value": str(summary.get("page_view", 0))},
-                {"label": "form submits", "value": str(summary.get("form_submit", 0))},
-                {"label": "ops probes", "value": str(summary.get("ops_probe", 0))},
-                {"label": "other", "value": str(summary.get("other", 0))},
-            ],
-        }
-    ]
-    recent = _as_list(analytics_tab.get("recent_events"))
-    if recent:
-        analytics_sections.append({
-            "tab_id": "analytics",
-            "title": f"Recent Events (last {len(recent)})",
-            "rows": [
-                {
-                    "label": _as_text(e.get("event_type")),
-                    "value": _as_text(e.get("path")) or "—",
-                    "detail": _as_text(e.get("timestamp")),
-                }
-                for e in recent[:10]
-            ],
-        })
-
-    # Newsletter sections
-    nl_sections: list[dict[str, Any]] = [
-        {
-            "tab_id": "newsletter",
-            "title": "Sender Assignment",
-            "rows": [
-                {
-                    "label": "current sender",
-                    "value": _as_text(newsletter_tab.get("current_sender")) or "— not assigned —",
-                },
-                {
-                    "label": "subscribed",
-                    "value": str(newsletter_tab.get("subscribed_count", 0)),
-                },
-                {
-                    "label": "unsubscribed",
-                    "value": str(newsletter_tab.get("unsubscribed_count", 0)),
-                },
-            ],
-            "sender_options": _as_list(newsletter_tab.get("sender_options")),
-            "current_sender": _as_text(newsletter_tab.get("current_sender")),
-        },
-        {
-            "tab_id": "newsletter",
-            "title": "Contact List",
-            "contact_rows": _as_list(newsletter_tab.get("contact_rows")),
-        },
-    ]
-
-    # PayPal sections
-    orders = _as_list(paypal_tab.get("orders"))
-    paypal_sections: list[dict[str, Any]] = [
-        {
-            "tab_id": "paypal",
-            "title": "Webhook Configuration",
-            "rows": [
-                {
-                    "label": "webhook URL",
-                    "value": _as_text(paypal_tab.get("webhook_url")) or "— not configured —",
-                }
-            ],
-            "webhook_url": _as_text(paypal_tab.get("webhook_url")),
-            "grantee_msn": _as_text(grantee.get("msn_id")),
-        },
-        {
-            "tab_id": "paypal",
-            "title": f"Recent Orders ({len(orders)})",
-            "rows": [
-                {
-                    "label": _as_text(o.get("event")),
-                    "value": f"{o.get('amount', '—')} {o.get('currency', '')}".strip(),
-                    "detail": _as_text(o.get("status")),
-                }
-                for o in orders[:10]
-            ],
-        },
-    ]
-
-    all_sections = email_sections + analytics_sections + nl_sections + paypal_sections
+    email_frame = _build_email_component_group(email_tab, grantee_msn, domain, engaged_frame_id)
+    analytics_frame = _build_analytics_component_group(analytics_tab, grantee_msn, domain, engaged_frame_id)
+    newsletter_frame = _build_newsletter_component_group(newsletter_tab, grantee_msn, domain, engaged_frame_id)
+    paypal_frame = _build_paypal_component_group(paypal_tab, grantee_msn, domain, engaged_frame_id)
 
     return attach_region_family_contract(
         {
             "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-            "kind": "tabbed_panel",
+            "kind": "tabbed_interface_panel",
             "title": "FND-CSM",
             "summary": f"{_as_text(grantee.get('label', 'Grantee'))} — {domain or 'no domain selected'}",
             "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
+            "tab_host": "shared_interface_tabs",
             "default_tab_id": active_tab,
             "tabs": [
-                {"id": "email", "label": "Email"},
-                {"id": "analytics", "label": "Analytics"},
-                {"id": "newsletter", "label": "Newsletter"},
-                {"id": "paypal", "label": "PayPal"},
+                {
+                    "id": "email",
+                    "label": "Email",
+                    "initializer": {
+                        "verb": "mediate",
+                        "target_authority": "fnd_csm",
+                        "intent": "resolve_email_profile",
+                    },
+                },
+                {
+                    "id": "analytics",
+                    "label": "Analytics",
+                    "initializer": {
+                        "verb": "mediate",
+                        "target_authority": "fnd_csm",
+                        "intent": "resolve_analytics_summary",
+                    },
+                },
+                {
+                    "id": "newsletter",
+                    "label": "Newsletter",
+                    "initializer": {
+                        "verb": "mediate",
+                        "target_authority": "fnd_csm",
+                        "intent": "resolve_newsletter_state",
+                    },
+                },
+                {
+                    "id": "paypal",
+                    "label": "PayPal",
+                    "initializer": {
+                        "verb": "mediate",
+                        "target_authority": "fnd_csm",
+                        "intent": "resolve_paypal_orders",
+                    },
+                },
             ],
-            "sections": all_sections,
-            "surface_payload": {
-                "grantee": grantee,
-                "domain": domain,
-                "email": email_tab,
-                "analytics": analytics_tab,
-                "newsletter": newsletter_tab,
-                "paypal": paypal_tab,
-                "tool_state": tool_state,
-            },
+            "component_frames": [email_frame, analytics_frame, newsletter_frame, paypal_frame],
+            "surface_payload": surface_payload,
         },
         family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
         surface_id=FND_CSM_TOOL_SURFACE_ID,
@@ -583,7 +774,7 @@ def build_portal_fnd_csm_surface_bundle(
         raise ValueError("FND-CSM tool surface is not registered")
 
     normalized_payload = _as_dict(request_payload)
-    tool_state = _normalize_tool_state(normalized_payload)
+    tool_state = _normalize_fnd_csm_tool_state(normalized_payload)
     action_result: dict[str, Any] = {}
 
     # Handle action if present
@@ -597,13 +788,17 @@ def build_portal_fnd_csm_surface_bundle(
             private_dir=private_dir,
         )
 
+    # Pop engaged_frame_id: used for render_key differentiation this cycle only
+    engaged_frame_id = _as_text(tool_state.pop("engaged_frame_id", ""))
+
     # Load grantee profiles and resolve selection
     grantees = _load_grantee_profiles(private_dir)
     selected_grantee = _resolve_selected_grantee(grantees, tool_state)
     domain = _resolve_selected_domain(selected_grantee, tool_state)
+    grantee_msn = _as_text(selected_grantee.get("msn_id"))
 
     # Keep tool_state in sync with resolved selections
-    tool_state["selected_grantee_msn"] = _as_text(selected_grantee.get("msn_id"))
+    tool_state["selected_grantee_msn"] = grantee_msn
     tool_state["selected_domain"] = domain
 
     # Build tab data
@@ -667,7 +862,7 @@ def build_portal_fnd_csm_surface_bundle(
             for g in grantees
         ],
         "selected_grantee": {
-            "msn_id": _as_text(selected_grantee.get("msn_id")),
+            "msn_id": grantee_msn,
             "label": _as_text(selected_grantee.get("label")),
             "short_name": _as_text(selected_grantee.get("short_name")),
             "domains": _as_list(selected_grantee.get("domains")),
@@ -713,12 +908,15 @@ def build_portal_fnd_csm_surface_bundle(
     interface_panel = _build_interface_panel(
         grantee=selected_grantee,
         domain=domain,
+        grantee_msn=grantee_msn,
+        engaged_frame_id=engaged_frame_id,
         email_tab=email_tab,
         analytics_tab=analytics_tab,
         newsletter_tab=newsletter_tab,
         paypal_tab=paypal_tab,
         tool_state=tool_state,
         shell_state=shell_state,
+        surface_payload=surface_payload,
     )
 
     return {

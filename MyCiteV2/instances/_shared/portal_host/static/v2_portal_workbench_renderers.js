@@ -810,6 +810,52 @@
     );
   }
 
+  function buildLayeredDatumRowHtml(row) {
+    var coords = asObject(row.coordinates);
+    var editActions = asList(row.edit_actions);
+    var editAction = asObject(editActions[0]);
+    return (
+      "<tr><td>" +
+      escapeHtml(coords.iteration != null ? String(coords.iteration) : "—") +
+      "</td><td>" +
+      escapeHtml(asText(row.label) || asText(row.datum_id) || "Datum") +
+      "</td><td>" +
+      escapeHtml(asText(row.display_value) || asText(row.primary_value_token) || "—") +
+      "</td><td>" +
+      (asText(editAction.action)
+        ? '<button type="button" data-datum-edit-action="' +
+          escapeHtml(asText(editAction.action)) +
+          '" data-datum-document-id="' +
+          escapeHtml(asText(editAction.document_id)) +
+          '" data-datum-address="' +
+          escapeHtml(asText(editAction.datum_address)) +
+          '" data-datum-sandbox-id="' +
+          escapeHtml(asText(editAction.sandbox_id)) +
+          '">Edit</button>'
+        : "—") +
+      "</td></tr>"
+    );
+  }
+
+  function buildLayeredDatumTableHtml(vgRows) {
+    return (
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr><th>Iter</th><th>Datum</th><th>Value</th><th>Action</th></tr></thead><tbody>' +
+      vgRows.map(buildLayeredDatumRowHtml).join("") +
+      "</tbody></table></div>"
+    );
+  }
+
+  function pendingLayeredRowsRegistry() {
+    if (!window.__CTS_GIS_PENDING_ROWS) {
+      window.__CTS_GIS_PENDING_ROWS = new Map();
+    }
+    return window.__CTS_GIS_PENDING_ROWS;
+  }
+
+  function pendingLayeredRowsKey(layerId, valueGroupId) {
+    return String(layerId) + "|" + String(valueGroupId);
+  }
+
   function renderLayeredDatumTable(region) {
     var table = asObject(region && region.layered_datum_table);
     var doc = asObject(table.document);
@@ -827,13 +873,20 @@
         : "") +
       "</header>";
     if (layerGroups.length) {
+      var pending = pendingLayeredRowsRegistry();
       return (
         heading +
         layerGroups
-          .map(function (layer) {
+          .map(function (layer, layerIndex) {
             var valueGroups = asList(layer.value_groups);
+            var layerSelected = !!layer.selected;
+            var layerId = layer.layer != null ? String(layer.layer) : "unstructured-" + layerIndex;
             return (
-              '<details class="v2-card" open style="margin-top:12px"><summary>' +
+              '<details class="v2-card" data-layer-id="' +
+              escapeHtml(layerId) +
+              '"' +
+              (layerSelected ? " open" : "") +
+              ' style="margin-top:12px"><summary>' +
               escapeHtml(
                 asText(layer.label) +
                   " (" +
@@ -842,10 +895,26 @@
               ) +
               "</summary>" +
               valueGroups
-                .map(function (vg) {
+                .map(function (vg, vgIndex) {
                   var vgRows = asList(vg.rows);
+                  var vgSelected = !!vg.selected;
+                  var preRender = layerSelected || vgSelected;
+                  var valueGroupId = vg.value_group != null ? String(vg.value_group) : "unstructured-" + vgIndex;
+                  var bodyHtml;
+                  if (preRender || !vgRows.length) {
+                    bodyHtml = buildLayeredDatumTableHtml(vgRows);
+                  } else {
+                    pending.set(pendingLayeredRowsKey(layerId, valueGroupId), vgRows);
+                    bodyHtml = '<div class="cts-gis-rows-pending">Loading rows…</div>';
+                  }
                   return (
-                    '<details class="v2-card" open style="margin-top:12px"><summary>' +
+                    '<details class="v2-card" data-layer-id="' +
+                    escapeHtml(layerId) +
+                    '" data-value-group-id="' +
+                    escapeHtml(valueGroupId) +
+                    '"' +
+                    (preRender ? " open" : "") +
+                    ' style="margin-top:12px"><summary>' +
                     escapeHtml(
                       asText(vg.label) +
                         " (" +
@@ -853,36 +922,8 @@
                         " rows)"
                     ) +
                     "</summary>" +
-                    '<div class="v2-tableWrap"><table class="v2-table"><thead><tr><th>Iter</th><th>Datum</th><th>Value</th><th>Action</th></tr></thead><tbody>' +
-                    vgRows
-                      .map(function (row) {
-                        var coords = asObject(row.coordinates);
-                        var editActions = asList(row.edit_actions);
-                        var editAction = asObject(editActions[0]);
-                        return (
-                          "<tr><td>" +
-                          escapeHtml(coords.iteration != null ? String(coords.iteration) : "—") +
-                          "</td><td>" +
-                          escapeHtml(asText(row.label) || asText(row.datum_id) || "Datum") +
-                          "</td><td>" +
-                          escapeHtml(asText(row.display_value) || asText(row.primary_value_token) || "—") +
-                          "</td><td>" +
-                          (asText(editAction.action)
-                            ? '<button type="button" data-datum-edit-action="' +
-                              escapeHtml(asText(editAction.action)) +
-                              '" data-datum-document-id="' +
-                              escapeHtml(asText(editAction.document_id)) +
-                              '" data-datum-address="' +
-                              escapeHtml(asText(editAction.datum_address)) +
-                              '" data-datum-sandbox-id="' +
-                              escapeHtml(asText(editAction.sandbox_id)) +
-                              '">Edit</button>'
-                            : "—") +
-                          "</td></tr>"
-                        );
-                      })
-                      .join("") +
-                    "</tbody></table></div></details>"
+                    bodyHtml +
+                    "</details>"
                   );
                 })
                 .join("") +
@@ -1117,7 +1158,39 @@
       });
     }
 
-    Array.prototype.forEach.call(target.querySelectorAll("[data-datum-edit-action]"), function (node) {
+    bindDatumEditActionButtons(target, target, region);
+
+    target.addEventListener("toggle", function (event) {
+      var node = event.target;
+      if (!node || node.tagName !== "DETAILS") return;
+      if (!node.open) return;
+      var valueGroupId = node.getAttribute("data-value-group-id");
+      if (valueGroupId == null) return;
+      var layerId = node.getAttribute("data-layer-id") || "";
+      var pending = pendingLayeredRowsRegistry();
+      var key = pendingLayeredRowsKey(layerId, valueGroupId);
+      if (!pending.has(key)) return;
+      var vgRows = pending.get(key);
+      pending.delete(key);
+      var placeholder = node.querySelector(".cts-gis-rows-pending");
+      var html = buildLayeredDatumTableHtml(vgRows);
+      if (placeholder && placeholder.parentNode) {
+        var wrapper = document.createElement("div");
+        wrapper.innerHTML = html;
+        var inserted = wrapper.firstChild;
+        placeholder.parentNode.replaceChild(inserted, placeholder);
+        bindDatumEditActionButtons(inserted, target, region);
+      } else {
+        node.insertAdjacentHTML("beforeend", html);
+        bindDatumEditActionButtons(node, target, region);
+      }
+    }, true);
+  }
+
+  function bindDatumEditActionButtons(scope, target, region) {
+    Array.prototype.forEach.call(scope.querySelectorAll("[data-datum-edit-action]"), function (node) {
+      if (node.getAttribute("data-datum-edit-action-bound") === "1") return;
+      node.setAttribute("data-datum-edit-action-bound", "1");
       node.addEventListener("click", function () {
         var table = asObject(region && region.layered_datum_table);
         var documentId = node.getAttribute("data-datum-document-id") || asText(asObject(table.document).document_id);
