@@ -1239,7 +1239,7 @@ def _strict_projection_context_differs(
 
     default_time_directive = _as_text((default_tool_state.get("aitas") or {}).get("time_directive"))
     requested_time_directive = _as_text((requested_tool_state.get("aitas") or {}).get("time_directive"))
-    if requested_time_directive != default_time_directive:
+    if requested_time_directive and requested_time_directive != default_time_directive:
         return True
 
     default_source = dict(default_tool_state.get("source") or {})
@@ -1248,14 +1248,17 @@ def _strict_projection_context_differs(
         default_source.get("precinct_district_overlay_enabled")
     ):
         return True
-    if _as_text(requested_source.get("attention_document_id")) != _as_text(default_source.get("attention_document_id")):
+    requested_attention_document_id = _as_text(requested_source.get("attention_document_id"))
+    if requested_attention_document_id and requested_attention_document_id != _as_text(default_source.get("attention_document_id")):
         return True
 
     default_selection = dict(default_tool_state.get("selection") or {})
     requested_selection = dict(requested_tool_state.get("selection") or {})
-    if _as_text(requested_selection.get("selected_row_address")) != _as_text(default_selection.get("selected_row_address")):
+    requested_selected_row_address = _as_text(requested_selection.get("selected_row_address"))
+    if requested_selected_row_address and requested_selected_row_address != _as_text(default_selection.get("selected_row_address")):
         return True
-    if _as_text(requested_selection.get("selected_feature_id")) != _as_text(default_selection.get("selected_feature_id")):
+    requested_selected_feature_id = _as_text(requested_selection.get("selected_feature_id"))
+    if requested_selected_feature_id and requested_selected_feature_id != _as_text(default_selection.get("selected_feature_id")):
         return True
     return False
 
