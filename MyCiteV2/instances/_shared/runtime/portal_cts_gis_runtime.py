@@ -3,6 +3,9 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import subprocess
+import sys
+import threading
 from collections import OrderedDict
 from time import perf_counter
 from pathlib import Path
@@ -47,6 +50,7 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
+    evict_compiled_artifact_read_cache,
     read_compiled_artifact_cached,
     validate_cts_gis_source_layout,
     validate_compiled_artifact,
@@ -160,6 +164,67 @@ def _canonical_tool_state_hash(requested_tool_state: dict[str, Any] | None) -> s
 
 def evict_compiled_service_surface_cache() -> None:
     _COMPILED_SERVICE_SURFACE_CACHE.clear()
+
+
+_COMPILED_REBUILD_LOCK = threading.Lock()
+_COMPILED_REBUILD_INPROGRESS: dict[str, bool] = {}
+_COMPILE_SCRIPT_PATH = Path(__file__).resolve().parents[3] / "scripts" / "compile_cts_gis_artifact.py"
+
+
+def _async_compiled_artifact_rebuild(
+    *,
+    compile_script: Path,
+    repo_root: Path,
+    data_dir: str,
+    private_dir: str,
+    scope_id: str,
+    inprogress_key: str,
+) -> None:
+    try:
+        cmd: list[str] = [sys.executable, str(compile_script), "--data-dir", data_dir, "--scope-id", scope_id]
+        if private_dir:
+            cmd.extend(["--private-dir", private_dir])
+        subprocess.run(cmd, cwd=str(repo_root), check=False, capture_output=True, timeout=600)
+    except Exception:
+        pass
+    finally:
+        with _COMPILED_REBUILD_LOCK:
+            _COMPILED_REBUILD_INPROGRESS.pop(inprogress_key, None)
+        evict_compiled_artifact_read_cache()
+        evict_compiled_service_surface_cache()
+
+
+def schedule_compiled_artifact_rebuild_async(
+    *,
+    data_dir: str | Path | None,
+    private_dir: str | Path | None,
+    scope_id: str,
+    compiled_path: Path | None,
+) -> bool:
+    if compiled_path is None or data_dir is None:
+        return False
+    compile_script = _COMPILE_SCRIPT_PATH
+    if not compile_script.exists():
+        return False
+    repo_root = compile_script.resolve().parents[2]
+    inprogress_key = str(compiled_path)
+    with _COMPILED_REBUILD_LOCK:
+        if _COMPILED_REBUILD_INPROGRESS.get(inprogress_key):
+            return False
+        _COMPILED_REBUILD_INPROGRESS[inprogress_key] = True
+    threading.Thread(
+        target=_async_compiled_artifact_rebuild,
+        kwargs={
+            "compile_script": compile_script,
+            "repo_root": repo_root,
+            "data_dir": str(data_dir),
+            "private_dir": str(private_dir) if private_dir else "",
+            "scope_id": scope_id,
+            "inprogress_key": inprogress_key,
+        },
+        daemon=True,
+    ).start()
+    return True
 
 
 def _summary_for_workbench_document(document: Any) -> dict[str, Any]:
@@ -3766,6 +3831,71 @@ def build_portal_cts_gis_surface_bundle(
             {"state": "ready", "message": "CTS-GIS loaded compiled artifact successfully."},
         )
         source_evidence["source_layout"] = dict(compiled_artifact.get("source_layout") or source_layout)
+    elif (
+        not force_live_read
+        and compiled_artifact is not None
+        and runtime_mode == _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC
+        and not compiled_valid
+    ):
+        # Stale-artifact fallback: serve the previously-compiled projection (with a
+        # compiled_state_dirty warning) and kick off a background rebuild instead of
+        # blocking the request on a synchronous live read of all source files. This
+        # is the path that produced user-visible 504s on cold deploys / source touches.
+        rebuild_scheduled = schedule_compiled_artifact_rebuild_async(
+            data_dir=data_dir,
+            private_dir=private_dir,
+            scope_id=portal_scope.scope_id,
+            compiled_path=compiled_path,
+        )
+        compiled_default_tool_state = _tool_state_clone(dict(compiled_artifact.get("default_tool_state") or {}))
+        requested_tool_state = _merge_tool_state(
+            compiled_default_tool_state,
+            _request_tool_state_overrides(requested_tool_state, normalized_request_payload),
+        )
+        navigation_canvas = _navigation_canvas_from_compiled_artifact(
+            artifact=compiled_artifact,
+            portal_scope=portal_scope,
+            shell_state=shell_state,
+            resolved_tool_state=requested_tool_state,
+            base_shell_request=tool_shell_request_base,
+        )
+        service_surface_started_at = perf_counter()
+        service_surface = _service_surface_from_compiled_artifact(compiled_artifact)
+        _hydrate_compiled_workbench_documents(
+            service_surface=service_surface,
+            datum_store=datum_store,
+            tenant_id=portal_scope.scope_id,
+        )
+        phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
+        resolved_tool_state = _tool_state_for_navigation(
+            _resolved_tool_state(requested_tool_state, service_surface),
+            navigation_canvas,
+        )
+        resolved_tool_state.setdefault("source", {})
+        for key in ("requested_active_path_raw", "requested_selected_node_id_raw"):
+            if key in dict(requested_tool_state.get("source") or {}):
+                resolved_tool_state["source"][key] = requested_tool_state["source"][key]
+        source_evidence = dict((compiled_artifact.get("evidence_model") or {}).get("source_evidence") or {})
+        warnings_list = list(source_evidence.get("warnings") or [])
+        if "compiled_state_dirty" not in warnings_list:
+            warnings_list.append("compiled_state_dirty")
+        source_evidence["warnings"] = warnings_list
+        source_evidence["readiness"] = {
+            "state": "ready_stale",
+            "message": (
+                "Serving stale CTS-GIS compiled artifact while a background rebuild is running."
+                if rebuild_scheduled
+                else "Serving stale CTS-GIS compiled artifact; a previous rebuild is still in progress."
+            ),
+        }
+        source_evidence["source_layout"] = dict(compiled_artifact.get("source_layout") or source_layout)
+        compiled_refresh_status = {
+            "requested": True,
+            "performed": False,
+            "scheduled_async": rebuild_scheduled,
+            "path": str(compiled_path) if compiled_path is not None else "",
+            "reason": "compiled_state_dirty_async_rebuild",
+        }
     elif (not force_live_read) and runtime_mode == _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT and strict_invalid:
         service_surface_started_at = perf_counter()
         service_surface = {
