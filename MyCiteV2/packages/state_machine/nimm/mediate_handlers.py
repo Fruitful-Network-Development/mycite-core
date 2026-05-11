@@ -236,12 +236,19 @@ def build_listing_component_frame(
     layout_slot: str = "",
     source_kind: str = "",
     empty_message: str = "No entries available.",
+    placeholder_row_count: int = 0,
     initializer_intent: str = "resolve_listing",
     datum_address: str = "1-1-2",
     target_authority: str = "cts_gis",
     tab_id: str = "",
 ) -> dict[str, Any]:
-    """Build a reusable tabular/listing component frame."""
+    """Build a reusable tabular/listing component frame.
+
+    placeholder_row_count: when greater than zero AND rows is empty, the
+    frontend renderer paints that many numbered wireframe placeholder rows
+    instead of the empty_message paragraph. Defaults to 0 so existing
+    callers keep their current empty-state behavior.
+    """
     render_key = f"{attention_node_id}::listing::{frame_id}::{lens_key}"
     payload: dict[str, Any] = {
         "label": label,
@@ -253,6 +260,8 @@ def build_listing_component_frame(
         payload["layout_slot"] = layout_slot
     if source_kind:
         payload["source_kind"] = source_kind
+    if placeholder_row_count and int(placeholder_row_count) > 0:
+        payload["placeholder_row_count"] = int(placeholder_row_count)
     return _maybe_attach_tab_id({
         "frame_id": frame_id,
         "component_type": "listing",

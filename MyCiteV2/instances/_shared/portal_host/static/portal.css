@@ -3717,9 +3717,26 @@ body.is-modal-open {
 .ide-interfacePanel {
   border-left: 1px solid var(--line);
   background: #fafafa;
-  overflow: auto;
   width: auto;
   max-width: none;
+  /* Flex column establishes a definite-height chain for the content
+     area: header takes its intrinsic size, content fills the rest.
+     Tools rendered into #v2-interface-panel-dynamic can therefore
+     rely on `height: 100%` propagating down through the wrapper chain.
+     overflow:auto stays as the panel-level fallback for tools whose
+     content does overflow the panel's allocated row height. */
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.ide-interfacePanel__header {
+  flex: 0 0 auto;
+}
+
+.ide-interfacePanel > .ide-interfacePanel__content {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .ide-body > .ide-interfacePanel.is-collapsed {
@@ -4226,11 +4243,39 @@ body.is-modal-open {
   max-width: none;
 }
 
+/* === INTERFACE PANEL HEIGHT-CHAIN CONVENTION ============================
+   The interface-panel column is a grid item that stretches to the body's
+   row height. For tool surfaces to be able to rely on a definite height
+   (so their inner grids can divide it proportionally), the column's
+   wrapper chain must propagate that height instead of letting content
+   dictate it. This rule establishes the convention:
+
+     .ide-interfacePanel  (grid item, definite height via align-self stretch)
+       └── .ide-interfacePanel__content  (flex column, fills the panel)
+             └── #v2-interface-panel-dynamic  (flex item, fills content)
+                   └── .system-tool-interface  (flex item, fills root)
+
+   Any tool surface rendered into #v2-interface-panel-dynamic therefore
+   has `height: 100%` resolve to the panel's allocated height, not to the
+   surface's intrinsic content size.
+   ====================================================================== */
 #v2-interface-panel-dynamic,
 #v2-interface-panel-dynamic > * {
   min-width: 0;
   width: 100%;
   max-width: none;
+}
+
+#v2-interface-panel-dynamic {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+#v2-interface-panel-dynamic > .system-tool-interface {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .ide-splitter {
@@ -6434,13 +6479,26 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 
 .cts-gis-interface__body {
+  display: grid;
   grid-template-rows: minmax(0, 1fr);
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: stretch;
   align-content: stretch;
   gap: 0.75rem;
   height: 100%;
   min-height: 0;
+}
+
+/* When both tab panels exist as grid children, the inactive one carries the
+   [hidden] attribute and must collapse so the active tab takes the full
+   width. Defense-in-depth in case a stylesheet has been loaded that
+   overrides the user-agent [hidden] = display:none rule. */
+.cts-gis-interface__body > [hidden] {
+  display: none !important;
+}
+
+.cts-gis-interface__body[data-cts-gis-layout="diktataograph_garland_split"] {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
 }
 
 .cts-gis-pane {
@@ -6455,6 +6513,8 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .cts-gis-pane--garland {
   width: 100%;
   height: 100%;
+  container-type: inline-size;
+  container-name: garlandPane;
 }
 
 .cts-gis-pane__header {
@@ -7272,13 +7332,77 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   min-height: 0;
 }
 
+/* === GARLAND WIREFRAME LAYOUT CONVENTION ===============================
+   The wireframe grid is the single source of truth for cell dimensions.
+   Every descendant must obey three rules:
+
+     1. NO descendant may set min-height or min-width in pixels / rem /
+        vh / vw. Visual hierarchy comes from grid track ratios (fr units),
+        not from per-component pixel floors.
+     2. Height propagates downward via `height: 100%` from the pane
+        through .v2-component-frames → .v2-component-group → grid container.
+     3. Components are responsible for their own internal overflow
+        (overflow:auto on .v2-component-frame). A component that has too
+        much content scrolls inside its cell — it never pushes its parent
+        bigger than the cell.
+
+   To add a new component to the Garland tab, declare its grid-column
+   and grid-row in the [data-layout-slot="..."] block. Do NOT add
+   min-height or min-width to the component's own CSS.
+   ====================================================================== */
+.cts-gis-pane--garland > .v2-component-frames,
+.cts-gis-pane--garland .v2-component-group--garland_wireframe {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.v2-component-group--garland_wireframe,
+.v2-component-group--garland_wireframe * {
+  min-width: 0;
+  min-height: 0;
+}
+
+.v2-component-group--garland_wireframe .v2-component-frame {
+  height: 100%;
+  /* Frame already declares `overflow: auto` globally — content inside a
+     too-small cell scrolls within the frame instead of overflowing it. */
+}
+
+/* Inside a profile's subject_slot the geospatial component is a thumbnail
+   map only. The full canvas (status badges, projection focus caption,
+   collection-bounds meta, feature list, warnings) belongs in a context
+   with dedicated room for it (the Diktataograph tab), not in the
+   already-cramped Garland wireframe cell. Hiding these descendants
+   lets the `1fr` map row claim its parent's full height instead of
+   getting squeezed to zero by the surrounding auto rows. */
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapCanvas__state,
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapCanvas__meta,
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapCanvas__featureList,
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapStage__controls,
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapStage__caption,
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-warningList {
+  display: none;
+}
+
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapStage {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.v2-component-group--garland_wireframe .v2-component-frame__subjectSlot .cts-gis-mapCanvas {
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
 .v2-component-group--garland_wireframe .v2-component-group__children {
   display: grid;
-  grid-template-columns: minmax(18rem, 1.15fr) minmax(14rem, 1fr) minmax(18rem, 1fr) minmax(14rem, 0.95fr);
-  grid-template-rows: minmax(20rem, 1.05fr) minmax(15rem, 0.8fr) minmax(13rem, 0.75fr);
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 0.95fr);
+  grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.8fr) minmax(0, 0.75fr);
   gap: 0.6rem;
   height: 100%;
-  min-height: clamp(36rem, 74vh, 66rem);
+  min-height: 0;
 }
 
 .v2-component-frame {
@@ -7454,8 +7578,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   padding: 0 0 0.35rem;
 }
 
+.v2-component-group--garland_wireframe .cts-gis-mapStage,
 .v2-component-group--garland_wireframe .cts-gis-mapStage__frame {
-  min-height: clamp(12rem, 28vh, 21rem);
+  min-height: 0;
+  height: 100%;
 }
 
 .cts-gis-garlandSplit {
@@ -7779,7 +7905,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: color-mix(in srgb, var(--paper2, #eef1e8) 72%, #fff 28%);
 }
 
-@media (max-width: 1180px) {
+@container garlandPane (max-width: 50rem) {
   .v2-component-group--garland_wireframe .v2-component-group__children {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: none;
@@ -7863,11 +7989,13 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   overflow-wrap: anywhere;
 }
 
-@media (max-width: 960px) {
+@container garlandPane (max-width: 32rem) {
   .v2-component-group--garland_wireframe .v2-component-group__children {
     grid-template-columns: minmax(0, 1fr);
   }
+}
 
+@media (max-width: 960px) {
   .cts-gis-interface__body {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -8824,4 +8952,24 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-surface-dl dd {
   margin: 0;
   word-break: break-word;
+}
+
+/* Wireframe placeholder rendering for empty listings and empty profile collections.
+   Used by the CTS-GIS Garland tab so the NIMM-AITAS mockup scaffold remains
+   visible before operational data is wired. */
+.v2-component-listing__table--placeholder {
+  opacity: 0.85;
+}
+.v2-component-listing__row--placeholder td {
+  color: color-mix(in srgb, var(--ink2, #667068) 65%, transparent);
+  background: color-mix(in srgb, var(--paper, #f7f8f3) 96%, #fff 4%);
+}
+.v2-component-listing__cell--placeholderIndex {
+  width: 2.4rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink2, #667068);
+}
+.v2-component-frame__collectionItems--placeholder dt,
+.v2-component-frame__collectionItems--placeholder dd {
+  color: color-mix(in srgb, var(--ink2, #667068) 65%, transparent);
 }
