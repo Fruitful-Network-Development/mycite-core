@@ -89,7 +89,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             },
         )
 
-        garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+        garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
         geo = garland["geospatial_projection"]
         profile = garland["profile_projection"]
         toggle = dict(profile.get("district_overlay_toggle") or {})

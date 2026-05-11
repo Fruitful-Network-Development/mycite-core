@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
+from collections import OrderedDict
 from time import perf_counter
 from pathlib import Path
 from typing import Any
@@ -43,7 +47,7 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
-    read_compiled_artifact,
+    read_compiled_artifact_cached,
     validate_cts_gis_source_layout,
     validate_compiled_artifact,
     write_compiled_artifact,
@@ -102,6 +106,52 @@ _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
 _DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
+_COMPILED_SERVICE_SURFACE_CACHE: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
+_COMPILED_SERVICE_SURFACE_CACHE_MAX = 32
+
+
+def _canonical_tool_state_hash(requested_tool_state: dict[str, Any] | None) -> str:
+    encoded = json.dumps(requested_tool_state or {}, sort_keys=True, default=str)
+    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
+
+
+def _compiled_service_surface_cache_key(
+    *,
+    compiled_artifact: dict[str, Any],
+    requested_tool_state: dict[str, Any] | None,
+) -> str | None:
+    fingerprint = ""
+    source_layout = compiled_artifact.get("source_layout")
+    if isinstance(source_layout, dict):
+        fingerprint = str(source_layout.get("fingerprint") or "")
+    if not fingerprint:
+        return None
+    return f"{fingerprint}:{_canonical_tool_state_hash(requested_tool_state)}"
+
+
+def _service_surface_from_compiled_artifact_cached(
+    compiled_artifact: dict[str, Any],
+    requested_tool_state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    cache_key = _compiled_service_surface_cache_key(
+        compiled_artifact=compiled_artifact,
+        requested_tool_state=requested_tool_state,
+    )
+    if cache_key is None:
+        return _service_surface_from_compiled_artifact(compiled_artifact)
+    cached = _COMPILED_SERVICE_SURFACE_CACHE.get(cache_key)
+    if cached is not None:
+        _COMPILED_SERVICE_SURFACE_CACHE.move_to_end(cache_key)
+        return copy.deepcopy(cached)
+    fresh = _service_surface_from_compiled_artifact(compiled_artifact)
+    _COMPILED_SERVICE_SURFACE_CACHE[cache_key] = copy.deepcopy(fresh)
+    while len(_COMPILED_SERVICE_SURFACE_CACHE) > _COMPILED_SERVICE_SURFACE_CACHE_MAX:
+        _COMPILED_SERVICE_SURFACE_CACHE.popitem(last=False)
+    return fresh
+
+
+def evict_compiled_service_surface_cache() -> None:
+    _COMPILED_SERVICE_SURFACE_CACHE.clear()
 
 
 def _summary_for_workbench_document(document: Any) -> dict[str, Any]:
@@ -1201,7 +1251,7 @@ def _strict_projection_context_differs(
 
     default_time_directive = _as_text((default_tool_state.get("aitas") or {}).get("time_directive"))
     requested_time_directive = _as_text((requested_tool_state.get("aitas") or {}).get("time_directive"))
-    if requested_time_directive != default_time_directive:
+    if requested_time_directive and requested_time_directive != default_time_directive:
         return True
 
     default_source = dict(default_tool_state.get("source") or {})
@@ -1210,14 +1260,17 @@ def _strict_projection_context_differs(
         default_source.get("precinct_district_overlay_enabled")
     ):
         return True
-    if _as_text(requested_source.get("attention_document_id")) != _as_text(default_source.get("attention_document_id")):
+    requested_attention_document_id = _as_text(requested_source.get("attention_document_id"))
+    if requested_attention_document_id and requested_attention_document_id != _as_text(default_source.get("attention_document_id")):
         return True
 
     default_selection = dict(default_tool_state.get("selection") or {})
     requested_selection = dict(requested_tool_state.get("selection") or {})
-    if _as_text(requested_selection.get("selected_row_address")) != _as_text(default_selection.get("selected_row_address")):
+    requested_selected_row_address = _as_text(requested_selection.get("selected_row_address"))
+    if requested_selected_row_address and requested_selected_row_address != _as_text(default_selection.get("selected_row_address")):
         return True
-    if _as_text(requested_selection.get("selected_feature_id")) != _as_text(default_selection.get("selected_feature_id")):
+    requested_selected_feature_id = _as_text(requested_selection.get("selected_feature_id"))
+    if requested_selected_feature_id and requested_selected_feature_id != _as_text(default_selection.get("selected_feature_id")):
         return True
     return False
 
@@ -3603,7 +3656,7 @@ def build_portal_cts_gis_surface_bundle(
     compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
     source_layout = build_cts_gis_source_layout_summary(data_dir)
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
-    compiled_artifact = read_compiled_artifact(compiled_path)
+    compiled_artifact = read_compiled_artifact_cached(compiled_path)
     compiled_valid, compiled_issues = validate_compiled_artifact(
         compiled_artifact,
         expected_portal_scope_id=portal_scope.scope_id,
@@ -3653,7 +3706,7 @@ def build_portal_cts_gis_surface_bundle(
                 compiled_artifact=compiled_artifact,
                 requested_tool_state=requested_tool_state,
             )
-            else _service_surface_from_compiled_artifact(compiled_artifact)
+            else _service_surface_from_compiled_artifact_cached(compiled_artifact, requested_tool_state)
         )
         _hydrate_compiled_workbench_documents(
             service_surface=service_surface,
