@@ -89,7 +89,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             },
         )
 
-        garland = bundle["inspector"]["interface_body"]["garland_split_projection"]
+        garland = bundle["interface_panel"]["interface_body"]["garland_split_projection"]
         geo = garland["geospatial_projection"]
         profile = garland["profile_projection"]
         toggle = dict(profile.get("district_overlay_toggle") or {})
@@ -227,7 +227,7 @@ class CtsGisCompiledRuntimeTests(unittest.TestCase):
             )
             payload = bundle["surface_payload"]
             nav = payload["navigation_model"]
-            profile = bundle["inspector"]["interface_body"]["garland_split_projection"]["profile_projection"]
+            profile = bundle["interface_panel"]["interface_body"]["garland_split_projection"]["profile_projection"]
             toggle = dict(profile.get("district_overlay_toggle") or {})
             self.assertEqual(payload["runtime_mode"], "production_strict")
             self.assertEqual(nav["decode_state"], "ready")
