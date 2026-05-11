@@ -39,7 +39,7 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
-    read_compiled_artifact,
+    read_compiled_artifact_cached,
     validate_cts_gis_source_layout,
     validate_compiled_artifact,
     write_compiled_artifact,
@@ -3258,7 +3258,7 @@ def build_portal_cts_gis_surface_bundle(
     compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
     source_layout = build_cts_gis_source_layout_summary(data_dir)
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
-    compiled_artifact = read_compiled_artifact(compiled_path)
+    compiled_artifact = read_compiled_artifact_cached(compiled_path)
     compiled_valid, compiled_issues = validate_compiled_artifact(
         compiled_artifact,
         expected_portal_scope_id=portal_scope.scope_id,
