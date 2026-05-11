@@ -257,6 +257,23 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         self._rows_metadata_cache[cache_key] = (signature, rows, metadata, None)
         return rows, metadata
 
+    def _prefetch_document_rows_and_metadata(self, paths: list[Path]) -> None:
+        cold_paths = [path for path in paths if str(path) not in self._rows_metadata_cache]
+        if len(paths) == 0 or len(cold_paths) <= max(1, len(paths) // 5):
+            return
+        from concurrent.futures import ThreadPoolExecutor
+
+        max_workers = min(8, len(cold_paths))
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            for _ in pool.map(self._safe_prefetch_one, cold_paths):
+                pass
+
+    def _safe_prefetch_one(self, path: Path) -> None:
+        try:
+            self._cached_read_document_rows_and_metadata(path)
+        except Exception:
+            pass
+
     def _cached_load_anchor_document(
         self,
         path: Path | None,
@@ -419,7 +436,9 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
                         )
                 if not source_dir.exists() or not source_dir.is_dir():
                     continue
-                for source_path in _iter_sandbox_source_files(source_dir, tool_id=public_tool_id):
+                _sandbox_paths = list(_iter_sandbox_source_files(source_dir, tool_id=public_tool_id))
+                self._prefetch_document_rows_and_metadata(_sandbox_paths)
+                for source_path in _sandbox_paths:
                     source_signature = self._path_signature(source_path)
                     anchor_signature = self._path_signature(anchor_file) if anchor_file is not None else (False, 0, 0)
                     document_id = _document_id_for_path(

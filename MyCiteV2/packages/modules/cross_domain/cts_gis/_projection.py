@@ -995,15 +995,19 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
     ]
     row_index = {row["datum_address"]: row for row in row_views}
     feature_index: dict[str, dict[str, Any]] = {}
+    reachable_by_row: dict[str, list[str]] = {}
+    for row in row_views:
+        if not _as_text(row.get("samras_node_id")):
+            continue
+        addresses = _reachable_row_addresses(row["datum_address"], row_index)
+        reachable_by_row[row["datum_address"]] = addresses or [row["datum_address"]]
 
     for row in row_views:
         node_id = _as_text(row.get("samras_node_id"))
         if not node_id:
             continue
 
-        reachable_addresses = _reachable_row_addresses(row["datum_address"], row_index)
-        if not reachable_addresses:
-            reachable_addresses = [row["datum_address"]]
+        reachable_addresses = reachable_by_row[row["datum_address"]]
 
         projection_summary = _projection_summary_for_row_addresses(reachable_addresses, row_index)
         projection_reason_codes = list(projection_summary.get("reason_codes") or [])
@@ -1117,7 +1121,7 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
         node_id = _as_text(row.get("samras_node_id"))
         if not node_id:
             continue
-        reachable_addresses = _reachable_row_addresses(row["datum_address"], row_index)
+        reachable_addresses = reachable_by_row[row["datum_address"]]
         feature_ids = []
         reachable_rows: list[dict[str, Any]] = []
         for address in reachable_addresses:

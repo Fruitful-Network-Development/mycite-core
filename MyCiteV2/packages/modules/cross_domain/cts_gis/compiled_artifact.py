@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+from collections import OrderedDict
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -334,6 +336,35 @@ def read_compiled_artifact(path: Path | None) -> dict[str, Any] | None:
     return payload if isinstance(payload, dict) else None
 
 
+_COMPILED_ARTIFACT_READ_CACHE: OrderedDict[tuple[str, int, int], dict[str, Any]] = OrderedDict()
+_COMPILED_ARTIFACT_READ_CACHE_MAX = 4
+
+
+def read_compiled_artifact_cached(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.exists() or not path.is_file():
+        return None
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key = (str(path), stat.st_mtime_ns, stat.st_size)
+    cached = _COMPILED_ARTIFACT_READ_CACHE.get(key)
+    if cached is not None:
+        _COMPILED_ARTIFACT_READ_CACHE.move_to_end(key)
+        return copy.deepcopy(cached)
+    payload = read_compiled_artifact(path)
+    if payload is None:
+        return None
+    _COMPILED_ARTIFACT_READ_CACHE[key] = copy.deepcopy(payload)
+    while len(_COMPILED_ARTIFACT_READ_CACHE) > _COMPILED_ARTIFACT_READ_CACHE_MAX:
+        _COMPILED_ARTIFACT_READ_CACHE.popitem(last=False)
+    return payload
+
+
+def evict_compiled_artifact_read_cache() -> None:
+    _COMPILED_ARTIFACT_READ_CACHE.clear()
+
+
 def write_compiled_artifact(path: Path | None, artifact: dict[str, Any]) -> Path | None:
     if path is None:
         return None
@@ -347,7 +378,9 @@ __all__ = [
     "build_cts_gis_source_layout_summary",
     "compiled_artifact_path",
     "cts_gis_source_root",
+    "evict_compiled_artifact_read_cache",
     "read_compiled_artifact",
+    "read_compiled_artifact_cached",
     "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
     "write_compiled_artifact",
