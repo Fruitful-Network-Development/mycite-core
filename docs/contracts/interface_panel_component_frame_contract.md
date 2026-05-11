@@ -47,7 +47,8 @@ the frozen state of sibling frames on the same tab.
   },
   "payload": { /* type-specific payload object */ },
   "frozen": true,
-  "render_key": "<string — determines re-render eligibility>"
+  "render_key": "<string — determines re-render eligibility>",
+  "tab_id": "<string, optional — restricts the frame to a single interface tab>"
 }
 ```
 
@@ -81,6 +82,14 @@ the frozen state of sibling frames on the same tab.
   attention/intention context). Example: `"3-2-3-17::profile::3-2-3-17"`.
   The server computes this; the client treats it as opaque. A changed render_key
   always causes re-render regardless of the frozen flag.
+
+- **tab_id** — Optional. When set, the frame renders only while the named interface
+  tab is active. When unset (or empty), the frame is tab-agnostic and renders in
+  any tab. Tab partitioning is performed by the renderer via
+  `filterFramesByTab(frames, activeTabId)`; runtimes do not need to split
+  `component_frames` into per-tab lists. Defense-in-depth: this prevents a frame
+  intended for one tab (e.g. a Diktataograph control) from leaking into another
+  tab's panel area if a runtime ever returns a mixed list.
 
 ---
 
@@ -403,6 +412,88 @@ is `action_kind = "engage_component_frame"` via `dispatchToolAction`. See
 
 ---
 
+## Component Dispatch Patterns
+
+Component renderers interact with the server via two paths. The correct path depends on
+whether the operation stays within the current surface context.
+
+### Path A — Tool Action (standard for component mutations)
+
+**Used for:**
+- Data mutations owned by the tool (assign sender, toggle subscription, save webhook)
+- Tool-local selection changes (select grantee, select tab, select domain)
+- Frame re-engagement (`engage_component_frame`)
+
+**Mechanism (JS):**
+```javascript
+// Standard form: dispatch via ctx.loadRuntimeView with action_kind
+var contract = asObject(surfacePayload.request_contract);
+ctx.loadRuntimeView(asText(contract.action_route), {
+  schema: asText(contract.action_schema),
+  action_kind: actionKind,
+  action_payload: actionPayload || {},
+  tool_state: asObject(surfacePayload.tool_state),
+});
+```
+
+**Route:** `surfacePayload.request_contract.action_route`
+
+**Rule:** Use Path A when the operation stays within the current surface and tool context.
+The surface reloads with updated `tool_state` and `action_result` in `surface_payload`.
+
+### Path B — NIMM Directive Envelope (for cross-surface mediation)
+
+**Used for:**
+- Surface navigation (change the active surface or spatial focus)
+- Cross-tool profile mediation (resolve a profile from another authority)
+- Staged mutations (write to staging area via NIMM `manipulate` verb)
+- Explicit user directives entered via the directive terminal
+
+**Mechanism (JS):**
+```javascript
+ctx.dispatchTransition({ kind: "nimm_directive", directive: {
+  verb: "mediate",
+  target_authority: "cts_gis",
+  datum_address: "1-1-2",
+}});
+```
+
+**Route:** `POST /portal/api/v2/shell`
+
+**Rule:** Use Path B when the operation changes surface, AITAS context, or triggers an
+authority mutation. This path is currently wired only from the workbench directive terminal.
+
+### Frame Initializers
+
+Frame `initializer` specs are **server-side metadata only**. They tell the server which
+mediation operation to perform when rebuilding a frame during a bundle build cycle.
+
+**Clients do NOT fire initializers.** Frame re-engagement is always Path A:
+```javascript
+// Engage button (rendered by PortalComponentLibrary):
+ctx.dispatchToolAction({ action_kind: "engage_component_frame", frame_id: frameId });
+```
+
+The server receives `engage_component_frame`, reads `initializer.intent` from the stored
+frame spec, and rebuilds the frame with fresh data. The `initializer` in the frame payload
+is a contract description for the server; the client treats it as opaque metadata.
+
+### Dispatch Boundary Heuristic
+
+> If the operation keeps you on the same surface and tool, use **Path A**.
+> If the operation causes a surface or context change, use **Path B**.
+
+FND-CSM examples (all Path A):
+- `assign_newsletter_sender` — mutates data owned by fnd_csm
+- `select_grantee` — changes tool-local selection state
+- `engage_component_frame` — triggers frame re-render within same surface
+
+CTS-GIS examples (all Path B from workbench terminal):
+- `mediate;cts_gis:1-1-2` — resolves administrative profile (cross-tool mediation)
+- `navigate;cts_gis:3-2-3-17` — changes spatial focus
+
+---
+
 ## Backwards Compatibility
 
 The `component_frames` field is additive alongside the existing `garland_split_projection`
@@ -458,3 +549,29 @@ hardcode this mapping inline.
 
 **Format constant:** `NIMM_DIRECTIVE_TEXT_FORMAT` in `nimm/directives.py` holds the
 human-readable format string used in error messages throughout the system.
+
+---
+
+## Garland Wireframe Reference Composition
+
+The CTS-GIS Garland tab is the reference implementation of a tab built from a single
+top-level `component_group` whose `children` are the six modular component shells
+shown in the user-facing wireframe. Each shell is built with the matching reusable
+builder in `MyCiteV2/packages/state_machine/nimm/mediate_handlers.py`. The top-level
+group carries `tab_id="garland"` so the renderer scopes the entire composition to
+the Garland tab.
+
+| Wireframe slot | Frame id | Builder | Notes |
+|---|---|---|---|
+| Administrative Node Profile (map + meta + DISTRICT_LIST) | `administrative_node_profile` | `build_profile_component_frame` | `geospatial_frame` for the OH-state map, `collections` carries `DISTRICT_LIST`. |
+| Administrative Log Entry Listing | `administrative_log_entry_listing` | `build_listing_component_frame` | Empty-row shell; sixteen rows materialize when the source is wired. |
+| Precinct Profile (map + meta + PRECINCT_LIST) | `precinct_profile` | `build_profile_component_frame` | `geospatial_frame` for the district zoom, `collections` carries `PRECINCT_LIST`. |
+| Log Listing Of Other Voters | `log_listing_other_voters` | `build_listing_component_frame` | Empty-row shell until the voter source is wired. |
+| Election History / Election Types Across Time | `election_history` | `build_chronology_matrix_component_frame` | Row headers = district / referendum / special; column headers = election years. |
+| Voter Profile | `voter_profile` | `build_profile_component_frame` | No geospatial subject_slot; extensive `fields` list including ballot list and addresses. |
+
+These shells are intentionally empty until their respective sources (administrative
+log, election history, voter / other-voter log, precinct list) are wired. The
+composition itself — frame ids, builders, layout slots, and tab partitioning —
+is part of the contract and should be the model copied by future tools that
+need a multi-pane interface tab.

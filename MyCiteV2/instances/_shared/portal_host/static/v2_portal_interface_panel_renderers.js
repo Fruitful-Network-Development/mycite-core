@@ -1094,10 +1094,10 @@
   function normalizeCtsGisInterfaceBody(interfaceBody) {
     var body = interfaceBody || {};
     var fallbackTabs = [
-      { id: "diktataograph", label: "Diktataograph", active: true },
-      { id: "garland", label: "Garland" },
+      { id: "garland", label: "Garland", active: true },
+      { id: "diktataograph", label: "Diktataograph" },
     ];
-    if (body.navigation_canvas && body.garland_split_projection) {
+    if (body.navigation_canvas) {
       var navCanvas = body.navigation_canvas || {};
       body.navigation_canvas = Object.assign({}, navCanvas, {
         mode: navCanvas.mode || "directory_dropdowns",
@@ -1108,28 +1108,6 @@
         active_path: navCanvas.active_path || [],
         active_node_id: navCanvas.active_node_id || "",
       });
-      body.garland_split_projection.geospatial_projection = Object.assign(
-        {
-          projection_source: "none",
-          projection_health: { state: "empty", reason_codes: [] },
-          fallback_reason_codes: [],
-          focus_bounds: [],
-          decode_summary: {
-            reference_binding_count: 0,
-            decoded_coordinate_count: 0,
-            failed_token_count: 0,
-          },
-          warnings: [],
-        },
-        body.garland_split_projection.geospatial_projection || {}
-      );
-      body.garland_split_projection.profile_projection = Object.assign(
-        {
-          has_profile_state: false,
-          district_precinct_collections: [],
-        },
-        body.garland_split_projection.profile_projection || {}
-      );
       body.staging_widget = Object.assign(
         {
           title: "Staged Insert",
@@ -1145,16 +1123,21 @@
         },
         body.staging_widget || {}
       );
+      body.component_frames = Array.isArray(body.component_frames) ? body.component_frames : [];
       body.tab_host = asText(body.tab_host) || "shared_interface_tabs";
+      body.default_tab_id = asText(body.default_tab_id) || "garland";
+      body.layout = body.layout || "garland_tabbed";
+      body.narrow_layout = body.narrow_layout || "garland_tabbed";
+      body.tabs = normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id);
       return body;
     }
     var garland = body.garland || {};
     return {
       tab_host: "shared_interface_tabs",
-      tabs: normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "diktataograph"),
-      default_tab_id: asText(body.default_tab_id) || "diktataograph",
-      layout: body.layout || "diktataograph_garland_split",
-      narrow_layout: body.narrow_layout || "diktataograph_garland_stack",
+      tabs: normalizePresentationTabs(body.tabs, fallbackTabs, body.default_tab_id || "garland"),
+      default_tab_id: asText(body.default_tab_id) || "garland",
+      layout: body.layout || "garland_tabbed",
+      narrow_layout: body.narrow_layout || "garland_tabbed",
       feature_flags: body.feature_flags || {},
       navigation_canvas: {
         kind: "diktataograph_navigation_canvas",
@@ -1734,12 +1717,12 @@
     var interfaceTabs = normalizePresentationTabs(
       interfaceBody.tabs,
       [
-        { id: "diktataograph", label: navigationCanvas.title || "Diktataograph", active: true },
-        { id: "garland", label: garlandSplit.title || "Garland" },
+        { id: "garland", label: garlandSplit.title || "Garland", active: true },
+        { id: "diktataograph", label: navigationCanvas.title || "Diktataograph" },
       ],
-      existingActiveTabId || interfaceBody.default_tab_id || "diktataograph"
+      existingActiveTabId || interfaceBody.default_tab_id || "garland"
     );
-    var activeTabId = activePresentationTabId(interfaceTabs, "diktataograph");
+    var activeTabId = activePresentationTabId(interfaceTabs, "garland");
     var geospatialProjection = garlandSplit.geospatial_projection || {};
     var profileProjection = garlandSplit.profile_projection || {};
     var districtToggle = profileProjection.district_overlay_toggle || {};
@@ -1890,59 +1873,41 @@
       "</section>" +
       renderCtsGisStagingWidget(stagingWidget) +
       "</section>";
+    // Partition frames by tab so a frame tagged tab_id="diktataograph" does not
+    // bleed into the Garland panel and vice versa. Untagged frames render in
+    // any tab (legacy / tab-agnostic frames).
+    var garlandFrames = filterFramesByTab(componentFrames, "garland");
     var garlandPanel;
-    var useComponentFrames = componentFrames.length > 0 && !!(window.PortalComponentLibrary);
-    if (useComponentFrames) {
-      // Component frame path: delegate garland content to the component library.
+    var hasComponentLibrary = !!(window.PortalComponentLibrary);
+    if (garlandFrames.length > 0 && hasComponentLibrary) {
       var renderFrameList = typeof window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST === "function"
         ? window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST
         : window.PortalComponentLibrary.renderComponentFrameList;
       garlandPanel =
         '<section class="v2-card cts-gis-pane cts-gis-pane--garland cts-gis-pane--frames">' +
         '<header class="cts-gis-pane__header"><h3>Garland</h3></header>' +
-        renderFrameList(componentFrames) +
+        renderFrameList(garlandFrames) +
         "</section>";
     } else {
-      // Legacy fallback: render from garland_split_projection.
       garlandPanel =
-        '<section class="v2-card cts-gis-pane cts-gis-pane--garland">' +
-        '<header class="cts-gis-pane__header"><h3>' +
-        escapeHtml(garlandSplit.title || "Garland") +
-        "</h3><p>" +
-        escapeHtml(garlandSplit.summary || "") +
-        "</p></header>" +
-        '<div class="cts-gis-garlandSplit cts-gis-garlandSplit--stacked">' +
-        '<section class="cts-gis-garlandSplit__geospatial"><h4>' +
-        escapeHtml(geospatialProjection.title || "Geospatial Projection") +
-        "</h4>" +
-        geospatialMarkup +
-        "</section>" +
-        '<section class="cts-gis-garlandSplit__profile"><h4>' +
-        escapeHtml(profileProjection.title || "Profile Projection") +
-        "</h4>" +
-        profileMarkup +
-        "</section>" +
-        "</div>" +
+        '<section class="v2-card cts-gis-pane cts-gis-pane--garland cts-gis-pane--empty">' +
+        '<header class="cts-gis-pane__header"><h3>Garland</h3></header>' +
+        '<p class="cts-gis-pane__empty">Garland component frames are not available yet.</p>' +
         "</section>";
     }
-    var isSplitLayout = (interfaceBody.layout === "diktataograph_garland_split");
     target.innerHTML =
-      '<div class="system-tool-interface cts-gis-interface' +
-      (isSplitLayout ? " cts-gis-interface--split" : "") + '">' +
+      '<div class="system-tool-interface cts-gis-interface">' +
       renderPresentationTabs(interfaceTabs) +
       '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
-      escapeHtml(interfaceBody.layout || "diktataograph_garland_split") +
+      escapeHtml(interfaceBody.layout || "garland_tabbed") +
       '" data-cts-gis-narrow-layout="' +
-      escapeHtml(interfaceBody.narrow_layout || "diktataograph_garland_stack") +
+      escapeHtml(interfaceBody.narrow_layout || "garland_tabbed") +
       '">' +
-      (isSplitLayout
-        ? '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--diktataograph">' + diktataographPanel + '</div>' +
-          '<div class="cts-gis-interface__splitPanel cts-gis-interface__splitPanel--garland">' + garlandPanel + '</div>'
-        : renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
-          renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel")) +
+      renderPresentationTabPanel("garland", activeTabId, garlandPanel, "cts-gis-interface__tabPanel") +
+      renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
       "</div>" +
       "</div>";
-    if (!isSplitLayout) bindPresentationTabs(target);
+    bindPresentationTabs(target);
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
     bindNavigationCanvasEnhancement(target, navMode === "directory_dropdowns");
@@ -1950,9 +1915,17 @@
     bindStagedDiktataographEnhancement(target);
     bindCtsGisStagingWidget(target, ctx, stagingWidget);
     bindGeospatialZoomControls(target, ctx, geospatialProjection);
-    if (useComponentFrames && typeof window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT === "function") {
+    if (garlandFrames.length > 0 && hasComponentLibrary && typeof window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT === "function") {
       window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT(target, ctx);
     }
+  }
+
+  function filterFramesByTab(frames, activeTabId) {
+    if (!Array.isArray(frames)) return [];
+    return frames.filter(function (frame) {
+      var tabId = frame && frame.tab_id;
+      return !tabId || tabId === activeTabId;
+    });
   }
 
   function renderGenericInterfacePanelSurface(target, region, surfacePayload) {

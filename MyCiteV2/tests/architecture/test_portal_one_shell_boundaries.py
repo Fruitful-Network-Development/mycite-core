@@ -746,9 +746,10 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         self.assertIn("existingActiveTabId || interfaceBody.default_tab_id", interface_panel_source)
         self.assertNotIn("interfaceBody.default_tab_id || existingActiveTabId", interface_panel_source)
 
-        # CTS-GIS renderer must also read DOM state before falling back to server default
+        # CTS-GIS renderer must also read DOM state before falling back to server default.
+        # Garland is the canonical first/default tab; the literal fallback is "garland".
         self.assertIn(
-            'existingActiveTabId || interfaceBody.default_tab_id || "diktataograph"',
+            'existingActiveTabId || interfaceBody.default_tab_id || "garland"',
             cts_gis_renderer_source,
         )
         # CTS-GIS renderer must read the active tab from the DOM target before normalizing

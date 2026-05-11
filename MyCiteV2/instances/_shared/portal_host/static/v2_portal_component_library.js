@@ -501,6 +501,36 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Component action dispatch helper (Path A standard)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * buildComponentActionDispatch(ctx, surfacePayload, actionKind, actionPayload)
+   *
+   * Standard Path A dispatch for component-level mutations and selection changes.
+   * Reads route and schema from surfacePayload.request_contract; no hardcoded values.
+   * Returns a zero-argument function that fires the action when called.
+   *
+   * Usage: button.addEventListener("click", buildComponentActionDispatch(ctx, sp, "kind", {data}));
+   */
+  function buildComponentActionDispatch(ctx, surfacePayload, actionKind, actionPayload) {
+    var contract = asObject(surfacePayload && surfacePayload.request_contract);
+    var route = asText(contract.action_route || contract.route);
+    var schema = asText(contract.action_schema);
+    var toolState = asObject(surfacePayload && surfacePayload.tool_state);
+    return function dispatch() {
+      if (typeof ctx.loadRuntimeView === "function") {
+        ctx.loadRuntimeView(route, {
+          schema: schema,
+          action_kind: actionKind,
+          action_payload: asObject(actionPayload),
+          tool_state: toolState,
+        });
+      }
+    };
+  }
+
+  // ---------------------------------------------------------------------------
   // Export
   // ---------------------------------------------------------------------------
 
@@ -516,6 +546,7 @@
     renderChronologyMatrixComponent: renderChronologyMatrixComponent,
     renderDocumentCard: renderDocumentCard,
     renderDatumRowItem: renderDatumRowItem,
+    buildComponentActionDispatch: buildComponentActionDispatch,
   };
 
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {

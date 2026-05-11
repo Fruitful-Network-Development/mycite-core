@@ -292,5 +292,98 @@ class FilesystemSystemDatumStoreAdapterTests(unittest.TestCase):
             })
 
 
+    def test_cold_cache_prefetch_primes_rows_metadata_cache_in_parallel(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]}) + "\n",
+                encoding="utf-8",
+            )
+            source_paths: list[Path] = []
+            for index in range(12):
+                source_path = (
+                    data_dir
+                    / "sandbox"
+                    / "cts-gis"
+                    / "sources"
+                    / f"sc.example.{index:02d}.json"
+                )
+                source_path.write_text(
+                    json.dumps(
+                        {f"4-2-{index}": [["4-2-1", "rf.3-1-3", "HERE"], ["row"]]}
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                source_paths.append(source_path)
+
+            adapter = FilesystemSystemDatumStoreAdapter(data_dir)
+            payload = adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+
+            sandbox_source_documents = [
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source" and not document["is_anchor"]
+            ]
+            self.assertEqual(len(sandbox_source_documents), len(source_paths))
+            for path in source_paths:
+                self.assertIn(str(path), adapter._rows_metadata_cache)
+
+    def test_warm_cache_skips_prefetch_dispatch(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            data_dir = Path(temp_dir)
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps({"0-0-1": [["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]]}) + "\n",
+                encoding="utf-8",
+            )
+            (data_dir / "sandbox" / "cts-gis" / "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json").write_text(
+                json.dumps({"3-1-3": [["3-1-3", "2-1-1", "0"], ["title-babelette"]]}) + "\n",
+                encoding="utf-8",
+            )
+            for index in range(5):
+                (
+                    data_dir
+                    / "sandbox"
+                    / "cts-gis"
+                    / "sources"
+                    / f"sc.example.{index:02d}.json"
+                ).write_text(
+                    json.dumps(
+                        {f"4-2-{index}": [["4-2-1", "rf.3-1-3", "HERE"], ["row"]]}
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+
+            adapter = FilesystemSystemDatumStoreAdapter(data_dir)
+            adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            )
+            warm_cache_keys = set(adapter._rows_metadata_cache.keys())
+
+            payload = adapter.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+            ).to_dict()
+            sandbox_source_documents = [
+                document
+                for document in payload["documents"]
+                if document["source_kind"] == "sandbox_source" and not document["is_anchor"]
+            ]
+            self.assertEqual(len(sandbox_source_documents), 5)
+            self.assertEqual(set(adapter._rows_metadata_cache.keys()), warm_cache_keys)
+
+
 if __name__ == "__main__":
     unittest.main()

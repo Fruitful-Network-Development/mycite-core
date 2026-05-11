@@ -103,6 +103,8 @@ class SqliteSystemDatumStoreAdapter(
         self._db_file = Path(db_file)
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._allow_legacy_writes_flag = bool(allow_legacy_writes)
+        # Per-instance catalog cache: dict[tenant_id, (db_mtime_ns, catalog_result)]
+        self._catalog_cache: dict[str, tuple[int, Any]] = {}
 
     def _connect(self):
         return open_sqlite(self._db_file)
@@ -338,6 +340,12 @@ class SqliteSystemDatumStoreAdapter(
                 tenant_domain=tenant_domain,
             )
 
+    def _db_mtime_ns(self) -> int:
+        try:
+            return int(self._db_file.stat().st_mtime_ns)
+        except OSError:
+            return 0
+
     def read_authoritative_datum_documents(
         self,
         request: AuthoritativeDatumDocumentRequest,
@@ -347,22 +355,32 @@ class SqliteSystemDatumStoreAdapter(
             if isinstance(request, AuthoritativeDatumDocumentRequest)
             else AuthoritativeDatumDocumentRequest.from_dict(request)
         )
+        tenant_id = normalized_request.tenant_id
+        db_mtime = self._db_mtime_ns()
+        cached = self._catalog_cache.get(tenant_id)
+        if cached is not None and cached[0] == db_mtime:
+            return cached[1]
+
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT payload_json FROM authoritative_catalog_snapshots WHERE tenant_id = ?",
-                (normalized_request.tenant_id,),
+                (tenant_id,),
             ).fetchone()
             if row is None:
-                return AuthoritativeDatumDocumentCatalogResult(
-                    tenant_id=normalized_request.tenant_id,
+                result = AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id=tenant_id,
                     documents=(),
                     source_files={},
                     readiness_status={"authoritative_catalog": "missing"},
                     warnings=("sql_authoritative_catalog_missing",),
                 )
+                self._catalog_cache[tenant_id] = (db_mtime, result)
+                return result
             payload = loads_json(row["payload_json"])
-            self._project_canonical_document_ids(connection, normalized_request.tenant_id, payload)
-        return AuthoritativeDatumDocumentCatalogResult.from_dict(payload)
+            self._project_canonical_document_ids(connection, tenant_id, payload)
+        result = AuthoritativeDatumDocumentCatalogResult.from_dict(payload)
+        self._catalog_cache[tenant_id] = (db_mtime, result)
+        return result
 
     def _project_canonical_document_ids(
         self,

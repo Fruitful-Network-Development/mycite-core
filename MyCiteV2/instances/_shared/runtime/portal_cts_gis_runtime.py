@@ -106,48 +106,56 @@ _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
 _DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
 _DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
-_COMPILED_SERVICE_SURFACE_CACHE: OrderedDict[tuple[str, str], dict[str, Any]] = OrderedDict()
+# Workbench projection cache: keyed by (db_file_str, tenant_id) → (db_mtime_ns, bundle_dict)
+_WORKBENCH_PROJECTION_CACHE: dict[tuple[str, str], tuple[int, dict]] = {}
+# Service-surface-from-compiled-artifact cache: keyed by
+# (artifact_path_str, artifact_signature, canonical_tool_state_sha1) → service_surface_dict
+_COMPILED_SERVICE_SURFACE_CACHE: "OrderedDict[tuple[str, str, str], dict[str, Any]]" = OrderedDict()
 _COMPILED_SERVICE_SURFACE_CACHE_MAX = 32
 
 
+def _compiled_artifact_signature(path: Path | None) -> str:
+    if path is None:
+        return ""
+    try:
+        stat = path.stat()
+    except OSError:
+        return ""
+    return f"{int(stat.st_mtime_ns)}:{int(stat.st_size)}"
+
+
+def _canonical_tool_state(requested_tool_state: dict[str, Any] | None) -> dict[str, Any]:
+    payload = requested_tool_state if isinstance(requested_tool_state, dict) else {}
+    aitas = payload.get("aitas") if isinstance(payload.get("aitas"), dict) else {}
+    source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+    selection = payload.get("selection") if isinstance(payload.get("selection"), dict) else {}
+    staged_insert = payload.get("staged_insert") if isinstance(payload.get("staged_insert"), dict) else {}
+    return {
+        "selected_node_id": _as_text(payload.get("selected_node_id")),
+        "active_path": [_as_text(item) for item in list(payload.get("active_path") or []) if _as_text(item)],
+        "aitas": {
+            "time_directive": _as_text(aitas.get("time_directive")),
+            "intention_rule_id": _as_text(aitas.get("intention_rule_id")),
+        },
+        "source": {
+            "attention_document_id": _as_text(source.get("attention_document_id")),
+            "precinct_district_overlay_enabled": bool(source.get("precinct_district_overlay_enabled")),
+        },
+        "selection": {
+            "selected_row_address": _as_text(selection.get("selected_row_address")),
+            "selected_feature_id": _as_text(selection.get("selected_feature_id")),
+        },
+        "staged_insert": {
+            "staged_insert_id": _as_text(staged_insert.get("staged_insert_id")),
+            "lifecycle_state": _as_text(staged_insert.get("lifecycle_state")),
+        },
+    }
+
+
 def _canonical_tool_state_hash(requested_tool_state: dict[str, Any] | None) -> str:
-    encoded = json.dumps(requested_tool_state or {}, sort_keys=True, default=str)
-    return hashlib.sha1(encoded.encode("utf-8")).hexdigest()
-
-
-def _compiled_service_surface_cache_key(
-    *,
-    compiled_artifact: dict[str, Any],
-    requested_tool_state: dict[str, Any] | None,
-) -> str | None:
-    fingerprint = ""
-    source_layout = compiled_artifact.get("source_layout")
-    if isinstance(source_layout, dict):
-        fingerprint = str(source_layout.get("fingerprint") or "")
-    if not fingerprint:
-        return None
-    return f"{fingerprint}:{_canonical_tool_state_hash(requested_tool_state)}"
-
-
-def _service_surface_from_compiled_artifact_cached(
-    compiled_artifact: dict[str, Any],
-    requested_tool_state: dict[str, Any] | None,
-) -> dict[str, Any]:
-    cache_key = _compiled_service_surface_cache_key(
-        compiled_artifact=compiled_artifact,
-        requested_tool_state=requested_tool_state,
-    )
-    if cache_key is None:
-        return _service_surface_from_compiled_artifact(compiled_artifact)
-    cached = _COMPILED_SERVICE_SURFACE_CACHE.get(cache_key)
-    if cached is not None:
-        _COMPILED_SERVICE_SURFACE_CACHE.move_to_end(cache_key)
-        return copy.deepcopy(cached)
-    fresh = _service_surface_from_compiled_artifact(compiled_artifact)
-    _COMPILED_SERVICE_SURFACE_CACHE[cache_key] = copy.deepcopy(fresh)
-    while len(_COMPILED_SERVICE_SURFACE_CACHE) > _COMPILED_SERVICE_SURFACE_CACHE_MAX:
-        _COMPILED_SERVICE_SURFACE_CACHE.popitem(last=False)
-    return fresh
+    canonical = _canonical_tool_state(requested_tool_state)
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha1(encoded).hexdigest()
 
 
 def evict_compiled_service_surface_cache() -> None:
@@ -3285,23 +3293,18 @@ def _build_cts_gis_structured_interface_body(
         lens_key=_frame_lens("garland_component_group"),
         layout="garland_wireframe",
         initializer_intent="compose_garland_component_shells",
+        tab_id="garland",
     )
 
     return {
         "tab_host": "shared_interface_tabs",
-        "default_tab_id": "diktataograph",
+        "default_tab_id": "garland",
         "tabs": [
-            {
-                "id": "diktataograph",
-                "label": "Diktataograph",
-                "summary": _as_text(navigation_canvas.get("summary")) or "Magnitude-derived directory navigation for CTS-GIS.",
-                "active": True,
-            },
             {
                 "id": "garland",
                 "label": "Garland",
                 "summary": "Correlated projection surface that shows provenance, decode health, and document context for the selected SAMRAS node.",
-                "active": False,
+                "active": True,
                 "initializer": {
                     "verb": "mediate",
                     "target_authority": "cts_gis",
@@ -3309,9 +3312,15 @@ def _build_cts_gis_structured_interface_body(
                     "intent": "resolve_profile_for_attention",
                 },
             },
+            {
+                "id": "diktataograph",
+                "label": "Diktataograph",
+                "summary": _as_text(navigation_canvas.get("summary")) or "Magnitude-derived directory navigation for CTS-GIS.",
+                "active": False,
+            },
         ],
-        "layout": "diktataograph_garland_split",
-        "narrow_layout": "diktataograph_garland_stack",
+        "layout": "garland_tabbed",
+        "narrow_layout": "garland_tabbed",
         "navigation_canvas": navigation_canvas,
         "staging_widget": _cts_gis_staging_widget(
             resolved_tool_state=resolved_tool_state,
@@ -3426,10 +3435,21 @@ def _hydrate_compiled_workbench_documents(
         return
     if datum_store is None:
         return
-    projection_bundle = CtsGisReadOnlyService(datum_store).read_projection_bundle(
-        _as_text(tenant_id) or "fnd",
-        project_all_documents=False,
-    )
+
+    db_file_str = str(datum_store._db_file)
+    tenant_key = _as_text(tenant_id) or "fnd"
+    cache_key = (db_file_str, tenant_key)
+    db_mtime = datum_store._db_mtime_ns()
+    cached = _WORKBENCH_PROJECTION_CACHE.get(cache_key)
+    if cached is not None and cached[0] == db_mtime:
+        projection_bundle = cached[1]
+    else:
+        projection_bundle = CtsGisReadOnlyService(datum_store).read_projection_bundle(
+            tenant_key,
+            project_all_documents=False,
+        )
+        _WORKBENCH_PROJECTION_CACHE[cache_key] = (db_mtime, projection_bundle)
+
     hydrated_documents = list(projection_bundle.get("workbench_documents") or [])
     if hydrated_documents:
         service_surface["workbench_documents"] = hydrated_documents
@@ -3695,19 +3715,34 @@ def build_portal_cts_gis_surface_bundle(
             base_shell_request=tool_shell_request_base,
         )
         service_surface_started_at = perf_counter()
-        service_surface = (
-            _read_live_service_surface(
+        if _strict_projection_context_differs(
+            compiled_artifact=compiled_artifact,
+            requested_tool_state=requested_tool_state,
+        ):
+            service_surface = _read_live_service_surface(
                 portal_scope=portal_scope,
                 datum_store=datum_store,
                 requested_tool_state=requested_tool_state,
                 request_payload=normalized_request_payload,
             )
-            if _strict_projection_context_differs(
-                compiled_artifact=compiled_artifact,
-                requested_tool_state=requested_tool_state,
+        else:
+            cache_key = (
+                str(compiled_path) if compiled_path is not None else "",
+                _compiled_artifact_signature(compiled_path),
+                _canonical_tool_state_hash(requested_tool_state),
             )
-            else _service_surface_from_compiled_artifact_cached(compiled_artifact, requested_tool_state)
-        )
+            cached_surface = (
+                _COMPILED_SERVICE_SURFACE_CACHE.get(cache_key) if cache_key[1] else None
+            )
+            if cached_surface is not None:
+                service_surface = copy.deepcopy(cached_surface)
+                _COMPILED_SERVICE_SURFACE_CACHE.move_to_end(cache_key)
+            else:
+                service_surface = _service_surface_from_compiled_artifact(compiled_artifact)
+                if cache_key[1]:
+                    _COMPILED_SERVICE_SURFACE_CACHE[cache_key] = copy.deepcopy(service_surface)
+                    while len(_COMPILED_SERVICE_SURFACE_CACHE) > _COMPILED_SERVICE_SURFACE_CACHE_MAX:
+                        _COMPILED_SERVICE_SURFACE_CACHE.popitem(last=False)
         _hydrate_compiled_workbench_documents(
             service_surface=service_surface,
             datum_store=datum_store,
@@ -3935,7 +3970,6 @@ def build_portal_cts_gis_surface_bundle(
         "nimm_envelope": dict(_staged_insert_state(resolved_tool_state.get("staged_insert")).get("compiled_nimm_envelope") or {}),
         "action_result": action_result,
         "source_evidence": source_evidence_public,
-        "navigation_model": dict(navigation_canvas or {}),
         "projection_model": projection_model_public,
         "evidence_model": {
             "source_evidence": source_evidence_public,

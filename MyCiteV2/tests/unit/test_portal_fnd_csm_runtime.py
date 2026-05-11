@@ -14,10 +14,15 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
     _apply_fnd_csm_action,
     _build_analytics_tab,
+    _build_analytics_component_group,
+    _build_email_component_group,
+    _build_newsletter_component_group,
     _build_newsletter_tab,
+    _build_paypal_component_group,
     _build_paypal_tab,
+    _fnd_csm_render_key,
     _load_grantee_profiles,
-    _normalize_tool_state,
+    _normalize_fnd_csm_tool_state,
     build_portal_fnd_csm_surface_bundle,
 )
 from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
@@ -180,7 +185,7 @@ class FndCsmRuntimeActionTests(unittest.TestCase):
         self.assertEqual(result["status"], "accepted")
 
     def test_assign_newsletter_sender_rejected_when_missing_required_fields(self) -> None:
-        tool_state = _normalize_tool_state({})
+        tool_state = _normalize_fnd_csm_tool_state({})
         _, result = _apply_fnd_csm_action(
             action_kind="assign_newsletter_sender",
             action_payload={"domain": ""},
@@ -190,7 +195,7 @@ class FndCsmRuntimeActionTests(unittest.TestCase):
         self.assertEqual(result["status"], "rejected")
 
     def test_update_contact_subscription_rejected_when_missing_fields(self) -> None:
-        tool_state = _normalize_tool_state({})
+        tool_state = _normalize_fnd_csm_tool_state({})
         _, result = _apply_fnd_csm_action(
             action_kind="update_contact_subscription",
             action_payload={},
@@ -270,6 +275,119 @@ class FndCsmRuntimeBundleTests(unittest.TestCase):
             self.assertEqual(bundle["control_panel"]["family_contract"]["family"], "directive_panel")
             self.assertEqual(bundle["workbench"]["family_contract"]["family"], "reflective_workspace")
             self.assertEqual(bundle["interface_panel"]["family_contract"]["family"], "presentation_surface")
+
+
+class FndCsmComponentFrameTests(unittest.TestCase):
+    """Tests for canonical component frame builder functions."""
+
+    def test_email_frames_include_mailboxes_characteristic_set(self) -> None:
+        email_tab = {
+            "profiles": [{"send_as": "info@ex.com", "role": "admin", "lifecycle": "active", "inbound": "enabled"}],
+            "domain_record": {},
+        }
+        group = _build_email_component_group(email_tab, "g1", "ex.com", "")
+        self.assertEqual(group["component_type"], "component_group")
+        self.assertEqual(group["frame_id"], "fnd_csm.tab.email")
+        child_ids = [c["frame_id"] for c in group["payload"]["children"]]
+        self.assertIn("fnd_csm.email.mailboxes", child_ids)
+
+    def test_analytics_frames_include_summary_and_events(self) -> None:
+        analytics_tab = {
+            "summary": {"page_view": 5, "form_submit": 2, "ops_probe": 0, "other": 1},
+            "recent_events": [{"event_type": "page_view", "path": "/", "timestamp": "2026-05-01T00:00:00Z"}],
+        }
+        group = _build_analytics_component_group(analytics_tab, "g1", "ex.com", "")
+        child_ids = [c["frame_id"] for c in group["payload"]["children"]]
+        self.assertIn("fnd_csm.analytics.summary", child_ids)
+        self.assertIn("fnd_csm.analytics.events", child_ids)
+
+    def test_newsletter_frames_include_sender_and_contacts(self) -> None:
+        nl_tab = {
+            "current_sender": "info@ex.com",
+            "sender_options": ["info@ex.com"],
+            "contact_rows": [],
+            "subscribed_count": 0,
+            "unsubscribed_count": 0,
+        }
+        group = _build_newsletter_component_group(nl_tab, "g1", "ex.com", "")
+        child_ids = [c["frame_id"] for c in group["payload"]["children"]]
+        self.assertIn("fnd_csm.newsletter.sender", child_ids)
+        self.assertIn("fnd_csm.newsletter.contacts", child_ids)
+
+    def test_paypal_frames_include_webhook_and_orders(self) -> None:
+        paypal_tab = {"webhook_url": "", "orders": []}
+        group = _build_paypal_component_group(paypal_tab, "g1", "ex.com", "")
+        child_ids = [c["frame_id"] for c in group["payload"]["children"]]
+        self.assertIn("fnd_csm.paypal.webhook", child_ids)
+        self.assertIn("fnd_csm.paypal.orders", child_ids)
+
+    def test_engage_frame_action_sets_engaged_frame_id_in_tool_state(self) -> None:
+        tool_state = _normalize_fnd_csm_tool_state({})
+        next_state, result = _apply_fnd_csm_action(
+            action_kind="engage_component_frame",
+            action_payload={"frame_id": "fnd_csm.tab.email"},
+            tool_state=tool_state,
+            private_dir=None,
+        )
+        self.assertEqual(next_state["engaged_frame_id"], "fnd_csm.tab.email")
+        self.assertEqual(result["status"], "accepted")
+
+    def test_engaged_frame_id_produces_different_render_key_for_targeted_frame(self) -> None:
+        base_rk = _fnd_csm_render_key("g1", "ex.com", "fnd_csm.tab.email", "")
+        engaged_rk = _fnd_csm_render_key("g1", "ex.com", "fnd_csm.tab.email", "fnd_csm.tab.email")
+        other_rk = _fnd_csm_render_key("g1", "ex.com", "fnd_csm.tab.analytics", "fnd_csm.tab.email")
+        self.assertNotEqual(base_rk, engaged_rk)
+        self.assertEqual(other_rk, _fnd_csm_render_key("g1", "ex.com", "fnd_csm.tab.analytics", ""))
+
+    def test_bundle_interface_panel_has_four_component_group_frames(self) -> None:
+        with TemporaryDirectory() as tmp:
+            private_dir = Path(tmp)
+            fnd_csm_dir = private_dir / "utilities" / "tools" / "fnd-csm"
+            _write(fnd_csm_dir / "grantee.fnd.tff.json", _grantee("tff", "TFF", ["tff.com"], ["info@tff.com"]))
+            portal_scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+            shell_state = initial_portal_shell_state(
+                surface_id=FND_CSM_TOOL_SURFACE_ID,
+                portal_scope=portal_scope.to_dict(),
+            )
+            bundle = build_portal_fnd_csm_surface_bundle(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                private_dir=private_dir,
+                webapps_root=None,
+                request_payload={},
+                tool_exposure_policy=None,
+            )
+            frames = bundle["interface_panel"].get("component_frames", [])
+            self.assertEqual(len(frames), 4)
+            frame_ids = {f["frame_id"] for f in frames}
+            self.assertEqual(frame_ids, {
+                "fnd_csm.tab.email",
+                "fnd_csm.tab.analytics",
+                "fnd_csm.tab.newsletter",
+                "fnd_csm.tab.paypal",
+            })
+
+    def test_bundle_interface_panel_tabs_all_have_initializers(self) -> None:
+        with TemporaryDirectory() as tmp:
+            portal_scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+            shell_state = initial_portal_shell_state(
+                surface_id=FND_CSM_TOOL_SURFACE_ID,
+                portal_scope=portal_scope.to_dict(),
+            )
+            bundle = build_portal_fnd_csm_surface_bundle(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                private_dir=tmp,
+                webapps_root=None,
+                request_payload={},
+                tool_exposure_policy=None,
+            )
+            tabs = bundle["interface_panel"].get("tabs", [])
+            self.assertEqual(len(tabs), 4)
+            for tab in tabs:
+                self.assertIn("initializer", tab, f"Tab {tab.get('id')} missing initializer")
+                self.assertEqual(tab["initializer"]["verb"], "mediate")
+                self.assertEqual(tab["initializer"]["target_authority"], "fnd_csm")
 
 
 if __name__ == "__main__":
