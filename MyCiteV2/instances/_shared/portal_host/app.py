@@ -577,7 +577,52 @@ def _runtime_response(envelope: dict[str, Any]) -> tuple[Any, int]:
             ),
             502,
         )
-    return jsonify(envelope), _runtime_status_code(envelope)
+    response = jsonify(envelope)
+    server_timing = _envelope_server_timing(envelope)
+    if server_timing:
+        response.headers["Server-Timing"] = server_timing
+    return response, _runtime_status_code(envelope)
+
+
+def _envelope_server_timing(envelope: dict[str, Any]) -> str:
+    timings = _extract_phase_timings_ms(envelope)
+    if not timings:
+        return ""
+    parts: list[str] = []
+    for name, duration in timings.items():
+        try:
+            value = float(duration)
+        except (TypeError, ValueError):
+            continue
+        safe_name = "".join(ch if ch.isalnum() or ch in "_-" else "_" for ch in str(name))
+        if not safe_name:
+            continue
+        parts.append(f"{safe_name};dur={value:.3f}")
+    return ", ".join(parts)
+
+
+def _extract_phase_timings_ms(envelope: dict[str, Any]) -> dict[str, Any]:
+    surface_payload = envelope.get("surface_payload")
+    if isinstance(surface_payload, dict):
+        diagnostics = surface_payload.get("runtime_diagnostics")
+        if isinstance(diagnostics, dict):
+            timings = diagnostics.get("phase_timings_ms")
+            if isinstance(timings, dict) and timings:
+                return timings
+    shell_composition = envelope.get("shell_composition")
+    if isinstance(shell_composition, dict):
+        regions = shell_composition.get("regions")
+        if isinstance(regions, dict):
+            interface_panel = regions.get("interface_panel")
+            if isinstance(interface_panel, dict):
+                nested_payload = interface_panel.get("surface_payload")
+                if isinstance(nested_payload, dict):
+                    diagnostics = nested_payload.get("runtime_diagnostics")
+                    if isinstance(diagnostics, dict):
+                        timings = diagnostics.get("phase_timings_ms")
+                        if isinstance(timings, dict) and timings:
+                            return timings
+    return {}
 
 
 def _error_response(code: str, message: str, *, status_code: int = 400) -> tuple[Any, int]:
