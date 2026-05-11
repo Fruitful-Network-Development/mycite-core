@@ -179,6 +179,23 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
+        "module_id": "portal_component_library",
+        "file": "v2_portal_component_library.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shared_component_library",),
+        "budget_group": "initial_shell",
+        "exports": (
+            {
+                "global": "PortalComponentLibrary",
+                "required_callables": (
+                    "renderComponentFrameList",
+                    "renderComponentFrame",
+                    "rendererRegistry.register",
+                ),
+            },
+        ),
+    },
+    {
         "module_id": "cts_gis_surface",
         "file": "v2_portal_interface_panel_renderers.js",
         "load_phase": "deferred",

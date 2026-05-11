@@ -115,14 +115,24 @@
     }).join("");
   }
 
+  function placeholderItemLabel(collectionLabel, index) {
+    var base = asText(collectionLabel).toUpperCase();
+    var singular = base.replace(/_COLLECTIONS?$/, "_LIST").replace(/S$/, "");
+    var suffix = String(index).padStart(2, "0");
+    return (singular || "ITEM") + "_" + suffix;
+  }
+
   function renderProfileCollections(collections) {
     var list = asArray(collections);
     if (!list.length) return "";
     return list.map(function (collection) {
       var c = asObject(collection);
       var items = asArray(c.items);
-      var itemsHtml = items.length
-        ? '<dl class="v2-component-frame__collectionItems">' +
+      var placeholderCount = Math.max(0, parseInt(c.placeholder_item_count, 10) || 0);
+      var itemsHtml;
+      if (items.length) {
+        itemsHtml =
+          '<dl class="v2-component-frame__collectionItems">' +
           items.map(function (item) {
             var it = asObject(item);
             return (
@@ -132,8 +142,21 @@
               "</dd>"
             );
           }).join("") +
-          "</dl>"
-        : '<p class="v2-component-frame__empty">' + escapeHtml(asText(c.empty_message) || "No collection entries available.") + "</p>";
+          "</dl>";
+      } else if (placeholderCount > 0) {
+        var placeholders = "";
+        for (var i = 1; i <= placeholderCount; i++) {
+          placeholders +=
+            "<dt>" + escapeHtml(placeholderItemLabel(c.label, i)) + "</dt>" +
+            "<dd>—</dd>";
+        }
+        itemsHtml =
+          '<dl class="v2-component-frame__collectionItems v2-component-frame__collectionItems--placeholder">' +
+          placeholders +
+          "</dl>";
+      } else {
+        itemsHtml = '<p class="v2-component-frame__empty">' + escapeHtml(asText(c.empty_message) || "No collection entries available.") + "</p>";
+      }
       return (
         '<section class="v2-component-frame__collection">' +
         '<h5 class="v2-component-frame__minorTitle">' + escapeHtml(asText(c.label) || "Collection") + "</h5>" +
@@ -316,8 +339,11 @@
     var payload = asObject(frame.payload);
     var columns = asArray(payload.columns);
     var rows = asArray(payload.rows);
-    var tableHtml = rows.length && columns.length
-      ? '<table class="v2-component-listing__table"><thead><tr>' +
+    var placeholderCount = Math.max(0, parseInt(payload.placeholder_row_count, 10) || 0);
+    var tableHtml;
+    if (rows.length && columns.length) {
+      tableHtml =
+        '<table class="v2-component-listing__table"><thead><tr>' +
         columns.map(function (column) {
           var c = asObject(column);
           return "<th>" + escapeHtml(asText(c.label) || asText(c.key)) + "</th>";
@@ -330,8 +356,37 @@
             return "<td>" + escapeHtml(r[key] == null ? "" : String(r[key])) + "</td>";
           }).join("") + "</tr>";
         }).join("") +
-        "</tbody></table>"
-      : '<p class="v2-component-frame__empty">' + escapeHtml(asText(payload.empty_message) || "No entries available.") + "</p>";
+        "</tbody></table>";
+    } else if (columns.length && placeholderCount > 0) {
+      var indexKey = asText(asObject(columns[0]).key);
+      var placeholderRows = "";
+      for (var i = 1; i <= placeholderCount; i++) {
+        var indexText = String(i).padStart(2, "0");
+        placeholderRows +=
+          '<tr class="v2-component-listing__row--placeholder">' +
+          columns.map(function (column, columnIndex) {
+            var columnObj = asObject(column);
+            var key = asText(columnObj.key);
+            var isIndexColumn = columnIndex === 0 && (!key || key === indexKey);
+            var cellClass = isIndexColumn
+              ? "v2-component-listing__cell--placeholder v2-component-listing__cell--placeholderIndex"
+              : "v2-component-listing__cell--placeholder";
+            return '<td class="' + cellClass + '">' + (isIndexColumn ? escapeHtml(indexText) : "&nbsp;") + "</td>";
+          }).join("") +
+          "</tr>";
+      }
+      tableHtml =
+        '<table class="v2-component-listing__table v2-component-listing__table--placeholder"><thead><tr>' +
+        columns.map(function (column) {
+          var c = asObject(column);
+          return "<th>" + escapeHtml(asText(c.label) || asText(c.key)) + "</th>";
+        }).join("") +
+        "</tr></thead><tbody>" +
+        placeholderRows +
+        "</tbody></table>";
+    } else {
+      tableHtml = '<p class="v2-component-frame__empty">' + escapeHtml(asText(payload.empty_message) || "No entries available.") + "</p>";
+    }
     return (
       '<div class="v2-component-frame v2-component-frame--listing"' +
       ' data-frame-id="' + escapeHtml(asText(frame.frame_id)) + '"' +

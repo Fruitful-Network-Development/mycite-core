@@ -137,7 +137,12 @@ Represents an administrative entity or subject profile.
     { "label": "<group label>", "fields": [{ "label": "<string>", "value": "<string>" }] }
   ],
   "collections": [
-    { "label": "<collection label>", "items": [{ "label": "<string>", "value": "<string>" }] }
+    {
+      "label": "<collection label>",
+      "items": [{ "label": "<string>", "value": "<string>" }],
+      "empty_message": "<string, optional>",
+      "placeholder_item_count": 0
+    }
   ],
   "children": [
     { /* nested component frame, optional */ }
@@ -182,6 +187,11 @@ Represents an administrative entity or subject profile.
   profile component. Typically a `geospatial_projection` or `characteristic_set` frame.
 - `field_groups[]` and `collections[]` are additive shell fields for profile variants that need
   grouped administrative, precinct, voter, ballot, or district-list metadata.
+- `collections[i].placeholder_item_count` is an optional non-negative integer. When the
+  collection's `items[]` is empty AND `placeholder_item_count > 0`, the renderer paints
+  that many numbered wireframe placeholder rows (e.g. `DISTRICT_LIST_01..NN`) instead of
+  the `empty_message` paragraph. Defaults to 0, which preserves the prior empty-state
+  behavior.
 - `children[]` is for additional nested frames that do not semantically belong in the subject slot.
 - The profile frame is resolved **before** its subject_slot: the server computes profile data
   first (by mediating on the anchor datum), then populates subject_slot from the profile result.
@@ -291,9 +301,18 @@ not implemented yet.
   "rows": [
     { "<column key>": "<value>" }
   ],
-  "empty_message": "<string>"
+  "empty_message": "<string>",
+  "placeholder_row_count": 0
 }
 ```
+
+- `placeholder_row_count` is an optional non-negative integer. When `rows[]` is empty
+  AND `placeholder_row_count > 0`, the renderer paints that many numbered wireframe
+  placeholder rows (zero-padded index in the first cell, non-breaking space in the
+  remaining cells) instead of the `empty_message` paragraph. The wireframe state lets
+  design mockups (such as the NIMM-AITAS Garland scaffold) render their visual structure
+  without claiming source data exists. Defaults to 0, which preserves the prior
+  empty-state behavior.
 
 ### `chronology_matrix`
 

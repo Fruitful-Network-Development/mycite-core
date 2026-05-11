@@ -217,6 +217,225 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         )
         self.assertEqual([control.get("control_type") for control in controls], ["select", "stepper", "directional", "select", "directional"])
 
+    def test_control_panel_excludes_legacy_directive_sections(self) -> None:
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                },
+            }
+        )
+        control_panel = regions["control_panel"]
+
+        navigation_titles = {
+            (group.get("title") or "")
+            for group in (control_panel.get("navigation_groups") or [])
+        }
+        self.assertNotIn(
+            "STATE DIRECTIVE",
+            navigation_titles,
+            "STATE DIRECTIVE has been replaced by the AITAS context-control table",
+        )
+        for title in navigation_titles:
+            self.assertFalse(
+                title.startswith("Sandbox:"),
+                f"unexpected sandbox navigation group {title!r} should be filtered out for CTS-GIS",
+            )
+
+        tool_extensions = dict(control_panel.get("tool_extensions") or {})
+        for obsolete_key in (
+            "cts_gis_attention",
+            "cts_gis_intention",
+            "cts_gis_time",
+            "cts_gis_archetype",
+        ):
+            self.assertNotIn(
+                obsolete_key,
+                tool_extensions,
+                f"{obsolete_key} duplicates the AITAS context-control table",
+            )
+
+        condition_labels = {
+            (row.get("label") or "")
+            for row in (control_panel.get("context_conditions") or [])
+        }
+        self.assertNotIn(
+            "Sandbox",
+            condition_labels,
+            "Sandbox row duplicates the surface label already shown in the panel header",
+        )
+        self.assertIn(
+            "File",
+            condition_labels,
+            "File row is still required to identify the active anchor file",
+        )
+
+    def test_empty_request_defaults_attention_to_presumed_ohio_root(self) -> None:
+        """When the Garland tab loads with no explicit selection (no
+        active_path, selected_node_id, or attention_node_id in the request
+        body), the daemon-load contract requires the presumed attention to
+        be the Ohio root administrative node "3-2-3-17", reached by
+        mediating "1-1-2" through the CTS-GIS spatial context. The
+        wireframe must mediate, navigate, and project at the presumed
+        default — not at whatever leaf node the compiled artifact landed on."""
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
+        )
+
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                # Empty tool_state — no selection on the wire.
+                "tool_state": {},
+            }
+        )
+        self.assertEqual(CTS_GIS_PRESUMED_ATTENTION_NODE_ID, "3-2-3-17")
+
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        navigation = dict(interface_body.get("navigation_canvas") or {})
+        self.assertEqual(
+            navigation.get("active_node_id"),
+            CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
+            f"navigation_canvas active_node_id should be {CTS_GIS_PRESUMED_ATTENTION_NODE_ID!r} when the request carries no explicit selection",
+        )
+
+        frames = list(interface_body.get("component_frames") or [])
+        self.assertTrue(frames)
+        children = list((frames[0].get("payload") or {}).get("children") or [])
+        admin_profile = next(
+            (child for child in children if child.get("frame_id") == "administrative_node_profile"),
+            None,
+        )
+        self.assertIsNotNone(admin_profile)
+        admin_payload = dict(admin_profile.get("payload") or {})
+        self.assertEqual(
+            admin_payload.get("msn_id"),
+            CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
+            "admin profile must mediate on the presumed Ohio root when no explicit selection is provided",
+        )
+
+    def test_administrative_node_profile_emits_bare_minimum_filament_fields(self) -> None:
+        """The admin_node profile should only carry the three SAMRAS filament
+        values that a NIMM mediation directive can resolve from the source
+        datum (TITLE / MSN_ID / CAPITAL_MSN_ID), plus the DISTRICT_COLLECTIONS
+        collection. Computed display values (FEATURE_COUNT / CHILD_COUNT and
+        the collection-count field-row) must NOT appear, so the wireframe
+        never claims data that did not come out of mediation."""
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        frames = list(interface_body.get("component_frames") or [])
+        self.assertTrue(frames)
+        children = list((frames[0].get("payload") or {}).get("children") or [])
+        admin_profile = next(
+            (child for child in children if child.get("frame_id") == "administrative_node_profile"),
+            None,
+        )
+        self.assertIsNotNone(admin_profile, "administrative_node_profile must be present in the Garland group")
+        admin_fields = list((admin_profile.get("payload") or {}).get("fields") or [])
+        field_labels = [f.get("label") for f in admin_fields]
+        self.assertEqual(
+            field_labels,
+            ["TITLE", "MSN_ID", "CAPITAL_MSN_ID"],
+            "admin_node profile must carry only the three SAMRAS filament fields the source datum can resolve",
+        )
+        for forbidden in ("FEATURE_COUNT", "CHILD_COUNT", "DISTRICT_COLLECTIONS", "STATE"):
+            self.assertNotIn(
+                forbidden,
+                field_labels,
+                f"{forbidden!r} is a computed display value, not source filament data — it must not appear in the admin profile",
+            )
+
+    def test_garland_emits_wireframe_placeholder_counts(self) -> None:
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        frames = list(interface_body.get("component_frames") or [])
+        self.assertTrue(frames)
+        children = list((frames[0].get("payload") or {}).get("children") or [])
+        children_by_id = {child.get("frame_id"): child for child in children}
+
+        admin_log_payload = (children_by_id.get("administrative_log_entry_listing") or {}).get("payload") or {}
+        admin_log_rows = list(admin_log_payload.get("rows") or [])
+        admin_log_placeholder = int(admin_log_payload.get("placeholder_row_count") or 0)
+        # Listing contract: real rows OR placeholder rows, never both. When
+        # the profile resolves district collections from the source datum,
+        # those rows populate the listing; otherwise the listing paints
+        # the 16-row wireframe scaffold from the mockup.
+        self.assertTrue(
+            (admin_log_rows and admin_log_placeholder == 0)
+            or (not admin_log_rows and admin_log_placeholder == 16),
+            f"admin_log must paint either real district rows or 16 placeholders, "
+            f"got rows={len(admin_log_rows)} placeholder_row_count={admin_log_placeholder}",
+        )
+
+        other_voters_payload = (children_by_id.get("log_listing_other_voters") or {}).get("payload") or {}
+        other_voters_rows = list(other_voters_payload.get("rows") or [])
+        other_voters_placeholder = int(other_voters_payload.get("placeholder_row_count") or 0)
+        self.assertTrue(
+            (other_voters_rows and other_voters_placeholder == 0)
+            or (not other_voters_rows and other_voters_placeholder == 16),
+            f"other_voters must paint either real rows or 16 placeholders, "
+            f"got rows={len(other_voters_rows)} placeholder_row_count={other_voters_placeholder}",
+        )
+
+        admin_profile = children_by_id.get("administrative_node_profile") or {}
+        admin_collections = list((admin_profile.get("payload") or {}).get("collections") or [])
+        self.assertTrue(admin_collections, "administrative_node_profile must carry at least one collection")
+        self.assertEqual(
+            int(admin_collections[0].get("placeholder_item_count") or 0),
+            3,
+            "DISTRICT_COLLECTIONS must emit 3 wireframe placeholder items",
+        )
+
+        precinct_profile = children_by_id.get("precinct_profile") or {}
+        precinct_collections = list((precinct_profile.get("payload") or {}).get("collections") or [])
+        self.assertTrue(precinct_collections, "precinct_profile must carry at least one collection")
+        self.assertEqual(
+            int(precinct_collections[0].get("placeholder_item_count") or 0),
+            3,
+            "PRECINCT_COLLECTIONS must emit 3 wireframe placeholder items",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -223,6 +223,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "network_workspace",
             "workbench_renderers",
             "interface_panel_renderers",
+            "portal_component_library",
             "cts_gis_surface",
             "cts_gis_workspace",
             "shell_core",
@@ -240,7 +241,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
         )
         startup_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "startup_critical"]
         deferred_module_ids = [entry["module_id"] for entry in manifest["scripts"]["shell_modules"] if entry["load_phase"] == "deferred"]
-        self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "interface_panel_renderers", "shell_core", "shell_watchdog"])
+        self.assertEqual(startup_module_ids, ["region_renderers", "tool_surface_adapter", "workbench_renderers", "interface_panel_renderers", "portal_component_library", "shell_core", "shell_watchdog"])
         self.assertEqual(
             deferred_module_ids,
             [
@@ -296,6 +297,7 @@ class PortalOneShellBoundaryTests(unittest.TestCase):
             "v2_portal_workbench_renderers.js": "workbench_renderers",
             "v2_portal_interface_panel_host.js": "interface_panel_renderers",
             "v2_portal_interface_panel_renderers.js": "cts_gis_surface",
+            "v2_portal_component_library.js": "portal_component_library",
             "v2_portal_shell_core.js": "shell_core",
             "v2_portal_shell_watchdog.js": "shell_watchdog",
         }

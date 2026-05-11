@@ -69,12 +69,26 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     canonical_runtime_intention_rule_id,
     canonical_service_intention_token,
 )
+
+# Presumed default attention node for the CTS-GIS Garland wireframe.
+# Per the daemon-load contract: when the Garland tab loads with no
+# explicit attention selection, the runtime resolves the relative
+# SAMRAS address "1-1-2" through the CTS-GIS spatial context, which
+# yields the Ohio root administrative node "3-2-3-17". The
+# administrative_node_profile then mediates on this node by default.
+# Until the compiled artifact carries this default explicitly, the
+# wireframe build path uses this constant when the resolved attention
+# falls below it (i.e. when the artifact's default lands on a child
+# node such as a county).
+CTS_GIS_PRESUMED_ATTENTION_NODE_ID = "3-2-3-17"
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
+    FOCUS_LEVEL_DATUM,
     FOCUS_LEVEL_FILE,
+    FOCUS_LEVEL_OBJECT,
     PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     PORTAL_SHELL_REQUEST_SCHEMA,
@@ -1901,13 +1915,6 @@ def _build_cts_gis_directive_panel(
         }
         for token in time_tokens
     ]
-    locked_entries = [
-        {"label": "Archetype", "meta": _as_text(resolved_tool_state["aitas"]["archetype_family_id"]) or _DEFAULT_ARCHETYPE_FAMILY_ID, "active": False},
-        {"label": "NAV", "meta": "locked", "active": False},
-        {"label": "INV", "meta": "locked", "active": False},
-        {"label": "MED", "meta": "locked", "active": False},
-        {"label": "MAN", "meta": "locked", "active": False},
-    ]
     staged_insert = _staged_insert_state(resolved_tool_state.get("staged_insert"))
     stage_payload = dict(staged_insert.get("normalized_payload") or {})
     stage_validation = dict(staged_insert.get("last_validation") or {})
@@ -1960,30 +1967,14 @@ def _build_cts_gis_directive_panel(
         if stage_preview:
             stage_actions.append({"label": "Apply Stage", **_tool_action("apply_stage")})
         stage_actions.append({"label": "Discard Stage", **_tool_action("discard_stage")})
-    state_directive_entries = [
-        {"label": "NIMM directive", "meta": _as_text(resolved_tool_state["nimm_directive"]), "active": True},
-        *attention_entries,
-        *intention_entries,
-        *time_entries,
-        *locked_entries,
-    ]
-    base_navigation_groups = [
-        {"title": "STATE DIRECTIVE", "entries": state_directive_entries},
-        *stage_groups,
-    ]
+    # The legacy STATE DIRECTIVE / cts_gis_attention / cts_gis_intention /
+    # cts_gis_time / cts_gis_archetype panel sections are superseded by the
+    # AITAS context-control table (see context_controls below). The entries
+    # lists are still consumed by _build_cts_gis_context_controls.
+    base_navigation_groups = list(stage_groups)
     aitas_overlay = dict(resolved_tool_state.get("aitas") or {})
     tool_extensions: dict[str, Any] = {
         "directive_terminal_enabled": True,
-        "cts_gis_attention": attention_entries,
-        "cts_gis_intention": intention_entries,
-        "cts_gis_time": time_entries,
-        "cts_gis_archetype": [
-            {
-                "label": "Archetype",
-                "meta": _as_text(aitas_overlay.get("archetype_family_id")) or _DEFAULT_ARCHETYPE_FAMILY_ID,
-                "active": False,
-            }
-        ],
     }
     if stage_payload:
         tool_extensions["cts_gis_staged_insert"] = {
@@ -2036,7 +2027,16 @@ def _build_cts_gis_directive_panel(
             if row.get("label") == "File":
                 row["value"] = tool_anchor_file
                 break
+    # The Sandbox row duplicates the surface label already printed in the
+    # directive-panel header; drop it for the CTS-GIS surface.
+    panel_context = [row for row in panel_context if row.get("label") != "Sandbox"]
     panel["context_conditions"] = panel_context
+    # The auto-derived "Sandbox: cts_gis" navigation group is redundant with
+    # the file picker already exposed through the AITAS context controls.
+    panel["navigation_groups"] = [
+        group for group in (panel.get("navigation_groups") or [])
+        if not str(group.get("title") or "").startswith("Sandbox:")
+    ]
 
     return panel
 
@@ -3200,25 +3200,28 @@ def _build_cts_gis_structured_interface_body(
         parent_frame_id=_profile_frame_id,
         lens_key=_frame_lens(_geo_frame_id),
     )
+    # Admin-node profile contract: the only filament values rendered are the
+    # ones a NIMM mediation directive can resolve from the SAMRAS source
+    # datum the profile is focused on — TITLE, MSN_ID, CAPITAL_MSN_ID — plus
+    # the DISTRICT_COLLECTIONS collection that is forwarded to the
+    # administrative log listing. Computed display values (FEATURE_COUNT,
+    # CHILD_COUNT, DISTRICT_COLLECTIONS row-count) are NOT source datum and
+    # are deliberately omitted so the wireframe never claims data that
+    # didn't come out of mediation.
     if has_real_profile:
         _profile_fields: list[dict[str, str]] = [
-            {"label": "TITLE", "value": _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id},
-            {"label": "MSN_ID", "value": _as_text(attention_profile.get("node_id")) or selected_node_id},
-            {"label": "CAPITAL_MSN_ID", "value": _as_text(attention_profile.get("capital_msn_id")) or "—"},
-            {"label": "FEATURE_COUNT", "value": str(int(attention_profile.get("feature_count") or 0))},
-            {"label": "CHILD_COUNT", "value": str(int(attention_profile.get("child_count") or 0))},
+            {"label": "TITLE", "value": _as_text(attention_profile.get("profile_label")) or selected_label or ""},
+            {"label": "MSN_ID", "value": _as_text(attention_profile.get("node_id")) or selected_node_id or ""},
+            {"label": "CAPITAL_MSN_ID", "value": _as_text(attention_profile.get("capital_msn_id")) or ""},
         ]
-        if district_precinct_collections:
-            _profile_fields.append({"label": "DISTRICT_COLLECTIONS", "value": str(len(district_precinct_collections))})
         _profile_label = _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id
     else:
         _profile_fields = [
-            {"label": "TITLE", "value": selected_label or selected_node_id or "—"},
-            {"label": "MSN_ID", "value": selected_node_id or "—"},
-            {"label": "CAPITAL_MSN_ID", "value": "—"},
-            {"label": "STATE", "value": "awaiting_real_projection" if selected_node_id else "no_selection"},
+            {"label": "TITLE", "value": ""},
+            {"label": "MSN_ID", "value": ""},
+            {"label": "CAPITAL_MSN_ID", "value": ""},
         ]
-        _profile_label = selected_label or selected_node_id or "—"
+        _profile_label = selected_label or selected_node_id or ""
     _district_items: list[dict[str, str]] = []
     for index, collection in enumerate(district_precinct_collections, start=1):
         member_labels = list(collection.get("member_labels") or [])
@@ -3236,6 +3239,7 @@ def _build_cts_gis_structured_interface_body(
             "label": "DISTRICT_COLLECTIONS",
             "items": _district_items,
             "empty_message": "No district list source is available for this administrative node yet.",
+            "placeholder_item_count": 3,
         }
     ]
     _admin_profile_frame = build_profile_component_frame(
@@ -3250,16 +3254,36 @@ def _build_cts_gis_structured_interface_body(
         lens_key=_frame_lens(_profile_frame_id),
         initializer_intent="resolve_administrative_node_profile",
     )
+    # The administrative log listing is conceptually a child component of
+    # the administrative_node_profile: each row is one DISTRICT_COLLECTIONS
+    # entry the profile resolved from the correlated source datum document.
+    # The listing only paints wireframe placeholder rows when the profile
+    # found no district references; otherwise it paints exactly the rows
+    # the profile materialised, so the wireframe matches the source datum.
+    _admin_log_rows: list[dict[str, str]] = []
+    for index, item in enumerate(_district_items, start=1):
+        _district_label = _as_text(item.get("label"))
+        _district_value = _as_text(item.get("value"))
+        _district_detail = _as_text(item.get("detail"))
+        _entry_parts = [part for part in (_district_label, _district_value, _district_detail) if part]
+        _admin_log_rows.append(
+            {
+                "index": f"{index:02d}",
+                "entry": " · ".join(_entry_parts) if _entry_parts else _district_label,
+            }
+        )
+    _admin_log_placeholder_count = 16 if not _admin_log_rows else 0
     _admin_log_frame = build_listing_component_frame(
         frame_id="administrative_log_entry_listing",
         label="Administrative Log Entry Listing",
         columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "LOG ENTRY"}],
-        rows=[],
+        rows=_admin_log_rows,
         attention_node_id=_attention_context,
         lens_key=_frame_lens("administrative_log_entry_listing"),
         layout_slot="administrative_log_entry_listing",
         source_kind="administrative_log",
         empty_message="Administrative log entries are not wired yet.",
+        placeholder_row_count=_admin_log_placeholder_count,
         initializer_intent="resolve_administrative_log_listing",
     )
     _precinct_geo_frame = build_geospatial_component_frame(
@@ -3284,6 +3308,7 @@ def _build_cts_gis_structured_interface_body(
                 "label": "PRECINCT_COLLECTIONS",
                 "items": _district_items,
                 "empty_message": "No selected precinct collection is available yet.",
+                "placeholder_item_count": 3,
             }
         ],
         geospatial_frame=_precinct_geo_frame,
@@ -3300,6 +3325,7 @@ def _build_cts_gis_structured_interface_body(
         layout_slot="log_listing_other_voters",
         source_kind="voter_log",
         empty_message="Other voter listings are not wired yet.",
+        placeholder_row_count=16,
         initializer_intent="resolve_other_voter_listing",
     )
     _election_history_frame = build_chronology_matrix_component_frame(
@@ -3772,6 +3798,43 @@ def build_portal_cts_gis_surface_bundle(
             compiled_default_tool_state,
             _request_tool_state_overrides(requested_tool_state, normalized_request_payload),
         )
+        # Daemon-load contract: when the Garland tab loads at the bare
+        # `?file=anchor&verb=mediate` URL (i.e. the URL pins only the
+        # sandbox + file, no datum or object), the presumed attention is
+        # the Ohio root administrative node `CTS_GIS_PRESUMED_ATTENTION_NODE_ID`
+        # = "3-2-3-17", reached by mediating the relative SAMRAS address
+        # `1-1-2` through the CTS-GIS spatial context.
+        #
+        # The override key is the URL/shell_state — NOT the request-body
+        # tool_state. The browser-side shell client persists tool_state
+        # to localStorage on every response and re-hydrates it on every
+        # subsequent request (see v2_portal_shell_core.js:hydrateShellRequestToolState).
+        # If we keyed off request-body tool_state instead, a session that
+        # ever landed on Summit County would forever ship Summit County on
+        # every page-reload — bypassing the daemon-load default. The
+        # shell_state's focus_path reflects the URL, which is the user's
+        # actual navigational intent: if it carries no datum or object
+        # segment, the user did not pin a specific node, and we honour
+        # the presumed default.
+        _focus_path_segments = list(getattr(shell_state, "focus_path", None) or [])
+        _url_carries_node_selection = False
+        for _segment in _focus_path_segments:
+            _segment_level = _as_text(
+                getattr(_segment, "level", None)
+                if not isinstance(_segment, dict)
+                else _segment.get("level")
+            )
+            if _segment_level in (FOCUS_LEVEL_DATUM, FOCUS_LEVEL_OBJECT):
+                _url_carries_node_selection = True
+                break
+        if not _url_carries_node_selection:
+            requested_tool_state["selected_node_id"] = CTS_GIS_PRESUMED_ATTENTION_NODE_ID
+            requested_tool_state["active_path"] = _active_path_from_node_id(
+                CTS_GIS_PRESUMED_ATTENTION_NODE_ID
+            )
+            requested_aitas = dict(requested_tool_state.get("aitas") or {})
+            requested_aitas["attention_node_id"] = CTS_GIS_PRESUMED_ATTENTION_NODE_ID
+            requested_tool_state["aitas"] = requested_aitas
         navigation_canvas = _navigation_canvas_from_compiled_artifact(
             artifact=compiled_artifact,
             portal_scope=portal_scope,
