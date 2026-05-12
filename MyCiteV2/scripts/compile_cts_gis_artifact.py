@@ -14,6 +14,8 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
+    cts_gis_admin_root_source_path,
+    read_admin_profile_static_from_source_datum,
     validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
@@ -58,6 +60,21 @@ def main() -> int:
             )
         )
         return 2
+    # Direct-read the Ohio admin-root source datum and bake it into the
+    # compiled artifact as `admin_profile_static`. This bypasses the
+    # mediation/decode pipeline (which currently can't resolve Ohio's
+    # SAMRAS magnitude) so the Garland tab's admin profile always has a
+    # stable Ohio identity — TITLE / MSN_ID / CAPITAL_MSN_ID + Ohio's
+    # MultiPolygon boundary — regardless of which node the user has
+    # navigated to. See
+    # `/srv/agentic/plans/TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11-phase3.5.md`.
+    admin_root_path = cts_gis_admin_root_source_path(args.data_dir)
+    admin_profile_static = (
+        read_admin_profile_static_from_source_datum(admin_root_path)
+        if admin_root_path is not None and admin_root_path.exists()
+        else {}
+    )
+
     artifact = build_compiled_artifact(
         portal_scope_id=args.scope_id,
         source_evidence=dict(surface_payload.get("source_evidence") or {}),
@@ -66,6 +83,7 @@ def main() -> int:
         default_tool_state=dict(surface_payload.get("tool_state") or {}),
         source_layout=source_layout,
         build_mode=CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+        admin_profile_static=admin_profile_static or None,
     )
     output_path = Path(args.output) if args.output else compiled_artifact_path(args.data_dir, portal_scope_id=args.scope_id)
     written = write_compiled_artifact(output_path, artifact)
@@ -78,6 +96,13 @@ def main() -> int:
                 "source_layout": source_layout,
                 "invariants": artifact.get("invariants"),
                 "strict_invariants": artifact.get("strict_invariants"),
+                "admin_profile_static": {
+                    "node_id": admin_profile_static.get("node_id"),
+                    "label": admin_profile_static.get("label"),
+                    "feature_count": (admin_profile_static.get("geospatial_projection") or {}).get(
+                        "feature_count"
+                    ),
+                } if admin_profile_static else None,
             },
             indent=2,
         )
