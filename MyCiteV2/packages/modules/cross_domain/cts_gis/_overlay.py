@@ -2,12 +2,35 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
     as_text as _as_text,
 )
+
+# A district timeframe label must contain a literal `district_<digits>` (or
+# `district-<digits>` / `district<digits>`) anchored at a word boundary
+# (start of token, or preceded/followed by `-` or `_`). This rejects the
+# structural aspect labels that share keyword surface area with real
+# districts — `applicable_time_frame`, `district_set_collection`, and
+# `precinct_group-<n>` — while continuing to match the canonical
+# `<period>-district_<NN>` form used in source datums (e.g.
+# `23_present-district_31`, `24_present-district_31`).
+#
+# The previous loose filter accepted any label containing one of
+# {"time_frame", "district", "present", "precinct_group"}, which caused
+# the upstream `_district_precinct_collection_summaries` to emit a phantom
+# row per aspect label. See post-mortem
+# `/srv/agentic/evidence/reports/TASK-CTS-GIS-CTRL-PRUNE-AND-GARLAND-CONTAINER-2026-05-11-postmortem.md`
+# and TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11 (Phase 1).
+_DISTRICT_TIMEFRAME_RE = re.compile(r"(?:^|[-_])district[-_]?\d+(?:$|[-_])")
+
+
+def _is_district_timeframe_label(token: str) -> bool:
+    """Return True iff the (lowercased) token looks like a real district timeframe."""
+    return bool(_DISTRICT_TIMEFRAME_RE.search(token))
 from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
     _address_tuple,
     _profile_sort_key,
@@ -93,7 +116,7 @@ def _district_timeframe_tokens(document_bundle: dict[str, Any]) -> list[str]:
             token = _as_text(label).lower()
             if not token:
                 continue
-            if any(marker in token for marker in ("time_frame", "district", "present", "precinct_group")):
+            if _is_district_timeframe_label(token):
                 tokens.add(token)
     return sorted(tokens)
 
@@ -124,7 +147,7 @@ def _document_district_timeframe_tokens(document: DatumRecognitionDocument) -> l
             token = _as_text(label).lower()
             if not token:
                 continue
-            if any(marker in token for marker in ("time_frame", "district", "present", "precinct_group")):
+            if _is_district_timeframe_label(token):
                 tokens.add(token)
     return sorted(tokens)
 
