@@ -94,14 +94,46 @@ class BuildAdminProfileStaticTests(unittest.TestCase):
         self.assertEqual(fc["features"][0]["geometry"]["type"], "MultiPolygon")
         self.assertEqual(gp["focus_bounds"], [-84.0, 38.0, -80.0, 42.0])
 
+    def test_geospatial_projection_satisfies_renderer_contract(self) -> None:
+        """The frontend `renderGeospatialFrameContent` requires
+        `has_real_projection: True` plus a `features[]` array per
+        feature (each with feature_id/label/node_id/geometry_type/selected)
+        and a `feature_collection.features[i].id` field — otherwise
+        the renderer paints the empty fallback even when the geometry
+        is present."""
+        admin = build_admin_profile_static(_ohio_like_source_datum())
+        gp = admin["geospatial_projection"]
+        # The flag the renderer's `hasRealGeospatialProjection` reads.
+        self.assertTrue(gp["has_real_projection"])
+        # Per-feature entries the renderer iterates for the feature list.
+        features_list = gp["features"]
+        self.assertEqual(len(features_list), 1)
+        entry = features_list[0]
+        for required in ("feature_id", "label", "node_id", "geometry_type", "selected"):
+            self.assertIn(required, entry, f"renderer requires {required!r} per feature_entry")
+        self.assertEqual(entry["geometry_type"], "MultiPolygon")
+        self.assertEqual(entry["node_id"], "3-2-3-17")
+        self.assertTrue(entry["selected"])
+        # The feature_collection's features each need a stable `id`.
+        fc = gp["feature_collection"]
+        self.assertTrue(fc["features"][0].get("id"), "feature_collection feature must carry an `id`")
+        self.assertEqual(fc["features"][0]["id"], entry["feature_id"])
+        # The renderer also reads these focus/selected_feature fields.
+        self.assertEqual(gp["selected_feature_id"], entry["feature_id"])
+        self.assertEqual(gp["selected_feature_geometry_type"], "MultiPolygon")
+        self.assertEqual(gp["collection_bounds"], [-84.0, 38.0, -80.0, 42.0])
+        self.assertEqual(gp["title"], "Geospatial Projection")
+
     def test_returns_inspect_only_when_no_geojson(self) -> None:
         datum = _ohio_like_source_datum()
         datum["reference_geojson"] = {"type": "FeatureCollection", "features": []}
         admin = build_admin_profile_static(datum)
         gp = admin["geospatial_projection"]
-        self.assertEqual(gp["projection_state"], "inspect_only")
+        self.assertEqual(gp["projection_state"], "awaiting_real_projection")
         self.assertEqual(gp["projection_source"], "none")
         self.assertEqual(gp["feature_count"], 0)
+        self.assertFalse(gp["has_real_projection"])
+        self.assertEqual(gp["features"], [])
 
     def test_returns_empty_msn_when_admin_root_record_missing(self) -> None:
         datum = _ohio_like_source_datum()
