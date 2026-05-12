@@ -3065,6 +3065,37 @@ def _build_cts_gis_structured_interface_body(
         "action": _shell_action("toggle_overlay", enabled=not district_overlay_enabled),
     }
     district_precinct_collections = list(district_precincts.get("collections") or [])
+    # Garland cascade Phase 4 — when the compiled artifact carries a
+    # `district_profile_static` payload (direct-read of Ohio's source
+    # datum producing the single canonical district + its 84 precinct
+    # ids), synthesise a `district_precinct_collections` entry from it.
+    # This keeps the existing _district_items / _admin_log_rows /
+    # _active_district lookup flow as the single code path — only the
+    # source of the collection changes (mediation vs static).
+    _district_profile_static = dict(service_surface.get("district_profile_static") or {})
+    _district_static_active = bool(_district_profile_static.get("collection_id"))
+    if _district_static_active:
+        _static_member_ids = [
+            _as_text(item)
+            for item in (_district_profile_static.get("member_precinct_ids") or [])
+            if _as_text(item)
+        ]
+        _static_collection_id = _as_text(_district_profile_static.get("collection_id"))
+        _static_label = _as_text(_district_profile_static.get("label")) or _static_collection_id
+        _static_timeframe = _as_text(_district_profile_static.get("timeframe_token")) or _static_collection_id
+        district_precinct_collections = [
+            {
+                "collection_id": _static_collection_id,
+                "label": _static_label,
+                "timeframe_token": _static_timeframe,
+                "member_node_ids": list(_static_member_ids),
+                "member_labels": list(_static_member_ids),
+                "member_count": len(_static_member_ids),
+                "precinct_count": len(_static_member_ids),
+                "summary_state": f"{len(_static_member_ids)} precincts",
+                "source": "district_profile_static",
+            }
+        ]
     real_geospatial_projection, garland_swapped = _real_geospatial_projection(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -3315,6 +3346,16 @@ def _build_cts_gis_structured_interface_body(
     # The listing only paints wireframe placeholder rows when the profile
     # found no district references; otherwise it paints exactly the rows
     # the profile materialised, so the wireframe matches the source datum.
+    # Resolve the active district selection BEFORE building the admin-log
+    # rows so each row can carry the `selected` flag (used by the frontend
+    # listing renderer for [aria-pressed=true] feedback). Phase 4 auto-
+    # selects the single canonical district when the artifact carries
+    # `district_profile_static` and no explicit selection is on the wire.
+    _selected_district_id = _as_text(
+        (resolved_tool_state.get("selection") or {}).get("selected_district_id")
+    )
+    if not _selected_district_id and _district_static_active:
+        _selected_district_id = _as_text(_district_profile_static.get("collection_id"))
     _admin_log_rows: list[dict[str, str]] = []
     for index, item in enumerate(_district_items, start=1):
         _district_label = _as_text(item.get("label"))
@@ -3332,6 +3373,15 @@ def _build_cts_gis_structured_interface_body(
                 # district_precinct_collections collection_id to repurpose
                 # the col-3 slot as a district profile (Phase 3).
                 "row_address": _district_row_address,
+                # Phase 4 — per-row select_action. Listing renderer makes
+                # the row clickable and dispatches this on click/Enter/Space.
+                "select_action": {
+                    "action_kind": "select_district_row",
+                    "action_payload": {"row_address": _district_row_address},
+                } if _district_row_address else {},
+                "selected": bool(
+                    _selected_district_id and _district_row_address == _selected_district_id
+                ),
             }
         )
     _admin_log_placeholder_count = 16 if not _admin_log_rows else 0
@@ -3356,16 +3406,11 @@ def _build_cts_gis_structured_interface_body(
     )
     # Phase 3 cascade: when the user has selected a district row from the
     # admin log listing (Phase 2 persisted the choice into
-    # `tool_state.selection.selected_row_address`), repurpose the col-3
-    # slot as a `district_profile`. A district has no source datum file,
-    # so the frame carries no filament TITLE/MSN_ID/CAPITAL_MSN_ID values
-    # — only the geospatial subject_slot (Phase 6 will swap that
-    # subject_slot to the 84-precinct feature collection). When no
-    # district is selected, the slot keeps its empty Precinct Profile
-    # scaffold from the wireframe.
-    _selected_district_id = _as_text(
-        (resolved_tool_state.get("selection") or {}).get("selected_district_id")
-    )
+    # `tool_state.selection.selected_district_id`), repurpose the col-3
+    # slot as a `district_profile`. Phase 4 also auto-selects the single
+    # canonical district when the artifact carries `district_profile_static`
+    # so the cascade resolves on first load. `_selected_district_id` is
+    # already resolved above (needed for admin-log row `selected` flags).
     _active_district: dict[str, Any] | None = None
     if _selected_district_id:
         for _candidate in district_precinct_collections:
@@ -3376,16 +3421,27 @@ def _build_cts_gis_structured_interface_body(
                 _active_district = _candidate
                 break
     if _active_district is not None:
-        _district_profile_label = (
+        # Phase 4 — col-3 frame is the District Profile. Label is the
+        # literal "District Profile" per the cascade contract. The
+        # district identifier (label / timeframe_token) is surfaced
+        # alongside as a filament field rather than baked into the
+        # title, so the variant chrome stays stable as the user
+        # navigates between districts.
+        _district_identity = (
             _as_text(_active_district.get("label"))
             or _as_text(_active_district.get("timeframe_token"))
-            or "District Profile"
+            or _as_text(_active_district.get("collection_id"))
+            or ""
         )
+        _district_precinct_count = int(_active_district.get("member_count") or 0)
         _precinct_profile_frame = build_profile_component_frame(
             frame_id="precinct_profile",
             attention_node_id=_attention_context,
-            label=_district_profile_label,
-            fields=[],  # district has no source datum file — no filament
+            label="District Profile",
+            fields=[
+                {"label": "DISTRICT_ID", "value": _district_identity},
+                {"label": "PRECINCT_COUNT", "value": str(_district_precinct_count)},
+            ],
             variant="district",
             layout_slot="precinct_profile",
             collections=[],
@@ -3417,19 +3473,67 @@ def _build_cts_gis_structured_interface_body(
             lens_key=_frame_lens("precinct_profile"),
             initializer_intent="resolve_precinct_profile",
         )
-    _other_voters_frame = build_listing_component_frame(
-        frame_id="log_listing_other_voters",
-        label="Log Listing Of Other Voters",
-        columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "VOTER"}],
-        rows=[],
-        attention_node_id=_attention_context,
-        lens_key=_frame_lens("log_listing_other_voters"),
-        layout_slot="log_listing_other_voters",
-        source_kind="voter_log",
-        empty_message="Other voter listings are not wired yet.",
-        placeholder_row_count=16,
-        initializer_intent="resolve_other_voter_listing",
+    # Garland cascade Phase 4 — col-4 (formerly "Log Listing Of Other
+    # Voters") is repurposed as the *precinct listing* when a district
+    # is active. Each row carries a `select_action` payload so the
+    # frontend listing renderer can dispatch `select_precinct_row` on
+    # click. frame_id stays `log_listing_other_voters` to preserve the
+    # CSS layout slot. Selection feedback (`selected` flag) marks the
+    # row that matches `tool_state.selection.selected_feature_id`.
+    _selected_feature_id = _as_text(
+        (resolved_tool_state.get("selection") or {}).get("selected_feature_id")
     )
+    if _active_district is not None:
+        _precinct_member_ids = [
+            _as_text(item)
+            for item in (_active_district.get("member_node_ids") or [])
+            if _as_text(item)
+        ]
+        _precinct_rows: list[dict[str, Any]] = []
+        for _idx, _pid in enumerate(_precinct_member_ids, start=1):
+            _precinct_rows.append(
+                {
+                    "index": f"{_idx:02d}",
+                    "entry": _pid,
+                    "feature_id": _pid,
+                    "row_address": _pid,
+                    "select_action": {
+                        "action_kind": "select_precinct_row",
+                        "action_payload": {"feature_id": _pid, "row_address": _pid},
+                    },
+                    "selected": bool(_selected_feature_id and _pid == _selected_feature_id),
+                }
+            )
+        _precinct_listing_label = (
+            f"Precinct Listing — {_as_text(_active_district.get('label')) or _selected_district_id}"
+        )
+        _other_voters_frame = build_listing_component_frame(
+            frame_id="log_listing_other_voters",
+            label=_precinct_listing_label,
+            columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "PRECINCT"}],
+            rows=_precinct_rows,
+            attention_node_id=_attention_context,
+            lens_key=_frame_lens("log_listing_other_voters"),
+            layout_slot="log_listing_other_voters",
+            source_kind="precinct_listing",
+            empty_message="No precincts are listed for the selected district.",
+            placeholder_row_count=0,
+            initializer_intent="resolve_precinct_listing",
+        )
+    else:
+        _other_voters_frame = build_listing_component_frame(
+            frame_id="log_listing_other_voters",
+            label="Log Listing Of Other Voters",
+            columns=[{"key": "index", "label": ""}, {"key": "entry", "label": "VOTER"}],
+            rows=[],
+            attention_node_id=_attention_context,
+            lens_key=_frame_lens("log_listing_other_voters"),
+            layout_slot="log_listing_other_voters",
+            source_kind="voter_log",
+            empty_message="Other voter listings are not wired yet.",
+            placeholder_row_count=16,
+            initializer_intent="resolve_other_voter_listing",
+        )
     _election_history_frame = build_chronology_matrix_component_frame(
         frame_id="election_history",
         label="Election History / Election Types Across Time",
@@ -3550,8 +3654,17 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
     # has navigated. Pass it through service_surface so the builder has
     # a stable input.
     admin_profile_static = dict(artifact.get("admin_profile_static") or {})
+    # Garland cascade Phase 4 — sandbox-rooted district profile. The
+    # compiled artifact may carry a `district_profile_static` payload
+    # populated at compile time by direct-read of Ohio's source datum
+    # (collection_id + label + 84 member_precinct_ids). When present,
+    # the wireframe builder synthesises a single district row for the
+    # admin log listing, auto-selects it, and paints the 84 precincts
+    # into col-4. Independent of the dynamic mediation cascade.
+    district_profile_static = dict(artifact.get("district_profile_static") or {})
     return {
         "admin_profile_static": admin_profile_static,
+        "district_profile_static": district_profile_static,
         "document_catalog": [],
         "selected_document": {"document_name": "", "document_id": profile_summary.get("document_id")},
         "attention_profile": {

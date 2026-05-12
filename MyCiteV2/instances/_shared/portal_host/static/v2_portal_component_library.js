@@ -351,7 +351,32 @@
         "</tr></thead><tbody>" +
         rows.map(function (row) {
           var r = asObject(row);
-          return "<tr>" + columns.map(function (column) {
+          // Phase 4 — when a row carries a `select_action` payload,
+          // emit `data-row-select-action="<json>"` plus tabindex/role
+          // so the panel host's delegated click/keydown handler can
+          // dispatch the canonical tool action. `selected` marks the
+          // currently-active row (visual + a11y).
+          var selectAction = asObject(r.select_action);
+          var hasAction = !!(selectAction && asText(selectAction.action_kind));
+          var trAttrs = "";
+          var trClasses = [];
+          if (hasAction) {
+            trClasses.push("v2-component-listing__row--selectable");
+            trAttrs +=
+              ' data-row-select-action="' +
+              escapeHtml(JSON.stringify(selectAction)) +
+              '" tabindex="0" role="button"';
+          }
+          if (r.selected === true) {
+            trClasses.push("v2-component-listing__row--selected");
+            trAttrs += ' aria-pressed="true"';
+          } else if (hasAction) {
+            trAttrs += ' aria-pressed="false"';
+          }
+          var classAttr = trClasses.length
+            ? ' class="' + trClasses.join(" ") + '"'
+            : "";
+          return "<tr" + classAttr + trAttrs + ">" + columns.map(function (column) {
             var key = asText(asObject(column).key);
             return "<td>" + escapeHtml(r[key] == null ? "" : String(r[key])) + "</td>";
           }).join("") + "</tr>";

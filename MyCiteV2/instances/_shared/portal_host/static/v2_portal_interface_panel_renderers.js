@@ -1918,6 +1918,9 @@
     if (garlandFrames.length > 0 && hasComponentLibrary && typeof window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT === "function") {
       window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT(target, ctx);
     }
+    if (typeof window.__MYCITE_V2_BIND_LISTING_ROW_SELECTION === "function") {
+      window.__MYCITE_V2_BIND_LISTING_ROW_SELECTION(target, ctx);
+    }
   }
 
   function filterFramesByTab(frames, activeTabId) {

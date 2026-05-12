@@ -251,6 +251,7 @@ def build_compiled_artifact(
     source_layout: dict[str, Any],
     build_mode: str = CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
     admin_profile_static: dict[str, Any] | None = None,
+    district_profile_static: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     navigation_model = _navigation_model_from_canvas(navigation_canvas)
     projection_model = _projection_model_from_service(service_surface)
@@ -282,6 +283,13 @@ def build_compiled_artifact(
     # `evidence/reports/TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11-admin-profile-attention-investigation.md`.
     if admin_profile_static:
         artifact["admin_profile_static"] = dict(admin_profile_static)
+    # district_profile_static carries the single canonical district's
+    # collection_id + label + member precinct ids. The runtime auto-
+    # selects this district when no explicit selection exists, so col-3
+    # (district profile) and col-4 (precinct listing) populate on page
+    # load without manual click. See plans/TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11-phase4.md.
+    if district_profile_static:
+        artifact["district_profile_static"] = dict(district_profile_static)
     return artifact
 
 
@@ -630,11 +638,150 @@ def read_admin_profile_static_from_source_datum(
     return build_admin_profile_static(source_datum)
 
 
+# --- district_profile_static direct-read helpers ----------------------------
+#
+# The Garland tab's district profile (col-3 when active) shows the single
+# district referenced by Ohio's source datum, plus the precinct membership
+# list that drives col-4 ("Precinct Listing"). Like admin_profile_static,
+# this is read directly from the source datum at compile time — no
+# mediation, no SAMRAS decode.
+#
+# Ohio's source datum encodes the district via two records:
+#   - `5-0-26`: `~` of `4-2-1` (applicable_time_frame) and `4-84-1`
+#               (the precinct_group). Label: "23_present-district_31".
+#   - `4-84-1`: a `rf.3-1-1` reference list containing 84 precinct
+#               node ids (247-17-77-{121..169, 237..244, 298, 308..311,
+#               316..322, 324..336, 348..349}). Label: "precinct_group-1".
+#
+# Per-precinct polygon geometry is encoded as HOPS coordinate tokens in
+# each precinct's own source datum (e.g. sc.<addr>.cts.247_17_77_121.json)
+# and requires SAMRAS-magnitude decode to convert to lat/lon. That decode
+# pipeline is currently blocked (see phase2-fix.md). For now,
+# district_profile_static exposes the precinct membership LIST without
+# polygon geometry; the district profile slot reuses the admin profile's
+# Ohio outline as its geographic context.
+
+
+def _district_record(das: dict[str, Any]) -> tuple[list[Any], list[Any]] | None:
+    """Find the district record in the admin-root datum's address space.
+
+    The canonical district record is identified by a label matching the
+    pattern `<period>-district_<digits>` (e.g. "23_present-district_31"),
+    consistent with `_DISTRICT_TIMEFRAME_RE` in `_overlay.py`.
+    """
+    import re as _re
+    pattern = _re.compile(r"(?:^|[-_])district[-_]?\d+(?:$|[-_])")
+    for value in das.values():
+        if not isinstance(value, list) or len(value) < 2:
+            continue
+        row = value[0] if isinstance(value[0], list) else None
+        labels = value[1] if isinstance(value[1], list) else None
+        if row is None or labels is None or not labels:
+            continue
+        if pattern.search(as_text(labels[0]).lower()):
+            return row, labels
+    return None
+
+
+def _precinct_group_record(das: dict[str, Any], group_address: str) -> tuple[list[Any], list[Any]] | None:
+    """Look up a precinct_group record by its address (typically `4-84-1`)."""
+    value = das.get(group_address)
+    if not isinstance(value, list) or len(value) < 2:
+        return None
+    row = value[0] if isinstance(value[0], list) else None
+    labels = value[1] if isinstance(value[1], list) else None
+    if row is None:
+        return None
+    return row, (labels if isinstance(labels, list) else [])
+
+
+def _extract_precinct_ids_from_group_row(row: list[Any]) -> list[str]:
+    """Return the list of precinct node ids from a precinct_group row.
+
+    The row is shaped as `[self_address, 'rf.3-1-1', id_1, 'rf.3-1-1', id_2, ...]`
+    where each id has a `rf.3-1-1` prefix and looks like `247-17-77-<n>`.
+    """
+    out: list[str] = []
+    # Skip the self-address at index 0; iterate (rf, id) pairs.
+    index = 1
+    while index < len(row) - 1:
+        ref_marker = as_text(row[index])
+        candidate = as_text(row[index + 1])
+        if ref_marker.startswith("rf.") and candidate:
+            out.append(candidate)
+        index += 2
+    return out
+
+
+def build_district_profile_static(source_datum: dict[str, Any]) -> dict[str, Any]:
+    """Build the district_profile_static payload from a parsed source-datum dict.
+
+    Pure function — takes the JSON-decoded source datum (Ohio's
+    `sc.<addr>.fnd.3-2-3-17.json`) and returns the payload that goes
+    into the compiled artifact's `district_profile_static` field.
+
+    Shape: {collection_id, label, timeframe_token, member_precinct_ids[],
+            member_count, applicable_time_frame_ref, precinct_group_ref}
+    """
+    das = source_datum.get("datum_addressing_abstraction_space") or {}
+    record = _district_record(das) if isinstance(das, dict) else None
+    if record is None:
+        return {}
+    district_row, district_labels = record
+    label = as_text(district_labels[0]) if district_labels else ""
+    timeframe_token = label.lower() if label else ""
+    collection_id = timeframe_token or as_text(district_row[0])
+
+    # The district row carries `~` plus references to dependent records
+    # (timeframe + precinct_group). Example shape:
+    #   ['5-0-26', '~', '4-2-1', '4-84-1']
+    applicable_time_frame_ref = ""
+    precinct_group_ref = ""
+    if len(district_row) >= 3 and as_text(district_row[1]) == "~":
+        # Dependencies follow the `~` marker.
+        deps = [as_text(item) for item in district_row[2:] if as_text(item)]
+        # Convention: time frame first, precinct group second. Order
+        # observed in Ohio source datum.
+        if len(deps) >= 1:
+            applicable_time_frame_ref = deps[0]
+        if len(deps) >= 2:
+            precinct_group_ref = deps[1]
+
+    member_precinct_ids: list[str] = []
+    if precinct_group_ref:
+        group_record = _precinct_group_record(das, precinct_group_ref)
+        if group_record is not None:
+            member_precinct_ids = _extract_precinct_ids_from_group_row(group_record[0])
+
+    return {
+        "collection_id": collection_id,
+        "label": label,
+        "timeframe_token": timeframe_token,
+        "member_precinct_ids": member_precinct_ids,
+        "member_count": len(member_precinct_ids),
+        "applicable_time_frame_ref": applicable_time_frame_ref,
+        "precinct_group_ref": precinct_group_ref,
+    }
+
+
+def read_district_profile_static_from_source_datum(
+    source_datum_path: str | Path,
+) -> dict[str, Any]:
+    """Read + parse the Ohio source datum and return district_profile_static."""
+    path = Path(source_datum_path)
+    with path.open("r", encoding="utf-8") as fh:
+        source_datum = json.load(fh)
+    if not isinstance(source_datum, dict):
+        return {}
+    return build_district_profile_static(source_datum)
+
+
 __all__ = [
     "CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH",
     "build_admin_profile_static",
     "build_compiled_artifact",
     "build_cts_gis_source_layout_summary",
+    "build_district_profile_static",
     "compiled_artifact_path",
     "cts_gis_admin_root_source_path",
     "cts_gis_source_root",
@@ -642,6 +789,7 @@ __all__ = [
     "read_admin_profile_static_from_source_datum",
     "read_compiled_artifact",
     "read_compiled_artifact_cached",
+    "read_district_profile_static_from_source_datum",
     "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
     "write_compiled_artifact",
