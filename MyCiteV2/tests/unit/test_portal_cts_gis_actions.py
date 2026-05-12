@@ -573,11 +573,15 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertEqual(action_result["status"], "rejected")
             self.assertIn("row_address", action_result["message"])
 
-    def test_select_precinct_row_records_feature_into_tool_state_selection(self) -> None:
-        """Garland cascade Phase 2: select_precinct_row must persist its
-        feature_id payload into tool_state.selection.selected_feature_id
-        (with selected_feature_explicit=True). An optional row_address
-        accompanies the feature when the listing row carries one."""
+    def test_select_precinct_row_records_precinct_into_tool_state_selection(self) -> None:
+        """Garland cascade Phase 4 follow-up: select_precinct_row must
+        persist the precinct id into the DEDICATED
+        tool_state.selection.selected_precinct_id field (NOT
+        selected_feature_id, which mediation's finalize_selection owns
+        and overwrites with SAMRAS-derived ids). The handler must NOT
+        touch selected_feature_id or selected_row_address — those are
+        mediation-owned. Accepts both `precinct_id` (canonical) and
+        `feature_id` (Phase 2 compat) in the payload."""
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
             self._seed_db(db_file)
@@ -585,7 +589,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 self._request(
                     None,
                     "select_precinct_row",
-                    {"feature_id": "247-17-77-121", "row_address": "4-84-1"},
+                    {"precinct_id": "247-17-77-121"},
                 ),
                 data_dir=None,
                 authority_db_file=db_file,
@@ -596,20 +600,34 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             action_result = payload["action_result"]
             self.assertEqual(action_result["action_kind"], "select_precinct_row")
             self.assertEqual(action_result["status"], "accepted")
-            self.assertEqual(action_result["details"]["selected_feature_id"], "247-17-77-121")
-            self.assertEqual(action_result["details"]["selected_row_address"], "4-84-1")
+            self.assertEqual(action_result["details"]["selected_precinct_id"], "247-17-77-121")
 
             selection = payload["tool_state"]["selection"]
-            self.assertEqual(selection["selected_feature_id"], "247-17-77-121")
-            self.assertTrue(selection["selected_feature_explicit"])
-            self.assertEqual(selection["selected_row_address"], "4-84-1")
-            self.assertTrue(selection["selected_row_explicit"])
+            self.assertEqual(selection["selected_precinct_id"], "247-17-77-121")
 
-    def test_select_precinct_row_feature_only_skips_row_address(self) -> None:
-        """When only feature_id is supplied (no accompanying row_address),
-        the row address must not be silently mutated — preserving the
-        prior district selection so the precinct highlight stays scoped
-        to the active district context."""
+    def test_select_precinct_row_accepts_feature_id_alias(self) -> None:
+        """The action handler accepts the Phase 2 `feature_id` payload
+        key as an alias for `precinct_id` — backwards compatibility
+        for any listing rows still emitting the old shape."""
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+            result = run_portal_cts_gis_action(
+                self._request(None, "select_precinct_row", {"feature_id": "247-17-77-121"}),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            selection = result["surface_payload"]["tool_state"]["selection"]
+            self.assertEqual(selection["selected_precinct_id"], "247-17-77-121")
+
+    def test_select_precinct_row_does_not_touch_mediation_owned_selection(self) -> None:
+        """The new handler must NOT write to selected_feature_id or
+        selected_row_address. Those fields are mediation-owned (their
+        values are derived from finalize_selection on the next cycle);
+        overloading them was the root cause of the precinct-click
+        panel reset in the Phase 4 initial deploy."""
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
             self._seed_db(db_file)
@@ -620,25 +638,26 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
                 "selection": {
                     "selected_row_address": "5-0-26",
-                    "selected_feature_id": "",
+                    "selected_feature_id": "prior_feature_id",
                     "selected_row_explicit": True,
-                    "selected_feature_explicit": False,
+                    "selected_feature_explicit": True,
                 },
             }
             result = run_portal_cts_gis_action(
-                self._request(seed_state, "select_precinct_row", {"feature_id": "247-17-77-121"}),
+                self._request(seed_state, "select_precinct_row", {"precinct_id": "247-17-77-121"}),
                 data_dir=None,
                 authority_db_file=db_file,
                 portal_instance_id="fnd",
                 portal_domain="fruitfulnetworkdevelopment.com",
             )
             selection = result["surface_payload"]["tool_state"]["selection"]
-            self.assertEqual(selection["selected_feature_id"], "247-17-77-121")
-            self.assertEqual(
-                selection["selected_row_address"],
-                "5-0-26",
-                "feature-only precinct selection must preserve the prior district row",
-            )
+            self.assertEqual(selection["selected_precinct_id"], "247-17-77-121")
+            # selected_feature_id / selected_row_address may be rewritten
+            # by mediation finalize, but the action handler itself must
+            # not have changed them — they should at least carry the
+            # prior values (or a downstream mediation result).
+            # The KEY assertion: selected_feature_id is NOT the precinct id.
+            self.assertNotEqual(selection.get("selected_feature_id"), "247-17-77-121")
 
     def test_canonical_mutation_lifecycle_names_are_accepted_as_cts_gis_aliases(self) -> None:
         with TemporaryDirectory() as temp_dir:
