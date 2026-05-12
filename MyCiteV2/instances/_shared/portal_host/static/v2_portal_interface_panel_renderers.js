@@ -1705,6 +1705,124 @@
         "</div>";
   }
 
+  // Phase 4 follow-up — surgical per-frame swap.
+  //
+  // Walks the existing DOM and the incoming DOM in parallel. For every
+  // element carrying a `data-frame-id`, looks up the matching node in
+  // the other tree. If both render_keys agree, the existing node is
+  // kept (no flicker for unchanged frames); otherwise the existing
+  // node is replaced with the incoming one. Frames that disappear are
+  // removed; frames that appear are inserted. Recurses into nested
+  // component_groups (the Garland frame's 6 children).
+  //
+  // Outer scaffolding (presentation tabs, layout wrappers, the Garland
+  // pane <section>) is left intact across calls. Returns true if the
+  // merge succeeded; false signals the caller should fall back to the
+  // wholesale innerHTML assignment.
+  function mergeCtsGisFramesInPlace(existingRoot, incomingRoot) {
+    if (!existingRoot || !incomingRoot) return false;
+    // The presentation tabs themselves can change active state across
+    // renders; let the binder reapply rather than diffing them here.
+    var existingTabs = existingRoot.querySelector(".v2-presentation-tabs");
+    var incomingTabs = incomingRoot.querySelector(".v2-presentation-tabs");
+    if (existingTabs && incomingTabs && existingTabs.outerHTML !== incomingTabs.outerHTML) {
+      existingTabs.outerHTML = incomingTabs.outerHTML;
+    }
+    // Tab panel bodies — Garland + Diktataograph.
+    var existingPanels = existingRoot.querySelectorAll('[data-presentation-tab-panel]');
+    var incomingPanels = incomingRoot.querySelectorAll('[data-presentation-tab-panel]');
+    if (existingPanels.length !== incomingPanels.length) return false;
+    for (var pi = 0; pi < incomingPanels.length; pi++) {
+      var oldPanel = existingPanels[pi];
+      var newPanel = incomingPanels[pi];
+      if (oldPanel.getAttribute("data-presentation-tab-panel") !==
+          newPanel.getAttribute("data-presentation-tab-panel")) {
+        return false;
+      }
+      // Active-state flip — toggle the data-active-tab attr; binders
+      // will reapply CSS state.
+      if (oldPanel.getAttribute("data-active-tab") !== newPanel.getAttribute("data-active-tab")) {
+        oldPanel.setAttribute("data-active-tab", newPanel.getAttribute("data-active-tab") || "");
+      }
+      mergeFramesUnder(oldPanel, newPanel);
+    }
+    return true;
+  }
+
+  function mergeFramesUnder(oldContainer, newContainer) {
+    // Collect direct + nested [data-frame-id] children of newContainer
+    // and old. Walk the new container's child elements; for each, if
+    // it carries data-frame-id, attempt swap; otherwise recurse into
+    // its children to find frames deeper in the tree.
+    var newChildren = newContainer.children;
+    var oldChildren = oldContainer.children;
+    // Index existing direct children by frame_id (if any).
+    var oldByFrameId = {};
+    var oldUnkeyed = [];
+    for (var i = 0; i < oldChildren.length; i++) {
+      var fid = oldChildren[i].getAttribute && oldChildren[i].getAttribute("data-frame-id");
+      if (fid) {
+        oldByFrameId[fid] = oldChildren[i];
+      } else {
+        oldUnkeyed.push(oldChildren[i]);
+      }
+    }
+    var unkeyedIndex = 0;
+    // Build a fresh sequence of children in incoming order, swapping
+    // matched frames in place and preserving structural wrappers.
+    var seq = [];
+    for (var j = 0; j < newChildren.length; j++) {
+      var newEl = newChildren[j];
+      var newFid = newEl.getAttribute && newEl.getAttribute("data-frame-id");
+      if (newFid && oldByFrameId[newFid]) {
+        var oldEl = oldByFrameId[newFid];
+        var oldKey = oldEl.getAttribute("data-render-key") || "";
+        var newKey = newEl.getAttribute("data-render-key") || "";
+        var oldType = oldEl.getAttribute("data-component-type") || "";
+        var newType = newEl.getAttribute("data-component-type") || "";
+        if (oldKey === newKey && oldType === newType) {
+          if (oldType === "component_group") {
+            // Same group key — recurse into children to swap any
+            // grand-children whose own keys changed.
+            var oldGroupChildren = oldEl.querySelector(".v2-component-group__children");
+            var newGroupChildren = newEl.querySelector(".v2-component-group__children");
+            if (oldGroupChildren && newGroupChildren) {
+              mergeFramesUnder(oldGroupChildren, newGroupChildren);
+            }
+          }
+          seq.push(oldEl);
+        } else {
+          seq.push(newEl);
+        }
+        delete oldByFrameId[newFid];
+      } else if (!newFid && unkeyedIndex < oldUnkeyed.length) {
+        // Structural wrapper (no frame_id) — recurse to find frames
+        // inside it.
+        var oldWrap = oldUnkeyed[unkeyedIndex++];
+        if (oldWrap.tagName === newEl.tagName) {
+          mergeFramesUnder(oldWrap, newEl);
+          // Reflect any attribute/class changes on the wrapper itself.
+          if (oldWrap.className !== newEl.className) {
+            oldWrap.className = newEl.className;
+          }
+          seq.push(oldWrap);
+        } else {
+          seq.push(newEl);
+        }
+      } else {
+        seq.push(newEl);
+      }
+    }
+    // Replace the old container's children with the merged sequence.
+    // Using replaceChildren applies the swap in a single layout pass.
+    if (typeof oldContainer.replaceChildren === "function") {
+      oldContainer.replaceChildren.apply(oldContainer, seq);
+    } else {
+      while (oldContainer.firstChild) oldContainer.removeChild(oldContainer.firstChild);
+      seq.forEach(function (node) { oldContainer.appendChild(node); });
+    }
+  }
+
   function renderCtsGisInterfacePanel(ctx, target, region) {
     var existingActiveTab = target && target.querySelector("[data-interface-tab].is-active");
     var existingActiveTabId = existingActiveTab ? (existingActiveTab.getAttribute("data-interface-tab") || "") : "";
@@ -1895,7 +2013,7 @@
         '<p class="cts-gis-pane__empty">Garland component frames are not available yet.</p>' +
         "</section>";
     }
-    target.innerHTML =
+    var newHtml =
       '<div class="system-tool-interface cts-gis-interface">' +
       renderPresentationTabs(interfaceTabs) +
       '<div class="system-tool-interface__body cts-gis-interface__body" data-cts-gis-layout="' +
@@ -1907,6 +2025,29 @@
       renderPresentationTabPanel("diktataograph", activeTabId, diktataographPanel, "cts-gis-interface__tabPanel") +
       "</div>" +
       "</div>";
+    // Phase 4 follow-up — surgical update path. Wholesale
+    // `target.innerHTML = newHtml` destroys every DOM node under the
+    // panel and forces a full repaint, which the user perceives as
+    // the entire tool resetting on every row click. Instead, parse
+    // the new HTML into a detached element and walk the [data-frame-id]
+    // subtree: when the existing DOM has the same frame_id with the
+    // same data-render-key, keep the EXISTING node in place (no flicker
+    // for unchanged components). Only frames whose render_key changed
+    // (or are new) get swapped in. First load — when the target is
+    // empty — falls through to the original innerHTML assignment.
+    var existingRoot = target.querySelector(".cts-gis-interface");
+    if (existingRoot) {
+      var staging = document.createElement("div");
+      staging.innerHTML = newHtml;
+      var incomingRoot = staging.querySelector(".cts-gis-interface");
+      if (incomingRoot && mergeCtsGisFramesInPlace(existingRoot, incomingRoot)) {
+        // Outer scaffolding was preserved; per-frame swaps already done.
+      } else {
+        target.innerHTML = newHtml;
+      }
+    } else {
+      target.innerHTML = newHtml;
+    }
     bindPresentationTabs(target);
     bindShellRequestEntries(target, ctx, entriesByKind);
     bindDirectoryDropdowns(target, ctx, navigationCanvas.dropdowns || []);
