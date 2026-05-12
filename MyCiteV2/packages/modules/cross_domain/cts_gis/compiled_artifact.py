@@ -90,7 +90,14 @@ def validate_cts_gis_source_layout(layout: dict[str, Any] | None) -> tuple[bool,
         issues.append("source_root_missing")
     if not bool(payload.get("precinct_root_exists")):
         issues.append("precinct_root_missing")
-    if int(payload.get("top_level_file_count") or 0) <= 0:
+    # The cts_gis sandbox is precinct-only by design as of the 2026-05-12
+    # rename + prune. Top-level msn-SAMRAS source datums are no longer
+    # required at runtime — `admin_profile_static` + `district_profile_static`
+    # are baked into the compiled artifact. The layout is valid as long
+    # as EITHER the top-level OR the precincts directory carries files.
+    top_count = int(payload.get("top_level_file_count") or 0)
+    precinct_count = int(payload.get("precinct_file_count") or 0)
+    if top_count <= 0 and precinct_count <= 0:
         issues.append("source_root_empty")
     if not as_text(payload.get("fingerprint")):
         issues.append("source_fingerprint_missing")
