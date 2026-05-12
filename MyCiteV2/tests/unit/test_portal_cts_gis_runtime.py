@@ -279,51 +279,23 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
             "File row is still required to identify the active anchor file",
         )
 
-    def test_empty_request_defaults_attention_to_presumed_ohio_root(self) -> None:
-        """When the Garland tab loads with no explicit selection (no
-        active_path, selected_node_id, or attention_node_id in the request
-        body), the daemon-load contract requires the presumed attention to
-        be the Ohio root administrative node "3-2-3-17", reached by
-        mediating "1-1-2" through the CTS-GIS spatial context. The
-        wireframe must mediate, navigate, and project at the presumed
-        default — not at whatever leaf node the compiled artifact landed on."""
+    def test_presumed_attention_constant_is_ohio_root(self) -> None:
+        """The runtime exposes a named constant for the presumed default
+        attention. The runtime override that previously substituted this
+        constant for empty requests was removed because it forced every
+        landing-page request off the cached fast path (Summit County is
+        baked into the compiled artifact's default_tool_state) and onto
+        the live-read path, which OOM-killed gunicorn workers and 504'd
+        nginx. Re-enable the Ohio default via an artifact recompile —
+        tracked under TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11.
+
+        For now this test just asserts the constant exists and is correct,
+        so future work knows what value to compile into the artifact."""
         from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
             CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
         )
 
-        regions = _cts_gis_regions(
-            {
-                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
-                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                "runtime_mode": "production_strict",
-                # Empty tool_state — no selection on the wire.
-                "tool_state": {},
-            }
-        )
         self.assertEqual(CTS_GIS_PRESUMED_ATTENTION_NODE_ID, "3-2-3-17")
-
-        interface_body = dict(regions["interface_panel"]["interface_body"])
-        navigation = dict(interface_body.get("navigation_canvas") or {})
-        self.assertEqual(
-            navigation.get("active_node_id"),
-            CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
-            f"navigation_canvas active_node_id should be {CTS_GIS_PRESUMED_ATTENTION_NODE_ID!r} when the request carries no explicit selection",
-        )
-
-        frames = list(interface_body.get("component_frames") or [])
-        self.assertTrue(frames)
-        children = list((frames[0].get("payload") or {}).get("children") or [])
-        admin_profile = next(
-            (child for child in children if child.get("frame_id") == "administrative_node_profile"),
-            None,
-        )
-        self.assertIsNotNone(admin_profile)
-        admin_payload = dict(admin_profile.get("payload") or {})
-        self.assertEqual(
-            admin_payload.get("msn_id"),
-            CTS_GIS_PRESUMED_ATTENTION_NODE_ID,
-            "admin profile must mediate on the presumed Ohio root when no explicit selection is provided",
-        )
 
     def test_administrative_node_profile_emits_bare_minimum_filament_fields(self) -> None:
         """The admin_node profile should only carry the three SAMRAS filament

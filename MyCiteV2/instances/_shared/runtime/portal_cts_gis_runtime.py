@@ -3798,43 +3798,25 @@ def build_portal_cts_gis_surface_bundle(
             compiled_default_tool_state,
             _request_tool_state_overrides(requested_tool_state, normalized_request_payload),
         )
-        # Daemon-load contract: when the Garland tab loads at the bare
-        # `?file=anchor&verb=mediate` URL (i.e. the URL pins only the
-        # sandbox + file, no datum or object), the presumed attention is
-        # the Ohio root administrative node `CTS_GIS_PRESUMED_ATTENTION_NODE_ID`
-        # = "3-2-3-17", reached by mediating the relative SAMRAS address
-        # `1-1-2` through the CTS-GIS spatial context.
+        # NOTE — Default-to-Ohio override removed.
         #
-        # The override key is the URL/shell_state — NOT the request-body
-        # tool_state. The browser-side shell client persists tool_state
-        # to localStorage on every response and re-hydrates it on every
-        # subsequent request (see v2_portal_shell_core.js:hydrateShellRequestToolState).
-        # If we keyed off request-body tool_state instead, a session that
-        # ever landed on Summit County would forever ship Summit County on
-        # every page-reload — bypassing the daemon-load default. The
-        # shell_state's focus_path reflects the URL, which is the user's
-        # actual navigational intent: if it carries no datum or object
-        # segment, the user did not pin a specific node, and we honour
-        # the presumed default.
-        _focus_path_segments = list(getattr(shell_state, "focus_path", None) or [])
-        _url_carries_node_selection = False
-        for _segment in _focus_path_segments:
-            _segment_level = _as_text(
-                getattr(_segment, "level", None)
-                if not isinstance(_segment, dict)
-                else _segment.get("level")
-            )
-            if _segment_level in (FOCUS_LEVEL_DATUM, FOCUS_LEVEL_OBJECT):
-                _url_carries_node_selection = True
-                break
-        if not _url_carries_node_selection:
-            requested_tool_state["selected_node_id"] = CTS_GIS_PRESUMED_ATTENTION_NODE_ID
-            requested_tool_state["active_path"] = _active_path_from_node_id(
-                CTS_GIS_PRESUMED_ATTENTION_NODE_ID
-            )
-            requested_aitas = dict(requested_tool_state.get("aitas") or {})
-            requested_aitas["attention_node_id"] = CTS_GIS_PRESUMED_ATTENTION_NODE_ID
-            requested_tool_state["aitas"] = requested_aitas
+        # Previously this block force-substituted the request's selected
+        # node to CTS_GIS_PRESUMED_ATTENTION_NODE_ID ("3-2-3-17") whenever
+        # the URL had no datum/object segment. That looked correct in
+        # tests but in production it forced every landing-page request
+        # off the compiled-artifact fast path (which keys on Summit
+        # County, the artifact's baked default) and onto the live-read
+        # path. Live reads cost ~35s per request and ~700 MB extra RSS
+        # on this 3.87 GB box, which saturated swap and triggered
+        # gunicorn worker SIGKILLs. Nginx then 504'd.
+        #
+        # Re-enable the Ohio default via the artifact (recompile
+        # `compiled/cts_gis.fnd.compiled.json` with
+        # default_tool_state.selected_node_id = "3-2-3-17") so the
+        # default landing stays on the cached fast path.
+        # Tracked: TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11 (Phase 1 +
+        # artifact recompile follow-up).
+        pass
         navigation_canvas = _navigation_canvas_from_compiled_artifact(
             artifact=compiled_artifact,
             portal_scope=portal_scope,
