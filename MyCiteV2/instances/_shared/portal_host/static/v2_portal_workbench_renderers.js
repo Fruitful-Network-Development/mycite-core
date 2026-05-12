@@ -26,6 +26,41 @@
     return asText(value).replace(/\.json$/i, "");
   }
 
+  // Extracts a short, navigable label from a datum-document filename.
+  // The new naming conventions encode the salient identifier as a
+  // recognizable middle segment:
+  //   sc.<corpus>.cts_gis.ruigi-<id>.<hash>.json   -> "ruigi-<id>"
+  //   sc.<corpus>.msn-<id>.<hash>.json             -> "msn-<id>"
+  //   sc.<corpus>.registrar.json                   -> "registrar"
+  // Legacy conventions:
+  //   sc.<corpus>.cts.<id_underscored>.json        -> "cts.<id_underscored>"
+  //   sc.<corpus>.fnd.<id>.json                    -> "fnd.<id>"
+  // Anything else falls back to the filename minus `.json`.
+  function shortDocumentLabel(value) {
+    var name = stripJsonSuffix(value);
+    if (!name) return "";
+    var m;
+    // ruigi precinct: sc.<corpus>.cts_gis.ruigi-<id>.<hash>
+    m = name.match(/\.(cts_gis\.ruigi-[^.]+)\.[0-9a-f]+$/);
+    if (m) return m[1].replace(/^cts_gis\./, "");
+    // msn-SAMRAS source datum (with hash): sc.<corpus>.msn-<id>.<hash>
+    m = name.match(/\.(msn-[^.]+)\.[0-9a-f]+$/);
+    if (m) return m[1];
+    // msn-* cache files (no hash): sc.<corpus>.msn-<name>
+    m = name.match(/\.(msn-[^.]+)$/);
+    if (m) return m[1];
+    // Legacy: sc.<corpus>.cts.<id_underscored>
+    m = name.match(/\.(cts\.[^.]+)$/);
+    if (m) return m[1];
+    // Legacy: sc.<corpus>.fnd.<id>
+    m = name.match(/\.(fnd\.[^.]+)$/);
+    if (m) return m[1];
+    // Singleton tool/registrar files: sc.<corpus>.<bare-name>
+    m = name.match(/\.([a-z][a-z0-9_-]*)$/);
+    if (m) return m[1];
+    return name;
+  }
+
   function prettyJson(value) {
     if (value == null) return "";
     try {
@@ -986,15 +1021,35 @@
         "</section>"
       );
     }
+    // Sort documents alphabetically by the short label so cards land
+    // in a navigable order. Anchor documents float to the top (they're
+    // the entry point for the sandbox), then everything else A-Z.
+    var sortedDocuments = documents.slice().sort(function (a, b) {
+      var ao = asObject(a);
+      var bo = asObject(b);
+      var aAnchor = !!ao.is_anchor;
+      var bAnchor = !!bo.is_anchor;
+      if (aAnchor !== bAnchor) return aAnchor ? -1 : 1;
+      var an = shortDocumentLabel(asText(ao.document_name) || asText(ao.canonical_name) || asText(ao.document_id));
+      var bn = shortDocumentLabel(asText(bo.document_name) || asText(bo.canonical_name) || asText(bo.document_id));
+      return an.localeCompare(bn, undefined, { numeric: true, sensitivity: "base" });
+    });
     return (
       '<section class="v2-card" style="margin-top:12px"><h3>Sandbox Documents</h3>' +
       '<div class="v2-card-grid">' +
-      documents
+      sortedDocuments
         .map(function (card) {
           var cardObj = asObject(card);
           var documentId = asText(cardObj.document_id);
           var canonicalName = stripJsonSuffix(asText(cardObj.canonical_name) || asText(cardObj.label));
           var rawName = stripJsonSuffix(asText(cardObj.document_name) || asText(cardObj.secondary_label) || asText(cardObj.relative_path));
+          // Derive the visible card title from the FILENAME first since
+          // that has stable structural markers (`.msn-`, `.cts_gis.`, etc.)
+          // that map cleanly to a short navigable label. canonical_name
+          // from the catalog may include concatenated hash segments
+          // (e.g. "3-2-3-17-77-1-10d7568c17b6bb"). Fall back to
+          // canonical_name then documentId if the filename is empty.
+          var displayLabel = shortDocumentLabel(rawName || canonicalName || documentId);
           var isAnchor = !!cardObj.is_anchor;
           return (
             '<article class="v2-card v2-wb-docCard' +
@@ -1002,10 +1057,12 @@
             (isAnchor ? " is-anchor" : "") +
             '" tabindex="0" role="button" data-shell-transition-kind="focus_file" data-shell-file-key="' +
             escapeHtml(documentId) +
+            '" title="' +
+            escapeHtml(canonicalName || rawName || documentId) +
             '">' +
             '<div class="v2-wb-docCard__header">' +
             '<h3 class="v2-wb-docCard__name">' +
-            escapeHtml(canonicalName || documentId || "Document") +
+            escapeHtml(displayLabel || documentId || "Document") +
             (isAnchor ? ' <small>(anchor)</small>' : "") +
             "</h3>" +
             '<span class="v2-wb-docCard__actions">' +

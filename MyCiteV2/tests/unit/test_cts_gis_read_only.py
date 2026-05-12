@@ -182,6 +182,14 @@ def _document_from_source_file(path: Path) -> AuthoritativeDatumDocument:
 
 
 def _summit_source_path(node_id: str) -> Path:
+    """Resolve a SAMRAS-node source-datum file regardless of naming era.
+
+    Current convention: `sc.<corpus>.msn-<node_id>.<hash>.json` (globbed).
+    Legacy convention:  `sc.<corpus>.fnd.<node_id>.json`.
+    """
+    matches = sorted(SUMMIT_SOURCES_ROOT.glob(f"sc.3-2-3-17-77-1-6-4-1-4.msn-{node_id}.*.json"))
+    if matches:
+        return matches[0]
     return SUMMIT_SOURCES_ROOT / f"sc.3-2-3-17-77-1-6-4-1-4.fnd.{node_id}.json"
 
 
@@ -1003,8 +1011,16 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
             )
             for document in list(projection_bundle.get("documents") or [])
         }
-        county_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77.json"]
-        community_summary = projected_by_name["sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77-1-1.json"]
+        # Document names follow the current `msn-<id>.<hash>.json` form;
+        # locate them by matching node-id prefix to stay robust across
+        # future hash refreshes.
+        def _summary_for_node(node_id: str) -> dict:
+            for name, summary in projected_by_name.items():
+                if f".msn-{node_id}." in name or f".fnd.{node_id}." in name:
+                    return summary
+            raise AssertionError(f"No projected document for node {node_id}; have: {sorted(projected_by_name.keys())}")
+        county_summary = _summary_for_node("3-2-3-17-77")
+        community_summary = _summary_for_node("3-2-3-17-77-1-1")
         self.assertIn(county_summary["projection_state"], {"projectable", "projectable_degraded"})
         self.assertGreater(int(county_summary["projectable_feature_count"] or 0), 0)
         self.assertGreater(int(county_summary["profile_count"] or 0), 0)

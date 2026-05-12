@@ -382,11 +382,12 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
             str(first_row.get("row_address") or ""),
             "admin_log row must carry a non-empty `row_address` so the cascade can dispatch select_district_row",
         )
-        # The row_address tags `entry` text helps humans trace the cascade.
+        # Phase 4 — sandbox-rooted district label comes from the source
+        # datum's `district` collection labels (e.g. "23_present-district_31").
         self.assertIn(
-            "District 31",
-            str(first_row.get("entry") or ""),
-            "the canonical Ohio district label is District 31 (sanity check)",
+            "district_31",
+            str(first_row.get("entry") or "").lower(),
+            "the canonical Ohio district label encodes 'district_31' (sanity check)",
         )
 
     def test_precinct_profile_slot_repurposes_as_district_profile_on_selection(self) -> None:
@@ -450,11 +451,13 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         # a render target; Phase 6 will swap its feature_collection content.
         self.assertIsInstance(payload.get("subject_slot"), dict)
 
-    def test_precinct_profile_slot_stays_empty_when_no_district_selection(self) -> None:
-        """Without a district selection, the col-3 slot keeps its empty
-        Precinct Profile scaffold from the wireframe (TITLE / MSN_ID /
-        CAPITAL_MSN_ID rows with em-dash values, plus the
-        PRECINCT_COLLECTIONS placeholder)."""
+    def test_precinct_profile_slot_auto_selects_canonical_district(self) -> None:
+        """Phase 4 contract: when the compiled artifact carries
+        `district_profile_static` (the sandbox-rooted canonical district),
+        the runtime auto-selects it on every load — even when no explicit
+        `selected_district_id` is on the wire. The col-3 slot
+        (`precinct_profile` frame_id) repurposes to the District Profile
+        immediately. This replaces the pre-Phase-4 'stays empty' behavior."""
         regions = _cts_gis_regions(
             {
                 "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
@@ -468,7 +471,7 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
                         "intention_rule_id": "self",
                         "time_directive": "current",
                     },
-                    # No selection on the wire — wireframe stays in default state.
+                    # No selection on the wire — auto-select still fires.
                 },
             }
         )
@@ -482,11 +485,11 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         )
         self.assertIsNotNone(col3)
         payload = dict(col3.get("payload") or {})
-        self.assertEqual(payload.get("variant"), "precinct")
-        self.assertEqual(payload.get("label"), "Precinct Profile")
+        self.assertEqual(payload.get("variant"), "district")
+        self.assertEqual(payload.get("label"), "District Profile")
         field_labels = [f.get("label") for f in (payload.get("fields") or [])]
-        self.assertEqual(field_labels, ["TITLE", "MSN_ID", "CAPITAL_MSN_ID"])
-        self.assertEqual(col3.get("initializer", {}).get("intent"), "resolve_precinct_profile")
+        self.assertEqual(field_labels, ["DISTRICT_ID", "PRECINCT_COUNT"])
+        self.assertEqual(col3.get("initializer", {}).get("intent"), "resolve_district_profile")
 
     def test_garland_emits_wireframe_placeholder_counts(self) -> None:
         regions = _cts_gis_regions(
@@ -538,19 +541,26 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         admin_profile = children_by_id.get("administrative_node_profile") or {}
         admin_collections = list((admin_profile.get("payload") or {}).get("collections") or [])
         self.assertTrue(admin_collections, "administrative_node_profile must carry at least one collection")
+        # Phase 4 — DISTRICT_COLLECTIONS carries the single canonical district
+        # row (auto-selected from district_profile_static). Placeholder items
+        # only appear when the real row count is zero.
+        admin_collection_items = list(admin_collections[0].get("items") or [])
         self.assertEqual(
-            int(admin_collections[0].get("placeholder_item_count") or 0),
-            3,
-            "DISTRICT_COLLECTIONS must emit 3 wireframe placeholder items",
+            len(admin_collection_items),
+            1,
+            "DISTRICT_COLLECTIONS must paint exactly one row for Ohio's canonical district",
         )
 
         precinct_profile = children_by_id.get("precinct_profile") or {}
-        precinct_collections = list((precinct_profile.get("payload") or {}).get("collections") or [])
-        self.assertTrue(precinct_collections, "precinct_profile must carry at least one collection")
+        precinct_payload = precinct_profile.get("payload") or {}
+        # Phase 4 — col-3 auto-selects as the District Profile, which
+        # carries an empty `collections` list (precinct list moved to col-4).
+        self.assertEqual(precinct_payload.get("variant"), "district")
+        precinct_collections = list(precinct_payload.get("collections") or [])
         self.assertEqual(
-            int(precinct_collections[0].get("placeholder_item_count") or 0),
-            3,
-            "PRECINCT_COLLECTIONS must emit 3 wireframe placeholder items",
+            precinct_collections,
+            [],
+            "District Profile in col-3 carries no PRECINCT_COLLECTIONS — its members render in col-4",
         )
 
 

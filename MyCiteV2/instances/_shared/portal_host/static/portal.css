@@ -8901,6 +8901,36 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 12px;
   margin-top: 12px;
 }
+/* Document card titles can carry long filenames in legacy data; keep
+   the card from overflowing horizontally with a tight clamp. The
+   renderer already extracts a short label, but the truncation is
+   a safety net for any legacy `.fnd.` / `.cts.` filename that the
+   short-label regex didn't cover. */
+.v2-wb-docCard {
+  min-width: 0;
+  overflow: hidden;
+}
+.v2-wb-docCard__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.v2-wb-docCard__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+.v2-wb-docCard p small {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 .v2-card {
   border: 1px solid var(--ide-border, #d8dee4);
   border-radius: 8px;

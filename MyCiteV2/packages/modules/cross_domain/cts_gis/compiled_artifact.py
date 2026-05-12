@@ -407,13 +407,38 @@ def write_compiled_artifact(path: Path | None, artifact: dict[str, Any]) -> Path
 CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH = (
     Path("sandbox") / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json"
 )
-"""Repo-relative path (under data_dir) to the Ohio admin-root source datum."""
+"""Legacy repo-relative path to the Ohio admin-root source datum.
+
+Retained for tests + backwards compat. The runtime now globs for the
+new convention `sc.*.msn-3-2-3-17.*.json` first, then falls back here.
+"""
+
+
+def _cts_gis_sources_dir(data_dir: str | Path | None) -> Path | None:
+    if data_dir is None:
+        return None
+    return Path(data_dir) / "sandbox" / "cts-gis" / "sources"
 
 
 def cts_gis_admin_root_source_path(data_dir: str | Path | None) -> Path | None:
-    """Resolve the Ohio admin-root source-datum path under the given data_dir."""
+    """Resolve the Ohio admin-root source-datum path under the given data_dir.
+
+    The current naming convention is `sc.<corpus>.msn-<msn_id>.<hash>.json`.
+    The legacy convention was `sc.<corpus>.fnd.<msn_id>.json`. This helper
+    globs for the new form first, falls back to the legacy path so
+    existing test fixtures keep working.
+    """
     if data_dir is None:
         return None
+    sources = _cts_gis_sources_dir(data_dir)
+    if sources is None:
+        return None
+    # New convention: glob for msn-<msn_id>.*.json
+    if sources.exists():
+        matches = sorted(sources.glob("sc.*.msn-3-2-3-17.*.json"))
+        if matches:
+            return matches[0]
+    # Legacy fallback.
     return Path(data_dir) / CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH
 
 
@@ -808,12 +833,22 @@ def cts_gis_precinct_file_for_id(
 ) -> Path:
     """Return the absolute path to a precinct's source datum JSON file.
 
-    Filename convention: `<corpus_prefix>.cts.<precinct_id_underscored>.json`
-    where the precinct id (e.g. "247-17-77-121") is hyphenated externally
-    but appears with underscores in the filename.
+    Current naming convention:
+      `<corpus_prefix>.cts_gis.ruigi-<precinct_id_hyphenated>.<hash>.json`
+    Legacy convention:
+      `<corpus_prefix>.cts.<precinct_id_underscored>.json`
+
+    Globs the new form first; falls back to the legacy form so existing
+    test fixtures keep working. If neither exists, returns the legacy
+    (non-existent) path so callers can decide whether to error.
     """
-    suffix = precinct_id.replace("-", "_")
-    return Path(precincts_dir) / f"{corpus_prefix}.cts.{suffix}.json"
+    base = Path(precincts_dir)
+    new_glob = sorted(base.glob(f"{corpus_prefix}.cts_gis.ruigi-{precinct_id}.*.json"))
+    if new_glob:
+        return new_glob[0]
+    legacy_suffix = precinct_id.replace("-", "_")
+    legacy_path = base / f"{corpus_prefix}.cts.{legacy_suffix}.json"
+    return legacy_path
 
 
 def _decode_precinct_ring_points(source_datum: dict[str, Any]) -> list[list[float]]:
