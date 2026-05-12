@@ -350,6 +350,10 @@ _ALLOWED_ACTION_KINDS = frozenset(
         "inject_directive",
         "rename_document",
         "delete_document",
+        # Garland cascade selection actions
+        # (TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11 Phase 2)
+        "select_district_row",
+        "select_precinct_row",
     }
 )
 
@@ -4404,6 +4408,73 @@ def _apply_cts_gis_action(
                 status="accepted",
                 message=f"Component frame engagement accepted: {frame_id}",
                 details={"engaged_frame_id": frame_id},
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "select_district_row":
+            # Garland cascade Phase 2: record a district-listing row selection
+            # into tool_state.selection.selected_row_address so the next
+            # mediation cycle can read it. Sibling selected_feature_id is
+            # cleared so a new district selection doesn't carry a stale
+            # precinct highlight from the prior district context.
+            #
+            # This handler does NOT itself materialise the district profile
+            # frame — that happens downstream in
+            # `_build_cts_gis_structured_interface_body` (Phase 3) when the
+            # next shell load reads the recorded selection. force_live_read
+            # stays False because the compiled-artifact cache key includes
+            # selection state; the cached fast path serves the new payload.
+            row_address = _as_text(action_payload.get("row_address"))
+            next_tool_state.setdefault("selection", {})
+            next_tool_state["selection"]["selected_row_address"] = row_address
+            next_tool_state["selection"]["selected_row_explicit"] = bool(row_address)
+            # Clear precinct selection — a new district selection invalidates it.
+            next_tool_state["selection"]["selected_feature_id"] = ""
+            next_tool_state["selection"]["selected_feature_explicit"] = False
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted" if row_address else "rejected",
+                message=(
+                    f"District row selected: {row_address}"
+                    if row_address
+                    else "select_district_row requires a row_address payload"
+                ),
+                details={"selected_row_address": row_address},
+            )
+            return next_tool_state, action_result, force_live_read
+
+        if action_kind == "select_precinct_row":
+            # Garland cascade Phase 2: record a precinct-listing row selection
+            # into tool_state.selection.selected_feature_id (the precinct's
+            # geospatial feature id) so the next mediation cycle can
+            # repurpose the bottom slot as a precinct profile and highlight
+            # the chosen precinct in the district projection. An optional
+            # row_address may accompany the feature_id when the listing row
+            # carries a SAMRAS datum row address alongside the feature.
+            #
+            # Like select_district_row, this only persists the selection;
+            # downstream rendering happens in
+            # `_build_cts_gis_structured_interface_body` (Phase 5).
+            feature_id = _as_text(action_payload.get("feature_id"))
+            row_address = _as_text(action_payload.get("row_address"))
+            next_tool_state.setdefault("selection", {})
+            next_tool_state["selection"]["selected_feature_id"] = feature_id
+            next_tool_state["selection"]["selected_feature_explicit"] = bool(feature_id)
+            if row_address:
+                next_tool_state["selection"]["selected_row_address"] = row_address
+                next_tool_state["selection"]["selected_row_explicit"] = True
+            action_result = _cts_gis_action_result(
+                action_kind=action_kind,
+                status="accepted" if feature_id else "rejected",
+                message=(
+                    f"Precinct selected: {feature_id}"
+                    if feature_id
+                    else "select_precinct_row requires a feature_id payload"
+                ),
+                details={
+                    "selected_feature_id": feature_id,
+                    "selected_row_address": row_address,
+                },
             )
             return next_tool_state, action_result, force_live_read
 

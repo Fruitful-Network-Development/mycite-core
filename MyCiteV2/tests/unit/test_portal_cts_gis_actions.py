@@ -503,6 +503,140 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertIn("portal.cts_gis.apply_stage.accepted", event_types)
             self.assertIn("portal.cts_gis.discard_stage.accepted", event_types)
 
+    def test_select_district_row_records_row_into_tool_state_selection(self) -> None:
+        """Garland cascade Phase 2: select_district_row must persist its
+        row_address payload into tool_state.selection.selected_row_address
+        (with selected_row_explicit=True), and clear any prior
+        selected_feature_id so a new district selection doesn't carry a
+        stale precinct highlight. The action_result must report 'accepted'
+        with the recorded row_address in its details."""
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+
+            # Tool state seeded with a stale precinct selection to assert the
+            # handler clears it on district selection.
+            seed_state = {
+                "selected_node_id": "3-2-3-17",
+                "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                "aitas": {"attention_node_id": "3-2-3-17", "intention_rule_id": "self", "time_directive": "current"},
+                "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
+                "selection": {
+                    "selected_row_address": "",
+                    "selected_feature_id": "stale-precinct-247-17-77-999",
+                    "selected_row_explicit": False,
+                    "selected_feature_explicit": True,
+                },
+            }
+
+            result = run_portal_cts_gis_action(
+                self._request(seed_state, "select_district_row", {"row_address": "5-0-26"}),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            payload = result["surface_payload"]
+            action_result = payload["action_result"]
+            self.assertEqual(action_result["action_kind"], "select_district_row")
+            self.assertEqual(action_result["status"], "accepted")
+            self.assertEqual(action_result["details"]["selected_row_address"], "5-0-26")
+
+            selection = payload["tool_state"]["selection"]
+            self.assertEqual(selection["selected_row_address"], "5-0-26")
+            self.assertTrue(selection["selected_row_explicit"])
+            self.assertEqual(
+                selection["selected_feature_id"],
+                "",
+                "select_district_row must clear any prior precinct selection",
+            )
+            self.assertFalse(selection["selected_feature_explicit"])
+
+    def test_select_district_row_without_payload_is_rejected(self) -> None:
+        """When the payload is missing the row_address, the handler must
+        report 'rejected' so the client knows the selection didn't take.
+        State is otherwise left in a consistent (cleared) shape."""
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+            result = run_portal_cts_gis_action(
+                self._request(None, "select_district_row", {}),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            action_result = result["surface_payload"]["action_result"]
+            self.assertEqual(action_result["status"], "rejected")
+            self.assertIn("row_address", action_result["message"])
+
+    def test_select_precinct_row_records_feature_into_tool_state_selection(self) -> None:
+        """Garland cascade Phase 2: select_precinct_row must persist its
+        feature_id payload into tool_state.selection.selected_feature_id
+        (with selected_feature_explicit=True). An optional row_address
+        accompanies the feature when the listing row carries one."""
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+            result = run_portal_cts_gis_action(
+                self._request(
+                    None,
+                    "select_precinct_row",
+                    {"feature_id": "247-17-77-121", "row_address": "4-84-1"},
+                ),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            payload = result["surface_payload"]
+            action_result = payload["action_result"]
+            self.assertEqual(action_result["action_kind"], "select_precinct_row")
+            self.assertEqual(action_result["status"], "accepted")
+            self.assertEqual(action_result["details"]["selected_feature_id"], "247-17-77-121")
+            self.assertEqual(action_result["details"]["selected_row_address"], "4-84-1")
+
+            selection = payload["tool_state"]["selection"]
+            self.assertEqual(selection["selected_feature_id"], "247-17-77-121")
+            self.assertTrue(selection["selected_feature_explicit"])
+            self.assertEqual(selection["selected_row_address"], "4-84-1")
+            self.assertTrue(selection["selected_row_explicit"])
+
+    def test_select_precinct_row_feature_only_skips_row_address(self) -> None:
+        """When only feature_id is supplied (no accompanying row_address),
+        the row address must not be silently mutated — preserving the
+        prior district selection so the precinct highlight stays scoped
+        to the active district context."""
+        with TemporaryDirectory() as temp_dir:
+            db_file = Path(temp_dir) / "authority.sqlite3"
+            self._seed_db(db_file)
+            seed_state = {
+                "selected_node_id": "3-2-3-17",
+                "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                "aitas": {"attention_node_id": "3-2-3-17", "intention_rule_id": "self", "time_directive": "current"},
+                "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
+                "selection": {
+                    "selected_row_address": "5-0-26",
+                    "selected_feature_id": "",
+                    "selected_row_explicit": True,
+                    "selected_feature_explicit": False,
+                },
+            }
+            result = run_portal_cts_gis_action(
+                self._request(seed_state, "select_precinct_row", {"feature_id": "247-17-77-121"}),
+                data_dir=None,
+                authority_db_file=db_file,
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+            )
+            selection = result["surface_payload"]["tool_state"]["selection"]
+            self.assertEqual(selection["selected_feature_id"], "247-17-77-121")
+            self.assertEqual(
+                selection["selected_row_address"],
+                "5-0-26",
+                "feature-only precinct selection must preserve the prior district row",
+            )
+
     def test_canonical_mutation_lifecycle_names_are_accepted_as_cts_gis_aliases(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
