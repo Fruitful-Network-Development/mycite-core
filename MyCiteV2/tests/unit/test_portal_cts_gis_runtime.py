@@ -390,12 +390,12 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         )
 
     def test_precinct_profile_slot_repurposes_as_district_profile_on_selection(self) -> None:
-        """Phase 3 cascade: when `tool_state.selection.selected_row_address`
+        """Phase 3 + 4 cascade: when `tool_state.selection.selected_district_id`
         matches a district collection's id, the col-3 slot
         (`precinct_profile` frame_id) repurposes as a `district profile`:
 
-          - label takes the district's human label
-          - fields list collapses to [] (no source datum = no filament)
+          - label becomes the literal "District Profile" (Phase 4)
+          - fields list carries DISTRICT_ID + PRECINCT_COUNT (Phase 4)
           - variant flips from "precinct" to "district"
           - initializer.intent flips to resolve_district_profile
           - the empty PRECINCT_COLLECTIONS placeholder is suppressed
@@ -437,13 +437,14 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
         self.assertIsNotNone(col3, "precinct_profile slot must exist (gets repurposed in-place)")
         payload = dict(col3.get("payload") or {})
         self.assertEqual(payload.get("variant"), "district")
-        self.assertEqual(payload.get("fields"), [])
+        field_labels = [f.get("label") for f in (payload.get("fields") or [])]
+        self.assertEqual(field_labels, ["DISTRICT_ID", "PRECINCT_COUNT"])
         self.assertEqual(
             payload.get("collections"),
             [],
             "district profile carries no PRECINCT_COLLECTIONS — its members render in the precinct listing",
         )
-        self.assertIn("District 31", str(payload.get("label") or ""))
+        self.assertEqual(payload.get("label"), "District Profile")
         self.assertEqual(col3.get("initializer", {}).get("intent"), "resolve_district_profile")
         # subject_slot must be present so the geospatial projection still has
         # a render target; Phase 6 will swap its feature_collection content.

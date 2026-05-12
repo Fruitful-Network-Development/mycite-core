@@ -8973,3 +8973,22 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-component-frame__collectionItems--placeholder dd {
   color: color-mix(in srgb, var(--ink2, #667068) 65%, transparent);
 }
+
+/* Phase 4 — listing rows that carry select_action are clickable. Hover
+   + selected affordance + pointer cursor so the admin-log / precinct
+   listing rows visibly behave like buttons. */
+.v2-component-listing__row--selectable {
+  cursor: pointer;
+}
+.v2-component-listing__row--selectable:hover td {
+  background: color-mix(in srgb, var(--accent, #6aa) 12%, transparent);
+}
+.v2-component-listing__row--selectable:focus {
+  outline: 2px solid var(--accent, #6aa);
+  outline-offset: -2px;
+}
+.v2-component-listing__row--selected td,
+.v2-component-listing__row--selectable[aria-pressed="true"] td {
+  background: color-mix(in srgb, var(--accent, #6aa) 22%, transparent);
+  font-weight: 600;
+}

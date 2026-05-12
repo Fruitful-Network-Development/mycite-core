@@ -237,8 +237,67 @@
     });
   }
 
+  // Phase 4 — delegated row-select binder. Listing rows that carry
+  // `data-row-select-action="<json>"` become clickable. The JSON
+  // payload has shape `{action_kind, action_payload}`; on click /
+  // Enter / Space we flatten it to the dispatchToolAction shape
+  // (`{action_kind, ...action_payload}`) so it matches the rest of
+  // the CTS-GIS action contract. Safe against missing ctx / parse
+  // failure. `[aria-pressed=true]` marks the row optimistically
+  // until the next surface render replaces it.
+  function bindListingRowSelection(target, ctx) {
+    if (!target || target.__myciteV2ListingRowSelectionBound) return;
+    var dispatch = function (rowEl) {
+      var raw = rowEl.getAttribute("data-row-select-action");
+      if (!raw) return;
+      var payload;
+      try { payload = JSON.parse(raw); } catch (err) { return; }
+      if (!payload || !asText(payload.action_kind)) return;
+      if (!ctx || typeof ctx.dispatchToolAction !== "function") return;
+      var actionPayload = (payload.action_payload && typeof payload.action_payload === "object")
+        ? payload.action_payload
+        : {};
+      var flat = { action_kind: payload.action_kind };
+      Object.keys(actionPayload).forEach(function (key) { flat[key] = actionPayload[key]; });
+      // Visual feedback: deselect siblings under the same <tbody>,
+      // mark this row pressed. Selection state will be re-canonicalised
+      // by the next surface render from tool_state.
+      var tbody = rowEl.parentNode;
+      if (tbody) {
+        Array.prototype.slice.call(
+          tbody.querySelectorAll('[data-row-select-action][aria-pressed="true"]')
+        ).forEach(function (sibling) {
+          sibling.setAttribute("aria-pressed", "false");
+          sibling.classList.remove("v2-component-listing__row--selected");
+        });
+      }
+      rowEl.setAttribute("aria-pressed", "true");
+      rowEl.classList.add("v2-component-listing__row--selected");
+      ctx.dispatchToolAction(flat);
+    };
+    target.addEventListener("click", function (event) {
+      var rowEl = event.target && event.target.closest
+        ? event.target.closest("[data-row-select-action]")
+        : null;
+      if (!rowEl || !target.contains(rowEl)) return;
+      event.preventDefault();
+      dispatch(rowEl);
+    });
+    target.addEventListener("keydown", function (event) {
+      if (event.key !== "Enter" && event.key !== " " && event.key !== "Spacebar") return;
+      var rowEl = event.target && event.target.closest
+        ? event.target.closest("[data-row-select-action]")
+        : null;
+      if (!rowEl || !target.contains(rowEl)) return;
+      event.preventDefault();
+      dispatch(rowEl);
+    });
+    target.__myciteV2ListingRowSelectionBound = true;
+  }
+
   window.__MYCITE_V2_COMPONENT_FRAME_REGISTRY = componentFrameRegistry;
   window.__MYCITE_V2_BIND_COMPONENT_FRAME_ENGAGEMENT = bindComponentFrameEngagement;
+  window.__MYCITE_V2_BIND_LISTING_ROW_SELECTION = bindListingRowSelection;
   window.__MYCITE_V2_RENDER_COMPONENT_FRAME_RECURSIVE = renderComponentFrameRecursive;
   window.__MYCITE_V2_RENDER_COMPONENT_FRAME_LIST = renderComponentFramesSection;
 

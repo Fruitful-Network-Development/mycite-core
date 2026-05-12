@@ -16,6 +16,7 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     compiled_artifact_path,
     cts_gis_admin_root_source_path,
     read_admin_profile_static_from_source_datum,
+    read_district_profile_static_from_source_datum,
     validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
@@ -74,6 +75,11 @@ def main() -> int:
         if admin_root_path is not None and admin_root_path.exists()
         else {}
     )
+    district_profile_static = (
+        read_district_profile_static_from_source_datum(admin_root_path)
+        if admin_root_path is not None and admin_root_path.exists()
+        else {}
+    )
 
     artifact = build_compiled_artifact(
         portal_scope_id=args.scope_id,
@@ -84,6 +90,7 @@ def main() -> int:
         source_layout=source_layout,
         build_mode=CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
         admin_profile_static=admin_profile_static or None,
+        district_profile_static=district_profile_static or None,
     )
     output_path = Path(args.output) if args.output else compiled_artifact_path(args.data_dir, portal_scope_id=args.scope_id)
     written = write_compiled_artifact(output_path, artifact)
@@ -103,6 +110,11 @@ def main() -> int:
                         "feature_count"
                     ),
                 } if admin_profile_static else None,
+                "district_profile_static": {
+                    "collection_id": district_profile_static.get("collection_id"),
+                    "label": district_profile_static.get("label"),
+                    "member_count": district_profile_static.get("member_count"),
+                } if district_profile_static else None,
             },
             indent=2,
         )
