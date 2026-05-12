@@ -3432,28 +3432,62 @@ def _build_cts_gis_structured_interface_body(
         placeholder_row_count=_admin_log_placeholder_count,
         initializer_intent="resolve_administrative_log_listing",
     )
-    # Phase 4 follow-up — the District Profile's Spatial Projection must
-    # not reuse the dynamic mediation's `geospatial_projection`, because
-    # that is keyed on the current attention (which can land on
-    # Summit County `3-2-3-17-77` and visibly mislead the user). Until
-    # the HOPS magnitude decode block is resolved (precinct source
-    # datums carry HOPS-encoded coordinate tokens, not raw GeoJSON),
-    # the District Profile geospatial slot paints an explicit
-    # pending-decode empty state. When `_active_district is None`, the
-    # default empty-state copy is used (consistent with the wireframe
-    # before any district selection).
-    _district_pending_projection = _empty_geospatial_projection()
-    _district_pending_projection["projection_state"] = "awaiting_decode_block"
-    _district_pending_projection["projection_health"] = {
-        "state": "blocked",
-        "reason_codes": ["hops_magnitude_decode_unavailable"],
-    }
-    _district_pending_projection["empty_message"] = (
-        "Precinct boundary projections pending HOPS magnitude decode."
+    # Phase 4 follow-up — the District Profile's Spatial Projection.
+    # Prefer the artifact-baked `district_profile_static.geospatial_projection`
+    # (84 precinct polygons, decoded offline from HOPS coordinate tokens
+    # at compile/patch time). Falls back to an explicit pending state
+    # if the artifact wasn't enriched with geometry yet.
+    #
+    # When a precinct row is selected (selected_precinct_id), flip the
+    # matching feature's `selected` flag so the map renderer highlights
+    # it instead of defaulting to the first precinct.
+    _selected_precinct_id = _as_text(
+        (resolved_tool_state.get("selection") or {}).get("selected_precinct_id")
     )
+    _district_static_geo = dict(
+        _district_profile_static.get("geospatial_projection") or {}
+    )
+    if _district_static_geo.get("has_real_projection"):
+        _district_static_geo = copy.deepcopy(_district_static_geo)
+        _features_with_selection: list[dict[str, Any]] = []
+        _matched_selection = False
+        for _index, _f in enumerate(list(_district_static_geo.get("features") or [])):
+            if _selected_precinct_id:
+                _is_match = _as_text(_f.get("feature_id")) == _selected_precinct_id
+                _f["selected"] = _is_match
+                if _is_match:
+                    _matched_selection = True
+                    _district_static_geo["selected_feature_id"] = _as_text(_f.get("feature_id"))
+                    _district_static_geo["selected_feature_geometry_type"] = _as_text(
+                        _f.get("geometry_type")
+                    )
+                    _district_static_geo["selected_feature_explicit"] = True
+                    _bounds = _f.get("bounds") or []
+                    if _bounds:
+                        _district_static_geo["selected_feature_bounds"] = list(_bounds)
+            else:
+                # No explicit precinct selection — keep the baked default
+                # (first feature selected=True) so the map renderer has
+                # a focus target.
+                _f["selected"] = _index == 0
+            _features_with_selection.append(_f)
+        if _selected_precinct_id and not _matched_selection and _features_with_selection:
+            _features_with_selection[0]["selected"] = True
+        _district_static_geo["features"] = _features_with_selection
+        _precinct_geo_payload = _district_static_geo
+    else:
+        _precinct_geo_payload = _empty_geospatial_projection()
+        _precinct_geo_payload["projection_state"] = "awaiting_decode_block"
+        _precinct_geo_payload["projection_health"] = {
+            "state": "blocked",
+            "reason_codes": ["hops_magnitude_decode_unavailable"],
+        }
+        _precinct_geo_payload["empty_message"] = (
+            "Precinct boundary projections pending HOPS magnitude decode."
+        )
     _precinct_geo_frame = build_geospatial_component_frame(
         attention_node_id=_attention_context,
-        geospatial_projection=_district_pending_projection,
+        geospatial_projection=_precinct_geo_payload,
         parent_frame_id="precinct_profile",
         lens_key=_frame_lens("precinct_profile__geospatial"),
     )
@@ -3534,10 +3568,9 @@ def _build_cts_gis_structured_interface_body(
     # CSS layout slot. Selection feedback (`selected` flag) marks the
     # row that matches `tool_state.selection.selected_precinct_id`
     # (the dedicated cascade field — NOT `selected_feature_id`, which
-    # mediation finalize churns).
-    _selected_precinct_id = _as_text(
-        (resolved_tool_state.get("selection") or {}).get("selected_precinct_id")
-    )
+    # mediation finalize churns). `_selected_precinct_id` is hoisted
+    # to the top of the function so the district-profile geospatial
+    # frame can also consume it.
     if _active_district is not None:
         _precinct_member_ids = [
             _as_text(item)
