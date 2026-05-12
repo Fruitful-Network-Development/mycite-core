@@ -503,13 +503,13 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertIn("portal.cts_gis.apply_stage.accepted", event_types)
             self.assertIn("portal.cts_gis.discard_stage.accepted", event_types)
 
-    def test_select_district_row_records_row_into_tool_state_selection(self) -> None:
+    def test_select_district_row_records_district_into_tool_state_selection(self) -> None:
         """Garland cascade Phase 2: select_district_row must persist its
-        row_address payload into tool_state.selection.selected_row_address
-        (with selected_row_explicit=True), and clear any prior
-        selected_feature_id so a new district selection doesn't carry a
-        stale precinct highlight. The action_result must report 'accepted'
-        with the recorded row_address in its details."""
+        row_address payload into tool_state.selection.selected_district_id
+        (a dedicated field that survives mediation untouched — unlike
+        selected_row_address which the finalize step rewrites to a render
+        row). The handler must also clear any prior selected_feature_id so
+        a new district selection doesn't carry a stale precinct highlight."""
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
             self._seed_db(db_file)
@@ -524,13 +524,14 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 "selection": {
                     "selected_row_address": "",
                     "selected_feature_id": "stale-precinct-247-17-77-999",
+                    "selected_district_id": "",
                     "selected_row_explicit": False,
                     "selected_feature_explicit": True,
                 },
             }
 
             result = run_portal_cts_gis_action(
-                self._request(seed_state, "select_district_row", {"row_address": "5-0-26"}),
+                self._request(seed_state, "select_district_row", {"row_address": "23_present-district_31"}),
                 data_dir=None,
                 authority_db_file=db_file,
                 portal_instance_id="fnd",
@@ -540,11 +541,13 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             action_result = payload["action_result"]
             self.assertEqual(action_result["action_kind"], "select_district_row")
             self.assertEqual(action_result["status"], "accepted")
-            self.assertEqual(action_result["details"]["selected_row_address"], "5-0-26")
+            self.assertEqual(
+                action_result["details"]["selected_district_id"],
+                "23_present-district_31",
+            )
 
             selection = payload["tool_state"]["selection"]
-            self.assertEqual(selection["selected_row_address"], "5-0-26")
-            self.assertTrue(selection["selected_row_explicit"])
+            self.assertEqual(selection["selected_district_id"], "23_present-district_31")
             self.assertEqual(
                 selection["selected_feature_id"],
                 "",

@@ -343,6 +343,150 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
                 f"{forbidden!r} is a computed display value, not source filament data — it must not appear in the admin profile",
             )
 
+    def test_admin_log_rows_carry_row_address_identifier(self) -> None:
+        """Garland cascade Phase 3 prep: every admin_log row must carry a
+        stable `row_address` identifier so the client can dispatch
+        `select_district_row {row_address: <this>}` (Phase 2 handler).
+        The row_address comes from the underlying
+        `district_precinct_collections[i].collection_id`."""
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        children = list(
+            (interface_body.get("component_frames") or [{}])[0].get("payload", {}).get("children") or []
+        )
+        admin_log_payload = next(
+            (c.get("payload") for c in children if c.get("frame_id") == "administrative_log_entry_listing"),
+            None,
+        )
+        self.assertIsNotNone(admin_log_payload, "admin_log frame must exist in the Garland group")
+        rows = list(admin_log_payload.get("rows") or [])
+        # Phase 1 collapse means Ohio has exactly one district row.
+        self.assertEqual(len(rows), 1)
+        first_row = rows[0]
+        self.assertTrue(
+            str(first_row.get("row_address") or ""),
+            "admin_log row must carry a non-empty `row_address` so the cascade can dispatch select_district_row",
+        )
+        # The row_address tags `entry` text helps humans trace the cascade.
+        self.assertIn(
+            "District 31",
+            str(first_row.get("entry") or ""),
+            "the canonical Ohio district label is District 31 (sanity check)",
+        )
+
+    def test_precinct_profile_slot_repurposes_as_district_profile_on_selection(self) -> None:
+        """Phase 3 cascade: when `tool_state.selection.selected_row_address`
+        matches a district collection's id, the col-3 slot
+        (`precinct_profile` frame_id) repurposes as a `district profile`:
+
+          - label takes the district's human label
+          - fields list collapses to [] (no source datum = no filament)
+          - variant flips from "precinct" to "district"
+          - initializer.intent flips to resolve_district_profile
+          - the empty PRECINCT_COLLECTIONS placeholder is suppressed
+          - the geospatial subject_slot is preserved for the Phase 6
+            district-features swap to plug into
+        """
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                    # Phase 2's select_district_row would persist this:
+                    "selection": {
+                        "selected_district_id": "23_present-district_31",
+                        "selected_row_address": "",
+                        "selected_row_explicit": False,
+                        "selected_feature_id": "",
+                        "selected_feature_explicit": False,
+                    },
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        children = list(
+            (interface_body.get("component_frames") or [{}])[0].get("payload", {}).get("children") or []
+        )
+        col3 = next(
+            (c for c in children if c.get("frame_id") == "precinct_profile"),
+            None,
+        )
+        self.assertIsNotNone(col3, "precinct_profile slot must exist (gets repurposed in-place)")
+        payload = dict(col3.get("payload") or {})
+        self.assertEqual(payload.get("variant"), "district")
+        self.assertEqual(payload.get("fields"), [])
+        self.assertEqual(
+            payload.get("collections"),
+            [],
+            "district profile carries no PRECINCT_COLLECTIONS — its members render in the precinct listing",
+        )
+        self.assertIn("District 31", str(payload.get("label") or ""))
+        self.assertEqual(col3.get("initializer", {}).get("intent"), "resolve_district_profile")
+        # subject_slot must be present so the geospatial projection still has
+        # a render target; Phase 6 will swap its feature_collection content.
+        self.assertIsInstance(payload.get("subject_slot"), dict)
+
+    def test_precinct_profile_slot_stays_empty_when_no_district_selection(self) -> None:
+        """Without a district selection, the col-3 slot keeps its empty
+        Precinct Profile scaffold from the wireframe (TITLE / MSN_ID /
+        CAPITAL_MSN_ID rows with em-dash values, plus the
+        PRECINCT_COLLECTIONS placeholder)."""
+        regions = _cts_gis_regions(
+            {
+                "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
+                "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
+                "runtime_mode": "production_strict",
+                "tool_state": {
+                    "active_path": ["3", "3-2", "3-2-3", "3-2-3-17"],
+                    "selected_node_id": "3-2-3-17",
+                    "aitas": {
+                        "attention_node_id": "3-2-3-17",
+                        "intention_rule_id": "self",
+                        "time_directive": "current",
+                    },
+                    # No selection on the wire — wireframe stays in default state.
+                },
+            }
+        )
+        interface_body = dict(regions["interface_panel"]["interface_body"])
+        children = list(
+            (interface_body.get("component_frames") or [{}])[0].get("payload", {}).get("children") or []
+        )
+        col3 = next(
+            (c for c in children if c.get("frame_id") == "precinct_profile"),
+            None,
+        )
+        self.assertIsNotNone(col3)
+        payload = dict(col3.get("payload") or {})
+        self.assertEqual(payload.get("variant"), "precinct")
+        self.assertEqual(payload.get("label"), "Precinct Profile")
+        field_labels = [f.get("label") for f in (payload.get("fields") or [])]
+        self.assertEqual(field_labels, ["TITLE", "MSN_ID", "CAPITAL_MSN_ID"])
+        self.assertEqual(col3.get("initializer", {}).get("intent"), "resolve_precinct_profile")
+
     def test_garland_emits_wireframe_placeholder_counts(self) -> None:
         regions = _cts_gis_regions(
             {

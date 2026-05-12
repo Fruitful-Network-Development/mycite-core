@@ -162,6 +162,7 @@ def _canonical_tool_state(requested_tool_state: dict[str, Any] | None) -> dict[s
         "selection": {
             "selected_row_address": _as_text(selection.get("selected_row_address")),
             "selected_feature_id": _as_text(selection.get("selected_feature_id")),
+            "selected_district_id": _as_text(selection.get("selected_district_id")),
         },
         "staged_insert": {
             "staged_insert_id": _as_text(staged_insert.get("staged_insert_id")),
@@ -606,6 +607,7 @@ def _request_tool_state_overrides(
     selection: dict[str, Any] = {}
     selected_row_requested = _as_text(raw_selection.get("selected_row_address") or normalized_payload.get("selected_row_address"))
     selected_feature_requested = _as_text(raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id"))
+    selected_district_requested = _as_text(raw_selection.get("selected_district_id"))
     context_changed = bool(
         "active_path" in overrides
         or isinstance(overrides.get("aitas"), dict)
@@ -616,6 +618,11 @@ def _request_tool_state_overrides(
         selection["selected_feature_id"] = _as_text((requested_tool_state.get("selection") or {}).get("selected_feature_id"))
         selection["selected_row_explicit"] = bool(selected_row_requested)
         selection["selected_feature_explicit"] = bool(selected_feature_requested)
+        # Garland cascade district selection — survives across mediation
+        # cycles because it identifies a collection, not a SAMRAS row.
+        selection["selected_district_id"] = _as_text(
+            (requested_tool_state.get("selection") or {}).get("selected_district_id")
+        ) or selected_district_requested
     if selection:
         overrides["selection"] = selection
 
@@ -815,6 +822,9 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             "selected_feature_explicit": bool(
                 _as_text(raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id"))
             ),
+            # Garland cascade district selection identifier — carried through
+            # the normalize step so the wireframe builder can read it.
+            "selected_district_id": _as_text(raw_selection.get("selected_district_id")),
         },
         "staged_insert": _staged_insert_state(raw_staged_insert),
     }
@@ -1321,6 +1331,14 @@ def _resolved_tool_state(
             "selected_row_explicit": bool(_as_text(requested_tool_state.get("selection", {}).get("selected_row_address"))),
             "selected_feature_explicit": bool(
                 _as_text(requested_tool_state.get("selection", {}).get("selected_feature_id"))
+            ),
+            # Garland cascade selection identifiers (Phase 2 + 3):
+            # `selected_district_id` survives mediation untouched because it
+            # identifies a district collection (e.g. "23_present-district_31"),
+            # not a SAMRAS datum row address. The mediation's `finalize_selection`
+            # only writes to `selected_row_address` / `selected_feature_id`.
+            "selected_district_id": _as_text(
+                requested_tool_state.get("selection", {}).get("selected_district_id")
             ),
         },
         "staged_insert": _staged_insert_state(requested_tool_state.get("staged_insert")),
@@ -3231,11 +3249,18 @@ def _build_cts_gis_structured_interface_body(
         member_labels = list(collection.get("member_labels") or [])
         member_node_ids = list(collection.get("member_node_ids") or [])
         preview_source = member_labels or member_node_ids
+        # Each district item carries a stable `row_address` (the collection's
+        # `collection_id`, typically the timeframe_token like
+        # `23_present-district_31`). The admin_log listing surfaces this as a
+        # per-row identifier the client dispatches via select_district_row;
+        # the wireframe build path matches the selection back to its
+        # district collection to repurpose the col-3 slot (Phase 3).
         _district_items.append(
             {
                 "label": _as_text(collection.get("label") or collection.get("timeframe_token")) or f"DISTRICT_LIST_{index:02d}",
                 "value": _as_text(collection.get("summary_state")) or str(collection.get("precinct_count") or ""),
                 "detail": ", ".join(_as_text(item) for item in preview_source[:4] if _as_text(item)),
+                "row_address": _as_text(collection.get("collection_id")) or _as_text(collection.get("timeframe_token")),
             }
         )
     _district_collections = [
@@ -3269,11 +3294,18 @@ def _build_cts_gis_structured_interface_body(
         _district_label = _as_text(item.get("label"))
         _district_value = _as_text(item.get("value"))
         _district_detail = _as_text(item.get("detail"))
+        _district_row_address = _as_text(item.get("row_address"))
         _entry_parts = [part for part in (_district_label, _district_value, _district_detail) if part]
         _admin_log_rows.append(
             {
                 "index": f"{index:02d}",
                 "entry": " · ".join(_entry_parts) if _entry_parts else _district_label,
+                # Stable identifier the client dispatches via
+                # `select_district_row {row_address: <this>}` (Phase 2 + 4).
+                # The wireframe build path then matches this against the
+                # district_precinct_collections collection_id to repurpose
+                # the col-3 slot as a district profile (Phase 3).
+                "row_address": _district_row_address,
             }
         )
     _admin_log_placeholder_count = 16 if not _admin_log_rows else 0
@@ -3296,29 +3328,69 @@ def _build_cts_gis_structured_interface_body(
         parent_frame_id="precinct_profile",
         lens_key=_frame_lens("precinct_profile__geospatial"),
     )
-    _precinct_profile_frame = build_profile_component_frame(
-        frame_id="precinct_profile",
-        attention_node_id=_attention_context,
-        label="Precinct Profile",
-        fields=[
-            {"label": "TITLE", "value": "—"},
-            {"label": "MSN_ID", "value": "—"},
-            {"label": "CAPITAL_MSN_ID", "value": "—"},
-        ],
-        variant="precinct",
-        layout_slot="precinct_profile",
-        collections=[
-            {
-                "label": "PRECINCT_COLLECTIONS",
-                "items": _district_items,
-                "empty_message": "No selected precinct collection is available yet.",
-                "placeholder_item_count": 3,
-            }
-        ],
-        geospatial_frame=_precinct_geo_frame,
-        lens_key=_frame_lens("precinct_profile"),
-        initializer_intent="resolve_precinct_profile",
+    # Phase 3 cascade: when the user has selected a district row from the
+    # admin log listing (Phase 2 persisted the choice into
+    # `tool_state.selection.selected_row_address`), repurpose the col-3
+    # slot as a `district_profile`. A district has no source datum file,
+    # so the frame carries no filament TITLE/MSN_ID/CAPITAL_MSN_ID values
+    # — only the geospatial subject_slot (Phase 6 will swap that
+    # subject_slot to the 84-precinct feature collection). When no
+    # district is selected, the slot keeps its empty Precinct Profile
+    # scaffold from the wireframe.
+    _selected_district_id = _as_text(
+        (resolved_tool_state.get("selection") or {}).get("selected_district_id")
     )
+    _active_district: dict[str, Any] | None = None
+    if _selected_district_id:
+        for _candidate in district_precinct_collections:
+            _candidate_id = _as_text(_candidate.get("collection_id")) or _as_text(
+                _candidate.get("timeframe_token")
+            )
+            if _candidate_id and _candidate_id == _selected_district_id:
+                _active_district = _candidate
+                break
+    if _active_district is not None:
+        _district_profile_label = (
+            _as_text(_active_district.get("label"))
+            or _as_text(_active_district.get("timeframe_token"))
+            or "District Profile"
+        )
+        _precinct_profile_frame = build_profile_component_frame(
+            frame_id="precinct_profile",
+            attention_node_id=_attention_context,
+            label=_district_profile_label,
+            fields=[],  # district has no source datum file — no filament
+            variant="district",
+            layout_slot="precinct_profile",
+            collections=[],
+            geospatial_frame=_precinct_geo_frame,
+            lens_key=_frame_lens("precinct_profile"),
+            initializer_intent="resolve_district_profile",
+        )
+    else:
+        _precinct_profile_frame = build_profile_component_frame(
+            frame_id="precinct_profile",
+            attention_node_id=_attention_context,
+            label="Precinct Profile",
+            fields=[
+                {"label": "TITLE", "value": "—"},
+                {"label": "MSN_ID", "value": "—"},
+                {"label": "CAPITAL_MSN_ID", "value": "—"},
+            ],
+            variant="precinct",
+            layout_slot="precinct_profile",
+            collections=[
+                {
+                    "label": "PRECINCT_COLLECTIONS",
+                    "items": _district_items,
+                    "empty_message": "No selected precinct collection is available yet.",
+                    "placeholder_item_count": 3,
+                }
+            ],
+            geospatial_frame=_precinct_geo_frame,
+            lens_key=_frame_lens("precinct_profile"),
+            initializer_intent="resolve_precinct_profile",
+        )
     _other_voters_frame = build_listing_component_frame(
         frame_id="log_listing_other_voters",
         label="Log Listing Of Other Voters",
@@ -4413,33 +4485,40 @@ def _apply_cts_gis_action(
 
         if action_kind == "select_district_row":
             # Garland cascade Phase 2: record a district-listing row selection
-            # into tool_state.selection.selected_row_address so the next
-            # mediation cycle can read it. Sibling selected_feature_id is
-            # cleared so a new district selection doesn't carry a stale
-            # precinct highlight from the prior district context.
+            # into tool_state.selection.selected_district_id so the next
+            # mediation cycle can read it. The chosen identifier is the
+            # district collection's `collection_id` (e.g. "23_present-district_31"),
+            # NOT a SAMRAS datum row address — using a dedicated field keeps
+            # the value out of `selected_row_address`, which the mediation
+            # finalize step rewrites to a render-row address.
+            #
+            # Sibling selected_feature_id is cleared so a new district
+            # selection doesn't carry a stale precinct highlight from the
+            # prior district context.
             #
             # This handler does NOT itself materialise the district profile
             # frame — that happens downstream in
             # `_build_cts_gis_structured_interface_body` (Phase 3) when the
-            # next shell load reads the recorded selection. force_live_read
-            # stays False because the compiled-artifact cache key includes
-            # selection state; the cached fast path serves the new payload.
-            row_address = _as_text(action_payload.get("row_address"))
+            # next shell load reads the recorded selected_district_id.
+            # force_live_read stays False; the cached path keys on this
+            # field too.
+            district_id = _as_text(action_payload.get("row_address"))
             next_tool_state.setdefault("selection", {})
-            next_tool_state["selection"]["selected_row_address"] = row_address
-            next_tool_state["selection"]["selected_row_explicit"] = bool(row_address)
+            next_tool_state["selection"]["selected_district_id"] = district_id
+            # selected_row_explicit/selected_row_address are left untouched
+            # so any SAMRAS row selection the user separately made stays.
             # Clear precinct selection — a new district selection invalidates it.
             next_tool_state["selection"]["selected_feature_id"] = ""
             next_tool_state["selection"]["selected_feature_explicit"] = False
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
-                status="accepted" if row_address else "rejected",
+                status="accepted" if district_id else "rejected",
                 message=(
-                    f"District row selected: {row_address}"
-                    if row_address
+                    f"District row selected: {district_id}"
+                    if district_id
                     else "select_district_row requires a row_address payload"
                 ),
-                details={"selected_row_address": row_address},
+                details={"selected_district_id": district_id, "selected_row_address": district_id},
             )
             return next_tool_state, action_result, force_live_read
 
