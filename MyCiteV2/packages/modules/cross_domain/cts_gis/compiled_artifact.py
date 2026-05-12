@@ -465,6 +465,15 @@ def build_admin_profile_static(source_datum: dict[str, Any]) -> dict[str, Any]:
     field. No I/O, no mediation, no decode.
 
     Shape: {node_id, label, capital_msn_id, fields[], geospatial_projection}
+
+    The geospatial_projection conforms to the full
+    `_real_geospatial_projection` contract used by the interface-panel
+    renderer (`v2_portal_interface_panel_renderers.js:renderGeospatialStage`).
+    It must include `has_real_projection: True` and per-feature entries
+    in `features[]` (each with `feature_id`, `label`, `node_id`,
+    `geometry_type`, `selected`, plus empty `shell_request` / `action`
+    stubs) — otherwise the renderer treats it as an empty placeholder
+    and paints "No projected geometry is available".
     """
     das = source_datum.get("datum_addressing_abstraction_space") or {}
     record = _admin_root_record(das) if isinstance(das, dict) else None
@@ -487,32 +496,106 @@ def build_admin_profile_static(source_datum: dict[str, Any]) -> dict[str, Any]:
         msn_id = as_text(source_datum.get("reference_geojson_node_id"))
 
     reference_geojson = source_datum.get("reference_geojson")
-    features = []
+    raw_features = []
     if isinstance(reference_geojson, dict):
-        raw_features = reference_geojson.get("features") or []
-        features = [copy.deepcopy(feature) for feature in raw_features if isinstance(feature, dict)]
-    feature_collection: dict[str, Any] = {
-        "type": "FeatureCollection",
-        "features": features,
-    }
-    geometry = (features[0].get("geometry") or {}) if features else {}
-    bbox = _geojson_bbox(geometry) if isinstance(geometry, dict) else []
+        raw_features = [
+            feature for feature in (reference_geojson.get("features") or [])
+            if isinstance(feature, dict)
+        ]
+
+    # Build the full renderer-contract feature payloads. Each reference-
+    # geojson feature gets a synthetic `id` (= the admin-root msn_id, with
+    # a per-feature suffix when multiple features exist); the first
+    # feature is marked `selected: True` so the renderer has a focus
+    # target. shell_request and action are empty dicts — the admin
+    # profile's geospatial is not interactive at this layer.
+    feature_entries: list[dict[str, Any]] = []
+    feature_collection_features: list[dict[str, Any]] = []
+    all_bbox_xs: list[float] = []
+    all_bbox_ys: list[float] = []
+    for index, feature in enumerate(raw_features):
+        geometry = dict(feature.get("geometry") or {})
+        properties = dict(feature.get("properties") or {})
+        feature_id_suffix = "" if len(raw_features) == 1 else f"-{index + 1}"
+        feature_id = as_text(feature.get("id")) or f"{msn_id}{feature_id_suffix}" or f"feature-{index + 1}"
+        feature_bbox = _geojson_bbox(geometry) if isinstance(geometry, dict) else []
+        if feature_bbox:
+            all_bbox_xs.extend([feature_bbox[0], feature_bbox[2]])
+            all_bbox_ys.extend([feature_bbox[1], feature_bbox[3]])
+        is_selected = index == 0
+        feature_collection_features.append(
+            {
+                "type": "Feature",
+                "id": feature_id,
+                "geometry": copy.deepcopy(geometry),
+                "properties": copy.deepcopy(properties),
+            }
+        )
+        feature_label = (
+            as_text(properties.get("name"))
+            or as_text(properties.get("profile_label"))
+            or label
+            or feature_id
+        )
+        feature_entries.append(
+            {
+                "feature_id": feature_id,
+                "label": feature_label,
+                "node_id": msn_id,
+                "geometry_type": as_text(geometry.get("type")) or "Polygon",
+                "selected": is_selected,
+                "shell_request": {},
+                "action": {},
+            }
+        )
+    collection_bbox = (
+        [min(all_bbox_xs), min(all_bbox_ys), max(all_bbox_xs), max(all_bbox_ys)]
+        if all_bbox_xs and all_bbox_ys
+        else []
+    )
+    selected_feature_id = feature_entries[0]["feature_id"] if feature_entries else ""
+    selected_geometry_type = feature_entries[0]["geometry_type"] if feature_entries else ""
+    has_real_projection = bool(feature_entries)
 
     geospatial_projection: dict[str, Any] = {
-        "projection_state": "projectable" if features else "inspect_only",
-        "projection_source": "reference_geojson" if features else "none",
-        "feature_count": len(features),
-        "feature_collection": feature_collection,
-        "focus_bounds": list(bbox) if bbox else None,
-        "collection_bounds": list(bbox) if bbox else None,
-        "selected_feature_id": None,
+        "title": "Geospatial Projection",
+        "data_source": "cts_gis_admin_root_reference_geojson",
+        "projection_source": "reference_geojson" if has_real_projection else "none",
+        "projection_state": "projectable" if has_real_projection else "awaiting_real_projection",
+        "feature_count": len(feature_entries),
+        "render_feature_count": len(feature_entries),
+        "render_row_count": 0,
         "decode_summary": {
-            "reference_binding_count": len(features),
-            "decoded_coordinate_count": len(features),
+            "reference_binding_count": len(feature_entries),
+            "decoded_coordinate_count": len(feature_entries),
             "failed_token_count": 0,
+        },
+        "projection_health": {
+            "state": "ok" if has_real_projection else "empty",
+            "reason_codes": [],
         },
         "fallback_reason_codes": [],
         "warnings": [],
+        "supporting_document_name": "",
+        "projection_document_name": "",
+        "selected_feature_id": selected_feature_id,
+        "selected_feature_explicit": False,
+        "selected_feature_geometry_type": selected_geometry_type,
+        "selected_feature_bounds": collection_bbox if has_real_projection else [],
+        "focus_bounds": list(collection_bbox),
+        "collection_bounds": list(collection_bbox),
+        "empty_message": (
+            "Projection ready."
+            if has_real_projection
+            else "No projected geometry is available until the active path resolves real CTS-GIS evidence."
+        ),
+        "has_real_projection": has_real_projection,
+        "feature_collection": {
+            "type": "FeatureCollection",
+            "features": feature_collection_features,
+            "bounds": list(collection_bbox),
+        },
+        "features": feature_entries,
     }
 
     fields = [
