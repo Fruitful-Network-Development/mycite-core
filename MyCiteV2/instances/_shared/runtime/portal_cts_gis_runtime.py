@@ -1337,8 +1337,18 @@ def _resolved_tool_state(
             # identifies a district collection (e.g. "23_present-district_31"),
             # not a SAMRAS datum row address. The mediation's `finalize_selection`
             # only writes to `selected_row_address` / `selected_feature_id`.
+            #
+            # Phase 4 follow-up: when the artifact carries
+            # `district_profile_static` (single canonical district) and no
+            # explicit selection is on the wire, fall back to that district's
+            # collection_id. This makes the resolved tool_state match what the
+            # wireframe builder paints (auto-select), so the region render_key
+            # is stable across the first user click on the auto-selected row
+            # — no spurious panel re-render.
             "selected_district_id": _as_text(
                 requested_tool_state.get("selection", {}).get("selected_district_id")
+            ) or _as_text(
+                (service_surface.get("district_profile_static") or {}).get("collection_id")
             ),
         },
         "staged_insert": _staged_insert_state(requested_tool_state.get("staged_insert")),
@@ -3398,9 +3408,28 @@ def _build_cts_gis_structured_interface_body(
         placeholder_row_count=_admin_log_placeholder_count,
         initializer_intent="resolve_administrative_log_listing",
     )
+    # Phase 4 follow-up — the District Profile's Spatial Projection must
+    # not reuse the dynamic mediation's `geospatial_projection`, because
+    # that is keyed on the current attention (which can land on
+    # Summit County `3-2-3-17-77` and visibly mislead the user). Until
+    # the HOPS magnitude decode block is resolved (precinct source
+    # datums carry HOPS-encoded coordinate tokens, not raw GeoJSON),
+    # the District Profile geospatial slot paints an explicit
+    # pending-decode empty state. When `_active_district is None`, the
+    # default empty-state copy is used (consistent with the wireframe
+    # before any district selection).
+    _district_pending_projection = _empty_geospatial_projection()
+    _district_pending_projection["projection_state"] = "awaiting_decode_block"
+    _district_pending_projection["projection_health"] = {
+        "state": "blocked",
+        "reason_codes": ["hops_magnitude_decode_unavailable"],
+    }
+    _district_pending_projection["empty_message"] = (
+        "Precinct boundary projections pending HOPS magnitude decode."
+    )
     _precinct_geo_frame = build_geospatial_component_frame(
         attention_node_id=_attention_context,
-        geospatial_projection=geospatial_projection,
+        geospatial_projection=_district_pending_projection,
         parent_frame_id="precinct_profile",
         lens_key=_frame_lens("precinct_profile__geospatial"),
     )
@@ -4493,6 +4522,14 @@ def build_portal_cts_gis_surface_bundle(
     cts_gis_stage_payload = dict(stage_state_public.get("normalized_payload") or {})
     cts_gis_stage_validation = dict(stage_state_public.get("last_validation") or {})
     cts_gis_stage_preview = dict(stage_state_public.get("last_preview") or {})
+    # Phase 4 follow-up — region render_key must reflect rendered output,
+    # NOT the transient action that caused it. The previous key included
+    # `action_result.action_kind` which guaranteed every action (even a
+    # no-op) invalidated the panel and triggered a destructive
+    # innerHTML repaint on the client. Replace with the actual selection
+    # state delta (`selected_district_id` was previously missing).
+    # `engaged_frame_id` is kept so engage_component_frame still flips
+    # the key for the targeted frame.
     cts_gis_interface_panel_render_key = "|".join(
         [
             "cts_gis_interface_panel",
@@ -4504,6 +4541,7 @@ def build_portal_cts_gis_surface_bundle(
             _as_text(cts_gis_source_state.get("attention_document_id")),
             _as_text(cts_gis_selection_state.get("selected_row_address")),
             _as_text(cts_gis_selection_state.get("selected_feature_id")),
+            _as_text(cts_gis_selection_state.get("selected_district_id")),
             "stage:"
             + ":".join(
                 [
@@ -4513,7 +4551,6 @@ def build_portal_cts_gis_surface_bundle(
                     str(len(list(cts_gis_stage_preview.get("proposed_inserted_rows") or []))),
                 ]
             ),
-            _as_text(action_result.get("action_kind")),
             _as_text((action_result.get("details") or {}).get("engaged_frame_id")),
         ]
     )
