@@ -1169,7 +1169,11 @@ def _cts_gis_corpus_prefix(document_name: str) -> str:
     token = _as_text(document_name)
     if not token:
         return ""
-    for marker in (".msn-", ".fnd.", ".registrar"):
+    # Order matters: `.cts_gis.` is the current precinct convention,
+    # `.msn-` covers both the new top-level msn-SAMRAS source datum
+    # files and the existing cache files. `.fnd.` and `.cts.` are
+    # kept for legacy/test-fixture compatibility.
+    for marker in (".cts_gis.", ".msn-", ".fnd.", ".cts.", ".registrar"):
         if marker in token:
             return token.split(marker, 1)[0]
     if token.endswith(".json"):
@@ -4169,6 +4173,20 @@ def build_portal_cts_gis_surface_bundle(
             datum_store=datum_store,
             tenant_id=portal_scope.scope_id,
         )
+        # Phase 4 — even when the live-read path produced the surface
+        # (`_strict_projection_context_differs` returned True), the
+        # Garland cascade still needs `admin_profile_static` and
+        # `district_profile_static` to drive col-1 / col-3 / col-4.
+        # These are sandbox-rooted (attention-independent), so inject
+        # them from the artifact regardless of which path ran.
+        if "admin_profile_static" not in service_surface:
+            service_surface["admin_profile_static"] = dict(
+                compiled_artifact.get("admin_profile_static") or {}
+            )
+        if "district_profile_static" not in service_surface:
+            service_surface["district_profile_static"] = dict(
+                compiled_artifact.get("district_profile_static") or {}
+            )
         phase_timings_ms["service_surface_read"] = round((perf_counter() - service_surface_started_at) * 1000.0, 3)
         resolved_tool_state = _tool_state_for_navigation(
             _resolved_tool_state(
