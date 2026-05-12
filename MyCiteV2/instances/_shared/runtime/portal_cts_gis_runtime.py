@@ -163,6 +163,7 @@ def _canonical_tool_state(requested_tool_state: dict[str, Any] | None) -> dict[s
             "selected_row_address": _as_text(selection.get("selected_row_address")),
             "selected_feature_id": _as_text(selection.get("selected_feature_id")),
             "selected_district_id": _as_text(selection.get("selected_district_id")),
+            "selected_precinct_id": _as_text(selection.get("selected_precinct_id")),
         },
         "staged_insert": {
             "staged_insert_id": _as_text(staged_insert.get("staged_insert_id")),
@@ -608,6 +609,7 @@ def _request_tool_state_overrides(
     selected_row_requested = _as_text(raw_selection.get("selected_row_address") or normalized_payload.get("selected_row_address"))
     selected_feature_requested = _as_text(raw_selection.get("selected_feature_id") or normalized_payload.get("selected_feature_id"))
     selected_district_requested = _as_text(raw_selection.get("selected_district_id"))
+    selected_precinct_requested = _as_text(raw_selection.get("selected_precinct_id"))
     context_changed = bool(
         "active_path" in overrides
         or isinstance(overrides.get("aitas"), dict)
@@ -623,6 +625,16 @@ def _request_tool_state_overrides(
         selection["selected_district_id"] = _as_text(
             (requested_tool_state.get("selection") or {}).get("selected_district_id")
         ) or selected_district_requested
+        # Phase 4 follow-up — selected_precinct_id parallels
+        # selected_district_id: a precinct id (e.g. "247-17-77-121") is
+        # not a SAMRAS row, so this field survives mediation finalize
+        # untouched. Phase 2's `select_precinct_row` was originally
+        # writing to selected_feature_id, but mediation's
+        # `finalize_selection` overwrites that with SAMRAS-derived
+        # feature ids — causing the panel to re-render on every click.
+        selection["selected_precinct_id"] = _as_text(
+            (requested_tool_state.get("selection") or {}).get("selected_precinct_id")
+        ) or selected_precinct_requested
     if selection:
         overrides["selection"] = selection
 
@@ -825,6 +837,11 @@ def _normalize_tool_state(payload: dict[str, Any] | None) -> dict[str, Any]:
             # Garland cascade district selection identifier — carried through
             # the normalize step so the wireframe builder can read it.
             "selected_district_id": _as_text(raw_selection.get("selected_district_id")),
+            # Phase 4 follow-up — precinct selection identifier.
+            # Survives across mediation finalize because it identifies a
+            # precinct collection node (e.g. "247-17-77-121"), NOT a
+            # SAMRAS datum row address.
+            "selected_precinct_id": _as_text(raw_selection.get("selected_precinct_id")),
         },
         "staged_insert": _staged_insert_state(raw_staged_insert),
     }
@@ -1349,6 +1366,13 @@ def _resolved_tool_state(
                 requested_tool_state.get("selection", {}).get("selected_district_id")
             ) or _as_text(
                 (service_surface.get("district_profile_static") or {}).get("collection_id")
+            ),
+            # `selected_precinct_id` is the click selection from the
+            # precinct listing (e.g. "247-17-77-121"). Survives
+            # mediation finalize because it identifies a precinct
+            # collection node, NOT a SAMRAS datum row address.
+            "selected_precinct_id": _as_text(
+                requested_tool_state.get("selection", {}).get("selected_precinct_id")
             ),
         },
         "staged_insert": _staged_insert_state(requested_tool_state.get("staged_insert")),
@@ -3508,9 +3532,11 @@ def _build_cts_gis_structured_interface_body(
     # frontend listing renderer can dispatch `select_precinct_row` on
     # click. frame_id stays `log_listing_other_voters` to preserve the
     # CSS layout slot. Selection feedback (`selected` flag) marks the
-    # row that matches `tool_state.selection.selected_feature_id`.
-    _selected_feature_id = _as_text(
-        (resolved_tool_state.get("selection") or {}).get("selected_feature_id")
+    # row that matches `tool_state.selection.selected_precinct_id`
+    # (the dedicated cascade field — NOT `selected_feature_id`, which
+    # mediation finalize churns).
+    _selected_precinct_id = _as_text(
+        (resolved_tool_state.get("selection") or {}).get("selected_precinct_id")
     )
     if _active_district is not None:
         _precinct_member_ids = [
@@ -3524,13 +3550,12 @@ def _build_cts_gis_structured_interface_body(
                 {
                     "index": f"{_idx:02d}",
                     "entry": _pid,
-                    "feature_id": _pid,
-                    "row_address": _pid,
+                    "precinct_id": _pid,
                     "select_action": {
                         "action_kind": "select_precinct_row",
-                        "action_payload": {"feature_id": _pid, "row_address": _pid},
+                        "action_payload": {"precinct_id": _pid},
                     },
-                    "selected": bool(_selected_feature_id and _pid == _selected_feature_id),
+                    "selected": bool(_selected_precinct_id and _pid == _selected_precinct_id),
                 }
             )
         _precinct_listing_label = (
@@ -4542,6 +4567,7 @@ def build_portal_cts_gis_surface_bundle(
             _as_text(cts_gis_selection_state.get("selected_row_address")),
             _as_text(cts_gis_selection_state.get("selected_feature_id")),
             _as_text(cts_gis_selection_state.get("selected_district_id")),
+            _as_text(cts_gis_selection_state.get("selected_precinct_id")),
             "stage:"
             + ":".join(
                 [
@@ -4708,37 +4734,37 @@ def _apply_cts_gis_action(
             return next_tool_state, action_result, force_live_read
 
         if action_kind == "select_precinct_row":
-            # Garland cascade Phase 2: record a precinct-listing row selection
-            # into tool_state.selection.selected_feature_id (the precinct's
-            # geospatial feature id) so the next mediation cycle can
-            # repurpose the bottom slot as a precinct profile and highlight
-            # the chosen precinct in the district projection. An optional
-            # row_address may accompany the feature_id when the listing row
-            # carries a SAMRAS datum row address alongside the feature.
+            # Garland cascade Phase 4 follow-up: record a precinct-listing
+            # row selection into a DEDICATED field
+            # `tool_state.selection.selected_precinct_id`, NOT into
+            # `selected_feature_id` (which mediation's finalize_selection
+            # owns and overwrites with SAMRAS-derived ids) or
+            # `selected_row_address` (which the mediation also rewrites).
+            # The dedicated field survives mediation untouched and is
+            # what the wireframe builder reads for the row's `selected`
+            # flag + the region render_key.
             #
-            # Like select_district_row, this only persists the selection;
-            # downstream rendering happens in
-            # `_build_cts_gis_structured_interface_body` (Phase 5).
-            feature_id = _as_text(action_payload.get("feature_id"))
-            row_address = _as_text(action_payload.get("row_address"))
+            # Accept both `precinct_id` (canonical) and `feature_id`
+            # (Phase 2 compat) in the action payload.
+            precinct_id = _as_text(action_payload.get("precinct_id")) or _as_text(
+                action_payload.get("feature_id")
+            )
             next_tool_state.setdefault("selection", {})
-            next_tool_state["selection"]["selected_feature_id"] = feature_id
-            next_tool_state["selection"]["selected_feature_explicit"] = bool(feature_id)
-            if row_address:
-                next_tool_state["selection"]["selected_row_address"] = row_address
-                next_tool_state["selection"]["selected_row_explicit"] = True
+            next_tool_state["selection"]["selected_precinct_id"] = precinct_id
+            # Do NOT touch selected_feature_id / selected_row_address —
+            # those are mediation-owned. Geospatial highlighting of the
+            # selected precinct (once precinct polygons exist) will be
+            # done by mapping precinct_id -> feature_id in the wireframe
+            # builder, not by overloading the mediation fields.
             action_result = _cts_gis_action_result(
                 action_kind=action_kind,
-                status="accepted" if feature_id else "rejected",
+                status="accepted" if precinct_id else "rejected",
                 message=(
-                    f"Precinct selected: {feature_id}"
-                    if feature_id
-                    else "select_precinct_row requires a feature_id payload"
+                    f"Precinct selected: {precinct_id}"
+                    if precinct_id
+                    else "select_precinct_row requires a precinct_id (or feature_id) payload"
                 ),
-                details={
-                    "selected_feature_id": feature_id,
-                    "selected_row_address": row_address,
-                },
+                details={"selected_precinct_id": precinct_id},
             )
             return next_tool_state, action_result, force_live_read
 

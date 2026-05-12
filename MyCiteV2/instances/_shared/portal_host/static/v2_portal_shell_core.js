@@ -275,8 +275,20 @@
     shell.setAttribute("data-shell-composition", composition.composition_mode || "system");
     shell.setAttribute("data-foreground-shell-region", composition.foreground_shell_region || "center-workbench");
     shell.setAttribute("data-control-panel-collapsed", composition.control_panel_collapsed ? "true" : "false");
-    shell.setAttribute("data-workbench-collapsed", workbenchVisible ? "false" : "true");
-    shell.setAttribute("data-interface-panel-collapsed", interfacePanelVisible ? "false" : "true");
+    // Phase 4 follow-up — preserve the user's manual workbench /
+    // interface-panel layout across action dispatches. When the
+    // surface hasn't changed (action dispatch on the same tool — e.g.
+    // select_district_row, select_precinct_row, engage_component_frame),
+    // we trust the local state set by toggle handlers and skip the
+    // server-side default. Only the very first applyChrome for this
+    // surface (or a real surface switch) writes these attributes.
+    var isInitialOrSurfaceChange = !shell.hasAttribute("data-shell-chrome-initialized")
+      || shell.getAttribute("data-shell-chrome-initialized") !== routeKey;
+    if (isInitialOrSurfaceChange) {
+      shell.setAttribute("data-workbench-collapsed", workbenchVisible ? "false" : "true");
+      shell.setAttribute("data-interface-panel-collapsed", interfacePanelVisible ? "false" : "true");
+      shell.setAttribute("data-shell-chrome-initialized", routeKey);
+    }
 
     if (menubarTitle && composition.page_title) menubarTitle.textContent = composition.page_title;
     if (menubarSub) {
