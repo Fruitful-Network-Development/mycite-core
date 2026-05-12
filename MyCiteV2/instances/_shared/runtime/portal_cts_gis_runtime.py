@@ -3216,34 +3216,60 @@ def _build_cts_gis_structured_interface_body(
 
     _profile_frame_id = "administrative_node_profile"
     _geo_frame_id = f"{_profile_frame_id}__geospatial"
-    _geo_frame = build_geospatial_component_frame(
-        attention_node_id=_attention_context,
-        geospatial_projection=geospatial_projection,
-        parent_frame_id=_profile_frame_id,
-        lens_key=_frame_lens(_geo_frame_id),
-    )
-    # Admin-node profile contract: the only filament values rendered are the
-    # ones a NIMM mediation directive can resolve from the SAMRAS source
-    # datum the profile is focused on — TITLE, MSN_ID, CAPITAL_MSN_ID — plus
-    # the DISTRICT_COLLECTIONS collection that is forwarded to the
-    # administrative log listing. Computed display values (FEATURE_COUNT,
-    # CHILD_COUNT, DISTRICT_COLLECTIONS row-count) are NOT source datum and
-    # are deliberately omitted so the wireframe never claims data that
-    # didn't come out of mediation.
-    if has_real_profile:
-        _profile_fields: list[dict[str, str]] = [
-            {"label": "TITLE", "value": _as_text(attention_profile.get("profile_label")) or selected_label or ""},
-            {"label": "MSN_ID", "value": _as_text(attention_profile.get("node_id")) or selected_node_id or ""},
-            {"label": "CAPITAL_MSN_ID", "value": _as_text(attention_profile.get("capital_msn_id")) or ""},
-        ]
-        _profile_label = _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id
+
+    # Garland cascade Phase 3.5 — sandbox-spatial-root admin profile.
+    # When the compiled artifact carries `admin_profile_static` (baked
+    # at compile time via direct-read of the Ohio source datum), the
+    # admin profile renders Ohio identity regardless of the user's
+    # current navigation. The cascade BELOW the admin profile (district
+    # listing, district profile, precinct listing) still uses the
+    # dynamic mediation result. When the static field is absent (e.g.
+    # live-read path or older artifact), the admin profile falls back
+    # to the dynamic mediation's `attention_profile` per the pre-3.5
+    # behaviour.
+    _admin_profile_static = dict(service_surface.get("admin_profile_static") or {})
+    _admin_static_active = bool(_admin_profile_static.get("node_id"))
+    if _admin_static_active:
+        _admin_attention_node_id = _as_text(_admin_profile_static.get("node_id"))
+        _profile_fields = list(_admin_profile_static.get("fields") or [])
+        _profile_label = _as_text(_admin_profile_static.get("label")) or _admin_attention_node_id
+        _admin_geo_payload = dict(_admin_profile_static.get("geospatial_projection") or {})
+        _geo_frame = build_geospatial_component_frame(
+            attention_node_id=_admin_attention_node_id,
+            geospatial_projection=_admin_geo_payload,
+            parent_frame_id=_profile_frame_id,
+            lens_key=f"{_admin_attention_node_id}:admin_profile_static",
+        )
     else:
-        _profile_fields = [
-            {"label": "TITLE", "value": ""},
-            {"label": "MSN_ID", "value": ""},
-            {"label": "CAPITAL_MSN_ID", "value": ""},
-        ]
-        _profile_label = selected_label or selected_node_id or ""
+        _admin_attention_node_id = _attention_context
+        _geo_frame = build_geospatial_component_frame(
+            attention_node_id=_attention_context,
+            geospatial_projection=geospatial_projection,
+            parent_frame_id=_profile_frame_id,
+            lens_key=_frame_lens(_geo_frame_id),
+        )
+        # Admin-node profile contract: the only filament values rendered are the
+        # ones a NIMM mediation directive can resolve from the SAMRAS source
+        # datum the profile is focused on — TITLE, MSN_ID, CAPITAL_MSN_ID — plus
+        # the DISTRICT_COLLECTIONS collection that is forwarded to the
+        # administrative log listing. Computed display values (FEATURE_COUNT,
+        # CHILD_COUNT, DISTRICT_COLLECTIONS row-count) are NOT source datum and
+        # are deliberately omitted so the wireframe never claims data that
+        # didn't come out of mediation.
+        if has_real_profile:
+            _profile_fields = [
+                {"label": "TITLE", "value": _as_text(attention_profile.get("profile_label")) or selected_label or ""},
+                {"label": "MSN_ID", "value": _as_text(attention_profile.get("node_id")) or selected_node_id or ""},
+                {"label": "CAPITAL_MSN_ID", "value": _as_text(attention_profile.get("capital_msn_id")) or ""},
+            ]
+            _profile_label = _as_text(attention_profile.get("profile_label")) or selected_label or selected_node_id
+        else:
+            _profile_fields = [
+                {"label": "TITLE", "value": ""},
+                {"label": "MSN_ID", "value": ""},
+                {"label": "CAPITAL_MSN_ID", "value": ""},
+            ]
+            _profile_label = selected_label or selected_node_id or ""
     _district_items: list[dict[str, str]] = []
     for index, collection in enumerate(district_precinct_collections, start=1):
         member_labels = list(collection.get("member_labels") or [])
@@ -3273,7 +3299,7 @@ def _build_cts_gis_structured_interface_body(
     ]
     _admin_profile_frame = build_profile_component_frame(
         frame_id=_profile_frame_id,
-        attention_node_id=_attention_context,
+        attention_node_id=_admin_attention_node_id,
         label=_profile_label,
         fields=_profile_fields,
         variant="administrative_node",
@@ -3516,7 +3542,16 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
     profile_summary = dict(projection_model.get("profile_summary") or {})
     selected_feature = dict(projection_model.get("selected_feature") or {})
     contextual_references = dict(projection_model.get("contextual_references") or {})
+    # Garland cascade Phase 3.5 — sandbox-spatial-root admin profile.
+    # The compiled artifact may carry an `admin_profile_static` payload
+    # populated at compile time by direct-read of the Ohio source datum.
+    # When present, the wireframe builder uses it for the admin profile's
+    # filament + geospatial subject_slot, independent of where the user
+    # has navigated. Pass it through service_surface so the builder has
+    # a stable input.
+    admin_profile_static = dict(artifact.get("admin_profile_static") or {})
     return {
+        "admin_profile_static": admin_profile_static,
         "document_catalog": [],
         "selected_document": {"document_name": "", "document_id": profile_summary.get("document_id")},
         "attention_profile": {

@@ -250,12 +250,13 @@ def build_compiled_artifact(
     default_tool_state: dict[str, Any],
     source_layout: dict[str, Any],
     build_mode: str = CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+    admin_profile_static: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     navigation_model = _navigation_model_from_canvas(navigation_canvas)
     projection_model = _projection_model_from_service(service_surface)
     invariants = _invariants(navigation_model=navigation_model, source_evidence=source_evidence)
     strict_invariants = _strict_invariants(navigation_model=navigation_model, source_evidence=source_evidence)
-    return {
+    artifact: dict[str, Any] = {
         "schema": CTS_GIS_COMPILED_ARTIFACT_SCHEMA,
         "artifact_version": "1",
         "generated_at": _utc_timestamp(),
@@ -274,6 +275,14 @@ def build_compiled_artifact(
         "invariants": invariants,
         "strict_invariants": strict_invariants,
     }
+    # admin_profile_static is the sandbox-spatial-root identity baked
+    # once at compile time. The Garland tab's admin profile is rooted in
+    # this field independent of the user's current navigation — the
+    # cascade adds frames BELOW it, never replaces it. See
+    # `evidence/reports/TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11-admin-profile-attention-investigation.md`.
+    if admin_profile_static:
+        artifact["admin_profile_static"] = dict(admin_profile_static)
+    return artifact
 
 
 def validate_compiled_artifact(
@@ -373,12 +382,181 @@ def write_compiled_artifact(path: Path | None, artifact: dict[str, Any]) -> Path
     return path
 
 
+# --- admin_profile_static direct-read helpers --------------------------------
+#
+# The Garland tab's admin profile is the sandbox spatial root for CTS-GIS
+# (Ohio, `3-2-3-17`). Its filament values and boundary geometry live in
+# the Ohio source datum (`sc.<addr>.fnd.3-2-3-17.json`) but the runtime
+# mediation pipeline currently can't decode Ohio's SAMRAS magnitude
+# (issue documented in
+# `evidence/reports/TASK-CTS-GIS-GARLAND-CASCADE-2026-05-11-phase2-fix.md`).
+#
+# These helpers read the filament + boundary directly from the source
+# datum JSON, bypassing the mediation/decode pipeline. The result is
+# baked into the compiled artifact's `admin_profile_static` field at
+# compile time and read straight at request time — no decode required.
+
+CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH = (
+    Path("sandbox") / "cts-gis" / "sources" / "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17.json"
+)
+"""Repo-relative path (under data_dir) to the Ohio admin-root source datum."""
+
+
+def cts_gis_admin_root_source_path(data_dir: str | Path | None) -> Path | None:
+    """Resolve the Ohio admin-root source-datum path under the given data_dir."""
+    if data_dir is None:
+        return None
+    return Path(data_dir) / CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH
+
+
+def _admin_root_record(das: dict[str, Any]) -> tuple[list[Any], list[Any]] | None:
+    """Return the (row, labels) tuple for the admin-root record.
+
+    The admin-root record is identified by:
+      - row[2] equals the admin-root MSN_ID (e.g. "3-2-3-17"), AND
+      - labels[0] is the admin-root name (e.g. "ohio").
+
+    Returns None if no record matches.
+    """
+    for value in das.values():
+        if not isinstance(value, list) or len(value) < 2:
+            continue
+        row = value[0] if isinstance(value[0], list) else None
+        labels = value[1] if isinstance(value[1], list) else None
+        if row is None or labels is None or not labels:
+            continue
+        if as_text(labels[0]).lower() in {"ohio"} and len(row) >= 3 and as_text(row[2]) == "3-2-3-17":
+            return row, labels
+    return None
+
+
+def _geojson_bbox(geometry: dict[str, Any]) -> list[float]:
+    """Compute a [min_lon, min_lat, max_lon, max_lat] bbox for a GeoJSON geometry.
+
+    Walks Point / LineString / Polygon / MultiPolygon coordinate trees.
+    Returns an empty list if no coordinates can be extracted.
+    """
+    coords_xs: list[float] = []
+    coords_ys: list[float] = []
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, list):
+            if (
+                len(node) >= 2
+                and all(isinstance(item, (int, float)) for item in node[:2])
+            ):
+                coords_xs.append(float(node[0]))
+                coords_ys.append(float(node[1]))
+                return
+            for child in node:
+                _walk(child)
+
+    _walk(geometry.get("coordinates"))
+    if not coords_xs or not coords_ys:
+        return []
+    return [min(coords_xs), min(coords_ys), max(coords_xs), max(coords_ys)]
+
+
+def build_admin_profile_static(source_datum: dict[str, Any]) -> dict[str, Any]:
+    """Build the admin_profile_static payload from a parsed source-datum dict.
+
+    Pure function — takes the JSON-decoded source datum, returns the
+    payload that goes into the compiled artifact's `admin_profile_static`
+    field. No I/O, no mediation, no decode.
+
+    Shape: {node_id, label, capital_msn_id, fields[], geospatial_projection}
+    """
+    das = source_datum.get("datum_addressing_abstraction_space") or {}
+    record = _admin_root_record(das) if isinstance(das, dict) else None
+    label = ""
+    msn_id = ""
+    capital_msn_id = ""
+    if record is not None:
+        row, labels = record
+        label = as_text(labels[0]) if labels else ""
+        # row layout (per Ohio source datum):
+        # [self_address, "rf.3-1-2", msn_id, "rf.3-1-2", capital_msn_id, boundary_ref, count, district_ref, count]
+        if len(row) >= 3:
+            msn_id = as_text(row[2])
+        if len(row) >= 5:
+            capital_msn_id = as_text(row[4])
+    # Fallback to the file's reference_geojson_node_id when the record
+    # is shaped differently. Better to emit an empty profile than to
+    # break the compile.
+    if not msn_id:
+        msn_id = as_text(source_datum.get("reference_geojson_node_id"))
+
+    reference_geojson = source_datum.get("reference_geojson")
+    features = []
+    if isinstance(reference_geojson, dict):
+        raw_features = reference_geojson.get("features") or []
+        features = [copy.deepcopy(feature) for feature in raw_features if isinstance(feature, dict)]
+    feature_collection: dict[str, Any] = {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+    geometry = (features[0].get("geometry") or {}) if features else {}
+    bbox = _geojson_bbox(geometry) if isinstance(geometry, dict) else []
+
+    geospatial_projection: dict[str, Any] = {
+        "projection_state": "projectable" if features else "inspect_only",
+        "projection_source": "reference_geojson" if features else "none",
+        "feature_count": len(features),
+        "feature_collection": feature_collection,
+        "focus_bounds": list(bbox) if bbox else None,
+        "collection_bounds": list(bbox) if bbox else None,
+        "selected_feature_id": None,
+        "decode_summary": {
+            "reference_binding_count": len(features),
+            "decoded_coordinate_count": len(features),
+            "failed_token_count": 0,
+        },
+        "fallback_reason_codes": [],
+        "warnings": [],
+    }
+
+    fields = [
+        {"label": "TITLE", "value": label},
+        {"label": "MSN_ID", "value": msn_id},
+        {"label": "CAPITAL_MSN_ID", "value": capital_msn_id},
+    ]
+
+    return {
+        "node_id": msn_id,
+        "label": label,
+        "capital_msn_id": capital_msn_id,
+        "fields": fields,
+        "geospatial_projection": geospatial_projection,
+    }
+
+
+def read_admin_profile_static_from_source_datum(
+    source_datum_path: str | Path,
+) -> dict[str, Any]:
+    """Read + parse the Ohio source datum and return the admin_profile_static payload.
+
+    Raises FileNotFoundError if the path is missing. Raises json.JSONDecodeError
+    on a malformed file. Returns an empty dict if the file decodes but
+    contains no admin-root record (caller decides how to react).
+    """
+    path = Path(source_datum_path)
+    with path.open("r", encoding="utf-8") as fh:
+        source_datum = json.load(fh)
+    if not isinstance(source_datum, dict):
+        return {}
+    return build_admin_profile_static(source_datum)
+
+
 __all__ = [
+    "CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH",
+    "build_admin_profile_static",
     "build_compiled_artifact",
     "build_cts_gis_source_layout_summary",
     "compiled_artifact_path",
+    "cts_gis_admin_root_source_path",
     "cts_gis_source_root",
     "evict_compiled_artifact_read_cache",
+    "read_admin_profile_static_from_source_datum",
     "read_compiled_artifact",
     "read_compiled_artifact_cached",
     "validate_cts_gis_source_layout",
