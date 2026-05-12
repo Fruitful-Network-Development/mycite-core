@@ -776,20 +776,283 @@ def read_district_profile_static_from_source_datum(
     return build_district_profile_static(source_datum)
 
 
+# --- district geospatial projection helpers ---------------------------------
+#
+# Each precinct's source datum carries HOPS-encoded coordinate tokens in row
+# `4-77-1` (one token per vertex). The existing
+# `decode_hops_coordinate_token` helper in `packages.core.structures.hops`
+# decodes each token to a (longitude, latitude) pair via mixed-radix
+# subdivision of world bounds. This bypasses the SAMRAS-magnitude-decode
+# block flagged in phase2-fix.md — the per-coordinate decode is
+# unconditional, the block was on the navigation-tree decode that gates
+# the artifact recompile.
+
+CTS_GIS_PRECINCTS_RELATIVE_PATH = (
+    Path("sandbox") / "cts-gis" / "sources" / "precincts"
+)
+"""Repo-relative path (under data_dir) to the precinct source datum directory."""
+
+
+def cts_gis_precincts_source_path(data_dir: str | Path | None) -> Path | None:
+    """Resolve the precinct source datum directory under the given data_dir."""
+    if data_dir is None:
+        return None
+    return Path(data_dir) / CTS_GIS_PRECINCTS_RELATIVE_PATH
+
+
+def cts_gis_precinct_file_for_id(
+    precincts_dir: str | Path,
+    precinct_id: str,
+    *,
+    corpus_prefix: str = "sc.3-2-3-17-77-1-6-4-1-4",
+) -> Path:
+    """Return the absolute path to a precinct's source datum JSON file.
+
+    Filename convention: `<corpus_prefix>.cts.<precinct_id_underscored>.json`
+    where the precinct id (e.g. "247-17-77-121") is hyphenated externally
+    but appears with underscores in the filename.
+    """
+    suffix = precinct_id.replace("-", "_")
+    return Path(precincts_dir) / f"{corpus_prefix}.cts.{suffix}.json"
+
+
+def _decode_precinct_ring_points(source_datum: dict[str, Any]) -> list[list[float]]:
+    """Decode the HOPS-encoded ring vertices from a precinct source datum.
+
+    Each precinct file stores its vertex row under a per-file address
+    (e.g. `4-77-1`, `4-176-1`, `4-93-1`). The polygon row is identified
+    by its `labels[0]` matching the `polygon_<n>` convention. The row
+    body is shaped as
+    `[self_address, 'rf.3-1-1', token_1, 'rf.3-1-1', token_2, ...]`.
+
+    Returns the `[lon, lat]` pairs in source order, or an empty list if
+    no polygon row is found / decode fails for every token.
+    """
+    from MyCiteV2.packages.core.structures.hops import decode_hops_coordinate_token
+
+    das = source_datum.get("datum_addressing_abstraction_space") or {}
+    if not isinstance(das, dict):
+        return []
+    # Find the polygon row by label. We accept any row whose first label
+    # starts with `polygon_` and whose body holds `rf.3-1-1` references.
+    polygon_row: list[Any] | None = None
+    for value in das.values():
+        if not isinstance(value, list) or len(value) < 2:
+            continue
+        row = value[0] if isinstance(value[0], list) else None
+        labels = value[1] if isinstance(value[1], list) else None
+        if not isinstance(row, list) or not labels:
+            continue
+        if as_text(labels[0]).lower().startswith("polygon_"):
+            polygon_row = row
+            break
+    if polygon_row is None:
+        return []
+    points: list[list[float]] = []
+    # Skip self-address at index 0; iterate (rf marker, token) pairs.
+    index = 1
+    while index < len(polygon_row) - 1:
+        marker = as_text(polygon_row[index])
+        token = as_text(polygon_row[index + 1])
+        if marker.startswith("rf.") and token:
+            decoded = decode_hops_coordinate_token(token)
+            if decoded is not None:
+                lon = decoded["longitude"]["value"]
+                lat = decoded["latitude"]["value"]
+                points.append([float(lon), float(lat)])
+        index += 2
+    return points
+
+
+def _close_ring(points: list[list[float]]) -> list[list[float]]:
+    """Ensure a polygon ring is closed (first vertex equals last)."""
+    if len(points) < 3:
+        return list(points)
+    if points[0] != points[-1]:
+        return list(points) + [list(points[0])]
+    return list(points)
+
+
+def build_district_geospatial_projection(
+    precinct_ids: list[str],
+    precincts_dir: str | Path,
+    *,
+    corpus_prefix: str = "sc.3-2-3-17-77-1-6-4-1-4",
+) -> dict[str, Any]:
+    """Build the district profile's geospatial_projection by decoding each
+    precinct's HOPS coordinate tokens offline.
+
+    Returns a renderer-contract-compliant payload (same shape as
+    `build_admin_profile_static.geospatial_projection`): includes
+    `has_real_projection`, per-feature entries in `features[]`, a
+    `feature_collection.features[i].id` per polygon, and the union bbox.
+
+    When `precincts_dir` is None / absent / no precinct files decode, the
+    payload still validates but reports `has_real_projection: False`.
+    """
+    precincts_path = Path(precincts_dir) if precincts_dir else None
+
+    feature_entries: list[dict[str, Any]] = []
+    feature_collection_features: list[dict[str, Any]] = []
+    all_xs: list[float] = []
+    all_ys: list[float] = []
+    decoded_polygon_count = 0
+    failed_polygon_count = 0
+
+    for index, precinct_id in enumerate(precinct_ids):
+        if not precinct_id:
+            continue
+        if precincts_path is None:
+            failed_polygon_count += 1
+            continue
+        file_path = cts_gis_precinct_file_for_id(
+            precincts_path, precinct_id, corpus_prefix=corpus_prefix
+        )
+        if not file_path.exists():
+            failed_polygon_count += 1
+            continue
+        try:
+            with file_path.open("r", encoding="utf-8") as fh:
+                source_datum = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            failed_polygon_count += 1
+            continue
+        if not isinstance(source_datum, dict):
+            failed_polygon_count += 1
+            continue
+        points = _decode_precinct_ring_points(source_datum)
+        if len(points) < 3:
+            failed_polygon_count += 1
+            continue
+        ring = _close_ring(points)
+        for pt in ring:
+            all_xs.append(pt[0])
+            all_ys.append(pt[1])
+        geometry = {"type": "Polygon", "coordinates": [ring]}
+        feature_bbox = _geojson_bbox(geometry)
+        feature_collection_features.append(
+            {
+                "type": "Feature",
+                "id": precinct_id,
+                "geometry": geometry,
+                "properties": {
+                    "name": precinct_id,
+                    "samras_node_id": precinct_id,
+                    "profile_label": precinct_id,
+                },
+            }
+        )
+        feature_entries.append(
+            {
+                "feature_id": precinct_id,
+                "label": precinct_id,
+                "node_id": precinct_id,
+                "geometry_type": "Polygon",
+                "selected": index == 0,
+                "shell_request": {},
+                "action": {},
+                "bounds": feature_bbox,
+            }
+        )
+        decoded_polygon_count += 1
+
+    collection_bbox = (
+        [min(all_xs), min(all_ys), max(all_xs), max(all_ys)]
+        if all_xs and all_ys
+        else []
+    )
+    has_real_projection = bool(feature_entries)
+    selected_feature_id = feature_entries[0]["feature_id"] if feature_entries else ""
+    selected_geometry_type = feature_entries[0]["geometry_type"] if feature_entries else ""
+    selected_feature_bounds = (
+        feature_entries[0]["bounds"] if feature_entries and feature_entries[0].get("bounds") else []
+    )
+
+    return {
+        "title": "Geospatial Projection",
+        "data_source": "cts_gis_precinct_hops_decode",
+        "projection_source": "reference_geojson" if has_real_projection else "none",
+        "projection_state": "projectable" if has_real_projection else "awaiting_real_projection",
+        "feature_count": len(feature_entries),
+        "render_feature_count": len(feature_entries),
+        "render_row_count": 0,
+        "decode_summary": {
+            "reference_binding_count": decoded_polygon_count + failed_polygon_count,
+            "decoded_coordinate_count": decoded_polygon_count,
+            "failed_token_count": failed_polygon_count,
+        },
+        "projection_health": {
+            "state": "ok" if has_real_projection else "empty",
+            "reason_codes": [] if has_real_projection else ["no_precinct_polygons_decoded"],
+        },
+        "fallback_reason_codes": [],
+        "warnings": [],
+        "supporting_document_name": "",
+        "projection_document_name": "",
+        "selected_feature_id": selected_feature_id,
+        "selected_feature_explicit": False,
+        "selected_feature_geometry_type": selected_geometry_type,
+        "selected_feature_bounds": selected_feature_bounds,
+        "focus_bounds": list(collection_bbox),
+        "collection_bounds": list(collection_bbox),
+        "empty_message": (
+            "Projection ready."
+            if has_real_projection
+            else "No projected precinct polygons could be decoded."
+        ),
+        "has_real_projection": has_real_projection,
+        "feature_collection": {
+            "type": "FeatureCollection",
+            "features": feature_collection_features,
+            "bounds": list(collection_bbox),
+        },
+        "features": feature_entries,
+    }
+
+
+def read_district_profile_static_with_geometry_from_source_datum(
+    source_datum_path: str | Path,
+    precincts_dir: str | Path | None = None,
+    *,
+    corpus_prefix: str = "sc.3-2-3-17-77-1-6-4-1-4",
+) -> dict[str, Any]:
+    """Read Ohio's source datum + decode the 84 precinct polygons.
+
+    Returns a `district_profile_static` payload with the
+    `geospatial_projection` field populated from the offline HOPS decode.
+    """
+    static = read_district_profile_static_from_source_datum(source_datum_path)
+    if not static:
+        return static
+    precinct_ids = list(static.get("member_precinct_ids") or [])
+    geospatial = build_district_geospatial_projection(
+        precinct_ids, precincts_dir, corpus_prefix=corpus_prefix
+    ) if precincts_dir else {}
+    if geospatial:
+        static = dict(static)
+        static["geospatial_projection"] = geospatial
+    return static
+
+
 __all__ = [
     "CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH",
+    "CTS_GIS_PRECINCTS_RELATIVE_PATH",
     "build_admin_profile_static",
     "build_compiled_artifact",
     "build_cts_gis_source_layout_summary",
+    "build_district_geospatial_projection",
     "build_district_profile_static",
     "compiled_artifact_path",
     "cts_gis_admin_root_source_path",
+    "cts_gis_precinct_file_for_id",
+    "cts_gis_precincts_source_path",
     "cts_gis_source_root",
     "evict_compiled_artifact_read_cache",
     "read_admin_profile_static_from_source_datum",
     "read_compiled_artifact",
     "read_compiled_artifact_cached",
     "read_district_profile_static_from_source_datum",
+    "read_district_profile_static_with_geometry_from_source_datum",
     "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
     "write_compiled_artifact",
