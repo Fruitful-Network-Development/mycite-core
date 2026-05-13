@@ -338,6 +338,14 @@ def run_datum_workbench_mutation_action(
     if action == "discard":
         return _ok(action, {"stage_state": "discarded"})
     target_authority = _as_text(normalized.get("target_authority"))
+    if target_authority in _AWS_CSM_TARGET_AUTHORITIES:
+        return _run_aws_csm_mutation_action(
+            action=action,
+            target_authority=target_authority,
+            payload=normalized,
+            authority_db_file=authority_db_file,
+            portal_instance_id=portal_instance_id,
+        )
     if target_authority not in {"datum_workbench", "datum_document"}:
         return _error("unsupported_mutation_target", "Mutation target_authority must be datum_workbench.")
     document_id = _as_text(normalized.get("document_id"))
@@ -405,6 +413,316 @@ def run_datum_workbench_mutation_action(
             "preview": preview,
         },
     )
+
+
+_AWS_CSM_TARGET_AUTHORITIES = frozenset(
+    {
+        "aws_csm_newsletter_contact_log",
+        "aws_csm_newsletter_profile",
+        "paypal_webhook",
+    }
+)
+_AWS_CSM_OPERATIONS = frozenset(
+    {
+        "upsert_subscriber",
+        "mark_unsubscribed",
+        "update_subscription",
+        "record_dispatch_result",
+        "assign_sender",
+        "save_webhook",
+    }
+)
+
+
+def _run_aws_csm_mutation_action(
+    *,
+    action: str,
+    target_authority: str,
+    payload: Mapping[str, Any],
+    authority_db_file: str | Path | None,
+    portal_instance_id: str,
+) -> dict[str, Any]:
+    """Dispatch AWS-CSM-family mutations through the canonical lifecycle.
+
+    Replaces direct adapter ``save_*()`` calls scattered across the
+    runtime + public ``/__fnd/newsletter/*`` endpoints with one
+    canonical entry point. Every FND-CSM mutation now goes through this
+    function, so the NIMM directive envelope is composed identically
+    regardless of caller.
+    """
+    operation = _as_text(payload.get("operation"))
+    if operation not in _AWS_CSM_OPERATIONS:
+        return _error(
+            "unsupported_operation",
+            f"Unsupported AWS-CSM mutation operation: {operation}",
+        )
+    envelope = {
+        "verb": "manipulate",
+        "target_authority": target_authority,
+        "operation": operation,
+        "target": dict(payload.get("target") or {}),
+    }
+    if action == "stage":
+        return _ok(action, {"stage_state": "staged", "nimm_envelope": envelope})
+    if action == "validate":
+        return _ok(
+            action,
+            {
+                "stage_state": "validated",
+                "nimm_envelope": envelope,
+                "validation": {"ok": True},
+            },
+        )
+    if authority_db_file is None:
+        return _error("authority_db_required", "authority_db_file is required.", status_code=503)
+    tenant_id = _as_text(portal_instance_id) or "fnd"
+
+    try:
+        result = _aws_csm_apply_or_preview(
+            target_authority=target_authority,
+            operation=operation,
+            payload=payload,
+            authority_db_file=authority_db_file,
+            tenant_id=tenant_id,
+            apply=(action == "apply"),
+        )
+    except ValueError as exc:
+        return _error("aws_csm_mutation_failed", str(exc))
+    except Exception as exc:  # noqa: BLE001
+        return _error("aws_csm_mutation_error", str(exc), status_code=500)
+    return _ok(
+        action,
+        {
+            "stage_state": "applied" if action == "apply" else "previewed",
+            "nimm_envelope": envelope,
+            "preview": result,
+        },
+    )
+
+
+def _aws_csm_apply_or_preview(
+    *,
+    target_authority: str,
+    operation: str,
+    payload: Mapping[str, Any],
+    authority_db_file: str | Path,
+    tenant_id: str,
+    apply: bool,
+) -> dict[str, Any]:
+    """Execute the operation against the appropriate MOS adapter.
+
+    For ``preview`` actions (apply=False), the operation runs in a
+    read-only fashion when possible. For mutations where preview would
+    require materializing the change (e.g. computing the next version
+    hash), we just return the planned action — the actual write
+    happens on ``apply``.
+    """
+    from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+        MosDatumNewsletterContactLogAdapter,
+    )
+
+    if target_authority == "aws_csm_newsletter_contact_log":
+        domain = _as_text(payload.get("domain"))
+        if not domain:
+            raise ValueError("domain is required for newsletter contact log mutations")
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=authority_db_file, tenant_id=tenant_id
+        )
+        if operation == "upsert_subscriber":
+            email = _as_text(payload.get("email")).lower()
+            name = _as_text(payload.get("name"))
+            if not email:
+                raise ValueError("email is required for upsert_subscriber")
+            log = adapter.load_contact_log(domain=domain) or {
+                "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
+                "domain": domain,
+                "contacts": [],
+                "dispatches": [],
+            }
+            now_iso = _aws_csm_now_iso()
+            contacts = list(log.get("contacts") or [])
+            found = False
+            for c in contacts:
+                if _as_text(c.get("email")).lower() == email:
+                    c["subscribed"] = True
+                    if name:
+                        c["name"] = name
+                    c["updated_at"] = now_iso
+                    if not _as_text(c.get("source")):
+                        c["source"] = "website_signup"
+                    found = True
+                    break
+            if not found:
+                contacts.append(
+                    {
+                        "email": email,
+                        "name": name,
+                        "subscribed": True,
+                        "source": "website_signup",
+                        "send_count": 0,
+                        "last_newsletter_sent_at": "",
+                        "created_at": now_iso,
+                    }
+                )
+            log["contacts"] = contacts
+            log["updated_at"] = now_iso
+            if apply:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "subscribed": True,
+                "applied": apply,
+                "contact_count": len(contacts),
+            }
+        if operation == "mark_unsubscribed":
+            email = _as_text(payload.get("email")).lower()
+            if not email:
+                raise ValueError("email is required for mark_unsubscribed")
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                raise ValueError("contact_log_missing_for_domain")
+            now_iso = _aws_csm_now_iso()
+            matched = False
+            for c in log.get("contacts") or []:
+                if _as_text(c.get("email")).lower() == email:
+                    c["subscribed"] = False
+                    c["source"] = "unsubscribe_link"
+                    c["unsubscribed_at"] = now_iso
+                    c["updated_at"] = now_iso
+                    matched = True
+            log["updated_at"] = now_iso
+            if apply and matched:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "subscribed": False,
+                "applied": apply and matched,
+                "matched": matched,
+            }
+        if operation == "record_dispatch_result":
+            email = _as_text(payload.get("email")).lower()
+            status = _as_text(payload.get("status")).lower()
+            message_id = _as_text(payload.get("message_id"))
+            error_message = _as_text(payload.get("error_message"))
+            if not email:
+                raise ValueError("email is required for record_dispatch_result")
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                raise ValueError("contact_log_missing_for_domain")
+            now_iso = _aws_csm_now_iso()
+            matched = False
+            for c in log.get("contacts") or []:
+                if _as_text(c.get("email")).lower() != email:
+                    continue
+                matched = True
+                if status == "sent":
+                    c["last_newsletter_sent_at"] = now_iso
+                    c["send_count"] = int(c.get("send_count") or 0) + 1
+                c["updated_at"] = now_iso
+                if message_id:
+                    c["last_message_id"] = message_id
+                if error_message:
+                    c["last_error"] = error_message
+            log["updated_at"] = now_iso
+            if apply and matched:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "status": status,
+                "matched": matched,
+                "applied": apply and matched,
+            }
+        if operation == "update_subscription":
+            email = _as_text(payload.get("email")).lower()
+            subscribed_value = bool(payload.get("subscribed"))
+            if not email:
+                raise ValueError("email is required for update_subscription")
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                raise ValueError("contact_log_missing_for_domain")
+            matched = False
+            for c in log.get("contacts") or []:
+                if _as_text(c.get("email")).lower() == email:
+                    c["subscribed"] = subscribed_value
+                    matched = True
+            if apply and matched:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "subscribed": subscribed_value,
+                "matched": matched,
+                "applied": apply and matched,
+            }
+        raise ValueError(f"unsupported_newsletter_contact_log_operation:{operation}")
+
+    if target_authority == "aws_csm_newsletter_profile":
+        if operation == "assign_sender":
+            domain = _as_text(payload.get("domain")).lower()
+            sender = _as_text(payload.get("sender_address")).lower()
+            if not domain or not sender:
+                raise ValueError("domain and sender_address are required for assign_sender")
+            # Sender assignment still goes through the filesystem newsletter
+            # adapter (the v2 contact log datum doesn't carry sender info).
+            # When the sender-profile datum lands as part of a future
+            # migration, swap this path.
+            from MyCiteV2.packages.adapters.filesystem import (
+                FilesystemAwsCsmNewsletterStateAdapter,
+            )
+
+            private_dir = _as_text(payload.get("private_dir"))
+            if not private_dir:
+                raise ValueError("private_dir is required for assign_sender")
+            fs_adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
+            profile = dict(fs_adapter.load_profile(domain=domain) or {})
+            profile["selected_sender_address"] = sender
+            if apply:
+                fs_adapter.save_profile(domain=domain, payload=profile)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "sender_address": sender,
+                "applied": apply,
+            }
+        raise ValueError(f"unsupported_newsletter_profile_operation:{operation}")
+
+    if target_authority == "paypal_webhook":
+        if operation == "save_webhook":
+            from MyCiteV2.packages.adapters.sql.fnd_paypal import (
+                MosDatumPayPalWebhookAdapter,
+            )
+
+            grantee_msn = _as_text(payload.get("grantee_msn_id"))
+            webhook_url = _as_text(payload.get("webhook_url"))
+            if not grantee_msn:
+                raise ValueError("grantee_msn_id is required for save_webhook")
+            adapter = MosDatumPayPalWebhookAdapter(
+                authority_db_file=authority_db_file, tenant_id=tenant_id
+            )
+            if apply:
+                adapter.save_webhook(grantee_msn_id=grantee_msn, webhook_url=webhook_url)
+            return {
+                "operation": operation,
+                "grantee_msn_id": grantee_msn,
+                "webhook_url": webhook_url,
+                "applied": apply,
+            }
+        raise ValueError(f"unsupported_paypal_webhook_operation:{operation}")
+
+    raise ValueError(f"unsupported_target_authority:{target_authority}")
+
+
+def _aws_csm_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 _DOCUMENT_ACTION_KINDS = {"rename_document", "delete_document"}
