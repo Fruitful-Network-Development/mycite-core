@@ -49,11 +49,13 @@ class FilesystemAwsCsmToolProfileStore(
     def __init__(self, tool_root: str | Path) -> None:
         self._tool_root = Path(tool_root)
 
-    def list_profiles(self) -> list[dict[str, Any]]:
+    def list_profiles(self, *, tenant_scope_id: str | None = None) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for path in sorted(self._tool_root.glob("aws-csm.*.json")):
             payload = self._read_profile_file(path, allow_missing=False)
             if payload is None:
+                continue
+            if tenant_scope_id is not None and not _matches_tenant_scope(payload, tenant_scope_id):
                 continue
             rows.append(payload)
         return [deepcopy(row) for row in rows]

@@ -253,6 +253,104 @@ class FndCsmRuntimeBundleTests(unittest.TestCase):
             # No grantees → grantees list is empty in surface_payload
             self.assertEqual(bundle["surface_payload"]["grantees"], [])
 
+    def test_workbench_loads_fnd_csm_documents_from_authority_db(self) -> None:
+        # When authority_db_file points at a MOS database that contains an
+        # FND-CSM sandbox anchor, the workbench must surface it: visible=True,
+        # anchor_document populated, layered_datum_table.mutation_contract
+        # carrying the canonical sandbox token and full lifecycle.
+        from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+        from MyCiteV2.packages.ports.datum_store import (
+            AuthoritativeDatumDocument,
+            AuthoritativeDatumDocumentCatalogResult,
+            AuthoritativeDatumDocumentRow,
+        )
+
+        with TemporaryDirectory() as tmp:
+            authority_db = Path(tmp) / "mos.sqlite3"
+            store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=True)
+            anchor_id = "lv.x.fnd_csm.anchor." + "a" * 64
+            anchor_doc = AuthoritativeDatumDocument(
+                document_id=anchor_id,
+                source_kind="sandbox_source",
+                document_name="tool.x.fnd-csm.json",
+                relative_path="sandbox/fnd-csm/tool.x.fnd-csm.json",
+                canonical_name="anchor",
+                tool_id="fnd_csm",
+                is_anchor=True,
+                rows=(
+                    AuthoritativeDatumDocumentRow(
+                        datum_address="0-0-1",
+                        raw=[["0-0-1", "~", "0-0-0"], ["time-ordinal-position"]],
+                    ),
+                ),
+            )
+            store.store_authoritative_catalog(
+                AuthoritativeDatumDocumentCatalogResult(
+                    tenant_id="fnd",
+                    documents=(anchor_doc,),
+                    source_files={},
+                    readiness_status={},
+                )
+            )
+
+            portal_scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+            shell_state = initial_portal_shell_state(
+                surface_id=FND_CSM_TOOL_SURFACE_ID,
+                portal_scope=portal_scope.to_dict(),
+            )
+            bundle = build_portal_fnd_csm_surface_bundle(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                private_dir=tmp,
+                webapps_root=None,
+                request_payload={},
+                tool_exposure_policy=None,
+                tool_rows=[],
+                authority_db_file=authority_db,
+                portal_instance_id="fnd",
+            )
+            wb = bundle["workbench"]
+            self.assertEqual(wb["sandbox"]["id"], "fnd_csm")
+            self.assertTrue(wb["visible"])
+            self.assertEqual(wb["extra_payload" if "extra_payload" in wb else "forced_visible"], True) if "forced_visible" in wb else None
+            anchor_summary = wb["document_collection"]["anchor_document"]
+            self.assertIsNotNone(anchor_summary)
+            self.assertEqual(anchor_summary["document_id"], anchor_id)
+            mc = wb["layered_datum_table"]["mutation_contract"]
+            self.assertEqual(mc["target_authority"], "datum_workbench")
+            self.assertEqual(mc["sandbox_id"], "fnd_csm")
+            self.assertEqual(mc["document_id"], anchor_id)
+            self.assertEqual(set(mc["stages"]), {"stage", "validate", "preview", "apply", "discard"})
+            self.assertEqual(
+                set(mc["operations"]),
+                {"update_row_raw", "insert_datum", "delete_datum", "move_datum"},
+            )
+
+    def test_workbench_uses_canonical_underscore_sandbox_token(self) -> None:
+        # The workbench sandbox token must be the canonical underscore form
+        # ("fnd_csm"), not the URL-slug form ("fnd-csm"). The mutation runtime
+        # compares against the canonical token from the documents table; a
+        # mismatch raises sandbox_document_mismatch and blocks every edit.
+        # See docs/contracts/datum_document_naming_taxonomy.md §URL Slug vs
+        # Sandbox Token.
+        with TemporaryDirectory() as tmp:
+            portal_scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
+            shell_state = initial_portal_shell_state(
+                surface_id=FND_CSM_TOOL_SURFACE_ID,
+                portal_scope=portal_scope.to_dict(),
+            )
+            bundle = build_portal_fnd_csm_surface_bundle(
+                portal_scope=portal_scope,
+                shell_state=shell_state,
+                private_dir=tmp,
+                webapps_root=None,
+                request_payload={},
+                tool_exposure_policy=None,
+                tool_rows=[],
+            )
+            self.assertEqual(bundle["workbench"]["sandbox"]["id"], "fnd_csm")
+            self.assertEqual(bundle["workbench"]["sandbox"]["label"], "FND-CSM")
+
     def test_bundle_has_region_family_contracts(self) -> None:
         with TemporaryDirectory() as tmp:
             portal_scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))

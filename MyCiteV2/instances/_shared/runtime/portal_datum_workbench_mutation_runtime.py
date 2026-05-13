@@ -6,8 +6,18 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_templates import (
+    TemplateRegistry,
+    scaffold_from_template,
+)
+from MyCiteV2.packages.core.document_naming import (
+    format_canonical_document_id,
+    parse_canonical_document_id,
+)
+from MyCiteV2.packages.core.mss import compute_mss_hash
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
@@ -15,7 +25,14 @@ from MyCiteV2.packages.state_machine.portal_shell import sandbox_id_for_file_key
 
 DATUM_WORKBENCH_MUTATION_SCHEMA = "mycite.v2.portal.datum_workbench.mutation_result.v1"
 _ALLOWED_ACTIONS = {"stage", "validate", "preview", "apply", "discard"}
-_ALLOWED_OPERATIONS = {"update_row_raw", "insert_datum", "delete_datum", "move_datum"}
+_ALLOWED_OPERATIONS = {
+    "update_row_raw",
+    "insert_datum",
+    "delete_datum",
+    "move_datum",
+    "scaffold_datum",
+}
+_NEW_DOCUMENT_OPERATIONS = {"scaffold_datum"}
 
 
 def _as_text(value: object) -> str:
@@ -157,6 +174,105 @@ def _replace_row_raw(
     return result
 
 
+def _scaffold_datum(
+    store: SqliteSystemDatumStoreAdapter,
+    *,
+    tenant_id: str,
+    sandbox_id: str,
+    payload: Mapping[str, Any],
+    apply: bool,
+) -> dict[str, Any]:
+    template_id = _as_text(payload.get("template_id"))
+    if not template_id:
+        raise ValueError("template_id_required")
+    msn_id = _as_text(payload.get("msn_id"))
+    if not msn_id:
+        raise ValueError("msn_id_required")
+    context = payload.get("context") if isinstance(payload.get("context"), Mapping) else {}
+    document_name = _as_text(payload.get("document_name")) or f"scaffold.{template_id}.json"
+    relative_path = _as_text(payload.get("relative_path")) or (
+        f"sandbox/{sandbox_id.replace('_', '-')}/{document_name}"
+    )
+
+    registry = TemplateRegistry()
+    template = registry.get(template_id)
+    if template is None:
+        raise ValueError(f"template_not_found:{template_id}")
+    if template.sandbox != sandbox_id:
+        raise ValueError(
+            f"template_sandbox_mismatch:{template.sandbox}!={sandbox_id}"
+        )
+
+    canonical_name = _as_text(payload.get("canonical_name")) or template.template_id
+    placeholder_id = format_canonical_document_id(
+        prefix="lv",
+        msn_id=msn_id,
+        sandbox=sandbox_id,
+        name=canonical_name,
+        version_hash="0" * 64,
+    )
+    candidate = scaffold_from_template(
+        template,
+        msn_id=msn_id,
+        document_id=placeholder_id,
+        document_name=document_name,
+        relative_path=relative_path,
+        canonical_name=canonical_name,
+        context=context,
+    )
+    identity = compute_mss_hash(candidate)
+    real_hash = identity["version_hash"]
+    if real_hash.startswith("sha256:"):
+        real_hash = real_hash[len("sha256:") :]
+    real_id = format_canonical_document_id(
+        prefix="lv",
+        msn_id=msn_id,
+        sandbox=sandbox_id,
+        name=canonical_name,
+        version_hash=real_hash,
+    )
+    final_document = AuthoritativeDatumDocument(
+        document_id=real_id,
+        source_kind="sandbox_source",
+        document_name=document_name,
+        relative_path=relative_path,
+        canonical_name=canonical_name,
+        tool_id=sandbox_id,
+        is_anchor=False,
+        rows=candidate.rows,
+        document_metadata=candidate.document_metadata,
+    )
+
+    result = {
+        "operation": "scaffold_datum",
+        "template_id": template.template_id,
+        "document_id": real_id,
+        "row_count": final_document.row_count,
+        "scaffolded_document": final_document.to_dict(),
+    }
+
+    if apply:
+        catalog = store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        )
+        if any(d.document_id == real_id for d in catalog.documents):
+            result["status"] = "already_present"
+            return result
+        next_documents = tuple(catalog.documents) + (final_document,)
+        next_catalog = AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=catalog.tenant_id,
+            documents=next_documents,
+            source_files=dict(catalog.source_files),
+            readiness_status=dict(catalog.readiness_status),
+            warnings=tuple(catalog.warnings),
+        )
+        store.store_authoritative_catalog(next_catalog)
+        result["status"] = "created"
+    else:
+        result["status"] = "previewed"
+    return result
+
+
 def _preview_or_apply(
     store: SqliteSystemDatumStoreAdapter,
     *,
@@ -165,6 +281,7 @@ def _preview_or_apply(
     operation: str,
     document_id: str,
     datum_address: str,
+    sandbox_id: str,
     payload: Mapping[str, Any],
 ) -> dict[str, Any]:
     apply = action == "apply"
@@ -196,6 +313,14 @@ def _preview_or_apply(
             source_address=datum_address,
             destination_address=destination,
         )
+    if operation == "scaffold_datum":
+        return _scaffold_datum(
+            store,
+            tenant_id=tenant_id,
+            sandbox_id=sandbox_id,
+            payload=payload,
+            apply=apply,
+        )
     raise ValueError("unsupported_operation")
 
 
@@ -221,16 +346,22 @@ def run_datum_workbench_mutation_action(
     operation = _as_text(normalized.get("operation") or normalized.get("action_kind") or "update_row_raw")
     if operation not in _ALLOWED_OPERATIONS:
         return _error("unsupported_operation", f"Unsupported datum workbench operation: {operation}")
-    if not document_id:
-        return _error("document_id_required", "document_id is required.")
-    if operation != "insert_datum" and not datum_address:
-        return _error("datum_address_required", "datum_address is required.")
-    actual_sandbox = _document_sandbox_id(authority_db_file=authority_db_file, document_id=document_id)
-    if actual_sandbox != sandbox_id:
-        return _error(
-            "sandbox_document_mismatch",
-            f"Document {document_id} belongs to sandbox {actual_sandbox}, not {sandbox_id}.",
-        )
+    if operation in _NEW_DOCUMENT_OPERATIONS:
+        # Scaffold (and similar) mint a brand-new document; the existing-doc
+        # sandbox check would always miss. Validate by template/sandbox match
+        # inside the operation handler instead.
+        pass
+    else:
+        if not document_id:
+            return _error("document_id_required", "document_id is required.")
+        if operation != "insert_datum" and not datum_address:
+            return _error("datum_address_required", "datum_address is required.")
+        actual_sandbox = _document_sandbox_id(authority_db_file=authority_db_file, document_id=document_id)
+        if actual_sandbox != sandbox_id:
+            return _error(
+                "sandbox_document_mismatch",
+                f"Document {document_id} belongs to sandbox {actual_sandbox}, not {sandbox_id}.",
+            )
     envelope = {
         "verb": "manipulate",
         "target_authority": "datum_workbench",
@@ -261,6 +392,7 @@ def run_datum_workbench_mutation_action(
             operation=operation,
             document_id=document_id,
             datum_address=datum_address,
+            sandbox_id=sandbox_id,
             payload=normalized,
         )
     except ValueError as exc:

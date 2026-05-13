@@ -41,6 +41,15 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAwsCsmNewsletterStateAdapter,
     FilesystemAwsCsmToolProfileStore,
 )
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_templates import (
+    TemplateRegistry,
+    recognize_archetype_in_registry,
+)
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentRequest,
+)
 from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
     build_characteristic_set_component_frame,
     build_component_group_frame,
@@ -198,8 +207,15 @@ def _build_newsletter_tab(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    """Reads the contact log and newsletter sender profile for the domain."""
+    """Reads the contact log and newsletter sender profile for the domain.
+
+    When ``authority_db_file`` is provided, the contact log is sourced
+    from the MOS v2 datum (``fnd_newsletter_contact_log_<domain>``).
+    Profile reads stay on the filesystem adapter regardless.
+    """
     if not domain or private_dir is None:
         return {
             "domain": domain,
@@ -211,7 +227,18 @@ def _build_newsletter_tab(
     current_sender = ""
     try:
         adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
-        contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
+        if authority_db_file is not None:
+            from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+                MosDatumNewsletterContactLogAdapter,
+            )
+
+            mos_adapter = MosDatumNewsletterContactLogAdapter(
+                authority_db_file=authority_db_file,
+                tenant_id=portal_instance_id or "fnd",
+            )
+            contacts_payload = _as_dict(mos_adapter.load_contact_log(domain=domain))
+        else:
+            contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
         raw_contacts = _as_list(contacts_payload.get("contacts"))
         contacts = [
             {
@@ -396,6 +423,45 @@ def _apply_fnd_csm_action(
             except Exception as exc:
                 result["status"] = "error"
                 result["message"] = str(exc)
+
+    elif action_kind == "refresh_inbound_status":
+        # Re-sync the ses-forwarder FORWARD_TO_MAP_JSON env + per-domain
+        # receipt-rule wiring from current operator-profile state. The
+        # service-layer hook in
+        # MyCiteV2/packages/modules/cross_domain/aws_csm_onboarding/service.py
+        # also calls the same adapter method on every inbound-touching
+        # onboarding action; this passthrough lets operators trigger a
+        # one-shot reconciliation directly from the FND-CSM Email tab
+        # without needing the service to be wired into the runtime yet.
+        if private_dir is None:
+            result["status"] = "rejected"
+            result["message"] = "private_dir is not configured"
+        else:
+            try:
+                from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
+                    AwsEc2RoleOnboardingCloudAdapter,
+                )
+                from MyCiteV2.packages.adapters.filesystem.aws_csm_tool_profile_store import (
+                    FilesystemAwsCsmToolProfileStore,
+                )
+
+                tool_root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
+                store = FilesystemAwsCsmToolProfileStore(tool_root)
+                adapter = AwsEc2RoleOnboardingCloudAdapter()
+                profiles = store.list_profiles(tenant_scope_id=None)
+                forwarding_sync = adapter.sync_operator_forwarding_routes(
+                    profiles=list(profiles or []),
+                )
+                result["forwarding_sync"] = forwarding_sync
+                result["message"] = (
+                    f"FORWARD_TO_MAP_JSON synced: "
+                    f"{forwarding_sync.get('route_count', 0)} routes, "
+                    f"route_changed={forwarding_sync.get('route_changed', False)}, "
+                    f"domains_wired={forwarding_sync.get('domains_wired') or []}"
+                )
+            except Exception as exc:
+                result["status"] = "error"
+                result["message"] = f"forwarding sync failed: {exc}"
 
     elif action_kind == "save_paypal_webhook":
         msn_id = _as_text(action_payload.get("msn_id"))
@@ -756,6 +822,64 @@ def _build_interface_panel(
 
 
 # ---------------------------------------------------------------------------
+# Workbench document loading
+# ---------------------------------------------------------------------------
+
+FND_CSM_SANDBOX_TOKEN = "fnd_csm"
+
+
+def _load_fnd_csm_sandbox_documents(
+    *,
+    authority_db_file: str | Path | None,
+    tenant_id: str,
+) -> list[AuthoritativeDatumDocument]:
+    """Load all FND-CSM sandbox documents from the MOS authority store.
+
+    Returns an empty list when ``authority_db_file`` is unset or missing —
+    the workbench then renders as an empty sandbox without erroring.
+    """
+    if authority_db_file is None:
+        return []
+    db_path = Path(authority_db_file)
+    if not db_path.exists():
+        return []
+    store = SqliteSystemDatumStoreAdapter(db_path)
+    catalog = store.read_authoritative_datum_documents(
+        AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+    )
+    return [
+        document
+        for document in catalog.documents
+        if f".{FND_CSM_SANDBOX_TOKEN}." in document.document_id
+    ]
+
+
+def _resolve_fnd_csm_anchor(
+    documents: list[AuthoritativeDatumDocument],
+) -> AuthoritativeDatumDocument | None:
+    for document in documents:
+        if document.is_anchor:
+            return document
+    return None
+
+
+def _resolve_fnd_csm_selected_document(
+    documents: list[AuthoritativeDatumDocument],
+    *,
+    focus_document_id: str,
+) -> AuthoritativeDatumDocument | None:
+    if not focus_document_id:
+        return None
+    for document in documents:
+        if document.document_id == focus_document_id:
+            return document
+        metadata = document.document_metadata if isinstance(document.document_metadata, dict) else {}
+        if _as_text(metadata.get("legacy_alias")) == focus_document_id:
+            return document
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Main bundle builder
 # ---------------------------------------------------------------------------
 
@@ -768,6 +892,8 @@ def build_portal_fnd_csm_surface_bundle(
     request_payload: dict[str, Any] | None = None,
     tool_exposure_policy: dict[str, Any] | None = None,
     tool_rows: list[dict[str, Any]] | None = None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
     tool_entry = resolve_portal_tool_registry_entry(surface_id=FND_CSM_TOOL_SURFACE_ID)
     if tool_entry is None:
@@ -804,7 +930,13 @@ def build_portal_fnd_csm_surface_bundle(
     # Build tab data
     email_tab = _build_email_tab(selected_grantee, domain, private_dir)
     analytics_tab = _build_analytics_tab(domain, webapps_root)
-    newsletter_tab = _build_newsletter_tab(selected_grantee, domain, private_dir)
+    newsletter_tab = _build_newsletter_tab(
+        selected_grantee,
+        domain,
+        private_dir,
+        authority_db_file=authority_db_file,
+        portal_instance_id=portal_instance_id,
+    )
     paypal_tab = _build_paypal_tab(selected_grantee, domain, private_dir)
 
     # Tool posture
@@ -892,17 +1024,48 @@ def build_portal_fnd_csm_surface_bundle(
         tool_extensions={"fnd_csm_tool_state": tool_state},
     )
 
+    tenant_id = _as_text(portal_instance_id) or _as_text(getattr(portal_scope, "scope_id", "")) or "fnd"
+    fnd_csm_sandbox_documents = _load_fnd_csm_sandbox_documents(
+        authority_db_file=authority_db_file,
+        tenant_id=tenant_id,
+    )
+    fnd_csm_anchor_document = _resolve_fnd_csm_anchor(fnd_csm_sandbox_documents)
+    focus_document_id = _as_text(
+        (shell_state.focus_subject or {}).get("file_key")
+        if isinstance(shell_state.focus_subject, dict)
+        else ""
+    )
+    fnd_csm_selected_document = _resolve_fnd_csm_selected_document(
+        fnd_csm_sandbox_documents,
+        focus_document_id=focus_document_id,
+    )
+    workbench_visible = bool(fnd_csm_sandbox_documents)
+
+    archetype_report = None
+    active_for_recognition = fnd_csm_selected_document or fnd_csm_anchor_document
+    if active_for_recognition is not None:
+        registry = TemplateRegistry()
+        candidate_report = recognize_archetype_in_registry(active_for_recognition, registry)
+        if candidate_report is not None:
+            archetype_report = candidate_report.to_dict()
+
+    workbench_extra_payload: dict[str, Any] = {"forced_visible": workbench_visible}
+    if archetype_report is not None:
+        workbench_extra_payload["archetype_report"] = archetype_report
+
     workbench = build_datum_file_workbench(
         portal_scope=portal_scope,
         shell_state=shell_state,
         surface_id=FND_CSM_TOOL_SURFACE_ID,
-        sandbox_id="fnd-csm",
+        sandbox_id=FND_CSM_SANDBOX_TOKEN,
         sandbox_label="FND-CSM",
-        anchor_document=None,
-        sandbox_documents=[],
+        anchor_document=fnd_csm_anchor_document,
+        selected_document=fnd_csm_selected_document,
+        sandbox_documents=fnd_csm_sandbox_documents,
         title="FND-CSM Datum Workbench",
         subtitle="Grantee service datum workbench.",
-        visible=False,
+        visible=workbench_visible,
+        extra_payload=workbench_extra_payload,
     )
 
     interface_panel = _build_interface_panel(
