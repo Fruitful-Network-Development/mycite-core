@@ -791,6 +791,29 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _legacy_deprecation_headers(target_authority: str, operation: str) -> dict[str, str]:
+    """Return HTTP headers signaling that the legacy ``/__fnd/*`` route
+    is a Phase E.3 shim that internally dispatches to the canonical
+    ``/portal/api/v2/mutations/*`` runtime.
+
+    Operators relying on these URLs (notably unsubscribe links baked
+    into already-sent newsletter emails) should plan a 90-day cutover
+    to the canonical route. After zero traffic is observed for that
+    window, the route bodies become ``410 Gone`` per Phase F of the
+    unification audit.
+    """
+    return {
+        "X-Deprecation": "1",
+        "X-Deprecation-Date": "2026-05-13",
+        "X-Deprecation-Sunset": "2026-08-13",
+        "X-Deprecation-Successor": (
+            f"POST /portal/api/v2/mutations/apply "
+            f'(target_authority="{target_authority}", operation="{operation}")'
+        ),
+        "X-Deprecation-Reason": "Phase E.3 routes through the canonical mutation runtime; legacy URL surface retained for backward compatibility (unsubscribe links in customer email archives).",
+    }
+
+
 def _newsletter_state_adapter(host_config: V2PortalHostConfig):
     """Return the live newsletter-state adapter.
 
@@ -1270,7 +1293,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/newsletter/subscribe")
     def fnd_newsletter_subscribe() -> tuple[Any, int]:
-        # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
+        """Public site-signup endpoint. Phase E.3 shim: validates the
+        request shape then dispatches through the canonical mutation
+        runtime (target_authority=aws_csm_newsletter_contact_log,
+        operation=upsert_subscriber).
+        """
         domain = _normalize_domain(request.host)
         known = _newsletter_known_domains()
         if domain not in known:
@@ -1278,25 +1305,41 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         raw_email = _fnd_newsletter_request_field("email")
         name = _fnd_newsletter_request_field("name")
-        zip_code = _fnd_newsletter_request_field("zip")
+        # zip_code captured but not yet projected into the v2 datum
+        # magnitude set; logged for parity with the legacy upsert path.
+        _ = _fnd_newsletter_request_field("zip")
 
         email = _validate_email(raw_email)
         if not email:
             return jsonify({"ok": False, "error": "invalid_email"}), 400
 
         try:
-            adapter = _newsletter_state_adapter(host_config)
-            contact_log = adapter.load_contact_log(domain=domain)
-            if not contact_log:
-                contact_log = {"schema": _CONTACT_LOG_SCHEMA, "domain": domain, "contacts": [], "dispatches": []}
-            now_iso = _utc_now_iso()
-            _upsert_subscriber(contact_log, email=email, name=name, zip_code=zip_code, now_iso=now_iso)
-            contact_log["updated_at"] = now_iso
-            adapter.save_contact_log(domain=domain, payload=contact_log)
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "upsert_subscriber",
+                    "domain": domain,
+                    "email": email,
+                    "name": name,
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
-        return jsonify({"ok": True, "email": email, "subscribed": True}), 200
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+        return (
+            jsonify({"ok": True, "email": email, "subscribed": True}),
+            200,
+            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "upsert_subscriber"),
+        )
 
     @app.post("/__fnd/newsletter/unsubscribe")
     def fnd_newsletter_unsubscribe() -> tuple[Any, int]:
@@ -1336,27 +1379,31 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
 
         try:
-            adapter = _newsletter_state_adapter(host_config)
-            contact_log = adapter.load_contact_log(domain=domain)
-            if not contact_log:
-                return jsonify({"ok": False, "error": "domain_not_configured"}), 404
-            now_iso = _utc_now_iso()
-            contacts: list[dict[str, Any]] = []
-            for row in list(contact_log.get("contacts") or []):
-                current = dict(row)
-                if str(current.get("email") or "").lower() == email:
-                    current["subscribed"] = False
-                    current["source"] = "unsubscribe_link"
-                    current["unsubscribed_at"] = now_iso
-                    current["updated_at"] = now_iso
-                contacts.append(current)
-            contact_log["contacts"] = contacts
-            contact_log["updated_at"] = now_iso
-            adapter.save_contact_log(domain=domain, payload=contact_log)
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "mark_unsubscribed",
+                    "domain": domain,
+                    "email": email,
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
-        return jsonify({"ok": True, "email": email, "subscribed": False}), 200
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+        return (
+            jsonify({"ok": True, "email": email, "subscribed": False}),
+            200,
+            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "mark_unsubscribed"),
+        )
 
     @app.post("/__fnd/newsletter/dispatch-result")
     def fnd_newsletter_dispatch_result() -> tuple[Any, int]:
@@ -1394,42 +1441,42 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
 
-        # v2 datum cutover: per-contact send_count + last_newsletter_sent_at
-        # is now the operational signal. The legacy dispatch-history array
-        # (one row per dispatch with results[]) is no longer persisted —
-        # the v2 schema reserves a `dispatches` field but Phase 5 doesn't
-        # populate it. Re-add a dispatch-history datum later if audit
-        # reconstruction becomes necessary.
+        # Phase E.3 shim: dispatch result lands as a record_dispatch_result
+        # mutation through the canonical runtime. The legacy
+        # dispatch-history array is no longer persisted — the v2 schema
+        # reserves `dispatches` but Phase 5 doesn't populate it.
         try:
-            adapter = _newsletter_state_adapter(host_config)
-            contact_log = adapter.load_contact_log(domain=domain)
-            if not contact_log:
-                return jsonify({"ok": False, "error": "domain_not_configured"}), 404
-            now_iso = _utc_now_iso()
-            contacts: dict[str, dict[str, Any]] = {
-                str(item.get("email") or "").lower(): dict(item)
-                for item in list(contact_log.get("contacts") or [])
-                if isinstance(item, dict) and item.get("email")
-            }
-            contact = contacts.get(email)
-            if contact is None:
-                return jsonify({"ok": False, "error": "recipient_not_found"}), 404
-            if status == "sent":
-                contact["last_newsletter_sent_at"] = now_iso
-                contact["send_count"] = int(contact.get("send_count") or 0) + 1
-            contact["updated_at"] = now_iso
-            if message_id:
-                contact["last_message_id"] = message_id
-            if error_message:
-                contact["last_error"] = error_message
-            contacts[email] = contact
-            contact_log["contacts"] = [contacts[k] for k in sorted(contacts.keys())]
-            contact_log["updated_at"] = now_iso
-            adapter.save_contact_log(domain=domain, payload=contact_log)
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "record_dispatch_result",
+                    "domain": domain,
+                    "email": email,
+                    "status": status,
+                    "message_id": message_id,
+                    "error_message": error_message,
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+        preview = result.get("preview") or {}
+        if not preview.get("matched"):
+            return jsonify({"ok": False, "error": "recipient_not_found"}), 404
 
-        return jsonify({"ok": True, "domain": domain, "dispatch_id": dispatch_id, "email": email, "status": status}), 200
+        return (
+            jsonify({"ok": True, "domain": domain, "dispatch_id": dispatch_id, "email": email, "status": status}),
+            200,
+            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "record_dispatch_result"),
+        )
 
     # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)

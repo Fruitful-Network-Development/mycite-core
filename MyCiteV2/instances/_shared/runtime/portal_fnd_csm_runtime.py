@@ -449,6 +449,8 @@ def _apply_fnd_csm_action(
     action_payload: dict[str, Any],
     tool_state: dict[str, Any],
     private_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Returns (next_tool_state, action_result)."""
     next_state = dict(tool_state)
@@ -490,11 +492,29 @@ def _apply_fnd_csm_action(
             result["message"] = "private_dir is not configured"
         else:
             try:
-                adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
-                profile = _as_dict(adapter.load_profile(domain=domain))
-                profile["selected_sender_address"] = sender
-                adapter.save_profile(domain=domain, payload=profile)
-                result["message"] = f"Newsletter sender for {domain} set to {sender}"
+                from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                    run_datum_workbench_mutation_action,
+                )
+
+                mutation_result = run_datum_workbench_mutation_action(
+                    "apply",
+                    {
+                        "target_authority": "aws_csm_newsletter_profile",
+                        "operation": "assign_sender",
+                        "domain": domain,
+                        "sender_address": sender,
+                        "private_dir": str(private_dir),
+                    },
+                    authority_db_file=authority_db_file,
+                    portal_instance_id=portal_instance_id or "fnd",
+                )
+                if not mutation_result.get("ok"):
+                    err = mutation_result.get("error") or {}
+                    result["status"] = "error"
+                    result["message"] = _as_text(err.get("message") or "assign_sender_failed")
+                else:
+                    result["message"] = f"Newsletter sender for {domain} set to {sender}"
+                    result["nimm_envelope"] = mutation_result.get("nimm_envelope")
             except Exception as exc:
                 result["status"] = "error"
                 result["message"] = str(exc)
@@ -506,24 +526,36 @@ def _apply_fnd_csm_action(
         if not domain or not email:
             result["status"] = "rejected"
             result["message"] = "domain and email are required"
-        elif private_dir is None:
+        elif authority_db_file is None:
             result["status"] = "rejected"
-            result["message"] = "private_dir is not configured"
+            result["message"] = "authority_db_file is required for contact_log mutations"
         else:
             try:
-                adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
-                contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
-                contacts = _as_list(contacts_payload.get("contacts"))
-                updated = False
-                for contact in contacts:
-                    if isinstance(contact, dict) and _as_text(contact.get("email")).lower() == email:
-                        contact["subscribed"] = subscribed
-                        updated = True
-                if updated:
-                    contacts_payload["contacts"] = contacts
-                    adapter.save_contact_log(domain=domain, payload=contacts_payload)
+                from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                    run_datum_workbench_mutation_action,
+                )
+
+                mutation_result = run_datum_workbench_mutation_action(
+                    "apply",
+                    {
+                        "target_authority": "aws_csm_newsletter_contact_log",
+                        "operation": "update_subscription",
+                        "domain": domain,
+                        "email": email,
+                        "subscribed": subscribed,
+                    },
+                    authority_db_file=authority_db_file,
+                    portal_instance_id=portal_instance_id or "fnd",
+                )
+                preview = mutation_result.get("preview") or {}
+                if not mutation_result.get("ok"):
+                    err = mutation_result.get("error") or {}
+                    result["status"] = "error"
+                    result["message"] = _as_text(err.get("message") or "update_subscription_failed")
+                elif preview.get("matched"):
                     status_word = "subscribed" if subscribed else "unsubscribed"
                     result["message"] = f"{email} {status_word}"
+                    result["nimm_envelope"] = mutation_result.get("nimm_envelope")
                 else:
                     result["status"] = "rejected"
                     result["message"] = f"Contact not found: {email}"
@@ -573,16 +605,36 @@ def _apply_fnd_csm_action(
     elif action_kind == "save_paypal_webhook":
         msn_id = _as_text(action_payload.get("msn_id"))
         webhook_url = _as_text(action_payload.get("webhook_url"))
-        if not msn_id or private_dir is None:
+        if not msn_id:
             result["status"] = "rejected"
-            result["message"] = "msn_id and private_dir are required"
+            result["message"] = "msn_id is required"
+        elif authority_db_file is None:
+            result["status"] = "rejected"
+            result["message"] = "authority_db_file is required for paypal_webhook mutations"
         else:
             try:
-                wh_path = Path(private_dir) / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
-                wh_path.write_text(
-                    json.dumps({"webhook_url": webhook_url}, indent=2), encoding="utf-8"
+                from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                    run_datum_workbench_mutation_action,
                 )
-                result["message"] = "PayPal webhook URL saved"
+
+                mutation_result = run_datum_workbench_mutation_action(
+                    "apply",
+                    {
+                        "target_authority": "paypal_webhook",
+                        "operation": "save_webhook",
+                        "grantee_msn_id": msn_id,
+                        "webhook_url": webhook_url,
+                    },
+                    authority_db_file=authority_db_file,
+                    portal_instance_id=portal_instance_id or "fnd",
+                )
+                if not mutation_result.get("ok"):
+                    err = mutation_result.get("error") or {}
+                    result["status"] = "error"
+                    result["message"] = _as_text(err.get("message") or "save_webhook_failed")
+                else:
+                    result["message"] = "PayPal webhook URL saved"
+                    result["nimm_envelope"] = mutation_result.get("nimm_envelope")
             except Exception as exc:
                 result["status"] = "error"
                 result["message"] = str(exc)
@@ -1044,6 +1096,8 @@ def build_portal_fnd_csm_surface_bundle(
             action_payload=action_payload,
             tool_state=tool_state,
             private_dir=private_dir,
+            authority_db_file=authority_db_file,
+            portal_instance_id=portal_instance_id,
         )
 
     # Pop engaged_frame_id: used for render_key differentiation this cycle only
