@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import glob
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -825,7 +826,14 @@ def _build_interface_panel(
 # Workbench document loading
 # ---------------------------------------------------------------------------
 
-FND_CSM_SANDBOX_TOKEN = "fnd_csm"
+# Canonical sandbox token now lives in
+# MyCiteV2/packages/state_machine/portal_shell/shell_schemas.py and is
+# re-exported from the portal_shell package alongside
+# FND_CSM_TOOL_SURFACE_ID. Keeping the duplicate import line here so the
+# rest of this module reads unchanged.
+from MyCiteV2.packages.state_machine.portal_shell import (  # noqa: E402
+    FND_CSM_SANDBOX_TOKEN,
+)
 
 
 def _load_fnd_csm_sandbox_documents(
@@ -837,11 +845,29 @@ def _load_fnd_csm_sandbox_documents(
 
     Returns an empty list when ``authority_db_file`` is unset or missing —
     the workbench then renders as an empty sandbox without erroring.
+
+    When ``MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB`` is set ("1"/"true"/"yes")
+    the absent-or-missing case raises ``RuntimeError`` instead of
+    returning an empty list. Production deployments should set this so a
+    misconfigured authority path fails closed rather than silently
+    rendering an empty workbench.
     """
+    require_db = _as_text(os.environ.get("MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB")).lower()
+    require_db_strict = require_db in {"1", "true", "yes"}
     if authority_db_file is None:
+        if require_db_strict:
+            raise RuntimeError(
+                "MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB is set but "
+                "authority_db_file was not passed to the FND-CSM runtime."
+            )
         return []
     db_path = Path(authority_db_file)
     if not db_path.exists():
+        if require_db_strict:
+            raise RuntimeError(
+                f"MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB is set but "
+                f"authority_db_file does not exist: {db_path}"
+            )
         return []
     store = SqliteSystemDatumStoreAdapter(db_path)
     catalog = store.read_authoritative_datum_documents(

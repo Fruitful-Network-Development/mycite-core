@@ -4,8 +4,10 @@ import base64
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from email import policy
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from email.parser import BytesParser
-from email.utils import getaddresses
+from email.utils import formataddr, getaddresses, make_msgid
 import io
 import fcntl
 import hashlib
@@ -54,7 +56,11 @@ _FORWARDER_REJECTED_INBOUND_STATES = frozenset(
     }
 )
 _ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
-AWS_CSM_HANDOFF_TEMPLATE_VERSION = "smtp_credentials_v2_minimal_5field"
+AWS_CSM_HANDOFF_TEMPLATE_VERSION = "smtp_credentials_v3_prose_html_2026_05"
+AWS_CSM_HANDOFF_FROM_EMAIL_ENV = "AWS_CSM_HANDOFF_FROM_EMAIL"
+AWS_CSM_HANDOFF_REPLY_TO_ENV = "AWS_CSM_HANDOFF_REPLY_TO"
+AWS_CSM_HANDOFF_CONFIGURATION_SET_ENV = "AWS_CSM_HANDOFF_CONFIGURATION_SET"
+_DEFAULT_HANDOFF_FROM_EMAIL = "dylan@fruitfulnetworkdevelopment.com"
 _INBOUND_CAPTURE_LAMBDA_SOURCE = Path(__file__).resolve().with_name("aws_csm_inbound_capture_lambda.py")
 
 
@@ -141,6 +147,81 @@ def _provider_label(provider: str) -> str:
     if provider == "proofpoint":
         return "Proofpoint"
     return "Manual"
+
+
+def _build_handoff_message_parts(
+    *,
+    send_as_email: str,
+    smtp_host: str,
+    smtp_port: str,
+    username: str,
+    password: str,
+    provider_label: str,
+    correction_note: str,
+    handoff_from: str,
+) -> tuple[str, str, str]:
+    import html as _html
+
+    subject_prefix = (
+        "AWS-CSM send-as correction"
+        if correction_note
+        else f"AWS-CSM {provider_label} send-as handoff"
+    )
+    subject = f"{subject_prefix} for {send_as_email}"
+
+    intro = (
+        f"Your send-as setup for {send_as_email} is ready. Use the SMTP values below to "
+        f"configure {provider_label} send-as. If you have any questions, or did not expect "
+        f"this message, reply to this email and we'll take a look."
+    )
+    plain_parts: list[str] = ["Hi,", ""]
+    if correction_note:
+        plain_parts.extend([correction_note, ""])
+    plain_parts.extend(
+        [
+            intro,
+            "",
+            "SMTP credentials:",
+            f"  Server: {smtp_host}",
+            f"  Email: {send_as_email}",
+            f"  Port: {smtp_port}",
+            f"  Username: {username}",
+            f"  Password: {password}",
+            "",
+            "Thanks,",
+            "FND Operations",
+            handoff_from,
+        ]
+    )
+    plain_text = "\n".join(plain_parts) + "\n"
+
+    correction_html = (
+        f"<p style=\"color:#a23b00;\"><strong>{_html.escape(correction_note)}</strong></p>"
+        if correction_note
+        else ""
+    )
+    html_text = (
+        "<!doctype html><html><body style=\"font-family:-apple-system,Segoe UI,Roboto,sans-serif;"
+        "color:#1a1a1a;max-width:560px;margin:0 auto;padding:16px;\">"
+        "<p>Hi,</p>"
+        f"{correction_html}"
+        f"<p>{_html.escape(intro)}</p>"
+        "<p><strong>SMTP credentials</strong></p>"
+        "<pre style=\"background:#f6f6f6;border:1px solid #ddd;border-radius:6px;"
+        "padding:12px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;"
+        "white-space:pre;\">"
+        f"Server:   {_html.escape(smtp_host)}\n"
+        f"Email:    {_html.escape(send_as_email)}\n"
+        f"Port:     {_html.escape(smtp_port)}\n"
+        f"Username: {_html.escape(username)}\n"
+        f"Password: {_html.escape(password)}"
+        "</pre>"
+        "<p>Thanks,<br/>FND Operations<br/>"
+        f"<a href=\"mailto:{_html.escape(handoff_from, quote=True)}\">{_html.escape(handoff_from)}</a></p>"
+        "</body></html>"
+    )
+
+    return plain_text, html_text, subject
 
 
 def _smtp_secret_description(secret_name: str) -> str:
@@ -570,30 +651,42 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         handoff_provider = self._handoff_provider(profile)
         provider_label = _provider_label(handoff_provider)
         region = self._region_for_profile(profile)
-        body_lines = [
-            f"Server: {smtp_host}",
-            f"Email: {send_as_email}",
-            f"Port: {smtp_port}",
-            f"Username: {username}",
-            f"Password: {password}",
-        ]
-        if correction_note:
-            body_lines.insert(0, correction_note)
-        subject_prefix = "AWS-CSM send-as correction" if correction_note else f"AWS-CSM {provider_label} send-as handoff"
-        response = self._client("sesv2", region=region).send_email(
-            FromEmailAddress=send_as_email,
-            Destination={"ToAddresses": [destination]},
-            Content={
-                "Simple": {
-                    "Subject": {"Data": f"{subject_prefix} for {send_as_email}"},
-                    "Body": {
-                        "Text": {
-                            "Data": "\n".join(body_lines)
-                        }
-                    },
-                }
-            },
+
+        handoff_from = _as_text(os.getenv(AWS_CSM_HANDOFF_FROM_EMAIL_ENV)) or _DEFAULT_HANDOFF_FROM_EMAIL
+        reply_to = _as_text(os.getenv(AWS_CSM_HANDOFF_REPLY_TO_ENV)) or handoff_from
+        configuration_set = _as_text(os.getenv(AWS_CSM_HANDOFF_CONFIGURATION_SET_ENV))
+
+        plain_text, html_text, subject = _build_handoff_message_parts(
+            send_as_email=send_as_email,
+            smtp_host=smtp_host,
+            smtp_port=smtp_port,
+            username=username,
+            password=password,
+            provider_label=provider_label,
+            correction_note=correction_note,
+            handoff_from=handoff_from,
         )
+
+        message = MIMEMultipart("alternative")
+        message["Subject"] = subject
+        message["From"] = formataddr(("FND Operations", handoff_from))
+        message["To"] = destination
+        message["Reply-To"] = reply_to
+        message["Message-ID"] = make_msgid(domain=_email_domain(handoff_from) or "fruitfulnetworkdevelopment.com")
+        message.attach(MIMEText(plain_text, "plain", "utf-8"))
+        message.attach(MIMEText(html_text, "html", "utf-8"))
+        raw_bytes = message.as_bytes()
+
+        send_kwargs: dict[str, Any] = {
+            "FromEmailAddress": handoff_from,
+            "Destination": {"ToAddresses": [destination]},
+            "ReplyToAddresses": [reply_to],
+            "Content": {"Raw": {"Data": raw_bytes}},
+        }
+        if configuration_set:
+            send_kwargs["ConfigurationSetName"] = configuration_set
+
+        response = self._client("sesv2", region=region).send_email(**send_kwargs)
         return {
             "message_id": _as_text(response.get("MessageId")),
             "sent_to": destination,
@@ -605,6 +698,9 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "handoff_provider": handoff_provider,
             "template_version": AWS_CSM_HANDOFF_TEMPLATE_VERSION,
             "correction": "true" if correction_note else "false",
+            "from_email": handoff_from,
+            "reply_to": reply_to,
+            "configuration_set": configuration_set,
         }
 
     def sync_verification_route_map(self, *, profiles: list[dict[str, Any]]) -> dict[str, Any]:

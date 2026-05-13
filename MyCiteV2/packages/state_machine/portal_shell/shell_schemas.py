@@ -22,6 +22,15 @@ CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_CSM_TOOL_SURFACE_ID = "system.tools.fnd_csm"
 WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 
+# Canonical sandbox tokens (underscore form per
+# docs/contracts/datum_document_naming_taxonomy.md §"URL Slug vs
+# Sandbox Token"). These are the only authoritative spellings —
+# downstream code must import these constants rather than re-literal
+# the strings.
+CTS_GIS_SANDBOX_TOKEN = "cts_gis"
+FND_CSM_SANDBOX_TOKEN = "fnd_csm"
+WORKBENCH_UI_SANDBOX_TOKEN = "system"  # Workbench-UI is a system-sandbox reflective view
+
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_csm"
