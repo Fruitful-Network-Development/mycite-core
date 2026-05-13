@@ -129,33 +129,71 @@ def _build_email_tab(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    """Reads AWS-CSM tool profiles for the selected domain."""
+    """Reads AWS-CSM tool profiles for the selected domain.
+
+    When ``authority_db_file`` is provided, profile + domain reads come
+    from MOS via :class:`MosDatumAwsCsmProfileAdapter`. Otherwise falls
+    back to the legacy filesystem store.
+    """
     if not domain or private_dir is None:
         return {"profiles": [], "domain": domain}
+
+    mos_store: Any = None
+    if authority_db_file is not None:
+        try:
+            from MyCiteV2.packages.adapters.sql.aws_csm_profile_registry import (
+                MosDatumAwsCsmProfileAdapter,
+            )
+
+            mos_store = MosDatumAwsCsmProfileAdapter(
+                authority_db_file=authority_db_file,
+                tenant_id=portal_instance_id or "fnd",
+            )
+        except Exception:
+            mos_store = None
+
+    fs_store = FilesystemAwsCsmToolProfileStore(private_dir)
+
+    domain_record: dict[str, Any] = {}
     try:
-        store = FilesystemAwsCsmToolProfileStore(private_dir)
-        domain_record = _as_dict(store.load_domain(domain=domain))
+        if mos_store is not None:
+            mos_domain = mos_store.load_domain(domain=domain)
+            if mos_domain:
+                domain_record = _as_dict(mos_domain)
+        if not domain_record:
+            domain_record = _as_dict(fs_store.load_domain(domain=domain))
     except Exception:
         domain_record = {}
 
     profiles: list[dict[str, Any]] = []
     try:
-        for payload in store.list_domains():
+        # Mailboxes for the active domain come from the operator-profile
+        # records (one per operator), filtered by identity.domain.
+        operator_source = (
+            mos_store.list_profiles() if mos_store is not None else fs_store.list_profiles()
+        )
+        # If MOS is empty (not yet seeded), fall back to filesystem.
+        if mos_store is not None and not operator_source:
+            operator_source = fs_store.list_profiles()
+        for payload in operator_source:
             ident = _as_dict(payload.get("identity"))
-            if _as_text(ident.get("domain")).lower() == domain.lower():
-                profiles.append({
-                    "profile_id": _as_text(ident.get("profile_id")),
-                    "mailbox": _as_text(ident.get("mailbox_local_part")),
-                    "send_as": _as_text(ident.get("send_as_email")),
-                    "role": _as_text(ident.get("role")),
-                    "lifecycle": _as_text(
-                        _as_dict(payload.get("workflow")).get("lifecycle_state")
-                    ),
-                    "inbound": _as_text(
-                        _as_dict(payload.get("inbound")).get("receive_state")
-                    ),
-                })
+            if _as_text(ident.get("domain")).lower() != domain.lower():
+                continue
+            profiles.append({
+                "profile_id": _as_text(ident.get("profile_id")),
+                "mailbox": _as_text(ident.get("mailbox_local_part")),
+                "send_as": _as_text(ident.get("send_as_email")),
+                "role": _as_text(ident.get("role")),
+                "lifecycle": _as_text(
+                    _as_dict(payload.get("workflow")).get("lifecycle_state")
+                ),
+                "inbound": _as_text(
+                    _as_dict(payload.get("inbound")).get("receive_state")
+                ),
+            })
     except Exception:
         pass
     return {
@@ -168,10 +206,40 @@ def _build_email_tab(
 def _build_analytics_tab(
     domain: str,
     webapps_root: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    """Reads NDJSON analytics event files from the webapps folder for this domain."""
+    """Reads NDJSON analytics event files from the webapps folder for this domain.
+
+    Prefers the pre-aggregated MOS summary datum
+    (``fnd_analytics_summary_<domain_token>``) when present, falling
+    back to the live NDJSON glob otherwise. The summary datum is
+    refreshed by
+    :mod:`MyCiteV2.scripts.sync_fnd_analytics_summary` (run periodically).
+    """
     if not domain or webapps_root is None:
         return {"domain": domain, "summary": {}, "recent_events": []}
+    if authority_db_file is not None:
+        try:
+            from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
+                MosDatumAnalyticsSummaryAdapter,
+            )
+
+            adapter = MosDatumAnalyticsSummaryAdapter(
+                authority_db_file=authority_db_file,
+                tenant_id=portal_instance_id or "fnd",
+            )
+            cached = adapter.load_summary(domain=domain)
+            if cached is not None:
+                return {
+                    "domain": domain,
+                    "summary": cached.get("summary", {}),
+                    "recent_events": cached.get("recent_events", []),
+                    "source": "mos_datum",
+                    "computed_at": cached.get("computed_at", ""),
+                }
+        except Exception:
+            pass
     events_dir = Path(webapps_root) / "clients" / domain / "analytics" / "events"
     counts: dict[str, int] = {"page_view": 0, "form_submit": 0, "ops_probe": 0, "other": 0}
     recent: list[dict[str, Any]] = []
@@ -272,10 +340,48 @@ def _build_paypal_tab(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
+    authority_db_file: str | Path | None = None,
+    portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
-    """Reads PayPal orders and any stored webhook configuration."""
+    """Reads PayPal orders and any stored webhook configuration.
+
+    Prefers the MOS-backed orders + webhook datums (per Phase D.3 of
+    the unification audit). Falls back to the legacy filesystem NDJSON
+    and per-grantee JSON config when MOS data is missing.
+    """
     orders: list[dict[str, Any]] = []
     webhook_url = ""
+
+    if authority_db_file is not None:
+        try:
+            from MyCiteV2.packages.adapters.sql.fnd_paypal import (
+                MosDatumPayPalOrdersAdapter,
+                MosDatumPayPalWebhookAdapter,
+            )
+
+            orders_adapter = MosDatumPayPalOrdersAdapter(
+                authority_db_file=authority_db_file,
+                tenant_id=portal_instance_id or "fnd",
+            )
+            if domain:
+                orders = orders_adapter.load_orders(domain=domain)
+            grantee_msn = _as_text(grantee.get("msn_id"))
+            if grantee_msn:
+                webhook_adapter = MosDatumPayPalWebhookAdapter(
+                    authority_db_file=authority_db_file,
+                    tenant_id=portal_instance_id or "fnd",
+                )
+                hook = webhook_adapter.load_webhook(grantee_msn_id=grantee_msn)
+                if hook:
+                    webhook_url = _as_text(hook.get("webhook_url"))
+        except Exception:
+            orders = []
+            webhook_url = ""
+
+    if orders or webhook_url:
+        return {"domain": domain, "webhook_url": webhook_url, "orders": orders}
+
+    # Filesystem fallback (unchanged from the pre-MOS behavior).
     if private_dir is not None:
         orders_path = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
         try:
@@ -954,8 +1060,19 @@ def build_portal_fnd_csm_surface_bundle(
     tool_state["selected_domain"] = domain
 
     # Build tab data
-    email_tab = _build_email_tab(selected_grantee, domain, private_dir)
-    analytics_tab = _build_analytics_tab(domain, webapps_root)
+    email_tab = _build_email_tab(
+        selected_grantee,
+        domain,
+        private_dir,
+        authority_db_file=authority_db_file,
+        portal_instance_id=portal_instance_id,
+    )
+    analytics_tab = _build_analytics_tab(
+        domain,
+        webapps_root,
+        authority_db_file=authority_db_file,
+        portal_instance_id=portal_instance_id,
+    )
     newsletter_tab = _build_newsletter_tab(
         selected_grantee,
         domain,
@@ -963,7 +1080,13 @@ def build_portal_fnd_csm_surface_bundle(
         authority_db_file=authority_db_file,
         portal_instance_id=portal_instance_id,
     )
-    paypal_tab = _build_paypal_tab(selected_grantee, domain, private_dir)
+    paypal_tab = _build_paypal_tab(
+        selected_grantee,
+        domain,
+        private_dir,
+        authority_db_file=authority_db_file,
+        portal_instance_id=portal_instance_id,
+    )
 
     # Tool posture
     configured = tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id)
