@@ -1102,6 +1102,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     webapps_root=host_config.webapps_root,
                     portal_instance_id=host_config.portal_instance_id,
                     portal_domain=host_config.portal_domain,
+                    authority_db_file=host_config.authority_db_file,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
@@ -1124,6 +1126,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     webapps_root=host_config.webapps_root,
                     portal_instance_id=host_config.portal_instance_id,
                     portal_domain=host_config.portal_domain,
+                    authority_db_file=host_config.authority_db_file,
+                    data_dir=host_config.data_dir,
                     tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
