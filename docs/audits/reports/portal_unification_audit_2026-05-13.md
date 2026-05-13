@@ -269,6 +269,8 @@ on import.
 | **B — Audit reports (DONE 2026-05-13)** | This doc + srv-infra summary | 1 hr | None | Yes |
 | **C — Low-effort convergence (DONE 2026-05-13)** | Sandbox-token constants, focus_subject projection narrowing, fail-closed fallback under `MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB=1` | 1 hr | Low | Yes |
 | **D.0 — save_contact_log perf fix (DONE 2026-05-13, P1)** | `replace_single_document_efficient` on SQL adapter; per-save RSS delta dropped from ~800 MB to ~153 MB; MemoryHigh reverted from 2400M band-aid to 1500M steady-state | 2 hr | Medium | Yes — unblocked live signup load |
+| **D.1-D.3 — SQL adapter twins (DONE 2026-05-13)** | Email/Analytics/PayPal tab data now MOS-backed: `MosDatumAwsCsmProfileAdapter` (operator profiles + domain records), `MosDatumAnalyticsSummaryAdapter` (per-domain rolling aggregate), `MosDatumPayPalOrdersAdapter` + `MosDatumPayPalWebhookAdapter`. Three migration scripts. Live workbench now shows 24 docs (1 anchor + 16 operator profiles + 2 domain records + 4 analytics summaries + 1 newsletter contact log). | 4 hr | Medium | Yes |
+| **D.4 — Adapter unit tests (DONE 2026-05-13)** | 16 new round-trip + edge-case tests; 113/113 total pass | 1 hr | None | Yes |
 | **D.1-3 — SQL adapter twins** | Email/Analytics/PayPal MOS-backed | 6-10 hr | Medium | Each adapter ships independently |
 | **D.4 — Tests for all D adapters** | Round-trip + delegation | 2 hr | None | Yes |
 | **E.1-3 — Canonical mutations** | All FND-CSM mutations through `/portal/api/v2/mutations/*`; legacy routes shimmed | 4-6 hr | Medium | After D.1-3 |
