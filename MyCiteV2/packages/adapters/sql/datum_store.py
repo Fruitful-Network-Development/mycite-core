@@ -263,6 +263,161 @@ class SqliteSystemDatumStoreAdapter(
                 connection.execute(f"PRAGMA temp_store = {prior_temp_store}")
                 connection.execute(f"PRAGMA journal_mode = {prior_journal_mode}")
 
+    def replace_single_document_efficient(
+        self,
+        *,
+        tenant_id: str,
+        prior_document_id: str | None,
+        updated_document: AuthoritativeDatumDocument,
+    ) -> None:
+        """Replace exactly one document in the catalog without re-encoding
+        every other document's semantics.
+
+        Background: :meth:`store_authoritative_catalog` does a full
+        ``DELETE FROM datum_row_semantics WHERE tenant_id=?`` followed by
+        re-INSERTing every row of every document. For a single
+        contact-log update with 1168 rows on top of 124 CTS-GIS docs,
+        that's ~100 MB of pointless work and a worker memory spike
+        (observed: ~800 MB transient allocation, OOM-throttled by
+        MemoryHigh=1500M in the systemd override).
+
+        This method instead:
+
+        1. Reads the current catalog (single SELECT, served from cache
+           after first call).
+        2. Builds the new catalog tuple in memory by swapping
+           ``prior_document_id`` for ``updated_document`` (or appending
+           if ``prior_document_id`` is ``None``).
+        3. UPSERTs the snapshot row.
+        4. DELETEs + INSERTs semantics rows ONLY for the changed doc
+           (and the prior one if its id was different).
+
+        Cost: O(rows_in_changed_doc) instead of O(all_rows_in_catalog).
+        """
+        prior_id = _as_text(prior_document_id) if prior_document_id else ""
+        new_id = _as_text(updated_document.document_id)
+        if not new_id:
+            raise ValueError("updated_document.document_id is required")
+        if not is_canonical_document_id(new_id) and not self._allow_legacy_writes():
+            raise NonCanonicalDocumentIdError(
+                f"Refusing to persist non-canonical document id: {new_id!r}"
+            )
+
+        # Build the new catalog tuple in memory (swap or append).
+        catalog = self.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        )
+        documents: list[AuthoritativeDatumDocument] = []
+        swapped = False
+        for document in catalog.documents:
+            if prior_id and document.document_id == prior_id:
+                documents.append(updated_document)
+                swapped = True
+            else:
+                documents.append(document)
+        if not swapped:
+            documents.append(updated_document)
+        next_catalog = AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=catalog.tenant_id,
+            documents=tuple(documents),
+            source_files=dict(catalog.source_files),
+            readiness_status=dict(catalog.readiness_status),
+            warnings=tuple(catalog.warnings),
+        )
+
+        # Compute semantics ONLY for the changed doc.
+        semantics = build_document_semantics(updated_document)
+        updated_at = self._clock()
+        with self._connect() as connection:
+            prior_journal_mode = _sqlite_journal_mode_token(
+                connection.execute("PRAGMA journal_mode").fetchone()[0]
+            )
+            prior_temp_store = int(connection.execute("PRAGMA temp_store").fetchone()[0])
+            connection.execute("PRAGMA temp_store = MEMORY")
+            connection.execute("PRAGMA journal_mode = MEMORY")
+            try:
+                connection.execute(
+                    """
+                    INSERT INTO authoritative_catalog_snapshots (tenant_id, payload_json, updated_at_unix_ms)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(tenant_id) DO UPDATE SET
+                        payload_json = excluded.payload_json,
+                        updated_at_unix_ms = excluded.updated_at_unix_ms
+                    """,
+                    (next_catalog.tenant_id, dumps_json(next_catalog.to_dict()), updated_at),
+                )
+                # Remove the prior doc's semantics (under its OLD id) and
+                # the new doc's semantics (under its NEW id, in case of
+                # idempotent reapply). Both DELETEs are scoped by
+                # document_id so cost is O(rows_in_those_docs), not the
+                # full tenant.
+                if prior_id and prior_id != new_id:
+                    connection.execute(
+                        "DELETE FROM datum_row_semantics WHERE tenant_id = ? AND document_id = ?",
+                        (next_catalog.tenant_id, prior_id),
+                    )
+                    connection.execute(
+                        "DELETE FROM datum_document_semantics WHERE tenant_id = ? AND document_id = ?",
+                        (next_catalog.tenant_id, prior_id),
+                    )
+                connection.execute(
+                    "DELETE FROM datum_row_semantics WHERE tenant_id = ? AND document_id = ?",
+                    (next_catalog.tenant_id, new_id),
+                )
+                connection.execute(
+                    "DELETE FROM datum_document_semantics WHERE tenant_id = ? AND document_id = ?",
+                    (next_catalog.tenant_id, new_id),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO datum_document_semantics (
+                        tenant_id, document_id, policy, version_hash,
+                        canonical_payload_json, updated_at_unix_ms
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        next_catalog.tenant_id,
+                        new_id,
+                        semantics["document"]["policy"],
+                        semantics["document"]["version_hash"],
+                        dumps_json(semantics["document"]["canonical_payload"]),
+                        updated_at,
+                    ),
+                )
+                for datum_address, row_semantics in semantics["rows"].items():
+                    connection.execute(
+                        """
+                        INSERT INTO datum_row_semantics (
+                            tenant_id, document_id, datum_address, policy,
+                            semantic_hash, hyphae_hash, hyphae_chain_json,
+                            local_references_json, warnings_json, updated_at_unix_ms
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            next_catalog.tenant_id,
+                            new_id,
+                            datum_address,
+                            row_semantics["policy"],
+                            row_semantics["semantic_hash"],
+                            row_semantics["hyphae_hash"],
+                            dumps_json(row_semantics["hyphae_chain"]),
+                            dumps_json(row_semantics["local_references"]),
+                            dumps_json(row_semantics["warnings"]),
+                            updated_at,
+                        ),
+                    )
+                connection.commit()
+            finally:
+                if connection.in_transaction:
+                    connection.rollback()
+                connection.execute(f"PRAGMA temp_store = {prior_temp_store}")
+                connection.execute(f"PRAGMA journal_mode = {prior_journal_mode}")
+        # Invalidate the in-memory catalog cache so the next read picks
+        # up the swap.
+        self._catalog_cache.pop(tenant_id, None)
+
     def store_system_workbench(self, result: SystemDatumWorkbenchResult) -> None:
         normalized = (
             result

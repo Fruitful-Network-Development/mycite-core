@@ -39,9 +39,10 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
+from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
 
 
-FND_CSM_SANDBOX = "fnd_csm"
+FND_CSM_SANDBOX = FND_CSM_SANDBOX_TOKEN
 ANCHOR_NAME = "anchor"
 DEFAULT_TENANT_ID = "fnd"
 DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"

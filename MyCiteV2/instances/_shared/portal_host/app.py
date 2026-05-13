@@ -797,13 +797,24 @@ def _newsletter_state_adapter(host_config: V2PortalHostConfig):
     Contact-log methods route through the MOS datum (v2 schema); profile
     and secret methods stay on the legacy filesystem adapter via the
     composite. Falls back to the pure filesystem adapter when no
-    authority DB is configured (e.g. during early bootstrap).
+    authority DB is configured — but ONLY when
+    ``MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB`` is unset or "0". In
+    production this env var should be "1" so a missing authority DB
+    fails closed rather than silently routing reads to legacy JSON
+    (which would mask data drift between the two stores).
     """
     from MyCiteV2.packages.adapters.filesystem import (
         FilesystemAwsCsmNewsletterStateAdapter,
     )
 
     if host_config.authority_db_file is None:
+        require_db = _as_text(os.environ.get("MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB")).lower()
+        if require_db in {"1", "true", "yes"}:
+            raise RuntimeError(
+                "MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB is set, but "
+                "host_config.authority_db_file is None. Refusing to "
+                "fall back to the filesystem newsletter adapter."
+            )
         return FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
     from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
         CompositeAwsCsmNewsletterStateAdapter,

@@ -45,7 +45,9 @@ from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime 
 )
 
 
-SANDBOX_TOKEN = "fnd_csm"
+from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
+
+SANDBOX_TOKEN = FND_CSM_SANDBOX_TOKEN
 TEMPLATE_ID = "fnd_newsletter_contact_log"
 DEFAULT_TENANT_ID = "fnd"
 DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"

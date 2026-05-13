@@ -36,6 +36,7 @@ from MyCiteV2.packages.core.datum_templates.bacillete import (
     encode_email_bacillete,
     encode_name_bacillete,
 )
+from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
 from MyCiteV2.packages.ports.aws_csm_newsletter import (
     AwsCsmNewsletterStatePort,
 )
@@ -51,7 +52,7 @@ from MyCiteV2.packages.ports.datum_store import (
 
 
 V2_SCHEMA = "mycite.v2.datum.fnd.newsletter.contact_log.v2"
-SANDBOX = "fnd_csm"
+SANDBOX = FND_CSM_SANDBOX_TOKEN
 DEFAULT_TENANT_ID = "fnd"
 DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 
@@ -222,29 +223,19 @@ class MosDatumNewsletterContactLogAdapter:
             rows=tuple(rows),
         )
 
-        # Persist via store_authoritative_catalog: read full catalog,
-        # remove the prior version of this canonical_name, append the
-        # new one, write.
-        catalog = store.read_authoritative_datum_documents(
-            AuthoritativeDatumDocumentRequest(tenant_id=self._tenant_id)
+        # Persist via the efficient single-doc replacement path. Reads
+        # the catalog (cached), swaps just our doc, rewrites the snapshot
+        # row, and re-encodes semantics ONLY for the changed doc. Cost
+        # is O(rows_in_doc) instead of O(all_rows_in_catalog) — the
+        # difference between ~30 ms and ~3-5 s for the trapp contact log
+        # (1172 rows over a 124-doc cts_gis catalog).
+        prior_document_id = (
+            existing.document_id if existing is not None else None
         )
-        kept = [
-            d
-            for d in catalog.documents
-            if not (
-                d.canonical_name == canonical_name
-                and f".{SANDBOX}." in d.document_id
-            )
-        ]
-        kept.append(final_document)
-        store.store_authoritative_catalog(
-            AuthoritativeDatumDocumentCatalogResult(
-                tenant_id=catalog.tenant_id,
-                documents=tuple(kept),
-                source_files=dict(catalog.source_files),
-                readiness_status=dict(catalog.readiness_status),
-                warnings=tuple(catalog.warnings),
-            )
+        store.replace_single_document_efficient(
+            tenant_id=self._tenant_id,
+            prior_document_id=prior_document_id,
+            updated_document=final_document,
         )
         return self.load_contact_log(domain=domain)
 

@@ -499,7 +499,7 @@ class _FakeAwsCsmActionCloud:
             "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
             "smtp_port": smtp.get("port") or "587",
             "state": "configured",
-            "template_version": "smtp_credentials_v2_minimal_5field",
+            "template_version": "smtp_credentials_v3_prose_html_2026_05",
         }
         self.sent_messages.append(payload)
         return payload
@@ -515,7 +515,7 @@ class _FakeAwsCsmActionCloud:
             "smtp_host": smtp.get("host") or "email-smtp.us-east-1.amazonaws.com",
             "smtp_port": smtp.get("port") or "587",
             "state": "configured",
-            "template_version": "smtp_credentials_v2_minimal_5field",
+            "template_version": "smtp_credentials_v3_prose_html_2026_05",
             "correction": "true",
         }
         self.sent_messages.append(payload)
@@ -1144,13 +1144,13 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                     if action_kind == "send_handoff_email":
                         dispatch = action_payload["surface_payload"]["action_result"]["handoff_dispatch"]
                         self.assertEqual(dispatch["sent_to"], "ops@example.com")
-                        self.assertEqual(dispatch["template_version"], "smtp_credentials_v2_minimal_5field")
+                        self.assertEqual(dispatch["template_version"], "smtp_credentials_v3_prose_html_2026_05")
                         handoff = action_payload["surface_payload"]["workspace"]["selected_profile_onboarding"]["handoff"]
                         self.assertEqual(handoff["operator_inbox_target"], "ops@example.com")
                         self.assertEqual(handoff["forward_target"], "ops@example.com")
                         self.assertEqual(handoff["handoff_email_sent_to"], "ops@example.com")
                         self.assertEqual(handoff["handoff_email_message_id"], "ses-message-001")
-                        self.assertEqual(handoff["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
+                        self.assertEqual(handoff["handoff_template_version"], "smtp_credentials_v3_prose_html_2026_05")
                         self.assertTrue(handoff["handoff_email_sent_at"])
                     if action_kind == "reveal_smtp_password":
                         secret = action_payload["surface_payload"]["action_result"]["ephemeral_secret"]
@@ -1164,7 +1164,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
                 self.assertIn(stored_profile["provider"]["gmail_send_as_status"], {"verified", "not_started"})
                 self.assertEqual(stored_profile["workflow"]["handoff_email_sent_to"], "ops@example.com")
                 self.assertEqual(stored_profile["workflow"]["handoff_email_message_id"], "ses-message-001")
-                self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
+                self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v3_prose_html_2026_05")
                 self.assertTrue(stored_profile["workflow"]["handoff_email_sent_at"])
                 self.assertNotIn("SMTPPASS", created_profile_path.read_text(encoding="utf-8"))
                 self.assertNotIn("SMTPPASS", audit_file.read_text(encoding="utf-8"))
@@ -1292,7 +1292,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             action_result = action_payload["surface_payload"]["action_result"]
             self.assertEqual(action_result["status"], "accepted")
             self.assertEqual(action_result["handoff_dispatch"]["message_id"], "ses-correction-001")
-            self.assertEqual(action_result["handoff_dispatch"]["template_version"], "smtp_credentials_v2_minimal_5field")
+            self.assertEqual(action_result["handoff_dispatch"]["template_version"], "smtp_credentials_v3_prose_html_2026_05")
             onboarding = action_payload["surface_payload"]["workspace"]["selected_profile_onboarding"]
             self.assertEqual(onboarding["handoff_correction_required"], "no")
             self.assertEqual(onboarding["handoff_correction_status"], "sent")
@@ -1303,7 +1303,7 @@ class PortalHostOneShellIntegrationTests(unittest.TestCase):
             self.assertFalse(correction_action["enabled"])
 
             stored_profile = json.loads(profile_path.read_text(encoding="utf-8"))
-            self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v2_minimal_5field")
+            self.assertEqual(stored_profile["workflow"]["handoff_template_version"], "smtp_credentials_v3_prose_html_2026_05")
             self.assertEqual(stored_profile["workflow"]["handoff_correction_sent_to"], "ops@example.com")
             self.assertEqual(stored_profile["workflow"]["handoff_correction_message_id"], "ses-correction-001")
             self.assertTrue(stored_profile["workflow"]["handoff_correction_sent_at"])
