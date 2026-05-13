@@ -15,6 +15,16 @@ from MyCiteV2.packages.ports.aws_csm_onboarding import (
 )
 
 
+_INBOUND_TOUCHING_ACTIONS = frozenset(
+    {
+        "refresh_inbound_status",
+        "enable_inbound_capture",
+        "confirm_receive_verified",
+        "capture_verification",
+    }
+)
+
+
 def _merge_section(dst: dict[str, Any], key: str, delta: dict[str, Any] | None) -> None:
     if not delta:
         return
@@ -71,10 +81,22 @@ class AwsCsmOnboardingService:
             payload=working,
         )
 
+        forwarding_sync: dict[str, Any] | None = None
+        if command.onboarding_action in _INBOUND_TOUCHING_ACTIONS:
+            sync_callable = getattr(self._cloud, "sync_operator_forwarding_routes", None)
+            list_callable = getattr(self._profile_store, "list_profiles", None)
+            if callable(sync_callable) and callable(list_callable):
+                try:
+                    all_profiles = list_callable(tenant_scope_id=None)
+                    forwarding_sync = sync_callable(profiles=list(all_profiles or []))
+                except Exception as exc:  # noqa: BLE001 — never block the save
+                    forwarding_sync = {"status": "failed", "error": str(exc)}
+
         return AwsCsmOnboardingOutcome(
             command=command,
             updated_sections=tuple(updated),
             saved_profile=saved,
+            forwarding_sync=forwarding_sync,
         )
 
     def _command_from_dict(self, payload: dict[str, Any]) -> AwsCsmOnboardingCommand:

@@ -710,6 +710,7 @@ def _build_fnd_csm_tool_bundle(
     webapps_root: str | Path | None,
     tool_exposure_policy: dict[str, Any] | None,
     tool_rows: list[dict[str, Any]],
+    authority_db_file: str | Path | None = None,
     **_: Any,
 ) -> dict[str, Any]:
     from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import build_portal_fnd_csm_surface_bundle
@@ -724,6 +725,8 @@ def _build_fnd_csm_tool_bundle(
         request_payload=request_payload,
         tool_exposure_policy=tool_exposure_policy,
         tool_rows=tool_rows,
+        authority_db_file=authority_db_file,
+        portal_instance_id=getattr(portal_scope, "scope_id", None),
     )
 
 

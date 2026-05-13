@@ -40,6 +40,19 @@ _DEFAULT_DOMAIN_RECEIPT_BUCKET = "ses-inbound-fnd-mail"
 _ROUTE_MAP_ENV_KEY = "VERIFICATION_ROUTE_MAP_JSON"
 _ROUTE_MAP_LAMBDA_ENV_KEY = "AWS_CSM_VERIFICATION_LAMBDA_NAME"
 _ROUTE_MAP_SYNC_TIMEOUT_SECONDS = 90
+_FORWARDER_LAMBDA_NAME = "ses-forwarder"
+_FORWARDER_ROUTE_MAP_ENV_KEY = "FORWARD_TO_MAP_JSON"
+_FORWARDER_RULE_SET = "fnd-inbound-rules"
+_FORWARDER_PORTAL_CAPTURE_PREFIX = "portal-capture-"
+_FORWARDER_ACCOUNT_ID = "065948377733"
+_FORWARDER_REJECTED_INBOUND_STATES = frozenset(
+    {
+        "",
+        "draft",
+        "abandoned",
+        "removed",
+    }
+)
 _ALLOWED_HANDOFF_PROVIDERS = frozenset({"gmail", "outlook", "yahoo", "proofpoint", "generic_manual"})
 AWS_CSM_HANDOFF_TEMPLATE_VERSION = "smtp_credentials_v2_minimal_5field"
 _INBOUND_CAPTURE_LAMBDA_SOURCE = Path(__file__).resolve().with_name("aws_csm_inbound_capture_lambda.py")
@@ -654,6 +667,192 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             "code_changed": _as_bool(code_sync.get("changed")),
             "code_sha256": _as_text(code_sync.get("code_sha256")),
         }
+
+    def sync_operator_forwarding_routes(
+        self,
+        *,
+        profiles: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Reconcile ses-forwarder FORWARD_TO_MAP_JSON env + per-domain
+        receipt-rule wiring against the supplied profile list. Idempotent.
+
+        See ``AwsCsmOnboardingCloudPort.sync_operator_forwarding_routes``
+        for contract details. Mirrors :meth:`sync_verification_route_map`
+        for the operator-mailbox forwarder lambda instead of the
+        verification forwarder.
+        """
+        routes = self._operator_forwarding_routes_from_profiles(profiles=profiles)
+        region = _DEFAULT_REGION
+        lambda_client = self._client("lambda", region=region)
+        configuration = lambda_client.get_function_configuration(
+            FunctionName=_FORWARDER_LAMBDA_NAME,
+        )
+        environment = dict(_as_dict(configuration.get("Environment")).get("Variables") or {})
+        existing_raw = _as_text(environment.get(_FORWARDER_ROUTE_MAP_ENV_KEY)) or "{}"
+        try:
+            decoded = json.loads(existing_raw)
+        except json.JSONDecodeError:
+            decoded = {}
+        existing_routes = decoded if isinstance(decoded, dict) else {}
+        route_changed = existing_routes != routes
+        if route_changed:
+            environment[_FORWARDER_ROUTE_MAP_ENV_KEY] = json.dumps(
+                routes, separators=(",", ":"), sort_keys=True
+            )
+            lambda_client.update_function_configuration(
+                FunctionName=_FORWARDER_LAMBDA_NAME,
+                Environment={"Variables": environment},
+            )
+            self._wait_for_lambda_update(
+                client=lambda_client, function_name=_FORWARDER_LAMBDA_NAME
+            )
+
+        # Per-domain rule wiring + invoke permission
+        ses_client = self._client("ses", region=region)
+        active = ses_client.describe_active_receipt_rule_set()
+        rules_by_name: dict[str, dict[str, Any]] = {
+            _as_text(rule.get("Name")): rule
+            for rule in (active.get("Rules") or [])
+            if isinstance(rule, dict)
+        }
+        active_set_name = _as_text(_as_dict(active.get("Metadata")).get("Name")) or _FORWARDER_RULE_SET
+
+        domains_wired: list[str] = []
+        rules_skipped_missing: list[str] = []
+        permissions_added: list[str] = []
+        domains_in_routes = sorted(
+            {recipient.split("@", 1)[1] for recipient in routes if "@" in recipient}
+        )
+        desired_function_arn = (
+            f"arn:aws:lambda:{region}:{_FORWARDER_ACCOUNT_ID}:function:{_FORWARDER_LAMBDA_NAME}"
+        )
+        for domain in domains_in_routes:
+            rule_name = f"{_FORWARDER_PORTAL_CAPTURE_PREFIX}{domain.replace('.', '-')}"
+            rule = rules_by_name.get(rule_name)
+            if rule is None:
+                rules_skipped_missing.append(rule_name)
+                continue
+            # Order matters: SES validates lambda invoke permission at
+            # update_receipt_rule time. Add the permission FIRST (idempotent
+            # — skip when an identical Sid already exists), THEN rewire the
+            # rule. Reversed ordering raises InvalidLambdaFunction.
+            sid = f"ses-{rule_name}"
+            source_arn = (
+                f"arn:aws:ses:{region}:{_FORWARDER_ACCOUNT_ID}:"
+                f"receipt-rule-set/{active_set_name}:receipt-rule/{rule_name}"
+            )
+            existing_policy: dict[str, Any] = {"Statement": []}
+            try:
+                policy_response = lambda_client.get_policy(
+                    FunctionName=_FORWARDER_LAMBDA_NAME
+                )
+                policy_text = _as_text(policy_response.get("Policy")) or "{}"
+                parsed_policy = json.loads(policy_text)
+                if isinstance(parsed_policy, dict):
+                    existing_policy = parsed_policy
+            except Exception:  # noqa: BLE001 — boto3 raises ResourceNotFoundException when no policy
+                existing_policy = {"Statement": []}
+            statements = list(existing_policy.get("Statement") or [])
+            has_perm = any(
+                isinstance(s, dict) and _as_text(s.get("Sid")) == sid
+                for s in statements
+            )
+            if not has_perm:
+                lambda_client.add_permission(
+                    FunctionName=_FORWARDER_LAMBDA_NAME,
+                    StatementId=sid,
+                    Action="lambda:InvokeFunction",
+                    Principal="ses.amazonaws.com",
+                    SourceAccount=_FORWARDER_ACCOUNT_ID,
+                    SourceArn=source_arn,
+                )
+                permissions_added.append(rule_name)
+
+            actions = list(rule.get("Actions") or [])
+            already_wired = any(
+                _as_text(_as_dict(a.get("LambdaAction")).get("FunctionArn")) == desired_function_arn
+                for a in actions
+                if isinstance(a, dict) and "LambdaAction" in a
+            )
+            if not already_wired:
+                kept_actions = [
+                    dict(a)
+                    for a in actions
+                    if isinstance(a, dict) and "LambdaAction" not in a
+                ]
+                kept_actions.append(
+                    {
+                        "LambdaAction": {
+                            "FunctionArn": desired_function_arn,
+                            "InvocationType": "Event",
+                        }
+                    }
+                )
+                updated_rule = {
+                    "Name": rule_name,
+                    "Enabled": bool(rule.get("Enabled", True)),
+                    "TlsPolicy": _as_text(rule.get("TlsPolicy")) or "Optional",
+                    "Recipients": list(rule.get("Recipients") or []),
+                    "Actions": kept_actions,
+                    "ScanEnabled": bool(rule.get("ScanEnabled", True)),
+                }
+                ses_client.update_receipt_rule(
+                    RuleSetName=active_set_name,
+                    Rule=updated_rule,
+                )
+                domains_wired.append(domain)
+
+        return {
+            "status": "success",
+            "lambda_name": _FORWARDER_LAMBDA_NAME,
+            "region": region,
+            "rule_set": active_set_name,
+            "route_count": len(routes),
+            "tracked_recipients": sorted(routes),
+            "route_changed": route_changed,
+            "domains_in_routes": domains_in_routes,
+            "domains_wired": domains_wired,
+            "permissions_added": permissions_added,
+            "rules_skipped_missing": rules_skipped_missing,
+        }
+
+    @staticmethod
+    def _operator_forwarding_routes_from_profiles(
+        *,
+        profiles: list[dict[str, Any]],
+    ) -> dict[str, str]:
+        """Compute ``{send_as_email: receive_routing_target}`` from profiles.
+
+        Filter is operator-readiness, not AWS-state-readiness:
+          * ``identity.send_as_email`` populated
+          * ``inbound.receive_routing_target`` populated
+          * ``workflow.is_ready_for_user_handoff`` truthy
+          * ``inbound.receive_state`` NOT in the rejected set
+            (rejects "draft" / "abandoned" / "removed" / "")
+
+        AWS-side readiness (``receive_state in {pending,configured,operational}``)
+        is *not* a filter: when SES infrastructure for the operator's
+        domain isn't wired yet, the lambda simply isn't invoked. There's
+        no harm in pre-populating the route map.
+        """
+        routes: dict[str, str] = {}
+        for profile in profiles or []:
+            if not isinstance(profile, dict):
+                continue
+            identity = _as_dict(profile.get("identity"))
+            inbound = _as_dict(profile.get("inbound"))
+            workflow = _as_dict(profile.get("workflow"))
+            send_as = _normalized_email(identity.get("send_as_email"))
+            target = _normalized_email(inbound.get("receive_routing_target"))
+            if not send_as or not target:
+                continue
+            if not bool(workflow.get("is_ready_for_user_handoff")):
+                continue
+            state = _as_text(inbound.get("receive_state")).lower()
+            if state in _FORWARDER_REJECTED_INBOUND_STATES:
+                continue
+            routes[send_as] = target
+        return routes
 
     def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
         send_as_email = self._send_as_email(profile)

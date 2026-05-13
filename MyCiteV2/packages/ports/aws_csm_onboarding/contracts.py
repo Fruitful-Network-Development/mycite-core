@@ -17,6 +17,14 @@ class AwsCsmOnboardingProfileStorePort(Protocol):
         """Persist and return the stored document (read-after-write source)."""
         ...
 
+    def list_profiles(self, *, tenant_scope_id: str | None = None) -> list[dict[str, Any]]:
+        """Return operator profiles under ``tenant_scope_id`` (or every
+        profile when ``None``). The auto-sync for FORWARD_TO_MAP_JSON
+        passes ``None`` because the ses-forwarder env var is global
+        across tenants — filtering by tenant would silently prune other
+        tenants' routes on every sync."""
+        ...
+
 
 @runtime_checkable
 class AwsCsmOnboardingCloudPort(Protocol):
@@ -60,6 +68,29 @@ class AwsCsmOnboardingCloudPort(Protocol):
 
     def read_handoff_secret(self, profile: dict[str, Any]) -> dict[str, Any]:
         """Return ephemeral SMTP material for operator-only handoff without persisting it."""
+        ...
+
+    def sync_operator_forwarding_routes(
+        self,
+        *,
+        profiles: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        """Reconcile the per-recipient operator-mailbox forwarding state.
+
+        Updates the ses-forwarder lambda's FORWARD_TO_MAP_JSON env var to
+        reflect every operator profile whose ``inbound.receive_state`` is
+        in ``{receive_pending, receive_configured, receive_operational}``
+        and that carries a non-empty ``inbound.receive_routing_target``.
+
+        Also ensures every domain represented in the route map has its
+        ``portal-capture-<domain-slug>`` SES receipt rule's LambdaAction
+        wired to ses-forwarder, and that ses-forwarder grants SES invoke
+        from each such rule.
+
+        Idempotent. Returns a structured result with ``status``,
+        ``route_count``, ``tracked_recipients``, ``route_changed``,
+        ``domains_wired``, ``permissions_added``.
+        """
         ...
 
 
@@ -119,16 +150,20 @@ class AwsCsmOnboardingOutcome:
     command: AwsCsmOnboardingCommand
     updated_sections: tuple[str, ...]
     saved_profile: dict[str, Any]
+    forwarding_sync: dict[str, Any] | None = None
 
     def to_local_audit_payload(self) -> dict[str, Any]:
+        details: dict[str, Any] = {
+            **self.command.to_audit_details(),
+            "updated_sections": list(self.updated_sections),
+        }
+        if self.forwarding_sync is not None:
+            details["forwarding_sync"] = dict(self.forwarding_sync)
         return {
             "event_type": "aws.csm_onboarding.accepted",
             "focus_subject": self.command.focus_subject,
             "shell_verb": "admin.aws.csm_onboarding",
-            "details": {
-                **self.command.to_audit_details(),
-                "updated_sections": list(self.updated_sections),
-            },
+            "details": details,
         }
 
 

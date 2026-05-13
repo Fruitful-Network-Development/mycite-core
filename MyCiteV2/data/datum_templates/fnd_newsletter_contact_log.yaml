@@ -1,0 +1,113 @@
+template_id: fnd_newsletter_contact_log
+schema: mycite.v2.datum.fnd.newsletter.contact_log.v2
+sandbox: fnd_csm
+archetype: fnd_subscriber
+description: >
+  SAMRAS-form newsletter contact log for one FND-managed domain. Each
+  repeating row in layer 1 represents a single subscriber. Names and
+  emails are stored in BOTH ascii and bacillete-encoded binary forms
+  per the system anthology's name-babelette (3-1-4) and
+  email-babellette (3-1-9) structural slots. The *_confirmed booleans
+  attest lossless round-trip.
+
+  v2 supersedes v1 (which lacked binary forms and confirmation flags).
+
+# Header rows (layer 0).
+header_rows:
+  - address: "0-0-1"
+    field: schema
+    raw: "mycite.v2.datum.fnd.newsletter.contact_log.v2"
+  - address: "0-0-2"
+    field: domain
+    raw: "{{domain}}"
+  - address: "0-0-3"
+    field: msn_id
+    raw: "{{msn_id}}"
+  - address: "0-0-4"
+    field: updated_at
+    raw: "{{updated_at}}"
+
+# Repeating archetype: every row in layer 1 is one subscriber.
+repeating_archetype:
+  layer: 1
+  value_group_reference_design:
+    email_ascii:
+      magnitude_kind: trimmed_string
+      required: true
+    email_binary:
+      magnitude_kind: octal_triple_string
+      required: true
+    email_confirmed:
+      magnitude_kind: boolean
+      required: true
+    name_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    name_binary:
+      magnitude_kind: hex_string
+      required: false
+    name_confirmed:
+      magnitude_kind: boolean
+      required: true
+    subscribed:
+      magnitude_kind: boolean
+      required: true
+    source:
+      magnitude_kind: trimmed_string
+      required: true
+    last_newsletter_sent_at:
+      magnitude_kind: iso8601_or_empty
+      required: true
+    send_count:
+      magnitude_kind: integer
+      required: true
+    created_at:
+      magnitude_kind: iso8601
+      required: false
+
+# CSV column → working magnitude name. Names prefixed with `_` are
+# scratch fields used only by the intake pipeline below; they get
+# composed into final magnitudes and then dropped before the row is
+# persisted.
+csv_column_map:
+  "First Name": _name_first
+  "Middle Name": _name_middle
+  "Last Name": _name_last
+  "E-mail 1 - Value": email_ascii
+
+# Intake pipeline. The csv_intake module interprets these directives
+# in order against each CSV row's working dict. Directives that change
+# row state can also drop the row (returning None / sentinel).
+csv_intake_pipeline:
+  - join_name:
+      from: [_name_first, _name_middle, _name_last]
+      to: name_ascii
+      separator: " "
+  - skip_if_email_in_name:
+      name_field: name_ascii
+      email_field: email_ascii
+  - normalize_email:
+      field: email_ascii
+      lowercase: true
+  - reject_invalid_email:
+      field: email_ascii
+  - bacillete_encode:
+      ascii: name_ascii
+      binary: name_binary
+      confirmed: name_confirmed
+      encoder: name
+  - bacillete_encode:
+      ascii: email_ascii
+      binary: email_binary
+      confirmed: email_confirmed
+      encoder: email
+  - drop_scratch_fields:
+      prefix: "_"
+  - default_field_values:
+      subscribed: true
+      source: "csv_import_2026-05-02"
+      last_newsletter_sent_at: ""
+      send_count: 0
+  - dedupe:
+      key: email_ascii
+      keep: first

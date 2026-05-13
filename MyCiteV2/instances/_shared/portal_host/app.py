@@ -791,6 +791,31 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _newsletter_state_adapter(host_config: V2PortalHostConfig):
+    """Return the live newsletter-state adapter.
+
+    Contact-log methods route through the MOS datum (v2 schema); profile
+    and secret methods stay on the legacy filesystem adapter via the
+    composite. Falls back to the pure filesystem adapter when no
+    authority DB is configured (e.g. during early bootstrap).
+    """
+    from MyCiteV2.packages.adapters.filesystem import (
+        FilesystemAwsCsmNewsletterStateAdapter,
+    )
+
+    if host_config.authority_db_file is None:
+        return FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
+    from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+        CompositeAwsCsmNewsletterStateAdapter,
+    )
+
+    return CompositeAwsCsmNewsletterStateAdapter(
+        private_dir=host_config.private_dir,
+        authority_db_file=host_config.authority_db_file,
+        tenant_id=host_config.portal_instance_id or "fnd",
+    )
+
+
 def _load_contact_log(path: Path, *, domain: str) -> dict[str, Any]:
     """Load contact log JSON; bootstrap empty log if absent or unparseable."""
     if path.exists() and path.is_file():
@@ -1244,13 +1269,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not email:
             return jsonify({"ok": False, "error": "invalid_email"}), 400
 
-        contact_log_path = _newsletter_contact_log_path(domain)
         try:
-            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            adapter = _newsletter_state_adapter(host_config)
+            contact_log = adapter.load_contact_log(domain=domain)
+            if not contact_log:
+                contact_log = {"schema": _CONTACT_LOG_SCHEMA, "domain": domain, "contacts": [], "dispatches": []}
             now_iso = _utc_now_iso()
             _upsert_subscriber(contact_log, email=email, name=name, zip_code=zip_code, now_iso=now_iso)
             contact_log["updated_at"] = now_iso
-            _write_contact_log_atomic(contact_log_path, contact_log)
+            adapter.save_contact_log(domain=domain, payload=contact_log)
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
@@ -1293,9 +1320,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
 
-        contact_log_path = _newsletter_contact_log_path(domain)
         try:
-            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            adapter = _newsletter_state_adapter(host_config)
+            contact_log = adapter.load_contact_log(domain=domain)
+            if not contact_log:
+                return jsonify({"ok": False, "error": "domain_not_configured"}), 404
             now_iso = _utc_now_iso()
             contacts: list[dict[str, Any]] = []
             for row in list(contact_log.get("contacts") or []):
@@ -1308,7 +1337,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 contacts.append(current)
             contact_log["contacts"] = contacts
             contact_log["updated_at"] = now_iso
-            _write_contact_log_atomic(contact_log_path, contact_log)
+            adapter.save_contact_log(domain=domain, payload=contact_log)
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
@@ -1350,48 +1379,38 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
 
-        contact_log_path = _newsletter_contact_log_path(domain)
+        # v2 datum cutover: per-contact send_count + last_newsletter_sent_at
+        # is now the operational signal. The legacy dispatch-history array
+        # (one row per dispatch with results[]) is no longer persisted —
+        # the v2 schema reserves a `dispatches` field but Phase 5 doesn't
+        # populate it. Re-add a dispatch-history datum later if audit
+        # reconstruction becomes necessary.
         try:
-            contact_log = _load_contact_log(contact_log_path, domain=domain)
+            adapter = _newsletter_state_adapter(host_config)
+            contact_log = adapter.load_contact_log(domain=domain)
+            if not contact_log:
+                return jsonify({"ok": False, "error": "domain_not_configured"}), 404
             now_iso = _utc_now_iso()
             contacts: dict[str, dict[str, Any]] = {
                 str(item.get("email") or "").lower(): dict(item)
                 for item in list(contact_log.get("contacts") or [])
                 if isinstance(item, dict) and item.get("email")
             }
-            updated = False
-            for dispatch in list(contact_log.get("dispatches") or []):
-                if str(dispatch.get("dispatch_id") or "") != dispatch_id:
-                    continue
-                results = list(dispatch.get("results") or [])
-                for row in results:
-                    if not isinstance(row, dict) or str(row.get("email") or "").lower() != email:
-                        continue
-                    prior = str(row.get("status") or "").lower()
-                    row["status"] = status
-                    if message_id:
-                        row["message_id"] = message_id
-                    if queue_message_id:
-                        row["queue_message_id"] = queue_message_id
-                    if error_message:
-                        row["error"] = error_message
-                    row["updated_at"] = now_iso
-                    if status == "sent" and prior != "sent":
-                        contact = contacts.get(email)
-                        if contact is not None:
-                            contact["last_newsletter_sent_at"] = now_iso
-                            contact["send_count"] = int(contact.get("send_count") or 0) + 1
-                            contact["updated_at"] = now_iso
-                            contacts[email] = contact
-                    updated = True
-                    break
-                dispatch["results"] = results
-                break
-            if not updated:
-                return jsonify({"ok": False, "error": "dispatch_result_not_found"}), 404
+            contact = contacts.get(email)
+            if contact is None:
+                return jsonify({"ok": False, "error": "recipient_not_found"}), 404
+            if status == "sent":
+                contact["last_newsletter_sent_at"] = now_iso
+                contact["send_count"] = int(contact.get("send_count") or 0) + 1
+            contact["updated_at"] = now_iso
+            if message_id:
+                contact["last_message_id"] = message_id
+            if error_message:
+                contact["last_error"] = error_message
+            contacts[email] = contact
             contact_log["contacts"] = [contacts[k] for k in sorted(contacts.keys())]
             contact_log["updated_at"] = now_iso
-            _write_contact_log_atomic(contact_log_path, contact_log)
+            adapter.save_contact_log(domain=domain, payload=contact_log)
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
