@@ -36,11 +36,19 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 )
 
 
-EXPECTED_EXTENSION_IDS = ("ext_aws_email", "ext_analytics", "ext_newsletter", "ext_paypal")
+EXPECTED_EXTENSION_IDS = (
+    "ext_aws_email",
+    "ext_analytics",
+    "ext_newsletter",
+    "ext_paypal",
+    # Phase 9 (grantee_profile_contract.md): grantee profile editor lives
+    # under utilities.tool_exposure alongside the four operational extensions.
+    "ext_grantee_profile",
+)
 
 
 class TestExtensionRegistry(unittest.TestCase):
-    def test_four_extensions_register_under_utilities(self) -> None:
+    def test_all_extensions_register_under_utilities(self) -> None:
         entries = build_portal_tool_registry_entries()
         extension_entries = {e.tool_id: e for e in entries if e.is_extension}
         self.assertEqual(set(extension_entries.keys()), set(EXPECTED_EXTENSION_IDS))
@@ -61,7 +69,7 @@ class TestUtilitiesToolExposureSurface(unittest.TestCase):
             (root / sub).mkdir(parents=True, exist_ok=True)
         return root / "public", root / "private", root / "data", root / "webapps"
 
-    def test_utilities_tool_exposure_lists_four_extensions(self) -> None:
+    def test_utilities_tool_exposure_lists_all_extensions(self) -> None:
         public_dir, private_dir, data_dir, webapps_root = self._build_tempdirs()
         response = run_portal_shell_entry(
             {
