@@ -156,6 +156,109 @@ class CompositionPostconditionTests(unittest.TestCase):
             self.assertFalse(composition["regions"]["interface_panel"]["primary_surface"])
 
 
+class VestigialInterfacePanelReferencesTests(unittest.TestCase):
+    """Phase 6: bound the count of remaining interface_panel references.
+
+    Phase 3-5 hid the interface_panel region, deleted its dedicated renderer
+    JS, and removed nimm_aitas_control content. Some Python and JS files keep
+    handler/import code that no-ops because the runtime never emits an active
+    interface_panel — removing them is mechanical follow-up work outside the
+    portal_tool_surface_contract.md acceptance bar.
+
+    This test pins the current count so accidentally re-introducing
+    interface_panel concepts fails loudly. Lower the cap (or drop the
+    allowlist entry) once a cleanup commit removes a remaining file.
+    """
+
+    # Files that legitimately still mention interface_panel in dead handler
+    # code, schema constants, or composition-region scaffolding. Each line is
+    # checked against a per-file ceiling; total must not grow.
+    ALLOWED_FILES = {
+        "instances/_shared/portal_host/app.py",
+        "instances/_shared/portal_host/templates/portal.html",
+        "instances/_shared/portal_host/static/v2_portal_shell_watchdog.js",
+        "instances/_shared/portal_host/static/v2_portal_shell_core.js",
+        "instances/_shared/portal_host/static/v2_portal_component_library.js",
+        "instances/_shared/portal_host/static/v2_portal_system_workspace.js",
+        "instances/_shared/portal_host/static/v2_portal_network_workspace.js",
+        "instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js",
+        "instances/_shared/portal_host/static/portal.js",
+        "instances/_shared/runtime/portal_shell_runtime.py",
+        "instances/_shared/runtime/portal_fnd_csm_runtime.py",
+        "instances/_shared/runtime/portal_cts_gis_runtime.py",
+        "instances/_shared/runtime/portal_system_workspace_runtime.py",
+        "instances/_shared/runtime/portal_workbench_ui_runtime.py",
+        "packages/state_machine/portal_shell/shell_state.py",
+        "packages/state_machine/portal_shell/shell_schemas.py",
+        "packages/state_machine/portal_shell/shell_composition.py",
+        "packages/state_machine/portal_shell/shell_request.py",
+        "packages/state_machine/portal_shell/shell.py",
+        "packages/state_machine/portal_shell/shell_registry.py",
+        "packages/state_machine/portal_shell/README.md",
+        "packages/state_machine/nimm/mediate_handlers.py",
+        "packages/tools/workbench_ui/service.py",
+        "packages/modules/cross_domain/cts_gis/compiled_artifact.py",
+    }
+    ALLOWED_TOTAL_CEILING = 320  # vestigial references — cleanup follow-up
+
+    def test_interface_panel_references_are_bounded(self) -> None:
+        repo_mycite = REPO_ROOT / "MyCiteV2"
+        offenders: dict[str, int] = {}
+        unallowed: list[str] = []
+        for candidate in repo_mycite.rglob("*"):
+            if not candidate.is_file():
+                continue
+            if "__pycache__" in candidate.parts or ".git" in candidate.parts:
+                continue
+            if "tests" in candidate.parts:
+                continue
+            try:
+                text = candidate.read_text(encoding="utf-8", errors="ignore")
+            except (OSError, UnicodeDecodeError):
+                continue
+            count = text.count("interface_panel") + text.count("INTERFACE_PANEL") + text.count("InterfacePanel")
+            if count == 0:
+                continue
+            rel = candidate.relative_to(repo_mycite).as_posix()
+            if rel not in self.ALLOWED_FILES:
+                unallowed.append(f"{rel}: {count} reference(s)")
+                continue
+            offenders[rel] = count
+        self.assertEqual(
+            unallowed,
+            [],
+            "Phase 3-5 cleared interface_panel from these paths; a new reference "
+            "is a regression. Update ALLOWED_FILES only when adding a known "
+            "follow-up scope.",
+        )
+        total = sum(offenders.values())
+        self.assertLessEqual(
+            total,
+            self.ALLOWED_TOTAL_CEILING,
+            f"Vestigial interface_panel references grew beyond {self.ALLOWED_TOTAL_CEILING}: {offenders}",
+        )
+
+
+class ToolRegistryHasEligibilityFieldsTests(unittest.TestCase):
+    """Phase 6: every first-class tool must declare what datums it applies to,
+    and every extension must carry is_extension=True. Without this invariant
+    the palette can silently degrade (a tool with no applies_to_* never shows)
+    or pollute (a misregistered service entry shows for every datum).
+    """
+
+    def test_every_registry_entry_declares_eligibility(self) -> None:
+        for entry in build_portal_tool_registry_entries():
+            if entry.is_extension:
+                continue  # Extensions opt out of palette eligibility entirely.
+            has_archetype = bool(entry.applies_to_archetype)
+            has_source_kind = bool(entry.applies_to_source_kind)
+            self.assertTrue(
+                has_archetype or has_source_kind,
+                f"{entry.tool_id} is a first-class palette tool and must declare "
+                "applies_to_archetype or applies_to_source_kind (or be marked is_extension=True)",
+            )
+
+
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class LegacyFndCsmRedirectTests(unittest.TestCase):
     def test_legacy_fnd_csm_route_still_redirects(self) -> None:
