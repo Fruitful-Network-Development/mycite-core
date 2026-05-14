@@ -898,13 +898,25 @@
       return;
     }
 
-    // Fallback for tools without specific workbench
-    if (mode === "generic_surface" && !region.sections && !region.cards && !region.rows) {
+    // Fallback for tools without ANY workbench content. The earlier check
+    // looked only at `region.{sections,cards,rows}`, which misses the
+    // `surface_payload`-shaped tools (utilities tool-exposure, integrations)
+    // whose content lives one level deeper. Phase 12h added `grantee_selector`
+    // to the surface payload — include it in the content probe.
+    var hasSurfaceContent =
+      adapter.hasGenericContent(surfacePayload) ||
+      (surfacePayload && surfacePayload.grantee_selector);
+    if (
+      mode === "generic_surface" &&
+      !region.sections &&
+      !region.cards &&
+      !region.rows &&
+      !hasSurfaceContent
+    ) {
       target.innerHTML =
         '<section class="v2-card" style="margin:12px">' +
         '<h3>Workbench</h3>' +
-        '<p>This tool does not provide a workbench view. ' +
-        'Use the interface panel to interact with the tool.</p>' +
+        '<p>This tool does not provide a workbench view.</p>' +
         '</section>';
       return;
     }
