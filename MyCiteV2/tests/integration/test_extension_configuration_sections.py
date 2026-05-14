@@ -25,11 +25,13 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     _build_analytics_extension_payload,
     _build_email_extension_payload,
     _build_newsletter_extension_payload,
     _build_paypal_extension_payload,
+)
+from MyCiteV2.instances._shared.runtime.utilities_extensions._shared import (
     _grantee_edit_link,
     _mask_secret,
 )
