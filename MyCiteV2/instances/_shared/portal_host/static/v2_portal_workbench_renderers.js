@@ -194,6 +194,80 @@
     );
   }
 
+  function renderGranteeSelector(selector) {
+    if (!selector) return "";
+    var grantees = asList(selector.grantees);
+    var label = asText(selector.label) || "Grantee";
+    if (!grantees.length) {
+      return (
+        '<section class="v2-card v2-granteeSelector" style="margin-top:0">' +
+        "<h3>" +
+        escapeHtml(label) +
+        "</h3>" +
+        '<p class="v2-granteeSelector__empty">' +
+        escapeHtml(asText(selector.empty_message) || "No grantees configured.") +
+        "</p></section>"
+      );
+    }
+    var optionsHtml = grantees
+      .map(function (grantee, index) {
+        var msn = asText(grantee.msn_id);
+        var name = asText(grantee.label) || msn || "—";
+        var domains = asList(grantee.domains).join(", ");
+        var active = grantee.active === true;
+        return (
+          '<button type="button" class="v2-granteeSelector__option' +
+          (active ? " is-active" : "") +
+          '" data-grantee-msn="' +
+          escapeHtml(msn) +
+          '" data-grantee-index="' +
+          String(index) +
+          '" aria-pressed="' +
+          (active ? "true" : "false") +
+          '">' +
+          '<span class="v2-granteeSelector__optionLabel">' +
+          escapeHtml(name) +
+          "</span>" +
+          (domains
+            ? '<span class="v2-granteeSelector__optionDomains">' + escapeHtml(domains) + "</span>"
+            : "") +
+          "</button>"
+        );
+      })
+      .join("");
+    return (
+      '<section class="v2-card v2-granteeSelector" style="margin-top:0">' +
+      "<h3>" +
+      escapeHtml(label) +
+      "</h3>" +
+      '<div class="v2-granteeSelector__options" role="group">' +
+      optionsHtml +
+      "</div></section>"
+    );
+  }
+
+  function bindGranteeSelector(ctx, target, selector) {
+    if (!selector || !target) return;
+    var grantees = asList(selector.grantees);
+    if (!grantees.length) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll(".v2-granteeSelector__option"),
+      function (node) {
+        node.addEventListener("click", function () {
+          var index = Number(node.getAttribute("data-grantee-index"));
+          if (Number.isNaN(index) || index < 0 || index >= grantees.length) return;
+          var grantee = grantees[index] || {};
+          var action = asObject(grantee.select_action);
+          var payload = asObject(action.payload);
+          if (!payload || !payload.requested_surface_id) return;
+          if (typeof ctx.loadShell === "function") {
+            ctx.loadShell(payload);
+          }
+        });
+      }
+    );
+  }
+
   function toolSurfaceAdapter() {
     return window.PortalToolSurfaceAdapter || {};
   }
@@ -257,18 +331,29 @@
 
   function renderGenericSurface(ctx, target, region, surfacePayload) {
     var adapter = toolSurfaceAdapter();
-    return adapter.renderWrappedSurface(
+    var granteeSelector = surfacePayload && surfacePayload.grantee_selector
+      ? asObject(surfacePayload.grantee_selector)
+      : null;
+    var hasContent =
+      adapter.hasGenericContent(surfacePayload) ||
+      (granteeSelector && asList(granteeSelector.grantees).length > 0);
+    var rendered = adapter.renderWrappedSurface(
       target,
       adapter.resolveSurfaceState({
         region: region,
         surfacePayload: surfacePayload,
         title: region.title || "Workbench",
-        hasContent: adapter.hasGenericContent(surfacePayload),
+        hasContent: hasContent,
       }),
-      renderCards(surfacePayload.cards || []) +
+      renderGranteeSelector(granteeSelector) +
+        renderCards(surfacePayload.cards || []) +
         renderSections(surfacePayload.sections || []) +
         renderNotes(surfacePayload.notes || [])
     );
+    if (rendered && granteeSelector) {
+      bindGranteeSelector(ctx, target, granteeSelector);
+    }
+    return rendered;
   }
 
   function renderIdentityBadge(shortValue, fullValue) {

@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     EXTENSION_RENDERERS,
     render_extension,
 )
