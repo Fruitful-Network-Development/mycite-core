@@ -500,11 +500,8 @@ class PortalToolRegistryEntry:
                 raise ValueError("tool_registry.surface_id must be a known tool surface")
         if self.tool_kind not in {TOOL_KIND_GENERAL, TOOL_KIND_SERVICE, TOOL_KIND_HOST_ALIAS}:
             raise ValueError("tool_registry.tool_kind is invalid")
-        if self.surface_posture not in {
-            SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-            SURFACE_POSTURE_PALETTE_TARGET,
-        }:
-            raise ValueError("tool_registry.surface_posture is invalid")
+        if self.surface_posture != SURFACE_POSTURE_PALETTE_TARGET:
+            raise ValueError("tool_registry.surface_posture must be SURFACE_POSTURE_PALETTE_TARGET")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("tool_registry.read_write_posture must be read-only or write")
         object.__setattr__(

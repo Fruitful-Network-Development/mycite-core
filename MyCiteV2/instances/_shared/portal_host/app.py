@@ -43,7 +43,6 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
@@ -482,7 +481,6 @@ class V2PortalHostConfig:
 
 TOOL_SLUG_TO_SURFACE_ID = {
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
-    "fnd-csm": FND_CSM_TOOL_SURFACE_ID,
     "workbench-ui": WORKBENCH_UI_TOOL_SURFACE_ID,
 }
 
