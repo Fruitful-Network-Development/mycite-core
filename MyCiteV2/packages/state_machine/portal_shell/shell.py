@@ -485,6 +485,13 @@ class PortalToolRegistryEntry:
     applies_to_archetype: tuple[str, ...] = ()
     applies_to_source_kind: tuple[str, ...] = ()
     is_extension: bool = False
+    # Phase 11 (datum_catalog_phase_e4_migration.md): tools that mutate the
+    # MOS datum store declare which AuthoritativeDatumDocument.source_kind
+    # they may write. The palette eligibility predicate does not consume
+    # this field yet — it's reserved for future tool→datum applicability
+    # checks and locked in here so the contract is in place when datum
+    # work begins.
+    manipulates_datum_kinds: tuple[str, ...] = ()
     schema: str = field(default=PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -521,6 +528,11 @@ class PortalToolRegistryEntry:
             _normalize_capabilities(self.applies_to_source_kind, field_name="tool_registry.applies_to_source_kind"),
         )
         object.__setattr__(self, "is_extension", bool(self.is_extension))
+        object.__setattr__(
+            self,
+            "manipulates_datum_kinds",
+            _normalize_capabilities(self.manipulates_datum_kinds, field_name="tool_registry.manipulates_datum_kinds"),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -540,6 +552,7 @@ class PortalToolRegistryEntry:
             "applies_to_archetype": list(self.applies_to_archetype),
             "applies_to_source_kind": list(self.applies_to_source_kind),
             "is_extension": self.is_extension,
+            "manipulates_datum_kinds": list(self.manipulates_datum_kinds),
         }
 
 
