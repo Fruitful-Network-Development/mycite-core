@@ -1,0 +1,30 @@
+# Development + CI dependencies.
+#
+# This is intentionally minimal: only the packages the test suite imports
+# directly. The production runtime (gunicorn) is included so the test app
+# wiring matches what runs in prod. Pin loosely (>=) — exact versions are
+# resolved by pip at install time; the lockfile would live alongside this
+# if/when we adopt one.
+#
+# Install:
+#   /srv/venvs/fnd_portal/bin/pip install -r requirements-dev.txt
+#   /srv/venvs/fnd_portal/bin/playwright install chromium
+
+# Web framework
+Flask>=3.1.0
+Werkzeug>=3.1.0
+gunicorn>=25.0.0
+
+# AWS SES integration (used by ext_aws_email + tests)
+boto3>=1.42.0
+
+# Testing
+pytest>=9.0.0
+pytest-subtests>=0.14.0
+
+# Headless browser smoke (gated by importlib check — skipped if missing).
+# CI installs this; local dev is optional.
+playwright>=1.58.0
+
+# Crypto used by grantee schema (password fields) + paypal token signing
+cryptography>=46.0.0
