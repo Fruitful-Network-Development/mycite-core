@@ -826,10 +826,13 @@
   }
 
   function renderUnifiedDirectivePanel(ctx, root, region) {
+    // Phase 5 (portal_tool_surface_contract.md): the unified NIMM-AITAS control
+    // section is retired. Region payloads no longer carry nimm_aitas_control.
+    // Context controls live on the region directly when a runtime still emits
+    // them as a transitional state.
     var portalIdentity = region.portal_identity || {};
     var contextConditions = region.context_conditions || [];
-    var nimmAitasControl = region.nimm_aitas_control || {};
-    var contextControls = nimmAitasControl.context_controls || [];
+    var contextControls = region.context_controls || [];
     var terminalControl = region.terminal_control || {};
     var navigationGroups = region.navigation_groups || [];
     var actions = region.actions || [];
@@ -891,75 +894,6 @@
 
     html += renderContextControls(ctx, contextControls);
 
-    // NIMM-AITAS Control Section (legacy stacked facets fallback)
-    if ((!contextControls || !contextControls.length) && nimmAitasControl.facets && nimmAitasControl.facets.length) {
-      html +=
-        '<div class="ide-controlpanel__directiveControl">' +
-        '<header class="ide-controlpanel__sectionHeader">' +
-        ctx.escapeHtml(nimmAitasControl.title || "Directive Control") +
-        "</header>";
-
-      nimmAitasControl.facets.forEach(function (facet) {
-        html +=
-          '<div class="ide-controlpanel__facet" data-facet-id="' +
-          ctx.escapeHtml(facet.facet_id || "") +
-          '">' +
-          '<h4 class="ide-controlpanel__facetLabel">' +
-          ctx.escapeHtml(facet.label || "") +
-          "</h4>";
-
-        (facet.subsections || []).forEach(function (sub) {
-          if (sub.control_type === "tabs") {
-            // Verb tabs
-            html += '<div class="ide-controlpanel__verbTabs">';
-            (sub.shell_requests || []).forEach(function (tab) {
-              html +=
-                '<button class="ide-controlpanel__verbTab' +
-                (tab.active ? " is-active" : "") +
-                '" type="button" data-control-verb-index="' +
-                String((sub.shell_requests || []).indexOf(tab)) +
-                '">' +
-                ctx.escapeHtml(tab.label || "") +
-                "</button>";
-            });
-            html += "</div>";
-          } else if (sub.control_type === "nav_arrows") {
-            var nav = sub.shell_requests || {};
-            html += '<div class="ide-controlpanel__verbTabs">';
-            [
-              ["shift_left", "←"],
-              ["shift_right", "→"],
-              ["nav_out", "↑"],
-              ["nav_in", "↓"],
-            ].forEach(function (pair) {
-              var shellRequest = nav[pair[0]] || null;
-              html +=
-                '<button class="ide-controlpanel__verbTab" type="button" data-nav-arrow-key="' +
-                ctx.escapeHtml(pair[0]) +
-                '"' +
-                (shellRequest ? "" : " disabled") +
-                ">" +
-                ctx.escapeHtml(pair[1]) +
-                "</button>";
-            });
-            html += "</div>";
-          } else {
-            // Simple label: value display
-            html +=
-              '<div class="ide-controlpanel__facetRow">' +
-              '<span class="ide-controlpanel__facetLabel">' +
-              ctx.escapeHtml(sub.label || "") +
-              ':</span><span class="ide-controlpanel__facetValue">' +
-              ctx.escapeHtml(sub.value || "—") +
-              "</span></div>";
-          }
-        });
-
-        html += "</div>";
-      });
-
-      html += "</div>";
-    }
     // Navigation Groups
     navigationGroups.forEach(function (group) {
       html +=
@@ -1011,22 +945,10 @@
     Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__link"), function (node, index) {
       bindSurfaceNavigation(node, flatEntries[index], ctx);
     });
-    var verbTabs = [];
+    // Phase 5: verb/nav-arrow bindings derived from nimm_aitas_control are
+    // retired. The render block that emitted these data attributes is gone;
+    // if a future region payload re-introduces them we'll wire them again.
     var navArrowRequests = {};
-    (nimmAitasControl.facets || []).forEach(function (facet) {
-      (facet.subsections || []).forEach(function (sub) {
-        if (sub.control_type === "tabs") {
-          verbTabs = sub.shell_requests || [];
-        }
-        if (sub.control_type === "nav_arrows") {
-          navArrowRequests = sub.shell_requests || {};
-        }
-      });
-    });
-    Array.prototype.forEach.call(root.querySelectorAll("[data-control-verb-index]"), function (node) {
-      var index = Number(node.getAttribute("data-control-verb-index"));
-      bindSurfaceNavigation(node, verbTabs[index], ctx);
-    });
     Array.prototype.forEach.call(root.querySelectorAll("[data-nav-arrow-key]"), function (node) {
       node.addEventListener("click", function () {
         var key = String(node.getAttribute("data-nav-arrow-key") || "");
@@ -1098,7 +1020,6 @@
     if (
       mode === "unified_directive_panel" ||
       region.kind === "unified_directive_panel" ||
-      region.nimm_aitas_control ||
       region.terminal_control
     ) {
       renderUnifiedDirectivePanel(ctx, root, region);
