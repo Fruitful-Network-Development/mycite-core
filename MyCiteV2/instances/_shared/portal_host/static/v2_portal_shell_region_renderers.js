@@ -180,6 +180,7 @@
   // this renderer were the last live caller. The whole cluster
   // (~310 LOC) was unreachable.
 
+  function renderGenericFocusSelectionPanel(ctx, root, region) {
     var contextItems = region.context_items || [];
     var verbTabs = region.verb_tabs || [];
     var groups = region.groups || [];
