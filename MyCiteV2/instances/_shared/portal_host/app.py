@@ -106,23 +106,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
-        "module_id": "fnd_csm_workspace",
-        "file": "v2_portal_fnd_csm_workspace.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.tools.fnd_csm",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalFndCsmWorkspaceRenderer",
-                "required_callables": ("render",),
-            },
-            {
-                "global": "PortalFndCsmInterfacePanelRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
         "module_id": "system_workspace",
         "file": "v2_portal_system_workspace.js",
         "load_phase": "deferred",
@@ -166,19 +149,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
-        "module_id": "interface_panel_renderers",
-        "file": "v2_portal_interface_panel_host.js",
-        "load_phase": "startup_critical",
-        "loading_scope": ("shared_interface_panel_host",),
-        "budget_group": "initial_shell",
-        "exports": (
-            {
-                "global": "PortalShellInterfacePanelRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
         "module_id": "portal_component_library",
         "file": "v2_portal_component_library.js",
         "load_phase": "startup_critical",
@@ -192,32 +162,6 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
                     "renderComponentFrame",
                     "rendererRegistry.register",
                 ),
-            },
-        ),
-    },
-    {
-        "module_id": "cts_gis_surface",
-        "file": "v2_portal_interface_panel_renderers.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.tools.cts_gis",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalCtsGisInterfacePanelRenderer",
-                "required_callables": ("render",),
-            },
-        ),
-    },
-    {
-        "module_id": "cts_gis_workspace",
-        "file": "v2_portal_interface_panel_renderers.js",
-        "load_phase": "deferred",
-        "loading_scope": ("system.tools.cts_gis",),
-        "budget_group": "deferred_tool_renderers",
-        "exports": (
-            {
-                "global": "PortalCtsGisWorkspaceRenderer",
-                "required_callables": ("render",),
             },
         ),
     },
