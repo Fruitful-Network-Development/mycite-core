@@ -19,16 +19,8 @@ from .shell_schemas import (
     PORTAL_SHELL_STATE_SCHEMA,
     PORTAL_SHELL_TRANSITIONS,
     PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA,
-    PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA,
     ROOT_SURFACE_IDS,
-    SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
-    SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ROOT_SURFACE_ID,
-    TOOL_KIND_GENERAL,
-    TOOL_KIND_HOST_ALIAS,
-    TOOL_KIND_SERVICE,
-    TOOL_SURFACE_IDS,
-    UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     VERB_NAVIGATE,
 )
 
@@ -476,91 +468,10 @@ class PortalSurfaceCatalogEntry:
         }
 
 
-@dataclass(frozen=True)
-class PortalToolRegistryEntry:
-    tool_id: str
-    label: str
-    surface_id: str
-    entrypoint_id: str
-    route: str
-    tool_kind: str
-    surface_posture: str
-    read_write_posture: str
-    required_capabilities: tuple[str, ...] = ()
-    default_enabled: bool = True
-    default_workbench_visible: bool = False
-    summary: str = ""
-    applies_to_archetype: tuple[str, ...] = ()
-    applies_to_source_kind: tuple[str, ...] = ()
-    is_extension: bool = False
-    # Phase 11 (datum_catalog_phase_e4_migration.md): tools that mutate the
-    # MOS datum store declare which AuthoritativeDatumDocument.source_kind
-    # they may write. The palette eligibility predicate does not consume
-    # this field yet — it's reserved for future tool→datum applicability
-    # checks.
-    manipulates_datum_kinds: tuple[str, ...] = ()
-    schema: str = field(default=PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA, init=False)
-
-    def __post_init__(self) -> None:
-        if not as_text(self.tool_id):
-            raise ValueError("tool_registry.tool_id is required")
-        if self.is_extension:
-            if self.surface_id != UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
-                raise ValueError(
-                    "tool_registry.surface_id must equal UTILITIES_TOOL_EXPOSURE_SURFACE_ID when is_extension=True"
-                )
-        else:
-            if self.surface_id not in TOOL_SURFACE_IDS:
-                raise ValueError("tool_registry.surface_id must be a known tool surface")
-        if self.tool_kind not in {TOOL_KIND_GENERAL, TOOL_KIND_SERVICE, TOOL_KIND_HOST_ALIAS}:
-            raise ValueError("tool_registry.tool_kind is invalid")
-        if self.surface_posture != SURFACE_POSTURE_PALETTE_TARGET:
-            raise ValueError("tool_registry.surface_posture must be SURFACE_POSTURE_PALETTE_TARGET")
-        if self.read_write_posture not in {"read-only", "write"}:
-            raise ValueError("tool_registry.read_write_posture must be read-only or write")
-        object.__setattr__(
-            self,
-            "required_capabilities",
-            _normalize_capabilities(self.required_capabilities, field_name="tool_registry.required_capabilities"),
-        )
-        object.__setattr__(self, "default_workbench_visible", bool(self.default_workbench_visible))
-        object.__setattr__(
-            self,
-            "applies_to_archetype",
-            _normalize_capabilities(self.applies_to_archetype, field_name="tool_registry.applies_to_archetype"),
-        )
-        object.__setattr__(
-            self,
-            "applies_to_source_kind",
-            _normalize_capabilities(self.applies_to_source_kind, field_name="tool_registry.applies_to_source_kind"),
-        )
-        object.__setattr__(self, "is_extension", bool(self.is_extension))
-        object.__setattr__(
-            self,
-            "manipulates_datum_kinds",
-            _normalize_capabilities(self.manipulates_datum_kinds, field_name="tool_registry.manipulates_datum_kinds"),
-        )
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "schema": self.schema,
-            "tool_id": self.tool_id,
-            "label": self.label,
-            "surface_id": self.surface_id,
-            "entrypoint_id": self.entrypoint_id,
-            "route": self.route,
-            "tool_kind": self.tool_kind,
-            "surface_posture": self.surface_posture,
-            "read_write_posture": self.read_write_posture,
-            "required_capabilities": list(self.required_capabilities),
-            "default_enabled": bool(self.default_enabled),
-            "default_workbench_visible": self.default_workbench_visible,
-            "summary": self.summary,
-            "applies_to_archetype": list(self.applies_to_archetype),
-            "applies_to_source_kind": list(self.applies_to_source_kind),
-            "is_extension": self.is_extension,
-            "manipulates_datum_kinds": list(self.manipulates_datum_kinds),
-        }
+# Phase 12a (Phase 12 plan: drift remediation): PortalToolRegistryEntry was
+# duplicated here and in shell.py — every phase that touched the dataclass
+# had to edit both copies. The canonical definition now lives in shell.py
+# only; shell_registry.py imports it from there.
 
 
 @dataclass(frozen=True)
