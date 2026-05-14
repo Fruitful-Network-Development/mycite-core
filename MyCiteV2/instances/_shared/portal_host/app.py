@@ -235,6 +235,21 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
+        # Phase 3 (portal_tool_surface_contract.md). The palette lists tools whose
+        # applies_to_archetype/source_kind match the currently-selected datum.
+        "module_id": "tool_palette",
+        "file": "v2_portal_tool_palette.js",
+        "load_phase": "startup_critical",
+        "loading_scope": ("shell_core",),
+        "budget_group": "initial_shell",
+        "exports": (
+            {
+                "global": "PortalToolPalette",
+                "required_callables": ("fetch", "mount", "refresh"),
+            },
+        ),
+    },
+    {
         "module_id": "shell_watchdog",
         "file": "v2_portal_shell_watchdog.js",
         "load_phase": "startup_critical",
@@ -1081,6 +1096,31 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/utilities/integrations")
     def portal_utilities_integrations() -> str:
         return _render_surface(UTILITIES_INTEGRATIONS_SURFACE_ID, host_config)
+
+    @app.get("/portal/api/tools/eligible")
+    def portal_tools_eligible() -> tuple[Any, int]:
+        # Phase 3 (portal_tool_surface_contract.md): the palette UI calls this
+        # endpoint with the currently-selected datum's document_id and
+        # datum_address, and receives the subset of tool registry entries
+        # whose applies_to_archetype / applies_to_source_kind matches.
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
+            build_eligible_tools_response,
+        )
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            _datum_store_for_authority_db,
+        )
+
+        document_id = _as_text(request.args.get("document_id"))
+        datum_address = _as_text(request.args.get("datum_address"))
+        tenant_id = _as_text(request.args.get("tenant_id")) or host_config.portal_instance_id
+        datum_store = _datum_store_for_authority_db(host_config.authority_db_file)
+        payload = build_eligible_tools_response(
+            tenant_id=tenant_id,
+            document_id=document_id,
+            datum_address=datum_address,
+            datum_store=datum_store,
+        )
+        return jsonify(payload), 200
 
     @app.post("/portal/api/v2/shell")
     def portal_shell() -> tuple[Any, int]:
