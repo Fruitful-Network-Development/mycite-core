@@ -138,80 +138,9 @@ def _region_visible(value: object, *, default: bool) -> bool:
     return value is not False
 
 
-def build_shell_composition_payload(
-    *,
-    active_surface_id: str,
-    portal_instance_id: str,
-    page_title: str,
-    page_subtitle: str,
-    activity_items: list[dict[str, Any]],
-    control_panel: dict[str, Any],
-    workbench: dict[str, Any],
-    interface_panel: dict[str, Any],
-    shell_state: PortalShellState | dict[str, Any] | None = None,
-    control_panel_collapsed: bool = False,
-) -> dict[str, Any]:
-    state = shell_state if isinstance(shell_state, PortalShellState) else (
-        PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
-    )
-    tool_surface = is_tool_surface(active_surface_id)
-    posture = surface_posture_for_surface(active_surface_id)
-    workbench_region = dict(workbench or {})
-    workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
-    interface_panel_region = dict(interface_panel or {})
-    interface_panel_region.setdefault("schema", PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA)
-    workbench_visible = _region_visible(
-        workbench_region.get("visible"),
-        default=default_workbench_visible_for_surface(active_surface_id),
-    )
-    force_workbench_visible = workbench_region.get("forced_visible") is True
-    # Phase 3 (portal_tool_surface_contract.md): the interface panel is retired.
-    # The palette replaces it as the surface that lists tools applicable to the
-    # selected datum. The interface_panel region remains in the composition for
-    # one transition cycle so consumers that read the field do not crash; it is
-    # never visible and never primary.
-    if tool_surface:
-        workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-    interface_panel_visible = False
-    workbench_region["visible"] = workbench_visible
-    interface_panel_region["visible"] = interface_panel_visible
-    # Phase 3: interface panel never primary or dominant after retirement.
-    interface_panel_region["primary_surface"] = False
-    interface_panel_region["layout_mode"] = (
-        as_text(interface_panel_region.get("layout_mode")) or "sidebar"
-    )
-    interface_panel_collapsed = not interface_panel_visible
-    workbench_collapsed = not bool(workbench_visible)
-    workbench_region["collapsed"] = workbench_collapsed
-    interface_panel_region["collapsed"] = interface_panel_collapsed
-    composition = {
-        "schema": PORTAL_SHELL_COMPOSITION_SCHEMA,
-        "composition_mode": shell_composition_mode_for_surface(active_surface_id),
-        "active_service": map_surface_to_active_service(active_surface_id),
-        "active_surface_id": as_text(active_surface_id),
-        "active_tool_surface_id": as_text(active_surface_id) if is_tool_surface(active_surface_id) else None,
-        "foreground_shell_region": foreground_region_for_surface(
-            active_surface_id,
-            shell_state=state,
-            workbench_visible=workbench_visible,
-        ),
-        "control_panel_collapsed": bool(control_panel_collapsed),
-        "interface_panel_collapsed": interface_panel_collapsed,
-        "workbench_collapsed": workbench_collapsed,
-        "portal_instance_id": as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
-        "page_title": as_text(page_title) or "MyCite",
-        "page_subtitle": as_text(page_subtitle),
-        "shell_state": None if state is None else state.to_dict(),
-        "regions": {
-            "activity_bar": {
-                "schema": PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA,
-                "dispatch": "post_portal_shell",
-                "items": list(activity_items),
-            },
-            "control_panel": dict(control_panel or {}),
-            "workbench": workbench_region,
-            "interface_panel": interface_panel_region,
-        },
-    }
-    apply_surface_posture_to_composition(composition)
-    return composition
+# Phase 12b: build_shell_composition_payload was duplicated here and in
+# shell.py. The canonical definition lives in shell.py (re-exported through
+# the package __init__.py via `from .shell import *`). This module keeps the
+# helpers it uniquely owns: apply_surface_posture_to_composition,
+# foreground_region_for_surface, _region_visible, plus the surface-posture
+# lookup helpers above.
