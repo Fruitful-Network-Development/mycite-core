@@ -22,6 +22,12 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 
 
 class PortalSystemWorkspaceDirectiveContextTests(unittest.TestCase):
+    @unittest.skip(
+        "Phase 3 cascade: the inspector panel was retired with the NIMM-AITAS UI; "
+        "the system workspace bundle no longer emits an `inspector` key. Directive-"
+        "overlay propagation moved onto workbench surface_payload.directive_context "
+        "and is covered by workbench-targeted tests."
+    )
     def test_system_workspace_reads_selected_datum_directive_overlay_without_mutating_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
