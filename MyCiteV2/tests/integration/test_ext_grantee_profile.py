@@ -35,7 +35,7 @@ if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
     from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
-from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     EXTENSION_RENDERERS,
     _render_ext_grantee_profile,
 )
