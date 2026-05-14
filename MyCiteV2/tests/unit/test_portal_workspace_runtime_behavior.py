@@ -26,7 +26,7 @@ from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
 from MyCiteV2.packages.core.structures.samras import encode_canonical_structure_from_addresses
 from MyCiteV2.packages.state_machine.portal_shell import (
-    FND_CSM_TOOL_SURFACE_ID,
+    CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_OBJECT,
     FOCUS_LEVEL_SANDBOX,
     NETWORK_ROOT_SURFACE_ID,
@@ -542,28 +542,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertTrue(root_composition["interface_panel_collapsed"])
         self.assertNotIn("inspector", root_composition["regions"])
 
-        aws_tool_composition = build_shell_composition_payload(
-            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
+        # Phase 3: fnd_csm surface is retired; use cts_gis (workbench-primary)
+        # as the canonical tool surface. interface_panel is always collapsed.
+        tool_composition = build_shell_composition_payload(
+            active_surface_id=CTS_GIS_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
-            page_title="FND-CSM",
-            page_subtitle="",
-            activity_items=[],
-            control_panel={},
-            workbench={},
-            interface_panel={},
-            shell_state=None,
-        )
-        self.assertTrue(aws_tool_composition["workbench_collapsed"])
-        self.assertFalse(aws_tool_composition["interface_panel_collapsed"])
-        self.assertEqual(aws_tool_composition["foreground_shell_region"], "interface-panel")
-        self.assertTrue(aws_tool_composition["regions"]["interface_panel"]["primary_surface"])
-        self.assertEqual(aws_tool_composition["regions"]["interface_panel"]["layout_mode"], "dominant")
-        self.assertNotIn("inspector", aws_tool_composition["regions"])
-
-        evidence_composition = build_shell_composition_payload(
-            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
-            portal_instance_id="fnd",
-            page_title="FND-CSM",
+            page_title="CTS-GIS",
             page_subtitle="",
             activity_items=[],
             control_panel={},
@@ -571,8 +555,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             interface_panel={},
             shell_state=None,
         )
-        self.assertTrue(evidence_composition["workbench_collapsed"])
-        self.assertEqual(evidence_composition["foreground_shell_region"], "interface-panel")
+        self.assertFalse(tool_composition["workbench_collapsed"])
+        self.assertTrue(tool_composition["interface_panel_collapsed"])
+        self.assertEqual(tool_composition["foreground_shell_region"], "center-workbench")
+        self.assertFalse(tool_composition["regions"]["interface_panel"]["primary_surface"])
+        self.assertEqual(tool_composition["regions"]["interface_panel"]["layout_mode"], "sidebar")
+        self.assertNotIn("inspector", tool_composition["regions"])
 
     def test_cts_gis_query_widening_is_ignored_at_shell_entry(self) -> None:
         envelope = run_portal_shell_entry(
@@ -1940,13 +1928,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 focused_envelope["canonical_query"],
                 {"view": "system_logs", "record": record_id},
             )
-            self.assertFalse(focused_envelope["shell_composition"]["interface_panel_collapsed"])
+            # Phase 3 (portal_tool_surface_contract.md): interface_panel is
+            # always hidden after retirement. Focused record selection no longer
+            # opens the panel; the workbench remains foreground.
+            self.assertTrue(focused_envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(focused_envelope["shell_composition"]["workbench_collapsed"])
-            self.assertTrue(focused_envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
-            self.assertEqual(
-                focused_envelope["shell_composition"]["regions"]["interface_panel"]["subject"],
-                {"level": "record", "id": record_id},
-            )
+            self.assertFalse(focused_envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
             self.assertNotIn("inspector", focused_envelope["shell_composition"]["regions"])
             self.assertEqual(
                 focused_envelope["shell_state"],

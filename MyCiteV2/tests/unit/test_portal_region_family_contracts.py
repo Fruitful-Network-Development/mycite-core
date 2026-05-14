@@ -74,24 +74,10 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
                 _assert_region_family_contracts(self, envelope, expected_surface_id=surface_id)
 
     def test_tool_routes_emit_family_contract_markers(self) -> None:
+        # Phase 3 (portal_tool_surface_contract.md): fnd_csm surface retired —
+        # its tabs migrated to utilities extensions. Family-contract coverage
+        # for fnd_csm is no longer required.
         with TemporaryDirectory() as temp_dir:
-            fnd_csm_envelope = run_portal_fnd_csm(
-                {
-                    "schema": "mycite.v2.portal.system.tools.fnd_csm.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                    "shell_state": initial_portal_shell_state(
-                        surface_id=FND_CSM_TOOL_SURFACE_ID,
-                        portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
-                    ).to_dict(),
-                },
-                private_dir=None,
-                webapps_root=None,
-                tool_exposure_policy=None,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            _assert_region_family_contracts(self, fnd_csm_envelope, expected_surface_id=FND_CSM_TOOL_SURFACE_ID)
-
             cts_envelope = run_portal_cts_gis(
                 {
                     "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
