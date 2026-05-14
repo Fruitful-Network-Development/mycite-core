@@ -319,3 +319,145 @@ def build_chronology_matrix_component_frame(
         "frozen": True,
         "render_key": render_key,
     }, tab_id)
+
+
+# Phase 7 (portal_tool_surface_contract.md) — generic form-frame builder.
+# Lets any extension or palette tool surface an editable form whose submit
+# action posts back through buildComponentActionDispatch. The client-side
+# renderer lives in v2_portal_component_library.js (renderFormComponent).
+
+FORM_FIELD_TYPES: frozenset[str] = frozenset(
+    {
+        "text",
+        "email",
+        "url",
+        "password",
+        "boolean",
+        "select",
+        "string_list",
+        "multiline",
+    }
+)
+
+
+def _normalize_form_field(field: dict[str, Any]) -> dict[str, Any]:
+    """Validate and shape one field descriptor. Pure; raises ValueError on bad input."""
+    if not isinstance(field, dict):
+        raise ValueError("form field must be a dict")
+    key = str(field.get("key") or "").strip()
+    if not key:
+        raise ValueError("form field requires a non-empty 'key'")
+    field_type = str(field.get("type") or "").strip()
+    if field_type not in FORM_FIELD_TYPES:
+        raise ValueError(
+            f"form field {key!r} has unsupported type {field_type!r}; "
+            f"allowed: {sorted(FORM_FIELD_TYPES)}"
+        )
+    normalized: dict[str, Any] = {
+        "key": key,
+        "label": str(field.get("label") or key),
+        "type": field_type,
+        "value": field.get("value"),
+        "required": bool(field.get("required", False)),
+    }
+    if field.get("placeholder"):
+        normalized["placeholder"] = str(field["placeholder"])
+    if field.get("help_text"):
+        normalized["help_text"] = str(field["help_text"])
+    if field_type == "select":
+        options = field.get("options") or []
+        if not isinstance(options, (list, tuple)) or not options:
+            raise ValueError(f"select field {key!r} requires a non-empty 'options' list")
+        normalized["options"] = [
+            {"value": str(o["value"]), "label": str(o.get("label") or o["value"])}
+            if isinstance(o, dict)
+            else {"value": str(o), "label": str(o)}
+            for o in options
+        ]
+    if field_type == "string_list":
+        # value should be a list of strings; normalize defensively.
+        normalized["value"] = [str(v) for v in (field.get("value") or [])]
+    if field_type == "boolean":
+        normalized["value"] = bool(field.get("value", False))
+    if field_type in {"text", "email", "url", "password", "multiline"} and field.get("value") is not None:
+        normalized["value"] = str(field["value"])
+    return normalized
+
+
+def build_form_component_frame(
+    *,
+    frame_id: str,
+    label: str,
+    fields: list[dict[str, Any]],
+    submit_action: dict[str, Any],
+    attention_node_id: str = "",
+    lens_key: str = "",
+    submit_label: str = "Save",
+    intro: str = "",
+    target_authority: str = "utilities",
+    tab_id: str = "",
+) -> dict[str, Any]:
+    """Build a form component frame for editable JSON-file surfaces.
+
+    Args:
+        frame_id: Unique frame identifier within the surface.
+        label: Human-readable header above the form.
+        fields: List of field descriptors. Each: {key, label?, type, value?,
+                required?, placeholder?, help_text?, options? (select only)}.
+                Allowed types: text, email, url, password, boolean, select,
+                string_list, multiline.
+        submit_action: {"route": str, "schema": str, "payload": dict}. The
+                client-side renderer merges the form's collected values into
+                payload before POSTing to route.
+        attention_node_id / lens_key: optional context for render_key (mirrors
+                other builders). Defaults produce a stable utility key.
+        submit_label / intro: optional UI copy.
+
+    Returns:
+        Component frame dict; component_type="form". The JS dispatcher
+        (renderComponentFrame in v2_portal_component_library.js) recognises
+        this type and renders editable inputs.
+
+    Raises:
+        ValueError when fields list is empty, a field type is unknown, or a
+        select field has no options.
+    """
+    if not fields:
+        raise ValueError(f"form frame {frame_id!r} requires at least one field")
+    if not isinstance(submit_action, dict) or not submit_action.get("route"):
+        raise ValueError(f"form frame {frame_id!r} requires submit_action.route")
+
+    normalized_fields = [_normalize_form_field(f) for f in fields]
+    keys_seen: set[str] = set()
+    for f in normalized_fields:
+        if f["key"] in keys_seen:
+            raise ValueError(f"form frame {frame_id!r} has duplicate field key {f['key']!r}")
+        keys_seen.add(f["key"])
+
+    render_key = f"{attention_node_id or 'utility'}::form::{frame_id}::{lens_key}"
+    payload: dict[str, Any] = {
+        "label": label,
+        "fields": normalized_fields,
+        "submit_label": submit_label,
+        "submit_action": {
+            "route": str(submit_action["route"]),
+            "schema": str(submit_action.get("schema") or ""),
+            "payload": dict(submit_action.get("payload") or {}),
+        },
+    }
+    if intro:
+        payload["intro"] = intro
+    return _maybe_attach_tab_id({
+        "frame_id": frame_id,
+        "component_type": "form",
+        "label": label,
+        "initializer": {
+            "verb": "mediate",
+            "target_authority": target_authority,
+            "intent": "resolve_form",
+            "form_id": frame_id,
+        },
+        "payload": payload,
+        "frozen": False,
+        "render_key": render_key,
+    }, tab_id)
