@@ -42,6 +42,11 @@ from MyCiteV2.packages.adapters.filesystem import (
     FilesystemAwsCsmNewsletterStateAdapter,
     FilesystemAwsCsmToolProfileStore,
 )
+from MyCiteV2.packages.core.grantee import (
+    GRANTEE_PROFILE_SCHEMA,
+    PaypalConfig,
+    load_grantee_profile,
+)
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.datum_templates import (
     TemplateRegistry,
@@ -82,19 +87,66 @@ def _as_list(value: object) -> list[Any]:
 # Grantee profile loading
 # ---------------------------------------------------------------------------
 
+def _hydrate_paypal_from_sidecar(
+    private_dir: Path, msn_id: str
+) -> PaypalConfig | None:
+    """Read a legacy paypal-webhook.{msn_id}.json sidecar into a PaypalConfig.
+
+    Phase 8 read-side backward compat: grantee JSON files written before
+    the inline `paypal` sub-config landed will not carry credentials. If a
+    sidecar file is present, hydrate the in-memory profile from it so the
+    Utilities extensions render correctly. Returns None when no sidecar
+    exists or its shape is unusable.
+    """
+    if not msn_id:
+        return None
+    sidecar_path = private_dir / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
+    if not sidecar_path.exists():
+        return None
+    try:
+        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    webhook_url = _as_text(payload.get("webhook_url"))
+    if not webhook_url:
+        return None
+    try:
+        return PaypalConfig(webhook_url=webhook_url)
+    except ValueError:
+        return None
+
+
 def _load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]]:
-    """Glob and parse all grantee profile JSON files from the fnd-csm tool directory."""
+    """Glob and parse all grantee profile JSON files from the fnd-csm tool directory.
+
+    Phase 8 (grantee_profile_contract.md): delegates parsing + validation to
+    `load_grantee_profile`. When a grantee JSON lacks the inline `paypal`
+    sub-config and a legacy sidecar file exists, hydrates the in-memory
+    profile from the sidecar so the Utilities extensions see the webhook URL.
+    The on-disk grantee JSON is never written back here; the migration is
+    one-shot once an operator edits the profile through the Phase 9 form.
+
+    Returns dicts (not GranteeProfile instances) so the existing call sites
+    in this runtime (which read `grantee.get("domains")`, etc.) keep working
+    unchanged. Sub-configs surface as nested dicts when present.
+    """
     if private_dir is None:
         return []
-    pattern = str(Path(private_dir) / "utilities" / "tools" / "fnd-csm" / "grantee.*.json")
+    base = Path(private_dir)
+    pattern = str(base / "utilities" / "tools" / "fnd-csm" / "grantee.*.json")
     profiles: list[dict[str, Any]] = []
     for path in sorted(glob.glob(pattern)):
         try:
-            payload = json.loads(Path(path).read_text(encoding="utf-8"))
-            if isinstance(payload, dict) and payload.get("schema") == GRANTEE_PROFILE_SCHEMA:
-                profiles.append(payload)
-        except Exception:
-            pass
+            profile = load_grantee_profile(path)
+        except (FileNotFoundError, ValueError):
+            continue
+        if profile.paypal is None:
+            sidecar_paypal = _hydrate_paypal_from_sidecar(base, profile.msn_id)
+            if sidecar_paypal is not None:
+                profile = profile.with_paypal(sidecar_paypal)
+        profiles.append(profile.to_dict())
     return sorted(profiles, key=lambda p: _as_text(p.get("label")).lower())
 
 
@@ -352,6 +404,13 @@ def _build_paypal_tab(
     orders: list[dict[str, Any]] = []
     webhook_url = ""
 
+    # Phase 8 (grantee_profile_contract.md): inline grantee.paypal.webhook_url
+    # is the canonical source. MOS adapter + sidecar remain as fallbacks for
+    # one transition cycle.
+    grantee_paypal = _as_dict(grantee.get("paypal"))
+    if grantee_paypal:
+        webhook_url = _as_text(grantee_paypal.get("webhook_url"))
+
     if authority_db_file is not None:
         try:
             from MyCiteV2.packages.adapters.sql.fnd_paypal import (
@@ -365,18 +424,22 @@ def _build_paypal_tab(
             )
             if domain:
                 orders = orders_adapter.load_orders(domain=domain)
-            grantee_msn = _as_text(grantee.get("msn_id"))
-            if grantee_msn:
-                webhook_adapter = MosDatumPayPalWebhookAdapter(
-                    authority_db_file=authority_db_file,
-                    tenant_id=portal_instance_id or "fnd",
-                )
-                hook = webhook_adapter.load_webhook(grantee_msn_id=grantee_msn)
-                if hook:
-                    webhook_url = _as_text(hook.get("webhook_url"))
+            # Phase 8: only consult the MOS webhook adapter when the grantee
+            # JSON did not already supply a webhook_url. Grantee-inline wins.
+            if not webhook_url:
+                grantee_msn = _as_text(grantee.get("msn_id"))
+                if grantee_msn:
+                    webhook_adapter = MosDatumPayPalWebhookAdapter(
+                        authority_db_file=authority_db_file,
+                        tenant_id=portal_instance_id or "fnd",
+                    )
+                    hook = webhook_adapter.load_webhook(grantee_msn_id=grantee_msn)
+                    if hook:
+                        webhook_url = _as_text(hook.get("webhook_url"))
         except Exception:
             orders = []
-            webhook_url = ""
+            # Preserve a grantee-inline webhook_url even if the MOS adapter
+            # threw; it was set before this try block ran.
 
     if orders or webhook_url:
         return {"domain": domain, "webhook_url": webhook_url, "orders": orders}
@@ -409,15 +472,17 @@ def _build_paypal_tab(
                         pass
         except Exception:
             pass
-        # Optional per-grantee webhook config
-        msn_id = _as_text(grantee.get("msn_id"))
-        webhook_path = Path(private_dir) / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
-        try:
-            if webhook_path.exists():
-                wh = json.loads(webhook_path.read_text(encoding="utf-8"))
-                webhook_url = _as_text(_as_dict(wh).get("webhook_url"))
-        except Exception:
-            pass
+        # Optional per-grantee webhook config — only consulted when no
+        # grantee-inline webhook_url (Phase 8 precedence).
+        if not webhook_url:
+            msn_id = _as_text(grantee.get("msn_id"))
+            webhook_path = Path(private_dir) / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
+            try:
+                if webhook_path.exists():
+                    wh = json.loads(webhook_path.read_text(encoding="utf-8"))
+                    webhook_url = _as_text(_as_dict(wh).get("webhook_url"))
+            except Exception:
+                pass
     return {
         "domain": domain,
         "webhook_url": webhook_url,
