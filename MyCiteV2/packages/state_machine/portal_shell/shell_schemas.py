@@ -97,8 +97,11 @@ TRANSITION_FOCUS_DATUM = "focus_datum"
 TRANSITION_FOCUS_OBJECT = "focus_object"
 TRANSITION_BACK_OUT = "back_out"
 TRANSITION_SET_VERB = "set_verb"
-TRANSITION_OPEN_INTERFACE_PANEL = "open_interface_panel"
-TRANSITION_CLOSE_INTERFACE_PANEL = "close_interface_panel"
+# Phase 12c (drift remediation): TRANSITION_OPEN_INTERFACE_PANEL and
+# TRANSITION_CLOSE_INTERFACE_PANEL removed. The interface panel is hidden
+# unconditionally since Phase 3d; toggling its open/closed chrome flag had
+# no observable effect. The dispatch arms were also removed from
+# reduce_portal_shell_state in shell.py.
 PORTAL_SHELL_TRANSITIONS = (
     TRANSITION_ENTER_SURFACE,
     TRANSITION_FOCUS_SANDBOX,
@@ -107,8 +110,6 @@ PORTAL_SHELL_TRANSITIONS = (
     TRANSITION_FOCUS_OBJECT,
     TRANSITION_BACK_OUT,
     TRANSITION_SET_VERB,
-    TRANSITION_OPEN_INTERFACE_PANEL,
-    TRANSITION_CLOSE_INTERFACE_PANEL,
 )
 
 ROOT_SURFACE_IDS = frozenset(
