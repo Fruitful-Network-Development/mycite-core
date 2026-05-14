@@ -474,6 +474,109 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Form Component (Phase 7 — portal_tool_surface_contract.md)
+  // ---------------------------------------------------------------------------
+  // Renders an editable form whose submit_action POSTs collected field values
+  // back to a runtime route. Phase 9 uses this for the ext_grantee_profile
+  // extension; Phase 10 uses it for credential editing in the other extensions.
+
+  function renderFormField(field) {
+    var key = escapeHtml(asText(field.key));
+    var label = escapeHtml(asText(field.label) || asText(field.key));
+    var fieldType = asText(field.type);
+    var required = field.required ? " required" : "";
+    var requiredMarker = field.required ? ' <span class="v2-form-field__required">*</span>' : "";
+    var placeholder = field.placeholder ? ' placeholder="' + escapeHtml(asText(field.placeholder)) + '"' : "";
+    var helpHtml = field.help_text
+      ? '<small class="v2-form-field__help">' + escapeHtml(asText(field.help_text)) + '</small>'
+      : "";
+
+    var labelHtml = '<label class="v2-form-field__label" for="v2form_' + key + '">' + label + requiredMarker + '</label>';
+    var inputHtml = "";
+
+    if (fieldType === "boolean") {
+      var checked = field.value ? " checked" : "";
+      inputHtml =
+        '<input class="v2-form-field__input v2-form-field__input--boolean"' +
+        ' id="v2form_' + key + '" name="' + key + '" type="checkbox" data-form-field-key="' + key +
+        '" data-form-field-type="boolean"' + checked + ">";
+    } else if (fieldType === "select") {
+      var optionsHtml = (field.options || []).map(function (opt) {
+        var optValue = escapeHtml(asText(opt.value));
+        var optLabel = escapeHtml(asText(opt.label) || asText(opt.value));
+        var selected = (asText(field.value) === asText(opt.value)) ? " selected" : "";
+        return '<option value="' + optValue + '"' + selected + ">" + optLabel + "</option>";
+      }).join("");
+      inputHtml =
+        '<select class="v2-form-field__input v2-form-field__input--select"' +
+        ' id="v2form_' + key + '" name="' + key + '" data-form-field-key="' + key +
+        '" data-form-field-type="select"' + required + ">" + optionsHtml + "</select>";
+    } else if (fieldType === "string_list") {
+      var listValues = (field.value || []).map(function (v) { return asText(v); });
+      var listJson = escapeHtml(JSON.stringify(listValues));
+      inputHtml =
+        '<div class="v2-form-field__string-list" data-form-field-key="' + key +
+        '" data-form-field-type="string_list" data-form-field-values=\'' + listJson + "'>" +
+        listValues.map(function (v) {
+          return '<span class="v2-form-field__chip">' + escapeHtml(v) +
+            ' <button type="button" class="v2-form-field__chip-remove" aria-label="Remove">&times;</button></span>';
+        }).join("") +
+        '<input type="text" class="v2-form-field__chip-input"' + placeholder + ' aria-label="Add ' + label + '">' +
+        "</div>";
+    } else if (fieldType === "multiline") {
+      inputHtml =
+        '<textarea class="v2-form-field__input v2-form-field__input--multiline"' +
+        ' id="v2form_' + key + '" name="' + key + '" rows="4" data-form-field-key="' + key +
+        '" data-form-field-type="multiline"' + placeholder + required + ">" +
+        escapeHtml(asText(field.value)) + "</textarea>";
+    } else {
+      // text, email, url, password
+      var htmlType = (fieldType === "email") ? "email"
+        : (fieldType === "url") ? "url"
+        : (fieldType === "password") ? "password"
+        : "text";
+      inputHtml =
+        '<input class="v2-form-field__input v2-form-field__input--' + escapeHtml(fieldType) + '"' +
+        ' id="v2form_' + key + '" name="' + key + '" type="' + htmlType + '"' +
+        ' value="' + escapeHtml(asText(field.value)) + '" data-form-field-key="' + key +
+        '" data-form-field-type="' + escapeHtml(fieldType) + '"' + placeholder + required + ">";
+    }
+
+    return '<div class="v2-form-field" data-form-field="' + key + '">' + labelHtml + inputHtml + helpHtml + "</div>";
+  }
+
+  function renderFormComponent(frame) {
+    var f = asObject(frame);
+    var payload = asObject(f.payload);
+    var fields = asArray(payload.fields);
+    var submitAction = asObject(payload.submit_action);
+    var label = asText(payload.label) || asText(f.label) || "Form";
+    var introHtml = payload.intro
+      ? '<p class="v2-form__intro">' + escapeHtml(asText(payload.intro)) + "</p>"
+      : "";
+    var fieldsHtml = fields.map(renderFormField).join("");
+    var submitLabel = escapeHtml(asText(payload.submit_label) || "Save");
+    var submitRoute = escapeHtml(asText(submitAction.route));
+    var submitSchema = escapeHtml(asText(submitAction.schema));
+    var basePayloadJson = escapeHtml(JSON.stringify(submitAction.payload || {}));
+    var frameId = escapeHtml(asText(f.frame_id));
+
+    return (
+      '<form class="v2-component-frame v2-component-frame--form"' +
+      ' data-frame-id="' + frameId + '"' +
+      ' data-form-submit-route="' + submitRoute + '"' +
+      ' data-form-submit-schema="' + submitSchema + '"' +
+      ' data-form-base-payload=\'' + basePayloadJson + "'>" +
+      '<header class="v2-form__header"><h3 class="v2-form__title">' + escapeHtml(label) + "</h3>" + introHtml + "</header>" +
+      '<div class="v2-form__fields">' + fieldsHtml + "</div>" +
+      '<div class="v2-form__actions">' +
+      '<button type="submit" class="v2-form__submit">' + submitLabel + "</button>" +
+      "</div>" +
+      "</form>"
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // Dispatcher
   // ---------------------------------------------------------------------------
 
@@ -493,6 +596,8 @@
         return renderListingComponent(f);
       case "chronology_matrix":
         return renderChronologyMatrixComponent(f);
+      case "form":
+        return renderFormComponent(f);
       default:
         return (
           '<div class="v2-component-frame v2-component-frame--unknown"' +
@@ -624,6 +729,7 @@
     renderCharacteristicSetComponent: renderCharacteristicSetComponent,
     renderListingComponent: renderListingComponent,
     renderChronologyMatrixComponent: renderChronologyMatrixComponent,
+    renderFormComponent: renderFormComponent,
     renderDocumentCard: renderDocumentCard,
     renderDatumRowItem: renderDatumRowItem,
     buildComponentActionDispatch: buildComponentActionDispatch,
