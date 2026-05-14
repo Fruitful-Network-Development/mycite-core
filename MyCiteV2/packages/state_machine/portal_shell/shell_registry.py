@@ -111,6 +111,12 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             read_write_posture="write",
             required_capabilities=("datum_recognition", "spatial_projection"),
             default_workbench_visible=True,
+            # Phase 4 (portal_tool_surface_contract.md): CTS-GIS is a palette
+            # tool applicable to SAMRAS-family datums. source_kind filter pairs
+            # with the archetype filter so documents that pre-date the archetype
+            # metadata field still match via their authoritative source_kind.
+            applies_to_archetype=("samras_family",),
+            applies_to_source_kind=("sandbox_source",),
             summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
         ),
         PortalToolRegistryEntry(
@@ -125,6 +131,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             required_capabilities=("datum_recognition",),
             default_enabled=True,
             default_workbench_visible=True,
+            # Workbench UI is the universal datum grid; appears in the palette
+            # for both sandbox-source and system-anthology documents.
+            applies_to_source_kind=("sandbox_source", "system_anthology"),
             summary="Read-only SQL datum grid with additive directive-overlay inspection.",
         ),
         # Utilities extensions — Phase 2 migration of former FND-CSM tabs.
