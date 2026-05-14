@@ -5,7 +5,7 @@ aggregate counts + capture the 20 most recent events, write to MOS via
 :class:`MosDatumAnalyticsSummaryAdapter`.
 
 Run periodically (cron / systemd timer). Replaces the per-request
-filesystem glob in ``portal_fnd_csm_runtime._build_analytics_tab``.
+filesystem glob in ``portal_fnd_csm_runtime._build_analytics_extension_payload``.
 
 Usage::
 

@@ -222,7 +222,7 @@ def _resolve_selected_domain(
 # Tab builders
 # ---------------------------------------------------------------------------
 
-def _build_email_tab(
+def _build_email_extension_payload(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
@@ -313,7 +313,7 @@ def _build_email_tab(
     }
 
 
-def _build_analytics_tab(
+def _build_analytics_extension_payload(
     domain: str,
     webapps_root: str | Path | None,
     authority_db_file: str | Path | None = None,
@@ -396,7 +396,7 @@ def _build_analytics_tab(
     }
 
 
-def _build_newsletter_tab(
+def _build_newsletter_extension_payload(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
@@ -473,7 +473,7 @@ def _build_newsletter_tab(
     }
 
 
-def _build_paypal_tab(
+def _build_paypal_extension_payload(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
@@ -1287,27 +1287,27 @@ def build_portal_fnd_csm_surface_bundle(
     tool_state["selected_domain"] = domain
 
     # Build tab data
-    email_tab = _build_email_tab(
+    email_tab = _build_email_extension_payload(
         selected_grantee,
         domain,
         private_dir,
         authority_db_file=authority_db_file,
         portal_instance_id=portal_instance_id,
     )
-    analytics_tab = _build_analytics_tab(
+    analytics_tab = _build_analytics_extension_payload(
         domain,
         webapps_root,
         authority_db_file=authority_db_file,
         portal_instance_id=portal_instance_id,
     )
-    newsletter_tab = _build_newsletter_tab(
+    newsletter_tab = _build_newsletter_extension_payload(
         selected_grantee,
         domain,
         private_dir,
         authority_db_file=authority_db_file,
         portal_instance_id=portal_instance_id,
     )
-    paypal_tab = _build_paypal_tab(
+    paypal_tab = _build_paypal_extension_payload(
         selected_grantee,
         domain,
         private_dir,
@@ -1543,7 +1543,7 @@ def run_portal_fnd_csm_action(
 
 
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
-    return _build_email_tab(
+    return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),
         private_dir=ctx.get("private_dir"),
@@ -1553,7 +1553,7 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
-    return _build_analytics_tab(
+    return _build_analytics_extension_payload(
         domain=_as_text(ctx.get("domain")),
         webapps_root=ctx.get("webapps_root"),
         authority_db_file=ctx.get("authority_db_file"),
@@ -1562,7 +1562,7 @@ def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def _render_ext_newsletter(ctx: dict[str, Any]) -> dict[str, Any]:
-    return _build_newsletter_tab(
+    return _build_newsletter_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),
         private_dir=ctx.get("private_dir"),
@@ -1572,7 +1572,7 @@ def _render_ext_newsletter(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 def _render_ext_paypal(ctx: dict[str, Any]) -> dict[str, Any]:
-    return _build_paypal_tab(
+    return _build_paypal_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),
         private_dir=ctx.get("private_dir"),
