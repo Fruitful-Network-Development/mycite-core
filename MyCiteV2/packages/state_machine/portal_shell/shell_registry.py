@@ -191,6 +191,23 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             is_extension=True,
             summary="PayPal webhook configuration and donation orders log.",
         ),
+        # Phase 9 (grantee_profile_contract.md): editable form over the
+        # grantee JSON file. This is the single home for per-grantee
+        # configuration that the other extensions read (paypal, aws_ses,
+        # newsletter sub-configs).
+        PortalToolRegistryEntry(
+            tool_id="ext_grantee_profile",
+            label="Grantee Profile",
+            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            entrypoint_id="portal.utilities.ext_grantee_profile",
+            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
+            read_write_posture="write",
+            required_capabilities=("fnd_peripheral_routing",),
+            is_extension=True,
+            summary="Editable form for grantee identity + credentials (paypal, aws_ses, newsletter).",
+        ),
     )
 
 

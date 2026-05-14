@@ -1280,6 +1280,114 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # FND newsletter subscribe pipeline routes
     # ------------------------------------------------------------------
 
+    @app.post("/__fnd/grantee/save")
+    def fnd_grantee_save() -> tuple[Any, int]:
+        """Phase 9 (grantee_profile_contract.md): persist edits made through
+        the ext_grantee_profile form. Accepts JSON:
+            {"msn_id": "<grantee-msn>", "fields": {<flat-or-dotted keys>}}
+
+        Loads the existing grantee JSON (matched by glob on the msn_id
+        suffix), merges in the submitted fields (including dotted-key
+        nested sub-configs like "paypal.webhook_url"), validates through
+        the GranteeProfile dataclass, and writes atomically via
+        save_grantee_profile.
+
+        Returns the persisted profile as JSON on success; 4xx on validation
+        failure; 404 when the grantee msn doesn't match any file; 500 on
+        write error.
+        """
+        import glob as _glob
+        from pathlib import Path as _Path
+
+        from MyCiteV2.packages.core.grantee import (
+            AwsSesConfig,
+            GranteeProfile,
+            NewsletterConfig,
+            PaypalConfig,
+            load_grantee_profile,
+            save_grantee_profile,
+        )
+        from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
+
+        payload = _json_payload()
+        msn_id = _as_text(payload.get("msn_id"))
+        fields_raw = payload.get("fields")
+        if not msn_id or not isinstance(fields_raw, dict):
+            return jsonify({"ok": False, "error": "invalid_request"}), 400
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        # Find the file. Grantee files are named
+        # grantee.{fnd_msn}.{grantee_msn}.json; we match by the suffix.
+        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+        candidates = sorted(
+            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
+        )
+        if len(candidates) == 0:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        if len(candidates) > 1:
+            return jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409
+        target_path = _Path(candidates[0])
+
+        try:
+            current = load_grantee_profile(target_path)
+        except (FileNotFoundError, ValueError) as exc:
+            return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
+
+        # Split flat dotted-key fields into top-level and sub-config buckets.
+        identity_fields: dict[str, Any] = {}
+        sub_buckets: dict[str, dict[str, Any]] = {"paypal": {}, "aws_ses": {}, "newsletter": {}}
+        for key, value in fields_raw.items():
+            key_text = _as_text(key)
+            if "." in key_text:
+                bucket, leaf = key_text.split(".", 1)
+                if bucket in sub_buckets:
+                    sub_buckets[bucket][leaf] = value
+                continue
+            identity_fields[key_text] = value
+
+        # Construct the next profile. The dataclass constructors validate;
+        # missing/empty fields preserve the current profile's identity but
+        # allow editing of populated values.
+        def _list_field(value: Any, current: tuple[str, ...]) -> tuple[str, ...]:
+            if isinstance(value, (list, tuple)):
+                return tuple(_as_text(v) for v in value if _as_text(v))
+            return current
+
+        def _build_sub(cls, bucket: dict[str, Any], current: Any):
+            if not bucket:
+                return current
+            merged: dict[str, Any] = current.to_dict() if current is not None else {}
+            for k, v in bucket.items():
+                merged[k] = v
+            # Drop empty-string keys for cleanliness when nothing is set.
+            non_empty = {k: v for k, v in merged.items() if v not in (None, "")}
+            if not non_empty:
+                return None
+            return cls.from_dict(merged)
+
+        try:
+            next_profile = GranteeProfile(
+                msn_id=current.msn_id,
+                label=_as_text(identity_fields.get("label", current.label)),
+                short_name=_as_text(identity_fields.get("short_name", current.short_name)),
+                domains=_list_field(identity_fields.get("domains"), current.domains),
+                users=_list_field(identity_fields.get("users"), current.users),
+                paypal=_build_sub(PaypalConfig, sub_buckets["paypal"], current.paypal),
+                aws_ses=_build_sub(AwsSesConfig, sub_buckets["aws_ses"], current.aws_ses),
+                newsletter=_build_sub(NewsletterConfig, sub_buckets["newsletter"], current.newsletter),
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
+
+        try:
+            save_grantee_profile(target_path, next_profile)
+        except GranteeProfileWriteError as exc:
+            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
+
+        return jsonify({"ok": True, "profile": next_profile.to_dict()}), 200
+
     @app.post("/__fnd/newsletter/subscribe")
     def fnd_newsletter_subscribe() -> tuple[Any, int]:
         """Public site-signup endpoint. Phase E.3 shim: validates the
