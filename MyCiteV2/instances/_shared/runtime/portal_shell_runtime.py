@@ -601,30 +601,94 @@ def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict
     }
 
 
-def _build_utilities_extensions(
+def _build_utilities_surface_context(
     *,
-    tool_exposure_policy: dict[str, Any] | None,
     surface_query: dict[str, str] | None,
     private_dir: str | Path | None,
     webapps_root: str | Path | None,
     authority_db_file: str | Path | None,
     portal_instance_id: str,
+) -> dict[str, Any]:
+    """Resolve grantee/domain selection + grantee_selector list for the
+    utilities tool-exposure surface.
+
+    Returns a dict with:
+      - "ctx": the extension render context (grantee, domain, private_dir, ...)
+      - "grantee_selector": Phase 12h surface-level selector payload listing
+        every available grantee with an `active` flag.
+    """
+    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+        _load_grantee_profiles,
+        _resolve_selected_domain,
+        _resolve_selected_grantee,
+    )
+
+    query = dict(surface_query or {})
+    tool_state = {
+        "selected_grantee_msn": query.get("selected_grantee_msn", ""),
+        "selected_domain": query.get("selected_domain", ""),
+    }
+    grantees = _load_grantee_profiles(private_dir)
+    selected_grantee = _resolve_selected_grantee(grantees, tool_state)
+    selected_msn = _as_text(selected_grantee.get("msn_id"))
+    domain = _resolve_selected_domain(selected_grantee, tool_state)
+
+    ctx = {
+        "grantee": selected_grantee,
+        "domain": domain,
+        "private_dir": private_dir,
+        "webapps_root": webapps_root,
+        "authority_db_file": authority_db_file,
+        "portal_instance_id": portal_instance_id,
+    }
+
+    # Phase 12h: surface-level grantee selector. Each entry carries the
+    # transition payload the client posts to switch grantees. The shell-
+    # request layer normalizes `selected_grantee_msn` into surface_query.
+    grantee_selector = {
+        "label": "Grantee",
+        "selected_grantee_msn": selected_msn,
+        "grantees": [
+            {
+                "msn_id": _as_text(g.get("msn_id")),
+                "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
+                "short_name": _as_text(g.get("short_name")),
+                "domains": list(g.get("domains") or []),
+                "active": _as_text(g.get("msn_id")) == selected_msn,
+                "select_action": {
+                    "route": "/portal/api/v2/shell",
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "payload": {
+                        "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+                        "surface_query": {
+                            "selected_grantee_msn": _as_text(g.get("msn_id")),
+                        },
+                    },
+                },
+            }
+            for g in grantees
+        ],
+        "empty_message": "No grantees configured. Add a grantee JSON file under "
+        "{private_dir}/utilities/tools/fnd-csm/grantee.*.json.",
+    }
+    return {"ctx": ctx, "grantee_selector": grantee_selector}
+
+
+def _build_utilities_extensions(
+    *,
+    tool_exposure_policy: dict[str, Any] | None,
+    ctx: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """Phase 2 (portal_tool_surface_contract.md): render each enabled Utilities
-    extension by calling its renderer in portal_fnd_csm_runtime. Returns a list
-    of `{tool_id, label, summary, payload}` entries.
+    extension by calling its renderer. Returns a list of
+    `{tool_id, label, summary, payload}` entries.
 
-    Grantee/domain selection is read from `surface_query` keys
-    `selected_grantee_msn` and `selected_domain`; absent values default to the
-    first available grantee/domain.
+    Phase 12h split the grantee context resolution into
+    `_build_utilities_surface_context` so the surface-level grantee selector
+    can share the resolved selection without duplicating the load.
     """
-    # Lazy-import to avoid pulling runtime helpers when the utilities surface
-    # is not being rendered.
-    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+    from MyCiteV2.instances._shared.runtime.utilities_extensions import (
         EXTENSION_RENDERERS,
-        _load_grantee_profiles,
-        _resolve_selected_grantee,
-        _resolve_selected_domain,
         render_extension,
     )
 
@@ -633,23 +697,6 @@ def _build_utilities_extensions(
     ]
     if not extension_entries:
         return []
-
-    query = dict(surface_query or {})
-    tool_state = {
-        "selected_grantee_msn": query.get("selected_grantee_msn", ""),
-        "selected_domain": query.get("selected_domain", ""),
-    }
-    grantees = _load_grantee_profiles(private_dir)
-    grantee = _resolve_selected_grantee(grantees, tool_state)
-    domain = _resolve_selected_domain(grantee, tool_state)
-    ctx = {
-        "grantee": grantee,
-        "domain": domain,
-        "private_dir": private_dir,
-        "webapps_root": webapps_root,
-        "authority_db_file": authority_db_file,
-        "portal_instance_id": portal_instance_id,
-    }
 
     out: list[dict[str, Any]] = []
     for entry in extension_entries:
@@ -684,6 +731,7 @@ def _extension_enabled(
 def _surface_payload_for_tool_exposure(
     tool_rows: list[dict[str, Any]],
     extensions: list[dict[str, Any]] | None = None,
+    grantee_selector: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "schema": surface_schema_for_surface(UTILITIES_TOOL_EXPOSURE_SURFACE_ID),
@@ -704,10 +752,15 @@ def _surface_payload_for_tool_exposure(
         ],
     }
     # Phase 2 (portal_tool_surface_contract.md): per-extension structured payloads
-    # produced by portal_fnd_csm_runtime.render_extension. Phase 3 will consume
-    # these client-side via the palette UI.
+    # produced by render_extension. Phase 3 will consume these client-side
+    # via the palette UI.
     if extensions:
         payload["extensions"] = extensions
+    # Phase 12h: surface-level grantee selector. Lets operators switch the
+    # grantee context that drives every extension below without leaving the
+    # Utilities tab.
+    if grantee_selector is not None:
+        payload["grantee_selector"] = grantee_selector
     return payload
 
 
@@ -1043,15 +1096,24 @@ def _bundle_for_surface(
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
-        extensions = _build_utilities_extensions(
-            tool_exposure_policy=tool_exposure_policy,
+        # Phase 12h: resolve grantee/domain once, share between the
+        # surface-level selector and the per-extension ctx.
+        ctx_bundle = _build_utilities_surface_context(
             surface_query=surface_query,
             private_dir=private_dir,
             webapps_root=webapps_root,
             authority_db_file=authority_db_file,
             portal_instance_id=portal_scope.scope_id,
         )
-        surface_payload = _surface_payload_for_tool_exposure(tool_rows, extensions=extensions)
+        extensions = _build_utilities_extensions(
+            tool_exposure_policy=tool_exposure_policy,
+            ctx=ctx_bundle["ctx"],
+        )
+        surface_payload = _surface_payload_for_tool_exposure(
+            tool_rows,
+            extensions=extensions,
+            grantee_selector=ctx_bundle["grantee_selector"],
+        )
     else:
         surface_payload = _surface_payload_for_integrations(integration_flags)
     return {

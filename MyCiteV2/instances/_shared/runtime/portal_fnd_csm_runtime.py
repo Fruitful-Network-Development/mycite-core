@@ -1540,10 +1540,8 @@ def run_portal_fnd_csm_action(
 # The dispatch table, the five per-extension renderer wrappers, the grantee
 # profile form, and `render_extension` moved to
 # `instances/_shared/runtime/utilities_extensions/__init__.py` in Phase 12g.
-# Existing callers that imported these names from this module keep working
-# via the re-export below; new callers should target the
-# `utilities_extensions` package directly.
-from MyCiteV2.instances._shared.runtime.utilities_extensions import (  # noqa: E402,F401
-    EXTENSION_RENDERERS,
-    render_extension,
-)
+# No back-compat re-export here: it created a circular import (utilities_extensions
+# imports `_build_*_extension_payload` from this module, so we cannot import
+# `EXTENSION_RENDERERS` back from utilities_extensions at module load).
+# Callers should import EXTENSION_RENDERERS / render_extension from
+# `MyCiteV2.instances._shared.runtime.utilities_extensions` directly.
