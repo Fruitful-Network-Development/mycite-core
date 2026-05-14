@@ -601,8 +601,91 @@ def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict
     }
 
 
-def _surface_payload_for_tool_exposure(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+def _build_utilities_extensions(
+    *,
+    tool_exposure_policy: dict[str, Any] | None,
+    surface_query: dict[str, str] | None,
+    private_dir: str | Path | None,
+    webapps_root: str | Path | None,
+    authority_db_file: str | Path | None,
+    portal_instance_id: str,
+) -> list[dict[str, Any]]:
+    """Phase 2 (portal_tool_surface_contract.md): render each enabled Utilities
+    extension by calling its renderer in portal_fnd_csm_runtime. Returns a list
+    of `{tool_id, label, summary, payload}` entries.
+
+    Grantee/domain selection is read from `surface_query` keys
+    `selected_grantee_msn` and `selected_domain`; absent values default to the
+    first available grantee/domain.
+    """
+    # Lazy-import to avoid pulling runtime helpers when the utilities surface
+    # is not being rendered.
+    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+        EXTENSION_RENDERERS,
+        _load_grantee_profiles,
+        _resolve_selected_grantee,
+        _resolve_selected_domain,
+        render_extension,
+    )
+
+    extension_entries = [
+        entry for entry in build_portal_tool_registry_entries() if entry.is_extension
+    ]
+    if not extension_entries:
+        return []
+
+    query = dict(surface_query or {})
+    tool_state = {
+        "selected_grantee_msn": query.get("selected_grantee_msn", ""),
+        "selected_domain": query.get("selected_domain", ""),
+    }
+    grantees = _load_grantee_profiles(private_dir)
+    grantee = _resolve_selected_grantee(grantees, tool_state)
+    domain = _resolve_selected_domain(grantee, tool_state)
+    ctx = {
+        "grantee": grantee,
+        "domain": domain,
+        "private_dir": private_dir,
+        "webapps_root": webapps_root,
+        "authority_db_file": authority_db_file,
+        "portal_instance_id": portal_instance_id,
+    }
+
+    out: list[dict[str, Any]] = []
+    for entry in extension_entries:
+        if entry.tool_id not in EXTENSION_RENDERERS:
+            continue
+        if not _extension_enabled(tool_exposure_policy, entry.tool_id):
+            continue
+        out.append(
+            {
+                "tool_id": entry.tool_id,
+                "label": entry.label,
+                "summary": entry.summary,
+                "payload": render_extension(entry.tool_id, ctx),
+            }
+        )
+    return out
+
+
+def _extension_enabled(
+    tool_exposure_policy: dict[str, Any] | None, tool_id: str
+) -> bool:
+    """Honor an explicit per-tool enable flag in tool_exposure_policy; default to
+    enabled when no policy entry exists (legacy FND-CSM tabs were always shown)."""
+    if not isinstance(tool_exposure_policy, dict):
+        return True
+    entry = tool_exposure_policy.get(tool_id)
+    if isinstance(entry, dict) and "enabled" in entry:
+        return bool(entry["enabled"])
+    return True
+
+
+def _surface_payload_for_tool_exposure(
+    tool_rows: list[dict[str, Any]],
+    extensions: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
         "schema": surface_schema_for_surface(UTILITIES_TOOL_EXPOSURE_SURFACE_ID),
         "kind": "tool_exposure",
         "title": "Tool Exposure",
@@ -620,6 +703,12 @@ def _surface_payload_for_tool_exposure(tool_rows: list[dict[str, Any]]) -> dict[
             }
         ],
     }
+    # Phase 2 (portal_tool_surface_contract.md): per-extension structured payloads
+    # produced by portal_fnd_csm_runtime.render_extension. Phase 3 will consume
+    # these client-side via the palette UI.
+    if extensions:
+        payload["extensions"] = extensions
+    return payload
 
 
 def _surface_payload_for_integrations(integration_flags: dict[str, bool]) -> dict[str, Any]:
@@ -954,7 +1043,15 @@ def _bundle_for_surface(
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
-        surface_payload = _surface_payload_for_tool_exposure(tool_rows)
+        extensions = _build_utilities_extensions(
+            tool_exposure_policy=tool_exposure_policy,
+            surface_query=surface_query,
+            private_dir=private_dir,
+            webapps_root=webapps_root,
+            authority_db_file=authority_db_file,
+            portal_instance_id=portal_scope.scope_id,
+        )
+        surface_payload = _surface_payload_for_tool_exposure(tool_rows, extensions=extensions)
     else:
         surface_payload = _surface_payload_for_integrations(integration_flags)
     return {
