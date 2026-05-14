@@ -66,11 +66,14 @@ class CtsGisRequestValidationTests(unittest.TestCase):
         payload["selected_document_id"] = "sandbox:cts_gis:sc.example.json"
         envelope = run_portal_cts_gis(payload, data_dir=None)
         self.assertEqual(envelope["surface_id"], "system.tools.cts_gis")
-        # CTS-GIS has default_workbench_visible=True — workbench is open by default
+        # CTS-GIS has default_workbench_visible=True — workbench is open by default.
+        # Phase 3d forces the interface panel collapsed/invisible across every surface
+        # (the NIMM-AITAS UI panel was retired in Phase 5); assert that invariant
+        # rather than the pre-retirement shape.
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
+        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertTrue(envelope["shell_composition"]["regions"]["workbench"]["visible"])
-        self.assertTrue(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
 
     def test_rejects_unknown_cts_gis_action_kind(self) -> None:
         with self.assertRaises(ValueError):

@@ -44,6 +44,10 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
         or module_name.startswith("MyCiteV2.packages.ports.aws_narrow_write")
         or module_name.startswith("MyCiteV2.packages.ports.datum_store")
         or module_name.startswith("MyCiteV2.packages.adapters.filesystem")
+        # Pure-data canonical-ID parser. It introduces no module semantics —
+        # used by live_system_datum_store to translate legacy IDs into the
+        # canonical lv./stl./cptr. taxonomy at read time.
+        or module_name.startswith("MyCiteV2.packages.core.document_naming")
     )
 
 
