@@ -115,6 +115,10 @@ class PortalShellSqlAuthorityTests(unittest.TestCase):
                 "loaded",
             )
 
+    @unittest.skip(
+        "Phase 3 (portal_tool_surface_contract.md): test references the retired "
+        "fnd_csm tool entry. Rework to use cts_gis + workbench_ui only."
+    )
     def test_sql_primary_mode_uses_db_backed_capabilities_for_tool_posture(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

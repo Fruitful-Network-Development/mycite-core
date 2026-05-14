@@ -106,10 +106,11 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
             composition = envelope["shell_composition"]
+            # Phase 3: interface_panel always collapsed after retirement.
             self.assertFalse(composition["workbench_collapsed"])
-            self.assertFalse(composition["interface_panel_collapsed"])
+            self.assertTrue(composition["interface_panel_collapsed"])
             self.assertTrue(composition["regions"]["workbench"]["visible"])
-            self.assertTrue(composition["regions"]["interface_panel"]["visible"])
+            self.assertFalse(composition["regions"]["interface_panel"]["visible"])
 
     def test_shell_route_keeps_workbench_ui_runtime_owned_and_sql_context_led(self) -> None:
         with TemporaryDirectory() as temp_dir:

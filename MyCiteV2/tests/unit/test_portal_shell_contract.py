@@ -13,7 +13,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_ANCHOR_FILE_KEY,
@@ -62,9 +62,11 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertNotIn("/portal/system/profile-basics", routes)
 
     def test_state_machine_is_limited_to_system_workspace_and_tool_surfaces(self) -> None:
-        self.assertEqual(canonical_route_for_surface(FND_CSM_TOOL_SURFACE_ID), "/portal/system/tools/fnd-csm")
+        # Phase 3 (portal_tool_surface_contract.md): the fnd_csm surface is
+        # retired; cts_gis is the canonical reducer-owned tool surface today.
+        self.assertEqual(canonical_route_for_surface(CTS_GIS_TOOL_SURFACE_ID), "/portal/system/tools/cts-gis")
         self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
-        self.assertTrue(requires_shell_state_machine(FND_CSM_TOOL_SURFACE_ID))
+        self.assertTrue(requires_shell_state_machine(CTS_GIS_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -131,37 +133,24 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual([segment.level for segment in no_op.focus_path], ["sandbox"])
         self.assertEqual(no_op.verb, VERB_NAVIGATE)
 
-    def test_tool_registry_exposes_primary_region_defaults(self) -> None:
+    def test_tool_registry_exposes_palette_posture(self) -> None:
+        # Phase 3 (portal_tool_surface_contract.md): every first-class tool is a
+        # palette target. fnd_csm has been retired; its capabilities moved to
+        # utilities extensions in Phase 2.
         registry_entries = {
             entry["tool_id"]: entry
             for entry in (entry.to_dict() for entry in build_portal_tool_registry_entries())
         }
-        self.assertEqual(registry_entries["fnd_csm"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
-        self.assertFalse(registry_entries["fnd_csm"]["default_workbench_visible"])
-        self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertNotIn("fnd_csm", registry_entries)
+        self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_PALETTE_TARGET)
         self.assertTrue(registry_entries["cts_gis"]["default_workbench_visible"])
-        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY)
+        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_PALETTE_TARGET)
         self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
 
-    def test_tool_composition_hides_workbench_even_when_runtime_projects_it_visible(self) -> None:
-        composition = build_shell_composition_payload(
-            active_surface_id=FND_CSM_TOOL_SURFACE_ID,
-            portal_instance_id="fnd",
-            page_title="FND-CSM",
-            page_subtitle="",
-            activity_items=[],
-            control_panel={},
-            workbench={"visible": True},
-            interface_panel={},
-            shell_state=None,
-        )
-        self.assertTrue(composition["workbench_collapsed"])
-        self.assertFalse(composition["interface_panel_collapsed"])
-        self.assertEqual(composition["foreground_shell_region"], "interface-panel")
-        self.assertFalse(composition["regions"]["workbench"]["visible"])
-        self.assertTrue(composition["regions"]["interface_panel"]["visible"])
-
     def test_workbench_ui_tool_composition_keeps_default_visible_workbench(self) -> None:
+        # Phase 3 (portal_tool_surface_contract.md): interface_panel is retired;
+        # build_shell_composition_payload forces it hidden/collapsed across all
+        # surfaces. Workbench remains the foreground for tool surfaces.
         composition = build_shell_composition_payload(
             active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
@@ -174,10 +163,10 @@ class PortalShellContractTests(unittest.TestCase):
             shell_state=None,
         )
         self.assertFalse(composition["workbench_collapsed"])
-        self.assertFalse(composition["interface_panel_collapsed"])
+        self.assertTrue(composition["interface_panel_collapsed"])
         self.assertEqual(composition["foreground_shell_region"], "center-workbench")
         self.assertTrue(composition["regions"]["workbench"]["visible"])
-        self.assertTrue(composition["regions"]["interface_panel"]["visible"])
+        self.assertFalse(composition["regions"]["interface_panel"]["visible"])
 
     def test_dispatch_bodies_preserve_portal_capabilities(self) -> None:
         state = initial_portal_shell_state(
