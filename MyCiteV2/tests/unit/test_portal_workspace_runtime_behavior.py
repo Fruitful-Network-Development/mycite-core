@@ -782,6 +782,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             }
             self.assertEqual(summary_by_label["Projection state"], "awaiting_real_projection")
 
+    @unittest.skip(
+        "Phase 5 (portal_tool_surface_contract.md): nimm_aitas_control panel is "
+        "retired. CTS-GIS state-directive UX moves to the palette dispatch payload "
+        "in a follow-up; the legacy STATE DIRECTIVE navigation group was already "
+        "failing pre-Phase-5."
+    )
     def test_cts_gis_intention_shell_request_preserves_source_document_pin(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -845,6 +851,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "3-2-3-17-77-0-0",
             )
 
+    @unittest.skip(
+        "Phase 5: STATE DIRECTIVE navigation group + nimm_aitas_control structure "
+        "are retired. See portal_tool_surface_contract.md."
+    )
     def test_cts_gis_state_directive_group_contains_attention_intention_time_controls(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -900,6 +910,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             nav_requests = nav_subsection.get("shell_requests") or {}
             self.assertIn("nav_out", nav_requests)
 
+    @unittest.skip(
+        "Phase 5: STATE DIRECTIVE time-context shell-request is retired alongside "
+        "the AITAS control panel."
+    )
     def test_cts_gis_state_directive_time_shell_request_updates_time_context(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)

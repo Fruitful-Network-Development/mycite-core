@@ -1225,154 +1225,6 @@ def _build_context_conditions(
     return conditions
 
 
-def _build_nimm_aitas_control_section(
-    *,
-    shell_state: PortalShellState | None,
-    directive_context: dict[str, Any] | None,
-    nimm_directive: str | None,
-    aitas_state: dict[str, Any] | None,
-    portal_scope: PortalScope,
-    surface_id: str,
-    file_entries: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    """Build unified NIMM-AITAS control section with stacked facets."""
-
-    context = dict(directive_context or {})
-    overlay = dict(context.get("overlay") or {})
-    nimm_state = dict(overlay.get("nimm_state") or {})
-    aitas_state_overlay = dict(overlay.get("aitas_state") or aitas_state or {})
-    verb_value = getattr(shell_state, "verb", "") if shell_state is not None else ""
-    focus_subject_id = ""
-    if shell_state is not None:
-        focus_subject_id = as_text((shell_state.focus_subject or {}).get("id"))
-    verb_shell_requests = (
-        _verb_tab_entries(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            requested_surface_id=surface_id,
-        )
-        if shell_state is not None
-        else []
-    )
-    nav_shell_requests = _nimm_navigation_shell_requests(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        requested_surface_id=surface_id,
-        file_entries=file_entries,
-    )
-
-    return {
-        "title": "Directive Control",
-        "collapsible": True,
-        "default_state": "expanded",
-        "facets": [
-            {
-                "facet_id": "nimm_directive",
-                "label": "NIMM Directive",
-                "subsections": [
-                    {
-                        "label": "Verb",
-                        "value": verb_value,
-                        "editable": True,
-                        "control_type": "tabs",
-                        "options": [VERB_NAVIGATE, VERB_INVESTIGATE, VERB_MEDIATE, VERB_MANIPULATE],
-                        "shell_requests": verb_shell_requests,
-                    },
-                    {
-                        "label": "Operation",
-                        "value": as_text(nimm_state.get("operation")) or "—",
-                        "editable": False,
-                        "control_type": "display",
-                    },
-                    {
-                        "label": "Target",
-                        "value": focus_subject_id or portal_scope.scope_id,
-                        "editable": False,
-                        "control_type": "display",
-                    },
-                    {
-                        "label": "NAV",
-                        "value": "Directional shell controls",
-                        "editable": True,
-                        "control_type": "nav_arrows",
-                        "shell_requests": nav_shell_requests,
-                    },
-                ],
-            },
-            {
-                "facet_id": "aitas_state",
-                "label": "AITAS State",
-                "subsections": [
-                    {
-                        "label": "Intention Token",
-                        "value": as_text(aitas_state_overlay.get("intention_rule_id") or aitas_state_overlay.get("intention_token")),
-                        "editable": True,
-                        "control_type": "select",
-                        "options": [],  # Runtime-provided
-                    },
-                    {
-                        "label": "Time Directive",
-                        "value": as_text(aitas_state_overlay.get("time_directive")),
-                        "editable": True,
-                        "control_type": "input",
-                    },
-                    {
-                        "label": "Archetype Family",
-                        "value": as_text(aitas_state_overlay.get("archetype_family_id")),
-                        "editable": True,
-                        "control_type": "select",
-                        "options": [],
-                    },
-                    {
-                        "label": "Attention Node",
-                        "value": as_text(aitas_state_overlay.get("attention_node_id")),
-                        "editable": True,
-                        "control_type": "input",
-                    },
-                ],
-            },
-            {
-                "facet_id": "envelope_state",
-                "label": "Directive Context",
-                "subsections": [
-                    {
-                        "label": "Context ID",
-                        "value": as_text(overlay.get("context_id")),
-                        "editable": False,
-                        "control_type": "display",
-                    },
-                    {
-                        "label": "Subject Level",
-                        "value": as_text(context.get("subject_level")),
-                        "editable": False,
-                        "control_type": "display",
-                    },
-                    {
-                        "label": "Version Hash",
-                        "value": as_text(context.get("subject_version_hash")),
-                        "editable": False,
-                        "control_type": "display",
-                        "copyable": True,
-                    },
-                    {
-                        "label": "Hyphae Hash",
-                        "value": as_text(context.get("subject_hyphae_hash")),
-                        "editable": False,
-                        "control_type": "display",
-                        "copyable": True,
-                    },
-                    {
-                        "label": "Overlay Status",
-                        "value": "loaded" if overlay else "missing",
-                        "editable": False,
-                        "control_type": "badge",
-                    },
-                ],
-            },
-        ],
-    }
-
-
 def _build_terminal_control_interface(
     *,
     shell_state: PortalShellState | None,
@@ -1574,18 +1426,10 @@ def build_unified_control_panel(
     if workbench_row is not None:
         context_conditions.append(workbench_row)
 
-    nimm_aitas_control = _build_nimm_aitas_control_section(
-        shell_state=shell_state,
-        directive_context=directive_context,
-        nimm_directive=nimm_directive,
-        aitas_state=aitas_state,
-        portal_scope=portal_scope,
-        surface_id=surface_id,
-        file_entries=file_entries,
-    )
-    if context_controls is not None:
-        nimm_aitas_control["context_controls"] = list(context_controls)
-
+    # Phase 5 (portal_tool_surface_contract.md): the 5-facet NIMM-AITAS control
+    # section is retired. The mutation pipeline still consumes nimm_envelope
+    # state internally, but the UI panel that exposed it as user-editable facets
+    # is gone — palette dispatch carries the relevant directive parameters.
     extensions = dict(tool_extensions or {})
     terminal_enabled = bool(extensions.pop("directive_terminal_enabled", False))
     terminal_control = _build_terminal_control_interface(
@@ -1614,7 +1458,6 @@ def build_unified_control_panel(
             "surface_label": surface_label,
             "portal_identity": portal_identity,
             "context_conditions": context_conditions,
-            "nimm_aitas_control": nimm_aitas_control,
             "terminal_control": terminal_control,
             "navigation_groups": resolved_navigation_groups,
             "actions": list(actions or []),

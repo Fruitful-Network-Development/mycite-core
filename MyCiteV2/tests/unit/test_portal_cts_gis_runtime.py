@@ -210,12 +210,11 @@ class PortalCtsGisRuntimeTests(unittest.TestCase):
             self.assertEqual(initializer.get("verb"), "mediate")
             self.assertEqual(initializer.get("target_authority"), "cts_gis")
 
-        controls = list((regions["control_panel"].get("nimm_aitas_control") or {}).get("context_controls") or [])
-        self.assertEqual(
-            [control.get("context_id") for control in controls],
-            ["attention", "intention", "time", "archetype", "spatial"],
-        )
-        self.assertEqual([control.get("control_type") for control in controls], ["select", "stepper", "directional", "select", "directional"])
+        # Phase 5 (portal_tool_surface_contract.md): nimm_aitas_control is
+        # retired. The five AITAS context controls (attention, intention, time,
+        # archetype, spatial) are no longer exposed as a control-panel section.
+        # The palette dispatch carries directive intent in a follow-up phase.
+        self.assertNotIn("nimm_aitas_control", regions["control_panel"])
 
     def test_control_panel_excludes_legacy_directive_sections(self) -> None:
         regions = _cts_gis_regions(
