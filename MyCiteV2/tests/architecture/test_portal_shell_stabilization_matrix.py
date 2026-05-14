@@ -50,23 +50,34 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
                 shell_state=None,
             )
 
+        # Phase 12d (drift remediation): the interface_panel region has
+        # been retired (Phase 3d / 12c). build_shell_composition_payload
+        # forces interface_panel_collapsed=True on every surface. The
+        # original stabilization matrix expected per-surface posture
+        # differences (FND-CSM "interface-panel-primary",
+        # CTS-GIS "center-workbench" alongside an open panel, etc.);
+        # those distinctions no longer exist. The matrix now asserts the
+        # uniform always-hidden state.
         system = composition_for(SYSTEM_ROOT_SURFACE_ID)
         self.assertFalse(system["workbench_collapsed"])
         self.assertTrue(system["interface_panel_collapsed"])
 
+        # FND-CSM tool surface was retired in Phase 3g; constants kept as
+        # preservation invariants. Composition for it still returns a
+        # collapsed interface panel and an uncollapsed (default-visible)
+        # workbench, same as any other tool surface.
         fnd_csm = composition_for(FND_CSM_TOOL_SURFACE_ID)
-        self.assertTrue(fnd_csm["workbench_collapsed"])
-        self.assertFalse(fnd_csm["interface_panel_collapsed"])
+        self.assertTrue(fnd_csm["interface_panel_collapsed"])
 
         cts = composition_for(CTS_GIS_TOOL_SURFACE_ID)
         # CTS-GIS has default_workbench_visible=True — workbench is center foreground
         self.assertFalse(cts["workbench_collapsed"])
-        self.assertFalse(cts["interface_panel_collapsed"])
+        self.assertTrue(cts["interface_panel_collapsed"])
         self.assertEqual(cts["foreground_shell_region"], "center-workbench")
 
         workbench_ui = composition_for(WORKBENCH_UI_TOOL_SURFACE_ID)
         self.assertFalse(workbench_ui["workbench_collapsed"])
-        self.assertFalse(workbench_ui["interface_panel_collapsed"])
+        self.assertTrue(workbench_ui["interface_panel_collapsed"])
 
         network = composition_for(NETWORK_ROOT_SURFACE_ID)
         self.assertFalse(network["workbench_collapsed"])
