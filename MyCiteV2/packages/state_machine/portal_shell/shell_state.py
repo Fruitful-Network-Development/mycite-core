@@ -22,11 +22,13 @@ from .shell_schemas import (
     PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA,
     ROOT_SURFACE_IDS,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+    SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_KIND_GENERAL,
     TOOL_KIND_HOST_ALIAS,
     TOOL_KIND_SERVICE,
     TOOL_SURFACE_IDS,
+    UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     VERB_NAVIGATE,
 )
 
@@ -488,16 +490,28 @@ class PortalToolRegistryEntry:
     default_enabled: bool = True
     default_workbench_visible: bool = False
     summary: str = ""
+    applies_to_archetype: tuple[str, ...] = ()
+    applies_to_source_kind: tuple[str, ...] = ()
+    is_extension: bool = False
     schema: str = field(default=PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
         if not as_text(self.tool_id):
             raise ValueError("tool_registry.tool_id is required")
-        if self.surface_id not in TOOL_SURFACE_IDS:
-            raise ValueError("tool_registry.surface_id must be a known tool surface")
+        if self.is_extension:
+            if self.surface_id != UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
+                raise ValueError(
+                    "tool_registry.surface_id must equal UTILITIES_TOOL_EXPOSURE_SURFACE_ID when is_extension=True"
+                )
+        else:
+            if self.surface_id not in TOOL_SURFACE_IDS:
+                raise ValueError("tool_registry.surface_id must be a known tool surface")
         if self.tool_kind not in {TOOL_KIND_GENERAL, TOOL_KIND_SERVICE, TOOL_KIND_HOST_ALIAS}:
             raise ValueError("tool_registry.tool_kind is invalid")
-        if self.surface_posture not in {SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY}:
+        if self.surface_posture not in {
+            SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
+            SURFACE_POSTURE_PALETTE_TARGET,
+        }:
             raise ValueError("tool_registry.surface_posture is invalid")
         if self.read_write_posture not in {"read-only", "write"}:
             raise ValueError("tool_registry.read_write_posture must be read-only or write")
@@ -507,6 +521,17 @@ class PortalToolRegistryEntry:
             _normalize_capabilities(self.required_capabilities, field_name="tool_registry.required_capabilities"),
         )
         object.__setattr__(self, "default_workbench_visible", bool(self.default_workbench_visible))
+        object.__setattr__(
+            self,
+            "applies_to_archetype",
+            _normalize_capabilities(self.applies_to_archetype, field_name="tool_registry.applies_to_archetype"),
+        )
+        object.__setattr__(
+            self,
+            "applies_to_source_kind",
+            _normalize_capabilities(self.applies_to_source_kind, field_name="tool_registry.applies_to_source_kind"),
+        )
+        object.__setattr__(self, "is_extension", bool(self.is_extension))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -523,6 +548,9 @@ class PortalToolRegistryEntry:
             "default_enabled": bool(self.default_enabled),
             "default_workbench_visible": self.default_workbench_visible,
             "summary": self.summary,
+            "applies_to_archetype": list(self.applies_to_archetype),
+            "applies_to_source_kind": list(self.applies_to_source_kind),
+            "is_extension": self.is_extension,
         }
 
 
