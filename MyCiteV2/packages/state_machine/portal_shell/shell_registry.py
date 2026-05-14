@@ -28,10 +28,11 @@ from .shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
 )
-from .shell_state import (
-    PortalSurfaceCatalogEntry,
-    PortalToolRegistryEntry,
-)
+from .shell_state import PortalSurfaceCatalogEntry
+
+# Phase 12a: PortalToolRegistryEntry now lives canonically in shell.py only.
+# Top-level import would create a cycle (shell.py imports this module at
+# module load), so the functions below resolve the class lazily.
 
 
 def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
@@ -99,6 +100,7 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
 
 
 def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
+    from .shell import PortalToolRegistryEntry  # lazy to break import cycle
     return (
         PortalToolRegistryEntry(
             tool_id="cts_gis",
