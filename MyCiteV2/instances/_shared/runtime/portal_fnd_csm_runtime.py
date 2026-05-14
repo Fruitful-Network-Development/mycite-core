@@ -1357,3 +1357,76 @@ def run_portal_fnd_csm_action(
         data_dir=data_dir,
         tool_exposure_policy=tool_exposure_policy,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 2 — Utilities extension dispatch
+# ---------------------------------------------------------------------------
+# The four FND-CSM tabs (email, analytics, newsletter, paypal) are re-exposed
+# as Utilities extensions per portal_tool_surface_contract.md. Each extension
+# reuses the existing _build_*_tab function unchanged; render_extension()
+# adapts the context shape so the caller passes one dict regardless of which
+# extension is being rendered.
+
+
+def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
+    return _build_email_tab(
+        grantee=_as_dict(ctx.get("grantee")),
+        domain=_as_text(ctx.get("domain")),
+        private_dir=ctx.get("private_dir"),
+        authority_db_file=ctx.get("authority_db_file"),
+        portal_instance_id=ctx.get("portal_instance_id"),
+    )
+
+
+def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
+    return _build_analytics_tab(
+        domain=_as_text(ctx.get("domain")),
+        webapps_root=ctx.get("webapps_root"),
+        authority_db_file=ctx.get("authority_db_file"),
+        portal_instance_id=ctx.get("portal_instance_id"),
+    )
+
+
+def _render_ext_newsletter(ctx: dict[str, Any]) -> dict[str, Any]:
+    return _build_newsletter_tab(
+        grantee=_as_dict(ctx.get("grantee")),
+        domain=_as_text(ctx.get("domain")),
+        private_dir=ctx.get("private_dir"),
+        authority_db_file=ctx.get("authority_db_file"),
+        portal_instance_id=ctx.get("portal_instance_id"),
+    )
+
+
+def _render_ext_paypal(ctx: dict[str, Any]) -> dict[str, Any]:
+    return _build_paypal_tab(
+        grantee=_as_dict(ctx.get("grantee")),
+        domain=_as_text(ctx.get("domain")),
+        private_dir=ctx.get("private_dir"),
+        authority_db_file=ctx.get("authority_db_file"),
+        portal_instance_id=ctx.get("portal_instance_id"),
+    )
+
+
+EXTENSION_RENDERERS: dict[str, Any] = {
+    "ext_aws_email": _render_ext_aws_email,
+    "ext_analytics": _render_ext_analytics,
+    "ext_newsletter": _render_ext_newsletter,
+    "ext_paypal": _render_ext_paypal,
+}
+
+
+def render_extension(tool_id: str, ctx: dict[str, Any]) -> dict[str, Any]:
+    """Render an extension by tool_id with the given context dict.
+
+    Returns an empty dict for unknown tool_ids rather than raising; this keeps
+    the utilities surface bundle resilient when an extension is mis-registered.
+    Required context keys vary by extension; see _render_ext_* for specifics.
+    """
+    renderer = EXTENSION_RENDERERS.get(_as_text(tool_id))
+    if renderer is None:
+        return {}
+    try:
+        return renderer(ctx)
+    except Exception:
+        return {}

@@ -1053,7 +1053,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return _render_surface(SYSTEM_ROOT_SURFACE_ID, host_config)
 
     @app.get("/portal/system/tools/<tool_slug>")
-    def portal_system_tool(tool_slug: str) -> str:
+    def portal_system_tool(tool_slug: str) -> Any:
+        # Phase 2 (portal_tool_surface_contract.md): the FND-CSM tool surface
+        # is being retired. Its content now lives under Utilities → Tool Exposure
+        # as four extensions (ext_aws_email, ext_analytics, ext_newsletter,
+        # ext_paypal). Redirect legacy bookmarks until Phase 3 deletes the
+        # surface entry entirely.
+        if tool_slug == "fnd-csm":
+            return redirect("/portal/utilities/tool-exposure", code=302)
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
         if surface_id is None:
             abort(404)
