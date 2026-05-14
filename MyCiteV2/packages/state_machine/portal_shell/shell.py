@@ -1049,22 +1049,12 @@ def reduce_portal_shell_state(
                 control_panel_collapsed=chrome.control_panel_collapsed,
                 interface_panel_open=False,
             )
-    elif normalized_transition.kind == TRANSITION_OPEN_INTERFACE_PANEL:
-        if active_surface_id == SYSTEM_ROOT_SURFACE_ID:
-            mediation_subject = _subject_from_segment(focus_path[-1])
-            verb = VERB_MEDIATE
-        chrome = PortalShellChrome(
-            control_panel_collapsed=chrome.control_panel_collapsed,
-            interface_panel_open=True,
-        )
-    elif normalized_transition.kind == TRANSITION_CLOSE_INTERFACE_PANEL:
-        if active_surface_id == SYSTEM_ROOT_SURFACE_ID:
-            mediation_subject = None
-            verb = VERB_NAVIGATE
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=False,
-            )
+    # Phase 12c (drift remediation): TRANSITION_OPEN_INTERFACE_PANEL and
+    # TRANSITION_CLOSE_INTERFACE_PANEL dispatch arms removed. The interface
+    # panel is hidden unconditionally since Phase 3d, so toggling its
+    # chrome open/closed flag has no observable effect. No caller has
+    # emitted these transitions since Phase 5 retired the NIMM-AITAS UI
+    # that produced them.
 
     next_state = PortalShellState(
         active_surface_id=active_surface_id,
@@ -1736,7 +1726,6 @@ __all__ = [
     "TOOL_KIND_SERVICE",
     "TOOL_SURFACE_IDS",
     "TRANSITION_BACK_OUT",
-    "TRANSITION_CLOSE_INTERFACE_PANEL",
     "TRANSITION_ENTER_SURFACE",
     "TRANSITION_FOCUS_DATUM",
     "TRANSITION_FOCUS_FILE",
@@ -1745,7 +1734,6 @@ __all__ = [
     "anchor_file_key_for_sandbox",
     "sandbox_id_for_file_key",
     "sandbox_id_for_surface",
-    "TRANSITION_OPEN_INTERFACE_PANEL",
     "TRANSITION_SET_VERB",
     "UTILITIES_INTEGRATIONS_ROUTE",
     "UTILITIES_INTEGRATIONS_SURFACE_ID",
