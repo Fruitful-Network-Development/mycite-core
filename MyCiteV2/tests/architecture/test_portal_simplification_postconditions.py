@@ -258,6 +258,24 @@ class ToolRegistryHasEligibilityFieldsTests(unittest.TestCase):
                 "applies_to_archetype or applies_to_source_kind (or be marked is_extension=True)",
             )
 
+    def test_write_capable_tools_declare_manipulates_datum_kinds_unless_extension(self) -> None:
+        """Phase 11 (datum_catalog_phase_e4_migration.md): every tool that
+        writes to the MOS datum store must declare which datum kinds it
+        may mutate. Extensions are exempt because they write to filesystem
+        grantee JSON or operational ndjson, not the datum store.
+        """
+        for entry in build_portal_tool_registry_entries():
+            if entry.is_extension:
+                continue
+            if entry.read_write_posture != "write":
+                continue
+            self.assertTrue(
+                bool(entry.manipulates_datum_kinds),
+                f"{entry.tool_id} has read_write_posture=write but does not "
+                "declare manipulates_datum_kinds. Either declare which datum "
+                "kinds it mutates or change the posture to read-only.",
+            )
+
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class LegacyFndCsmRedirectTests(unittest.TestCase):

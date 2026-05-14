@@ -117,6 +117,11 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             # metadata field still match via their authoritative source_kind.
             applies_to_archetype=("samras_family",),
             applies_to_source_kind=("sandbox_source",),
+            # Phase 11: CTS-GIS is the only first-class tool that mutates the
+            # MOS datum store today (via its mutation_service.execute_manipulation
+            # pipeline). Other tools either read-only or live as utilities
+            # extensions over filesystem grantee JSON.
+            manipulates_datum_kinds=("sandbox_source",),
             summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
         ),
         PortalToolRegistryEntry(
