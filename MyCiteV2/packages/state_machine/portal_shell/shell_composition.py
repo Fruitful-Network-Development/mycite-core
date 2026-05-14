@@ -165,36 +165,20 @@ def build_shell_composition_payload(
         default=default_workbench_visible_for_surface(active_surface_id),
     )
     force_workbench_visible = workbench_region.get("forced_visible") is True
-    interface_open = bool(tool_surface)
-    if not interface_open and state is not None:
-        interface_open = state.chrome.interface_panel_open and state.verb == VERB_MEDIATE
-    requested_interface_panel_visible = interface_panel_region.get("visible") is True
+    # Phase 3 (portal_tool_surface_contract.md): the interface panel is retired.
+    # The palette replaces it as the surface that lists tools applicable to the
+    # selected datum. The interface_panel region remains in the composition for
+    # one transition cycle so consumers that read the field do not crash; it is
+    # never visible and never primary.
     if tool_surface:
-        # First-load tool posture is composition-owned. Runtime payload visibility
-        # hints are treated as content metadata, not posture authority, except for
-        # explicit forced-visible diagnostic workbench flows such as staged preview/apply.
-        if posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY:
-            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-            interface_panel_visible = True
-        else:
-            workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-            interface_panel_visible = True
-    else:
-        interface_panel_visible = bool(interface_open or requested_interface_panel_visible)
+        workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
+    interface_panel_visible = False
     workbench_region["visible"] = workbench_visible
     interface_panel_region["visible"] = interface_panel_visible
-    interface_panel_primary = bool(
-        interface_open
-        and posture == SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY
-        and not default_workbench_visible_for_surface(active_surface_id)
-    )
-    interface_panel_region["primary_surface"] = bool(
-        interface_panel_primary or interface_panel_region.get("primary_surface") is True
-    )
+    # Phase 3: interface panel never primary or dominant after retirement.
+    interface_panel_region["primary_surface"] = False
     interface_panel_region["layout_mode"] = (
-        "dominant"
-        if interface_panel_primary
-        else (as_text(interface_panel_region.get("layout_mode")) or "sidebar")
+        as_text(interface_panel_region.get("layout_mode")) or "sidebar"
     )
     interface_panel_collapsed = not interface_panel_visible
     workbench_collapsed = not bool(workbench_visible)
