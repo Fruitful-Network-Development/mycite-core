@@ -84,6 +84,51 @@ def _as_list(value: object) -> list[Any]:
 
 
 # ---------------------------------------------------------------------------
+# Phase 10 — Reflective/operational separation helpers
+# ---------------------------------------------------------------------------
+# Each operational extension (email, newsletter, paypal, analytics) splits
+# into two sections:
+#
+#   "configuration" — read-only mirror of the relevant grantee JSON
+#                     sub-config, with an "Edit in Grantee Profile" link.
+#   The rest of the payload — operational reality (mailboxes, orders,
+#                              contact log, events).
+#
+# Operators edit configuration via the Phase 9 ext_grantee_profile form;
+# the operational data is observed-only.
+
+
+def _grantee_edit_link(focus_field: str) -> dict[str, str]:
+    """Build the {label, href, focus_field} edit-link for a configuration section.
+
+    The href points at the Utilities tool-exposure surface with a query
+    parameter telling the client to scroll the grantee form to a particular
+    sub-config. Phase 10 emits this as plain metadata; the client-side
+    rendering interprets focus_field to anchor-scroll.
+    """
+    return {
+        "label": "Edit in Grantee Profile",
+        "href": f"/portal/utilities/tool-exposure?utilities_extension=ext_grantee_profile&focus_field={focus_field}",
+        "focus_field": focus_field,
+    }
+
+
+def _mask_secret(value: object) -> str:
+    """Return a redacted form of a secret. Empty input → empty output.
+
+    Keeps the last 4 characters visible for operator verification; everything
+    else is replaced with bullets. Strings shorter than 8 characters are
+    fully masked.
+    """
+    text = _as_text(value)
+    if not text:
+        return ""
+    if len(text) < 8:
+        return "•" * len(text)
+    return "•" * (len(text) - 4) + text[-4:]
+
+
+# ---------------------------------------------------------------------------
 # Grantee profile loading
 # ---------------------------------------------------------------------------
 
@@ -190,8 +235,20 @@ def _build_email_tab(
     from MOS via :class:`MosDatumAwsCsmProfileAdapter`. Otherwise falls
     back to the legacy filesystem store.
     """
+    aws_subconfig = _as_dict(grantee.get("aws_ses"))
+    configuration = {
+        "label": "AWS SES configuration",
+        "summary": "Identity, region, and SMTP credentials. Edit in the Grantee Profile.",
+        "items": [
+            {"label": "Region", "value": _as_text(aws_subconfig.get("region"))},
+            {"label": "Identity", "value": _as_text(aws_subconfig.get("identity"))},
+            {"label": "SMTP username", "value": _as_text(aws_subconfig.get("smtp_username"))},
+            {"label": "SMTP password", "value": _mask_secret(aws_subconfig.get("smtp_password"))},
+        ],
+        "edit_link": _grantee_edit_link("aws_ses"),
+    }
     if not domain or private_dir is None:
-        return {"profiles": [], "domain": domain}
+        return {"profiles": [], "domain": domain, "configuration": configuration}
 
     mos_store: Any = None
     if authority_db_file is not None:
@@ -252,6 +309,7 @@ def _build_email_tab(
         "domain": domain,
         "profiles": profiles,
         "domain_record": domain_record,
+        "configuration": configuration,
     }
 
 
@@ -269,8 +327,17 @@ def _build_analytics_tab(
     refreshed by
     :mod:`MyCiteV2.scripts.sync_fnd_analytics_summary` (run periodically).
     """
+    # Phase 10: analytics has no operator-editable configuration; the events
+    # directory is observed only. Surface a small data_source hint so the
+    # client can show operators where the numbers come from.
+    data_source: dict[str, str] = {
+        "label": "Data source",
+        "summary": "Read-only operational events. Configure analytics ingestion at the webapps layer.",
+        "events_dir": "",
+        "kind": "",
+    }
     if not domain or webapps_root is None:
-        return {"domain": domain, "summary": {}, "recent_events": []}
+        return {"domain": domain, "summary": {}, "recent_events": [], "data_source": data_source}
     if authority_db_file is not None:
         try:
             from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
@@ -283,12 +350,14 @@ def _build_analytics_tab(
             )
             cached = adapter.load_summary(domain=domain)
             if cached is not None:
+                data_source["kind"] = "mos_datum"
                 return {
                     "domain": domain,
                     "summary": cached.get("summary", {}),
                     "recent_events": cached.get("recent_events", []),
                     "source": "mos_datum",
                     "computed_at": cached.get("computed_at", ""),
+                    "data_source": data_source,
                 }
         except Exception:
             pass
@@ -316,11 +385,14 @@ def _build_analytics_tab(
                         pass
             except Exception:
                 pass
+    data_source["events_dir"] = str(events_dir)
+    data_source["kind"] = "webapps_ndjson"
     return {
         "domain": domain,
         "summary": counts,
         "recent_events": recent,
         "events_dir_present": events_dir.exists(),
+        "data_source": data_source,
     }
 
 
@@ -337,12 +409,24 @@ def _build_newsletter_tab(
     from the MOS v2 datum (``fnd_newsletter_contact_log_<domain>``).
     Profile reads stay on the filesystem adapter regardless.
     """
+    newsletter_subconfig = _as_dict(grantee.get("newsletter"))
+    configuration = {
+        "label": "Newsletter configuration",
+        "summary": "Sender address, display name, and reply-to. Edit in the Grantee Profile.",
+        "items": [
+            {"label": "Sender address", "value": _as_text(newsletter_subconfig.get("selected_sender_address"))},
+            {"label": "Display name", "value": _as_text(newsletter_subconfig.get("sender_display_name"))},
+            {"label": "Reply-to", "value": _as_text(newsletter_subconfig.get("reply_to"))},
+        ],
+        "edit_link": _grantee_edit_link("newsletter"),
+    }
     if not domain or private_dir is None:
         return {
             "domain": domain,
             "sender_options": _as_list(grantee.get("users")),
             "current_sender": "",
             "contact_rows": [],
+            "configuration": configuration,
         }
     contacts: list[dict[str, Any]] = []
     current_sender = ""
@@ -385,6 +469,7 @@ def _build_newsletter_tab(
         "contact_rows": contacts,
         "subscribed_count": sum(1 for c in contacts if c.get("subscribed")),
         "unsubscribed_count": sum(1 for c in contacts if not c.get("subscribed")),
+        "configuration": configuration,
     }
 
 
@@ -441,8 +526,30 @@ def _build_paypal_tab(
             # Preserve a grantee-inline webhook_url even if the MOS adapter
             # threw; it was set before this try block ran.
 
+    # Phase 10: build the configuration mirror up front so it's attached
+    # to whichever return path executes (MOS shortcut or filesystem fallback).
+    paypal_subconfig = _as_dict(grantee.get("paypal"))
+
+    def _paypal_configuration() -> dict[str, Any]:
+        return {
+            "label": "PayPal configuration",
+            "summary": "Webhook URL, client credentials, and environment. Edit in the Grantee Profile.",
+            "items": [
+                {"label": "Webhook URL", "value": _as_text(paypal_subconfig.get("webhook_url")) or webhook_url},
+                {"label": "Environment", "value": _as_text(paypal_subconfig.get("environment")) or "sandbox"},
+                {"label": "Client ID", "value": _as_text(paypal_subconfig.get("client_id"))},
+                {"label": "Client secret", "value": _mask_secret(paypal_subconfig.get("client_secret"))},
+            ],
+            "edit_link": _grantee_edit_link("paypal"),
+        }
+
     if orders or webhook_url:
-        return {"domain": domain, "webhook_url": webhook_url, "orders": orders}
+        return {
+            "domain": domain,
+            "webhook_url": webhook_url,
+            "orders": orders,
+            "configuration": _paypal_configuration(),
+        }
 
     # Filesystem fallback (unchanged from the pre-MOS behavior).
     if private_dir is not None:
@@ -487,6 +594,7 @@ def _build_paypal_tab(
         "domain": domain,
         "webhook_url": webhook_url,
         "orders": orders,
+        "configuration": _paypal_configuration(),
     }
 
 
