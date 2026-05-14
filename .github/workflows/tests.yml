@@ -1,0 +1,54 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    name: pytest (unit + integration + architecture)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run pytest (no smoke)
+        # Excludes tests/smoke/ — those run in the smoke job below with playwright.
+        run: pytest MyCiteV2/tests/ --ignore=MyCiteV2/tests/smoke -v
+
+  smoke:
+    name: browser smoke (playwright + chromium-headless-shell)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Don't block PRs if smoke is flaky for non-code reasons; just report.
+    # Flip to required once stable for ≥10 runs.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: "pip"
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Install chromium-headless-shell
+        # Only the headless variant — full chromium isn't needed.
+        run: playwright install chromium-headless-shell
+
+      - name: Run browser smoke
+        run: pytest MyCiteV2/tests/smoke/ -v
