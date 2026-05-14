@@ -20,7 +20,7 @@ The legacy sources are:
   JSON file per grantee.
 
 Migration scripts ingest the legacy sources into MOS; the runtime
-``_build_paypal_tab`` prefers MOS when present and falls back to the
+``_build_paypal_extension_payload`` prefers MOS when present and falls back to the
 filesystem otherwise.
 """
 

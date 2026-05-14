@@ -97,7 +97,7 @@ class TestUtilitiesToolExposureSurface(unittest.TestCase):
         public_dir, private_dir, data_dir, webapps_root = self._build_tempdirs()
 
         # Seed a single order in the PayPal NDJSON store at the legacy location
-        # that _build_paypal_tab reads.
+        # that _build_paypal_extension_payload reads.
         paypal_dir = private_dir / "utilities" / "tools" / "paypal-csm"
         paypal_dir.mkdir(parents=True, exist_ok=True)
         order_row = {

@@ -26,10 +26,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-    _build_analytics_tab,
-    _build_email_tab,
-    _build_newsletter_tab,
-    _build_paypal_tab,
+    _build_analytics_extension_payload,
+    _build_email_extension_payload,
+    _build_newsletter_extension_payload,
+    _build_paypal_extension_payload,
     _grantee_edit_link,
     _mask_secret,
 )
@@ -87,7 +87,7 @@ class GranteeEditLinkTests(unittest.TestCase):
 
 class PaypalExtensionConfigurationTests(unittest.TestCase):
     def test_configuration_section_present_with_masked_secret(self) -> None:
-        out = _build_paypal_tab(_full_grantee(), "example.org", None)
+        out = _build_paypal_extension_payload(_full_grantee(), "example.org", None)
         cfg = out["configuration"]
         items = {item["label"]: item["value"] for item in cfg["items"]}
         self.assertEqual(items["Webhook URL"], "https://example.org/hook")
@@ -99,7 +99,7 @@ class PaypalExtensionConfigurationTests(unittest.TestCase):
         self.assertEqual(cfg["edit_link"]["focus_field"], "paypal")
 
     def test_orders_dashboard_still_returned_alongside_configuration(self) -> None:
-        out = _build_paypal_tab(_full_grantee(), "example.org", None)
+        out = _build_paypal_extension_payload(_full_grantee(), "example.org", None)
         # Operational reality (orders, webhook_url top-level) remains.
         self.assertIn("orders", out)
         self.assertIn("webhook_url", out)
@@ -109,7 +109,7 @@ class PaypalExtensionConfigurationTests(unittest.TestCase):
 
 class EmailExtensionConfigurationTests(unittest.TestCase):
     def test_aws_ses_configuration_section_present_with_masked_password(self) -> None:
-        out = _build_email_tab(_full_grantee(), "example.org", None)
+        out = _build_email_extension_payload(_full_grantee(), "example.org", None)
         cfg = out["configuration"]
         items = {item["label"]: item["value"] for item in cfg["items"]}
         self.assertEqual(items["Region"], "us-east-1")
@@ -122,14 +122,14 @@ class EmailExtensionConfigurationTests(unittest.TestCase):
     def test_configuration_present_on_no_domain_path(self) -> None:
         # When private_dir is None the function returns early; configuration
         # must still surface so operators can see + edit credentials.
-        out = _build_email_tab(_full_grantee(), "", None)
+        out = _build_email_extension_payload(_full_grantee(), "", None)
         self.assertIn("configuration", out)
         self.assertEqual(out["configuration"]["edit_link"]["focus_field"], "aws_ses")
 
 
 class NewsletterExtensionConfigurationTests(unittest.TestCase):
     def test_newsletter_configuration_section_present(self) -> None:
-        out = _build_newsletter_tab(_full_grantee(), "example.org", None)
+        out = _build_newsletter_extension_payload(_full_grantee(), "example.org", None)
         cfg = out["configuration"]
         items = {item["label"]: item["value"] for item in cfg["items"]}
         self.assertEqual(items["Sender address"], "hello@example.org")
@@ -139,7 +139,7 @@ class NewsletterExtensionConfigurationTests(unittest.TestCase):
 
     def test_empty_subconfig_renders_empty_values(self) -> None:
         grantee = {"msn_id": "g2", "label": "G"}  # No newsletter sub-config.
-        out = _build_newsletter_tab(grantee, "example.org", None)
+        out = _build_newsletter_extension_payload(grantee, "example.org", None)
         cfg = out["configuration"]
         values = [item["value"] for item in cfg["items"]]
         # All empty, but the section is still rendered with the edit link.
@@ -149,7 +149,7 @@ class NewsletterExtensionConfigurationTests(unittest.TestCase):
 
 class AnalyticsDataSourceTests(unittest.TestCase):
     def test_data_source_kind_unset_when_no_domain(self) -> None:
-        out = _build_analytics_tab("", None)
+        out = _build_analytics_extension_payload("", None)
         ds = out["data_source"]
         self.assertEqual(ds["kind"], "")
         self.assertEqual(ds["label"], "Data source")
@@ -158,7 +158,7 @@ class AnalyticsDataSourceTests(unittest.TestCase):
         # webapps_root path doesn't exist so the events_dir won't exist either,
         # but the data_source.kind should still settle on webapps_ndjson and
         # carry the events_dir path so operators can find where to look.
-        out = _build_analytics_tab("example.org", "/nonexistent")
+        out = _build_analytics_extension_payload("example.org", "/nonexistent")
         ds = out["data_source"]
         self.assertEqual(ds["kind"], "webapps_ndjson")
         self.assertIn("example.org", ds["events_dir"])
