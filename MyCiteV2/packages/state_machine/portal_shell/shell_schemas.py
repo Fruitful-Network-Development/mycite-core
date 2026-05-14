@@ -54,9 +54,18 @@ SYSTEM_SANDBOX_QUERY_FILE_TOKEN = "sandbox"
 
 PORTAL_SCOPE_DEFAULT_ID = "fnd"
 SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY = "interface_panel_primary"
+SURFACE_POSTURE_PALETTE_TARGET = "palette_target"
 TOOL_KIND_GENERAL = "general_tool"
 TOOL_KIND_SERVICE = "service_tool"
 TOOL_KIND_HOST_ALIAS = "host_alias_tool"
+
+# Document-archetype tokens used by PortalToolRegistryEntry.applies_to_archetype
+# and by recognize_applicable_tools() to filter the palette. Values are lowercase
+# slugs so they normalize consistently with AuthoritativeDatumDocument.source_kind.
+# See portal_tool_surface_contract.md.
+ARCHETYPE_SAMRAS_FAMILY = "samras_family"
+ARCHETYPE_MSS_DOC = "mss_doc"
+ARCHETYPE_HYPHAE_RUDI = "hyphae_rudi"
 
 FOCUS_LEVEL_SANDBOX = "sandbox"
 FOCUS_LEVEL_FILE = "file"
