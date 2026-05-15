@@ -6,6 +6,8 @@ import json
 import os
 import re
 import tempfile
+import urllib.parse
+import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -948,12 +950,9 @@ def _paypal_base_url(environment: str) -> str:
 
 
 def _get_paypal_access_token(client_id: str, client_secret: str, base_url: str) -> str:
-    import urllib.parse
-    import urllib.request as _urllib_request
-
     credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
     data = urllib.parse.urlencode({"grant_type": "client_credentials"}).encode()
-    req = _urllib_request.Request(
+    req = urllib.request.Request(
         f"{base_url}/v1/oauth2/token",
         data=data,
         headers={
@@ -962,9 +961,47 @@ def _get_paypal_access_token(client_id: str, client_secret: str, base_url: str) 
         },
         method="POST",
     )
-    with _urllib_request.urlopen(req, timeout=15) as resp:
+    with urllib.request.urlopen(req, timeout=15) as resp:
         result = json.loads(resp.read().decode())
     return _as_text(result.get("access_token"))
+
+
+def _create_paypal_order(*, access_token: str, base_url: str, body: dict[str, Any]) -> dict[str, Any]:
+    """POST a checkout-order create request and return the parsed response.
+
+    Extracted from the route handler so smoke tests can monkey-patch
+    ``urllib.request.urlopen`` (or this function) and exercise the flow
+    against a tempdir without hitting PayPal. Real prod path is unchanged.
+    """
+    req = urllib.request.Request(
+        f"{base_url}/v2/checkout/orders",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode())
+
+
+def _capture_paypal_order(*, access_token: str, base_url: str, order_id: str) -> dict[str, Any]:
+    """POST a checkout-order capture request and return the parsed response.
+
+    Sibling of ``_create_paypal_order``; same testability rationale.
+    """
+    req = urllib.request.Request(
+        f"{base_url}/v2/checkout/orders/{order_id}/capture",
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        return json.loads(resp.read().decode())
 
 
 def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
@@ -1586,9 +1623,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/create-order")
     def fnd_paypal_create_order() -> tuple[Any, int]:
-        import urllib.error
-        import urllib.request
-
         payload = _json_payload()
         domain = _normalize_domain(request.host)
         amount = _as_text(payload.get("amount"))
@@ -1631,30 +1665,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         try:
             access_token = _get_paypal_access_token(client_id, client_secret, base_url)
-            order_body = json.dumps({
-                "intent": "CAPTURE",
-                "purchase_units": [{
-                    "amount": {"currency_code": currency_code, "value": amount},
-                    "custom_id": custom_id,
-                    "description": item_description,
-                }],
-                "application_context": {
-                    "brand_name": brand_name,
-                    "return_url": return_url,
-                    "cancel_url": cancel_url,
+            order_result = _create_paypal_order(
+                access_token=access_token,
+                base_url=base_url,
+                body={
+                    "intent": "CAPTURE",
+                    "purchase_units": [{
+                        "amount": {"currency_code": currency_code, "value": amount},
+                        "custom_id": custom_id,
+                        "description": item_description,
+                    }],
+                    "application_context": {
+                        "brand_name": brand_name,
+                        "return_url": return_url,
+                        "cancel_url": cancel_url,
+                    },
                 },
-            }).encode()
-            req = urllib.request.Request(
-                f"{base_url}/v2/checkout/orders",
-                data=order_body,
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                order_result = json.loads(resp.read().decode())
         except Exception as exc:
             return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
 
@@ -1686,9 +1713,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/capture-order")
     def fnd_paypal_capture_order() -> tuple[Any, int]:
-        import urllib.error
-        import urllib.request
-
         payload = _json_payload()
         domain = _normalize_domain(request.host)
         order_id = _as_text(payload.get("order_id"))
@@ -1716,17 +1740,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         try:
             access_token = _get_paypal_access_token(client_id, client_secret, base_url)
-            req = urllib.request.Request(
-                f"{base_url}/v2/checkout/orders/{order_id}/capture",
-                data=b"{}",
-                headers={
-                    "Authorization": f"Bearer {access_token}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
+            capture_result = _capture_paypal_order(
+                access_token=access_token,
+                base_url=base_url,
+                order_id=order_id,
             )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                capture_result = json.loads(resp.read().decode())
         except Exception as exc:
             return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
 

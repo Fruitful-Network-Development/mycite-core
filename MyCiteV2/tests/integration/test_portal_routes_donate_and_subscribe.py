@@ -129,6 +129,72 @@ class TestPreservationRoutesRegistered(unittest.TestCase):
 
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class TestPaypalApiHelpersAreMockable(unittest.TestCase):
+    """The Phase 13d-prep refactor extracted the PayPal create-order and
+    capture-order calls into module-level helpers so a smoke test can
+    monkey-patch ``urllib.request.urlopen`` and exercise the flow against
+    a tempdir without hitting PayPal's sandbox.
+    """
+
+    def test_create_paypal_order_makes_one_https_post_with_bearer_auth(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from MyCiteV2.instances._shared.portal_host.app import _create_paypal_order
+
+        fake_resp = MagicMock()
+        fake_resp.__enter__.return_value = fake_resp
+        fake_resp.__exit__.return_value = False
+        fake_resp.read.return_value = b'{"id": "ORDER123", "status": "CREATED"}'
+
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app.urllib.request.urlopen",
+            return_value=fake_resp,
+            create=True,
+        ) as fake_urlopen:
+            result = _create_paypal_order(
+                access_token="TOKEN",
+                base_url="https://api-m.sandbox.paypal.com",
+                body={"intent": "CAPTURE", "purchase_units": [{"amount": {"value": "5"}}]},
+            )
+
+        self.assertEqual(result, {"id": "ORDER123", "status": "CREATED"})
+        self.assertEqual(fake_urlopen.call_count, 1)
+        req = fake_urlopen.call_args.args[0]
+        self.assertEqual(req.full_url, "https://api-m.sandbox.paypal.com/v2/checkout/orders")
+        self.assertEqual(req.get_method(), "POST")
+        self.assertEqual(req.headers.get("Authorization"), "Bearer TOKEN")
+
+    def test_capture_paypal_order_targets_order_id_endpoint(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from MyCiteV2.instances._shared.portal_host.app import _capture_paypal_order
+
+        fake_resp = MagicMock()
+        fake_resp.__enter__.return_value = fake_resp
+        fake_resp.__exit__.return_value = False
+        fake_resp.read.return_value = b'{"id": "ORDER123", "status": "COMPLETED"}'
+
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app.urllib.request.urlopen",
+            return_value=fake_resp,
+            create=True,
+        ) as fake_urlopen:
+            result = _capture_paypal_order(
+                access_token="TOKEN",
+                base_url="https://api-m.sandbox.paypal.com",
+                order_id="ORDER123",
+            )
+
+        self.assertEqual(result["status"], "COMPLETED")
+        req = fake_urlopen.call_args.args[0]
+        self.assertEqual(
+            req.full_url,
+            "https://api-m.sandbox.paypal.com/v2/checkout/orders/ORDER123/capture",
+        )
+        self.assertEqual(req.get_method(), "POST")
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class TestNewsletterKnownDomainsResolution(unittest.TestCase):
     """The newsletter known-domains lookup must derive from the host config's
     private_dir (V2PortalHostConfig.private_dir / utilities/tools/newsletter-admin/),
