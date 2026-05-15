@@ -1401,6 +1401,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         from MyCiteV2.packages.core.grantee import (
             AwsSesConfig,
+            ConnectConfig,
             GranteeProfile,
             NewsletterConfig,
             PaypalConfig,
@@ -1436,8 +1437,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
         # Split flat dotted-key fields into top-level and sub-config buckets.
+        # Phase 17a: ``connect`` joins paypal/aws_ses/newsletter as a
+        # known sub-config so the operator can edit forward_to_email
+        # via the grantee profile form.
         identity_fields: dict[str, Any] = {}
-        sub_buckets: dict[str, dict[str, Any]] = {"paypal": {}, "aws_ses": {}, "newsletter": {}}
+        sub_buckets: dict[str, dict[str, Any]] = {
+            "paypal": {},
+            "aws_ses": {},
+            "newsletter": {},
+            "connect": {},
+        }
         for key, value in fields_raw.items():
             key_text = _as_text(key)
             if "." in key_text:
@@ -1477,6 +1486,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 paypal=_build_sub(PaypalConfig, sub_buckets["paypal"], current.paypal),
                 aws_ses=_build_sub(AwsSesConfig, sub_buckets["aws_ses"], current.aws_ses),
                 newsletter=_build_sub(NewsletterConfig, sub_buckets["newsletter"], current.newsletter),
+                connect=_build_sub(ConnectConfig, sub_buckets["connect"], current.connect),
             )
         except ValueError as exc:
             return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400

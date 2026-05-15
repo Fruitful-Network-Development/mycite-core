@@ -12,6 +12,7 @@ for the canonical schema and storage invariants.
 from .schema import (
     GRANTEE_PROFILE_SCHEMA,
     AwsSesConfig,
+    ConnectConfig,
     GranteeProfile,
     NewsletterConfig,
     PaypalConfig,
@@ -20,6 +21,7 @@ from .store import load_grantee_profile, save_grantee_profile
 
 __all__ = [
     "AwsSesConfig",
+    "ConnectConfig",
     "GRANTEE_PROFILE_SCHEMA",
     "GranteeProfile",
     "NewsletterConfig",
