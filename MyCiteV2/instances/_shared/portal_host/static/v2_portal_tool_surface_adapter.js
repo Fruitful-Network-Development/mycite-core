@@ -122,21 +122,18 @@
         globalName: "PortalSystemWorkspaceRenderer",
         label: "system workspace",
       },
-      "system.tools.cts_gis": {
-        moduleId: "cts_gis_workspace",
-        globalName: "PortalCtsGisWorkspaceRenderer",
-        label: "CTS-GIS workbench",
-      },
       "network.root": {
         moduleId: "network_workspace",
         globalName: "PortalNetworkWorkspaceRenderer",
         label: "NETWORK workspace",
       },
-      "system.tools.fnd_csm": {
-        moduleId: "fnd_csm_workspace",
-        globalName: "PortalFndCsmWorkspaceRenderer",
-        label: "FND-CSM workspace",
-      },
+      // Phase 3e deleted v2_portal_cts_gis_workspace.js + v2_portal_fnd_csm_
+      // workspace.js. The CTS-GIS surface now renders through the generic
+      // workbench path (renderGenericSurface); FND-CSM is fully retired and
+      // its route 302-redirects in app.py. Adding moduleSpec entries here
+      // for deleted modules makes resolveReflectiveWorkspaceMode return
+      // "registered_workspace", which then surfaces a "module unavailable"
+      // error card — see commit 9abb4d2 for the parallel shell_core fix.
     };
 
     return moduleSpecs[surfaceId] || {};
@@ -162,21 +159,15 @@
   function resolvePresentationSurfaceModuleSpec(region, surfacePayload) {
     var surfaceId = resolveRegionSurfaceId(region, surfacePayload);
     var moduleSpecs = {
-      "system.tools.cts_gis": {
-        moduleId: "cts_gis_surface",
-        globalName: "PortalCtsGisInterfacePanelRenderer",
-        label: "CTS-GIS interface panel",
-      },
       "network.root": {
         moduleId: "network_workspace",
         globalName: "PortalNetworkInterfacePanelRenderer",
         label: "NETWORK detail",
       },
-      "system.tools.fnd_csm": {
-        moduleId: "fnd_csm_workspace",
-        globalName: "PortalFndCsmInterfacePanelRenderer",
-        label: "FND-CSM interface panel",
-      },
+      // Phase 3e + Phase 7: cts_gis_surface and fnd_csm_workspace presentation
+      // entries deleted. The interface_panel region is forced invisible across
+      // every surface in Phase 3d, so no presentation-surface renderer is
+      // dispatched there anyway — kept structurally for the NETWORK case only.
     };
 
     return moduleSpecs[surfaceId] || {};

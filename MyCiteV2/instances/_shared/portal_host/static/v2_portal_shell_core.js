@@ -357,8 +357,6 @@
   function renderRegions(composition) {
     var chromeRenderers = resolveRegisteredModuleExport("region_renderers", "PortalShellRegionRenderers") || {};
     var workbenchRenderer = resolveRegisteredModuleExport("workbench_renderers", "PortalShellWorkbenchRenderer");
-    var interfacePanelRenderer = resolveRegisteredModuleExport("interface_panel_renderers", "PortalShellInterfacePanelRenderer");
-    var interfacePanelRegion = (composition.regions && composition.regions.interface_panel) || {};
     if (typeof chromeRenderers.renderActivityBar !== "function") {
       throw buildModuleRegistrationError(
         "Activity-bar",
@@ -384,29 +382,13 @@
       );
     }
     // Phase 3 retired the interface panel and Phase 3e deleted its renderer
-    // module. The composition still emits an `interface_panel` region for
-    // schema continuity, but `build_shell_composition_payload` forces
-    // `visible=false`. Only require the renderer when the region is visible.
-    // (`shouldSkipRegionRender` here is a render_key memo, not a visibility
-    // check — distinct concerns.)
-    var willRenderInterfacePanel =
-      interfacePanelRegion &&
-      interfacePanelRegion.visible !== false &&
-      !shouldSkipRegionRender("interface_panel", interfacePanelRegion);
-    if (willRenderInterfacePanel && (!interfacePanelRenderer || typeof interfacePanelRenderer.render !== "function")) {
-      throw buildModuleRegistrationError(
-        "Interface Panel",
-        "interface_panel_renderers",
-        "PortalShellInterfacePanelRenderer",
-        "render"
-      );
-    }
+    // module + manifest entry. build_shell_composition_payload forces the
+    // region's `visible=false`, so even if the composition still emits an
+    // interface_panel region for schema continuity, the renderer never runs.
+    // The resolve + dispatch lines are gone with the module.
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    if (willRenderInterfacePanel) {
-      interfacePanelRenderer.render(buildRendererContext(interfacePanelRegion, qs("#v2-interface-panel-dynamic")));
-    }
   }
 
   function syncHistory(envelope, historyPayload, options) {

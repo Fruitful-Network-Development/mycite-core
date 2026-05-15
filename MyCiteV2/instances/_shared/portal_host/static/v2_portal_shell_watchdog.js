@@ -101,11 +101,14 @@
       if (window.__MYCITE_V2_SHELL_HYDRATED || window.__MYCITE_V2_SHELL_FATAL_SHOWN) {
         return;
       }
+      // Phase 3e deleted v2_portal_interface_panel_renderers.js + its module
+      // registration. The interface_panel region is forced visible=false by
+      // build_shell_composition_payload, so shell_core never resolves the
+      // renderer — it must not be in the watchdog's required-modules list.
       var registrationFailure = firstRegistrationFailure([
         "region_renderers",
         "tool_surface_adapter",
         "workbench_renderers",
-        "interface_panel_renderers",
         "shell_core",
       ]);
       if (
