@@ -13,7 +13,13 @@ These tests lock the contract on two layers:
 """
 from __future__ import annotations
 
+import sys
 import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_admin_profile_static,
