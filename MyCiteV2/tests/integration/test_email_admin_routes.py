@@ -202,5 +202,112 @@ class EmailExtensionPayloadSuspendActionTests(unittest.TestCase):
         self.assertFalse(action.get("payload", {}).get("suspended"))
 
 
+class EmailExtensionMultiDomainTests(unittest.TestCase):
+    """Phase 16c: a grantee that owns multiple domains (e.g. CVCC owns
+    both cuyahogavalleycountrysideconservancy.org + cvccboard.org)
+    sees every mailbox across every domain in one flat table, each
+    row tagged with its domain.
+    """
+
+    def _build_multi_domain_payload(self) -> dict:
+        tmp = Path(tempfile.mkdtemp(prefix="phase16c_multi_domain_"))
+        aws_csm_dir = tmp / "utilities" / "tools" / "aws-csm"
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.cvcc.admin",
+            tenant_id="cvcc",
+            domain="cuyahogavalleycountrysideconservancy.org",
+            mailbox="admin",
+        )
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.cvcc.news",
+            tenant_id="cvcc",
+            domain="cuyahogavalleycountrysideconservancy.org",
+            mailbox="news",
+        )
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.cvccboard.daniel",
+            tenant_id="cvccboard",
+            domain="cvccboard.org",
+            mailbox="daniel",
+        )
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.cvccboard.elizabeth",
+            tenant_id="cvccboard",
+            domain="cvccboard.org",
+            mailbox="elizabeth",
+        )
+        # An unrelated profile that must NOT leak into the CVCC list.
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.tff.contact",
+            tenant_id="tff",
+            domain="trappfamilyfarm.com",
+            mailbox="contact",
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.email import (
+            _build_email_extension_payload,
+        )
+
+        return _build_email_extension_payload(
+            grantee={
+                "msn_id": "cvcc",
+                "domains": [
+                    "cuyahogavalleycountrysideconservancy.org",
+                    "cvccboard.org",
+                ],
+            },
+            domain="cuyahogavalleycountrysideconservancy.org",
+            private_dir=tmp,
+        )
+
+    def test_multi_domain_grantee_shows_all_domain_profiles(self) -> None:
+        payload = self._build_multi_domain_payload()
+        profiles = payload.get("profiles") or []
+        rows_by_id = {p["profile_id"]: p for p in profiles}
+        self.assertIn("aws-csm.cvcc.admin", rows_by_id)
+        self.assertIn("aws-csm.cvcc.news", rows_by_id)
+        self.assertIn("aws-csm.cvccboard.daniel", rows_by_id)
+        self.assertIn("aws-csm.cvccboard.elizabeth", rows_by_id)
+        # Unrelated TFF profile must not leak in.
+        self.assertNotIn("aws-csm.tff.contact", rows_by_id)
+        # 4 CVCC mailboxes, not 2.
+        self.assertEqual(len(profiles), 4)
+
+    def test_profile_rows_carry_their_domain(self) -> None:
+        payload = self._build_multi_domain_payload()
+        for p in payload.get("profiles") or []:
+            self.assertIn(p["domain"], {
+                "cuyahogavalleycountrysideconservancy.org",
+                "cvccboard.org",
+            })
+        # CVCC mailboxes carry the CVCC domain; cvccboard mailboxes
+        # carry the cvccboard domain — no cross-pollination.
+        rows_by_id = {p["profile_id"]: p for p in payload["profiles"]}
+        self.assertEqual(
+            rows_by_id["aws-csm.cvcc.admin"]["domain"],
+            "cuyahogavalleycountrysideconservancy.org",
+        )
+        self.assertEqual(
+            rows_by_id["aws-csm.cvccboard.daniel"]["domain"], "cvccboard.org"
+        )
+
+    def test_profile_rows_sorted_by_domain_then_mailbox(self) -> None:
+        payload = self._build_multi_domain_payload()
+        profiles = payload.get("profiles") or []
+        keys = [(p["domain"], p["mailbox"]) for p in profiles]
+        self.assertEqual(keys, sorted(keys))
+
+    def test_grantee_domains_list_echoed_on_payload(self) -> None:
+        payload = self._build_multi_domain_payload()
+        self.assertEqual(
+            sorted(payload.get("domains") or []),
+            ["cuyahogavalleycountrysideconservancy.org", "cvccboard.org"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

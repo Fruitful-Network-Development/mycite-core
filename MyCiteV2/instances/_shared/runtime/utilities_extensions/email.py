@@ -1,10 +1,19 @@
 """ext_aws_email — AWS SES configuration + mailbox visibility.
 
-Reads AWS-CSM tool profiles for the selected domain and surfaces them
-alongside the grantee's ``aws_ses`` sub-config. When an authority DB is
-provided the profile + domain reads come from MOS via
-``MosDatumAwsCsmProfileAdapter``; otherwise it falls back to the legacy
-filesystem store.
+Reads AWS-CSM tool profiles for every domain the active grantee owns
+and surfaces them alongside the grantee's ``aws_ses`` sub-config.
+When an authority DB is provided the profile + domain reads come from
+MOS via ``MosDatumAwsCsmProfileAdapter``; otherwise it falls back to
+the legacy filesystem store.
+
+Phase 16c: previously the ``profiles`` list was filtered to a single
+``identity.domain`` matching the operator-selected domain. CVCC owns
+both ``cuyahogavalleycountrysideconservancy.org`` and ``cvccboard.org``
+— the single-domain filter hid half of the grantee's mailboxes
+behind a hidden domain axis. The renderer now iterates over
+``grantee.domains`` and surfaces a flat ``profiles`` list with one
+``domain`` field per row so the operator can see + manage every
+mailbox in one table.
 """
 
 from __future__ import annotations
@@ -14,7 +23,7 @@ from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemAwsCsmToolProfileStore
 
-from ._shared import _as_dict, _as_text, _grantee_edit_link, _mask_secret
+from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
 
 
 def _build_email_extension_payload(
@@ -36,7 +45,17 @@ def _build_email_extension_payload(
         ],
         "edit_link": _grantee_edit_link("aws_ses"),
     }
-    if not domain or private_dir is None:
+
+    # Phase 16c: take the union of the grantee's registered domains
+    # AND the currently-selected ``domain`` (in case the operator
+    # picked a domain that isn't in the grantee list yet). Lowercased
+    # for case-insensitive identity matching downstream.
+    grantee_domains = {
+        _as_text(d).lower() for d in _as_list(grantee.get("domains")) if _as_text(d)
+    }
+    if domain:
+        grantee_domains.add(domain.lower())
+    if not grantee_domains or private_dir is None:
         return {"profiles": [], "domain": domain, "configuration": configuration}
 
     mos_store: Any = None
@@ -60,21 +79,23 @@ def _build_email_extension_payload(
     aws_csm_root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
     fs_store = FilesystemAwsCsmToolProfileStore(aws_csm_root)
 
+    # The configuration block uses the active domain's record (when
+    # available) so SES identity / region / SMTP creds shown above
+    # reflect the operator's primary domain. The profiles list below
+    # spans ALL of the grantee's domains.
     domain_record: dict[str, Any] = {}
     try:
-        if mos_store is not None:
+        if mos_store is not None and domain:
             mos_domain = mos_store.load_domain(domain=domain)
             if mos_domain:
                 domain_record = _as_dict(mos_domain)
-        if not domain_record:
+        if not domain_record and domain:
             domain_record = _as_dict(fs_store.load_domain(domain=domain))
     except Exception:
         domain_record = {}
 
     profiles: list[dict[str, Any]] = []
     try:
-        # Mailboxes for the active domain come from the operator-profile
-        # records (one per operator), filtered by identity.domain.
         operator_source = (
             mos_store.list_profiles() if mos_store is not None else fs_store.list_profiles()
         )
@@ -83,7 +104,8 @@ def _build_email_extension_payload(
             operator_source = fs_store.list_profiles()
         for payload in operator_source:
             ident = _as_dict(payload.get("identity"))
-            if _as_text(ident.get("domain")).lower() != domain.lower():
+            profile_domain = _as_text(ident.get("domain")).lower()
+            if profile_domain not in grantee_domains:
                 continue
             profile_id = _as_text(ident.get("profile_id"))
             lifecycle = _as_text(
@@ -91,6 +113,7 @@ def _build_email_extension_payload(
             )
             profiles.append({
                 "profile_id": profile_id,
+                "domain": profile_domain,
                 "mailbox": _as_text(ident.get("mailbox_local_part")),
                 "send_as": _as_text(ident.get("send_as_email")),
                 "role": _as_text(ident.get("role")),
@@ -100,10 +123,15 @@ def _build_email_extension_payload(
                 ),
                 "suspend_action": _suspend_action_for_profile(profile_id, lifecycle),
             })
+        # Stable ordering: by domain, then mailbox local part — keeps
+        # cvcc.admin / cvcc.finance / cvccboard.daniel / etc. grouped
+        # so the operator can scan the table predictably.
+        profiles.sort(key=lambda r: (r["domain"], r["mailbox"]))
     except Exception:
         pass
     return {
         "domain": domain,
+        "domains": sorted(grantee_domains),
         "profiles": profiles,
         "domain_record": domain_record,
         "configuration": configuration,
