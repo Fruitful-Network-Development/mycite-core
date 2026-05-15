@@ -107,6 +107,12 @@ def main(argv: list[str] | None = None) -> int:
                     "first_name": magnitudes.get("first_name_ascii", ""),
                     "middle_name": magnitudes.get("middle_name_ascii", ""),
                     "last_name": magnitudes.get("last_name_ascii", ""),
+                    # Phase 16a: phone + zip + signup_date come from the
+                    # template's default_field_values + (when present)
+                    # CSV column mapping.
+                    "phone": magnitudes.get("phone_ascii", ""),
+                    "zip": magnitudes.get("zip_ascii", ""),
+                    "signup_date": magnitudes.get("signup_date", ""),
                     "subscribed": bool(magnitudes.get("subscribed", True)),
                     "source": magnitudes.get("source", "csv_import"),
                     "send_count": int(magnitudes.get("send_count") or 0),

@@ -551,23 +551,127 @@
   }
 
   function renderContactsTable(rows) {
-    // Phase 15b: surface first + last name alongside the email so
-    // operators can recognise the row. The server-side renderer
-    // composes a friendly "First Last" display string in the ``name``
-    // field, falling back to the legacy single name token.
-    return renderRowsTableWithActions(
-      "Contacts",
-      rows,
-      [
-        { key: "email", label: "Email" },
-        { key: "name", label: "Name" },
-        { key: "subscribed", label: "Subscribed" },
-        { key: "source", label: "Source" },
-        { key: "send_count", label: "Sends" },
-        { key: "last_sent", label: "Last sent" },
-      ],
-      "remove_action",
-      "Actions"
+    // Phase 15b: split-name + email columns; Phase 16a: phone, zip,
+    // signup_date columns + per-row inline edit form (expanded on
+    // demand via bindContactEditActions).
+    var rowList = asList(rows);
+    if (!rowList.length) return "";
+    var columns = [
+      { key: "email", label: "Email" },
+      { key: "name", label: "Name" },
+      { key: "phone", label: "Phone" },
+      { key: "zip", label: "ZIP" },
+      { key: "signup_date", label: "Signup" },
+      { key: "subscribed", label: "Subscribed" },
+      { key: "source", label: "Source" },
+      { key: "send_count", label: "Sends" },
+      { key: "last_sent", label: "Last sent" },
+    ];
+    var hasActions = rowList.some(function (r) {
+      var rm = asObject(r).remove_action;
+      var ed = asObject(r).edit_action;
+      return (rm && rm.route) || (ed && ed.route);
+    });
+    var actionColspan = columns.length + (hasActions ? 1 : 0);
+    return (
+      '<section class="v2-extensionCard__table v2-extensionCard__contacts">' +
+      "<h4>Contacts</h4>" +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      columns
+        .map(function (col) {
+          return "<th>" + escapeHtml(asText(col.label)) + "</th>";
+        })
+        .join("") +
+      (hasActions ? "<th>Actions</th>" : "") +
+      "</tr></thead><tbody>" +
+      rowList
+        .map(function (row, index) {
+          var cells = columns
+            .map(function (col) {
+              var v = row[col.key];
+              if (typeof v === "boolean") v = v ? "yes" : "no";
+              if (v == null) v = "";
+              return "<td>" + escapeHtml(String(v)) + "</td>";
+            })
+            .join("");
+          var actionCell = "";
+          if (hasActions) {
+            var inner = "";
+            if (asObject(row.edit_action).route) {
+              inner += renderEditToggleButton(row.edit_action, index);
+            }
+            if (asObject(row.remove_action).route) {
+              inner += renderRowAction(row.remove_action);
+            }
+            actionCell = "<td>" + inner + "</td>";
+          }
+          var mainRow = '<tr data-contact-row-index="' + String(index) + '">' + cells + actionCell + "</tr>";
+          var editForm = "";
+          if (asObject(row.edit_action).route) {
+            editForm =
+              '<tr class="v2-contactEditRow" data-contact-edit-index="' + String(index) +
+              '" hidden><td colspan="' + String(actionColspan) + '">' +
+              renderInlineEditForm(row.edit_action) +
+              "</td></tr>";
+          }
+          return mainRow + editForm;
+        })
+        .join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
+  function renderEditToggleButton(action, index) {
+    var a = asObject(action);
+    var variant = asText(a.variant) || "secondary";
+    return (
+      '<button type="button" class="v2-rowAction v2-rowAction--' +
+      escapeHtml(variant) +
+      '" data-contact-edit-toggle="' +
+      String(index) +
+      '">' +
+      escapeHtml(asText(a.label) || "Edit") +
+      "</button>"
+    );
+  }
+
+  function renderInlineEditForm(action) {
+    var a = asObject(action);
+    var fields = asList(a.editable_fields);
+    var route = asText(a.route);
+    var schema = asText(a.schema);
+    var payload = JSON.stringify(asObject(a.payload));
+    return (
+      '<form class="v2-contactEditForm" data-contact-edit-route="' +
+      escapeHtml(route) +
+      '" data-contact-edit-schema="' +
+      escapeHtml(schema) +
+      "\" data-contact-edit-payload='" +
+      escapeHtml(payload) +
+      "'>" +
+      fields
+        .map(function (f) {
+          var key = asText(f.key);
+          var label = asText(f.label) || key;
+          var value = asText(f.value);
+          return (
+            '<label class="v2-contactEditForm__label">' +
+            "<span>" +
+            escapeHtml(label) +
+            "</span>" +
+            '<input type="text" data-contact-edit-key="' +
+            escapeHtml(key) +
+            '" value="' +
+            escapeHtml(value) +
+            '">' +
+            "</label>"
+          );
+        })
+        .join("") +
+      '<div class="v2-contactEditForm__actions">' +
+      '<button type="submit" class="v2-rowAction v2-rowAction--primary">Save</button>' +
+      '<button type="button" class="v2-rowAction v2-rowAction--secondary" data-contact-edit-cancel="1">Cancel</button>' +
+      "</div></form>"
     );
   }
 
@@ -843,6 +947,103 @@
     });
   }
 
+  function bindContactEditActions(ctx, target) {
+    // Phase 16a: per-row inline edit. The toggle button shows/hides
+    // the hidden edit row; the form submits to /__fnd/newsletter/
+    // admin/edit and refreshes the shell on success.
+    if (!target) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll("[data-contact-edit-toggle]"),
+      function (btn) {
+        if (btn.dataset.contactEditBound === "1") return;
+        btn.dataset.contactEditBound = "1";
+        var index = btn.getAttribute("data-contact-edit-toggle");
+        btn.addEventListener("click", function () {
+          var row = target.querySelector(
+            '[data-contact-edit-index="' + index + '"]'
+          );
+          if (!row) return;
+          row.hidden = !row.hidden;
+        });
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll("[data-contact-edit-cancel]"),
+      function (btn) {
+        if (btn.dataset.contactCancelBound === "1") return;
+        btn.dataset.contactCancelBound = "1";
+        btn.addEventListener("click", function () {
+          var editRow = btn.closest(".v2-contactEditRow");
+          if (editRow) editRow.hidden = true;
+        });
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll("form.v2-contactEditForm"),
+      function (form) {
+        if (form.dataset.contactEditFormBound === "1") return;
+        form.dataset.contactEditFormBound = "1";
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var route = form.getAttribute("data-contact-edit-route");
+          var schema = form.getAttribute("data-contact-edit-schema") || "";
+          var basePayload = {};
+          try {
+            basePayload = JSON.parse(form.getAttribute("data-contact-edit-payload") || "{}");
+          } catch (_) {}
+          var fields = asObject(basePayload).fields || {};
+          Array.prototype.forEach.call(
+            form.querySelectorAll("[data-contact-edit-key]"),
+            function (input) {
+              fields[input.getAttribute("data-contact-edit-key")] = input.value || "";
+            }
+          );
+          var body = Object.assign({}, basePayload, { schema: schema, fields: fields });
+          var saveBtn = form.querySelector('button[type="submit"]');
+          if (saveBtn) saveBtn.disabled = true;
+          fetch(route, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            credentials: "same-origin",
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { status: r.status, body: j };
+              });
+            })
+            .then(function (out) {
+              if (saveBtn) saveBtn.disabled = false;
+              var ok = out.status >= 200 && out.status < 300 && out.body && out.body.ok !== false;
+              if (ok && typeof ctx.loadShell === "function") {
+                var envelope = ctx.getEnvelope && ctx.getEnvelope();
+                if (envelope) {
+                  ctx.loadShell({
+                    schema: "mycite.v2.portal.shell.request.v1",
+                    requested_surface_id: envelope.surface_id,
+                    surface_query: envelope.surface_query || {},
+                  });
+                }
+              } else if (!ok) {
+                var msg =
+                  (out.body && (out.body.detail || out.body.error || ("HTTP " + out.status))) ||
+                  "unknown error";
+                try {
+                  window.alert("Edit failed: " + msg);
+                } catch (_) {}
+              }
+            })
+            .catch(function (err) {
+              if (saveBtn) saveBtn.disabled = false;
+              try {
+                window.alert("Network error: " + (err && err.message ? err.message : err));
+              } catch (_) {}
+            });
+        });
+      }
+    );
+  }
+
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
     Array.prototype.forEach.call(
@@ -857,6 +1058,7 @@
         bindRowAction(ctx, button);
       }
     );
+    bindContactEditActions(ctx, target);
   }
 
   function renderGenericSurface(ctx, target, region, surfacePayload) {

@@ -1509,9 +1509,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         middle_name = _fnd_newsletter_request_field("middle_name")
         last_name = _fnd_newsletter_request_field("last_name")
         name = _fnd_newsletter_request_field("name")
-        # zip_code captured but not yet projected into the v2 datum
-        # magnitude set; logged for parity with the legacy upsert path.
-        _ = _fnd_newsletter_request_field("zip")
+        # Phase 16a: phone + zip now persist as their own magnitudes.
+        phone = _fnd_newsletter_request_field("phone")
+        zip_code = _fnd_newsletter_request_field("zip")
 
         email = _validate_email(raw_email)
         if not email:
@@ -1533,6 +1533,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "first_name": first_name,
                     "middle_name": middle_name,
                     "last_name": last_name,
+                    "phone": phone,
+                    "zip": zip_code,
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
@@ -1717,6 +1719,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         middle_name = _admin_field(fields, "middle_name")
         last_name = _admin_field(fields, "last_name")
         name = _admin_field(fields, "name")
+        # Phase 16a: phone + zip + signup_date.
+        phone = _admin_field(fields, "phone")
+        zip_code = _admin_field(fields, "zip")
+        signup_date = _admin_field(fields, "signup_date")
 
         if not domain:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
@@ -1742,6 +1748,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "first_name": first_name,
                     "middle_name": middle_name,
                     "last_name": last_name,
+                    "phone": phone,
+                    "zip": zip_code,
+                    "signup_date": signup_date,
                     "source": "operator",
                 },
                 authority_db_file=host_config.authority_db_file,
@@ -1753,6 +1762,86 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not result.get("ok"):
             return jsonify({"ok": False, "error": "storage_error"}), 500
         return jsonify({"ok": True, "domain": domain, "email": email, "subscribed": True}), 200
+
+    @app.post("/__fnd/newsletter/admin/edit")
+    def fnd_newsletter_admin_edit() -> tuple[Any, int]:
+        """Phase 16a — inline row edit on the newsletter Contacts table.
+
+        Body: ``{"domain": ..., "fields": {"email": ..., <updates>}}``.
+        ``email`` identifies the row; supported update keys are
+        first_name, middle_name, last_name, phone, zip, signup_date.
+        Subscribed state is NOT touched by this route — use the
+        per-row Suspend/Resume button (or /__fnd/newsletter/admin/
+        remove) for lifecycle changes.
+        """
+        payload = _json_payload()
+        fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else payload
+        domain = _normalize_domain(_admin_field(payload, "domain"))
+        email = _validate_email(_admin_field(fields, "email"))
+
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        known = _newsletter_known_domains(host_config.private_dir)
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        edit_payload: dict[str, Any] = {
+            "target_authority": "aws_csm_newsletter_contact_log",
+            "operation": "edit_subscriber",
+            "domain": domain,
+            "email": email,
+        }
+        for key in (
+            "first_name",
+            "middle_name",
+            "last_name",
+            "phone",
+            "zip",
+            "signup_date",
+        ):
+            if isinstance(fields, dict) and key in fields:
+                edit_payload[key] = _admin_field(fields, key)
+
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                edit_payload,
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        if not result.get("ok"):
+            # The mutation runtime wraps ValueErrors raised by the
+            # inner ``edit_subscriber`` op (e.g. ``contact_not_found``
+            # or ``contact_log_missing_for_domain``) in the envelope's
+            # ``error.message``. Both mean "the operator's email
+            # doesn't exist for this domain" → 404.
+            err = result.get("error") or {}
+            message = _as_text(err.get("message"))
+            if "contact_not_found" in message or "contact_log_missing" in message:
+                return jsonify({"ok": False, "error": "contact_not_found"}), 404
+            return jsonify({"ok": False, "error": "storage_error", "detail": message}), 500
+
+        preview = result.get("preview") or {}
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "domain": domain,
+                    "email": email,
+                    "updated_fields": preview.get("updated_fields") or [],
+                }
+            ),
+            200,
+        )
 
     @app.post("/__fnd/newsletter/admin/remove")
     def fnd_newsletter_admin_remove() -> tuple[Any, int]:

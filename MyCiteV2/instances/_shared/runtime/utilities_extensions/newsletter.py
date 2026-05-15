@@ -43,6 +43,11 @@ def _build_add_subscriber_form(domain: str) -> dict[str, Any]:
             {"key": "first_name", "label": "First name", "type": "text", "required": False},
             {"key": "middle_name", "label": "Middle name", "type": "text", "required": False},
             {"key": "last_name", "label": "Last name", "type": "text", "required": False},
+            # Phase 16a: phone + zip captured as plain text. signup_date
+            # is omitted from the add form — it defaults to today on
+            # the mutation runtime side.
+            {"key": "phone", "label": "Phone", "type": "text", "required": False},
+            {"key": "zip", "label": "ZIP", "type": "text", "required": False},
         ],
         submit_action={
             "route": "/__fnd/newsletter/admin/add",
@@ -52,6 +57,31 @@ def _build_add_subscriber_form(domain: str) -> dict[str, Any]:
         submit_label="Add subscriber",
         target_authority="aws_csm_newsletter_contact_log",
     )
+
+
+def _edit_action_for_contact(domain: str, contact: dict[str, Any]) -> dict[str, Any]:
+    """Phase 16a per-row edit. Carries the current field values so the
+    JS renderer can pre-fill the inline form, and the route + schema
+    for POSTing the updated values.
+    """
+    return {
+        "label": "Edit",
+        "route": "/__fnd/newsletter/admin/edit",
+        "schema": "mycite.v2.newsletter.admin.edit.request.v1",
+        "payload": {
+            "domain": domain,
+            "fields": {"email": _as_text(contact.get("email"))},
+        },
+        "variant": "secondary",
+        "editable_fields": [
+            {"key": "first_name", "label": "First name", "value": _as_text(contact.get("first_name"))},
+            {"key": "middle_name", "label": "Middle name", "value": _as_text(contact.get("middle_name"))},
+            {"key": "last_name", "label": "Last name", "value": _as_text(contact.get("last_name"))},
+            {"key": "phone", "label": "Phone", "value": _as_text(contact.get("phone"))},
+            {"key": "zip", "label": "ZIP", "value": _as_text(contact.get("zip"))},
+            {"key": "signup_date", "label": "Signup date", "value": _as_text(contact.get("signup_date"))},
+        ],
+    }
 
 
 def _build_set_sender_form(msn_id: str, users: list[str], current_sender: str) -> dict[str, Any] | None:
@@ -168,22 +198,25 @@ def _build_newsletter_extension_payload(
                 or " ".join(t for t in (first, middle, last) if t)
                 or _as_text(c.get("name"))
             )
-            contacts.append(
-                {
-                    "email": _as_text(c.get("email")),
-                    "name": display,
-                    "first_name": first,
-                    "middle_name": middle,
-                    "last_name": last,
-                    "subscribed": bool(c.get("subscribed")),
-                    "source": _as_text(c.get("source")),
-                    "last_sent": _as_text(c.get("last_newsletter_sent_at")),
-                    "send_count": int(c.get("send_count") or 0),
-                    "remove_action": _remove_action_for_contact(
-                        domain, _as_text(c.get("email")), bool(c.get("subscribed"))
-                    ),
-                }
-            )
+            row = {
+                "email": _as_text(c.get("email")),
+                "name": display,
+                "first_name": first,
+                "middle_name": middle,
+                "last_name": last,
+                "phone": _as_text(c.get("phone")),
+                "zip": _as_text(c.get("zip")),
+                "signup_date": _as_text(c.get("signup_date")),
+                "subscribed": bool(c.get("subscribed")),
+                "source": _as_text(c.get("source")),
+                "last_sent": _as_text(c.get("last_newsletter_sent_at")),
+                "send_count": int(c.get("send_count") or 0),
+                "remove_action": _remove_action_for_contact(
+                    domain, _as_text(c.get("email")), bool(c.get("subscribed"))
+                ),
+            }
+            row["edit_action"] = _edit_action_for_contact(domain, c)
+            contacts.append(row)
         profile = _as_dict(adapter.load_profile(domain=domain))
         current_sender = _as_text(
             profile.get("selected_sender_address") or profile.get("sender_address")
