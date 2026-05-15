@@ -246,6 +246,24 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             is_extension=True,
             summary="PayPal webhook configuration and donation orders log.",
         ),
+        # Phase 17b: the Connect extension surfaces website-visitor
+        # messages forwarded to a configured grantee email address.
+        # Lead-collection sibling to the newsletter extension —
+        # submissions land as unsubscribed contacts tagged
+        # source=connect_form so the operator builds a leads list.
+        PortalToolRegistryEntry(
+            tool_id="ext_connect",
+            label="Connect",
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
+            entrypoint_id="portal.utilities.ext_connect",
+            route=UTILITIES_EXTENSIONS_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
+            read_write_posture="write",
+            required_capabilities=("fnd_peripheral_routing",),
+            is_extension=True,
+            summary="Connect-form visitor messages forwarded to the grantee inbox via SES.",
+        ),
         # Phase 9 (grantee_profile_contract.md): editable form over the
         # grantee JSON file. This is the single home for per-grantee
         # configuration that the other extensions read (paypal, aws_ses,

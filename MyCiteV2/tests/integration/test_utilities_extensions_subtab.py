@@ -103,14 +103,21 @@ def _surface_payload(**surface_query) -> dict:
 
 
 class ExtensionSubtabSelectorTests(unittest.TestCase):
-    def test_default_surface_lists_4_tabs_with_email_active(self) -> None:
+    def test_default_surface_lists_5_tabs_with_email_active(self) -> None:
+        # Phase 17b adds ext_connect as the 5th tab.
         payload = _surface_payload()
         selector = payload.get("extension_subtab_selector")
         self.assertIsNotNone(selector, "extension_subtab_selector missing")
         tab_ids = [tab.get("tool_id") for tab in selector.get("tabs") or []]
         self.assertEqual(
             tab_ids,
-            ["ext_aws_email", "ext_analytics", "ext_newsletter", "ext_paypal"],
+            [
+                "ext_aws_email",
+                "ext_analytics",
+                "ext_newsletter",
+                "ext_paypal",
+                "ext_connect",
+            ],
         )
         self.assertEqual(selector.get("selected_tool_id"), "ext_aws_email")
         active = [t for t in selector["tabs"] if t.get("active")]

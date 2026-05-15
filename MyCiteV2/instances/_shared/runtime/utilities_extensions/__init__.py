@@ -33,6 +33,7 @@ from typing import Any
 
 from ._shared import _as_text
 from .analytics import _build_analytics_extension_payload, _render_ext_analytics
+from .connect import _build_connect_extension_payload, _render_ext_connect
 from .email import _build_email_extension_payload, _render_ext_aws_email
 from .grantee_profile import (
     _build_grantee_profile_form_fields,
@@ -50,6 +51,7 @@ EXTENSION_RENDERERS: dict[str, Any] = {
     "ext_analytics": _render_ext_analytics,
     "ext_newsletter": _render_ext_newsletter,
     "ext_paypal": _render_ext_paypal,
+    "ext_connect": _render_ext_connect,
     "ext_grantee_profile": _render_ext_grantee_profile,
 }
 
@@ -78,6 +80,7 @@ __all__ = [
     # path in portal_fnd_csm_runtime.py. New callers should import from the
     # per-extension files directly.
     "_build_analytics_extension_payload",
+    "_build_connect_extension_payload",
     "_build_email_extension_payload",
     "_build_grantee_profile_form_fields",
     "_build_newsletter_extension_payload",

@@ -1012,11 +1012,14 @@ def _grantee_selector_for_target(
 
 # Phase 15a — per-extension subtabs on the Extensions surface.
 # Order is the operator-facing tab order, left to right.
+# Phase 17b: ext_connect joins as the 5th tab (visitor messages
+# forwarded via SES, lead-collection sibling to the newsletter).
 _OPERATIONAL_EXTENSION_ORDER: tuple[str, ...] = (
     "ext_aws_email",
     "ext_analytics",
     "ext_newsletter",
     "ext_paypal",
+    "ext_connect",
 )
 _OPERATIONAL_EXTENSION_DEFAULT = "ext_aws_email"
 

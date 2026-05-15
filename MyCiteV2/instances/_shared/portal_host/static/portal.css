@@ -9061,6 +9061,15 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 6px;
   margin-left: auto;
 }
+/* Phase 17b — Connect submissions table message column: wrap long
+   bodies + cap width so the table stays readable. */
+.v2-extensionCard__connectMessage {
+  max-width: 320px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  color: #444;
+}
 .v2-activitylink.is-active {
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;
