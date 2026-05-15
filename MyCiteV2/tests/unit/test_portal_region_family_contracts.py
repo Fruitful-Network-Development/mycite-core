@@ -41,8 +41,15 @@ def _assert_region_family_contracts(
     testcase.assertEqual(workbench["family_contract"]["family"], "reflective_workspace")
     testcase.assertEqual(workbench["family_contract"]["surface_id"], expected_surface_id)
 
-    testcase.assertEqual(interface_panel["family_contract"]["family"], "presentation_surface")
-    testcase.assertEqual(interface_panel["family_contract"]["surface_id"], expected_surface_id)
+    # Phase 13a: the interface_panel region is an invisible placeholder for
+    # schema continuity. Bundles that still build a bespoke panel keep the
+    # family_contract; bundles that pass interface_panel=None get the
+    # empty placeholder, in which case there's nothing live to assert.
+    if "family_contract" in interface_panel:
+        testcase.assertEqual(interface_panel["family_contract"]["family"], "presentation_surface")
+        testcase.assertEqual(interface_panel["family_contract"]["surface_id"], expected_surface_id)
+    else:
+        testcase.assertFalse(interface_panel.get("visible", False))
 
 
 class PortalRegionFamilyContractTests(unittest.TestCase):

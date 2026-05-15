@@ -1601,10 +1601,15 @@ def build_shell_composition_payload(
     activity_items: list[dict[str, Any]],
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
-    interface_panel: dict[str, Any],
+    interface_panel: dict[str, Any] | None = None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
+    # Phase 13a: `interface_panel` is optional. Phase 3 retired the region;
+    # this function still emits an invisible placeholder for schema continuity,
+    # so callers should pass None (or omit) instead of constructing a bespoke
+    # `_generic_interface_panel(surface_payload)` payload that gets force-
+    # hidden anyway.
     state = shell_state if isinstance(shell_state, PortalShellState) else (
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
