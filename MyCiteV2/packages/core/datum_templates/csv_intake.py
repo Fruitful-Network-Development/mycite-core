@@ -210,7 +210,7 @@ def _bulk_insert(
         accepted_dicts = deduped_dicts
         accepted_csv_rows = deduped_csv
 
-    for magnitudes, csv_row in zip(accepted_dicts, accepted_csv_rows):
+    for magnitudes, csv_row in zip(accepted_dicts, accepted_csv_rows, strict=False):
         missing = [name for name in required_names if name not in magnitudes]
         if missing:
             warnings.append(
@@ -354,7 +354,7 @@ def _run_intake_pipeline(
                 work[target] = sep.join(parts)
         elif directive == "skip_if_email_in_name":
             name_field = _as_text(spec.get("name_field")) or "name_ascii"
-            email_field = _as_text(spec.get("email_field")) or "email_ascii"
+            _as_text(spec.get("email_field")) or "email_ascii"
             name_val = _as_text(work.get(name_field))
             if name_val and "@" in name_val:
                 work[name_field] = ""  # blank the bogus name; keep the row
@@ -423,7 +423,7 @@ def _apply_cross_row_directives(
         seen: dict[str, int] = {}
         kept_rows: list[dict[str, Any]] = []
         kept_csv: list[dict[str, str]] = []
-        for i, (row, csv_row) in enumerate(zip(rows, csv_rows)):
+        for _i, (row, csv_row) in enumerate(zip(rows, csv_rows, strict=False)):
             value = _as_text(row.get(key))
             if not value:
                 kept_rows.append(row)

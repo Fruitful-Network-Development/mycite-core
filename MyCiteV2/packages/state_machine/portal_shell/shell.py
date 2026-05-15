@@ -1609,7 +1609,7 @@ def build_shell_composition_payload(
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
     tool_surface = is_tool_surface(active_surface_id)
-    surface_posture = surface_posture_for_surface(active_surface_id)
+    surface_posture_for_surface(active_surface_id)
     workbench_region = dict(workbench or {})
     workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
     interface_panel_region = dict(interface_panel or {})

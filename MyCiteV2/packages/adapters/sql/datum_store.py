@@ -20,16 +20,6 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_move as preview_document_move_mutation,
 )
 from MyCiteV2.packages.core.document_naming import is_canonical_document_id
-
-
-class NonCanonicalDocumentIdError(ValueError):
-    """Raised when a write attempts to persist a non-canonical document id.
-
-    Phase E3: new writes must produce canonical ``lv./stl./cptr.`` ids; legacy
-    ``system:`` / ``sandbox:`` ids are still accepted on reads via the
-    ``documents.legacy_alias`` index for one cycle.
-    """
-
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -46,6 +36,15 @@ from MyCiteV2.packages.ports.datum_store import (
     SystemDatumStoreRequest,
     SystemDatumWorkbenchResult,
 )
+
+
+class NonCanonicalDocumentIdError(ValueError):
+    """Raised when a write attempts to persist a non-canonical document id.
+
+    Phase E3: new writes must produce canonical ``lv./stl./cptr.`` ids; legacy
+    ``system:`` / ``sandbox:`` ids are still accepted on reads via the
+    ``documents.legacy_alias`` index for one cycle.
+    """
 
 
 def _as_text(value: object) -> str:

@@ -91,7 +91,7 @@ def add_root(structure: SamrasStructure) -> SamrasMutationResult:
     addresses = [str(item) for item in structure.addresses]
     next_root = str(len([item for item in addresses if "-" not in item]) + 1)
     updated = rebuild_structure_from_addresses(
-        addresses + [next_root],
+        [*addresses, next_root],
         root_ref=structure.root_ref,
         warnings=structure.warnings,
     )
@@ -113,7 +113,7 @@ def add_child(structure: SamrasStructure, *, parent_address: str) -> SamrasMutat
     children = [address for address in structure.addresses if parent_of_address(address) == parent]
     next_child = f"{parent}-{len(children) + 1}"
     updated = rebuild_structure_from_addresses(
-        list(structure.addresses) + [next_child],
+        [*list(structure.addresses), next_child],
         root_ref=structure.root_ref,
         warnings=structure.warnings,
     )
@@ -184,7 +184,7 @@ def move_branch(
     branch_mapping = dict(remaining_mapping)
     for old_address, new_address in zip(
         sorted(removed_branch, key=address_sort_key),
-        sorted(remapped_branch, key=address_sort_key),
+        sorted(remapped_branch, key=address_sort_key), strict=False,
     ):
         branch_mapping[old_address] = new_address
     return SamrasMutationResult(

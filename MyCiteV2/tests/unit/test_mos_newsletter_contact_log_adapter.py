@@ -83,7 +83,7 @@ class MosAdapterRoundTripTests(unittest.TestCase):
         self.assertFalse(bob["name_confirmed"])
 
     def test_save_advances_version_hash(self):
-        first = self.adapter.save_contact_log(
+        self.adapter.save_contact_log(
             domain="example.com",
             payload=_payload_with_contacts([
                 {"email": "a@b.com", "name": "A", "subscribed": True, "source": "s",
@@ -95,7 +95,7 @@ class MosAdapterRoundTripTests(unittest.TestCase):
         self.assertIsNotNone(first_doc)
         first_id = first_doc.document_id
 
-        second = self.adapter.save_contact_log(
+        self.adapter.save_contact_log(
             domain="example.com",
             payload=_payload_with_contacts([
                 {"email": "a@b.com", "name": "A", "subscribed": True, "source": "s",

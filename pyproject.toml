@@ -30,6 +30,9 @@ ignore = [
 # is not pip-installed); allow E402 there. Tests also reuse fixtures and import
 # things they don't directly call (skipUnless guards, etc); allow F401 + F811.
 "MyCiteV2/tests/**/*.py" = ["F401", "F811", "E402"]
+# Scripts under MyCiteV2/scripts/ do the same sys.path prepend before
+# MyCiteV2 imports — they're CLI entry points, not library code.
+"MyCiteV2/scripts/**/*.py" = ["E402"]
 # packages/state_machine/portal_shell/__init__.py and packages/__init__.py
 # files deliberately re-export public surface via `from .shell import *`.
 # That's the canonical aggregator pattern; ruff cannot statically resolve the
@@ -40,3 +43,7 @@ ignore = [
 # imports (documented in Phase 12 evidence). The duplicate-definition postcondition
 # pins the canonical-home rule; ruff star-import lints don't add signal here.
 "MyCiteV2/packages/state_machine/portal_shell/shell.py" = ["F403", "F405"]
+# portal_cts_gis_runtime defines paired (comment, constant) blocks
+# interleaved with imports for readability — the imports follow the
+# constants they document.
+"MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py" = ["E402"]

@@ -73,9 +73,9 @@ def encode_email_bacillete(value: str) -> tuple[str, bool]:
     """Encode an email address into the ``email-babellette`` binary form.
 
     Returns ``(octal_form, confirmed)``. Each ASCII byte is rendered as
-    three zero-padded octal digits (``000`` – ``377``). ``confirmed`` is
+    three zero-padded octal digits (``000`` to ``377``). ``confirmed`` is
     ``True`` iff the original value is non-empty, pure ASCII, and the
-    resulting octal string fits in 320 digits (≤ 106 ASCII bytes).
+    resulting octal string fits in 320 digits (<= 106 ASCII bytes).
     """
     if not value:
         return "", False

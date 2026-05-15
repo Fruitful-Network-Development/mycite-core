@@ -62,8 +62,7 @@ class FilesystemAuditLogAdapter(AuditLogPort):
                 chunk = handle.read(read_size)
                 pieces = (chunk + buffer).split(b"\n")
                 buffer = pieces[0]
-                for line in reversed(pieces[1:]):
-                    yield line
+                yield from reversed(pieces[1:])
             yield buffer
 
     def append_audit_record(self, request: AuditLogAppendRequest) -> AuditLogAppendReceipt:

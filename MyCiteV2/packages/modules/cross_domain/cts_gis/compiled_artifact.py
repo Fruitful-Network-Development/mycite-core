@@ -904,7 +904,7 @@ def _close_ring(points: list[list[float]]) -> list[list[float]]:
     if len(points) < 3:
         return list(points)
     if points[0] != points[-1]:
-        return list(points) + [list(points[0])]
+        return [*list(points), list(points[0])]
     return list(points)
 
 

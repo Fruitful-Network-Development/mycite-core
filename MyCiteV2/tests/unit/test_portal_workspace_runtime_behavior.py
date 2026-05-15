@@ -2201,9 +2201,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 authority_db_file=db_file,
                 authority_mode="sql_primary",
             )
-            sandbox_document_id = [
+            sandbox_document_id = next(
                 document.document_id for document in projection.documents if document.document_id != "system:anthology"
-            ][0]
+            )
             shell_state = reduce_portal_shell_state(
                 active_surface_id=SYSTEM_ROOT_SURFACE_ID,
                 portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},

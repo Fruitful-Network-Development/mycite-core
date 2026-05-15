@@ -319,7 +319,7 @@ def _normalized_reference_ring(ring: list[list[float]], *, expected_count: int) 
     if len(points) > 1 and points[0] == points[-1] and len(points) - 1 == expected_count:
         return points[:-1]
     if len(points) > 1 and points[0] != points[-1] and len(points) + 1 == expected_count:
-        return points + [list(points[0])]
+        return [*points, list(points[0])]
     return []
 
 
@@ -431,7 +431,7 @@ def _build_cts_gis_coordinate_authority(document: DatumRecognitionDocument) -> d
 
     row_coordinate_map: dict[str, list[list[float]]] = {}
     for polygon_index, (row_group, reference_polygon) in enumerate(
-        zip(polygon_groups, reference_polygons),
+        zip(polygon_groups, reference_polygons, strict=False),
         start=1,
     ):
         if len(row_group) != len(reference_polygon):
@@ -440,7 +440,7 @@ def _build_cts_gis_coordinate_authority(document: DatumRecognitionDocument) -> d
                 f"but the HOPS row chain resolves {len(row_group)}."
             )
             continue
-        for ring_index, (row_address, reference_ring) in enumerate(zip(row_group, reference_polygon), start=1):
+        for ring_index, (row_address, reference_ring) in enumerate(zip(row_group, reference_polygon, strict=False), start=1):
             normalized_ring = _normalized_reference_ring(
                 reference_ring,
                 expected_count=_row_declared_coordinate_count(row_address),
@@ -903,8 +903,7 @@ def _reference_geojson_profile_features(
             [owner_row.get("title_display"), properties.get("community_name"), label_text, profile_label]
         )
         warnings = _dedupe_texts(
-            list(projection_warnings or [])
-            + [f"{owner_row['datum_address']} fell back to reference GeoJSON geometry."]
+            [*list(projection_warnings or []), f"{owner_row['datum_address']} fell back to reference GeoJSON geometry."]
         )
         feature = _feature_from_geometry(
             document=document,
@@ -1069,11 +1068,7 @@ def _build_document_projection(document: DatumRecognitionDocument, *, overlay_mo
                     profile_features = [feature]
         if semantic_implausible:
             fallback_warnings = _dedupe_texts(
-                projection_warnings
-                + [
-                    f"{_as_text(row.get('datum_address'))} failed semantic guardrails and requested authority fallback."
-                ]
-                + list(coordinate_authority.get("warnings") or [])
+                [*projection_warnings, f"{_as_text(row.get('datum_address'))} failed semantic guardrails and requested authority fallback.", *list(coordinate_authority.get("warnings") or [])]
             )
             semantic_fallback_features = _reference_geojson_profile_features(
                 document,

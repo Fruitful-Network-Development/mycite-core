@@ -455,7 +455,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
 
     def describe_domain_status(self, domain_record: dict[str, Any]) -> dict[str, Any]:
         identity = _as_dict(domain_record.get("identity"))
-        dns = _as_dict(domain_record.get("dns"))
+        _as_dict(domain_record.get("dns"))
         receipt = _as_dict(domain_record.get("receipt"))
         domain = _normalized_domain(identity.get("domain"))
         region = _as_text(identity.get("region")) or _DEFAULT_REGION

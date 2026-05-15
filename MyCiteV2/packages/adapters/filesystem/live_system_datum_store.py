@@ -626,9 +626,9 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         (
             profile_id,
             public_profile,
-            public_status,
+            _public_status,
             tenant_profile,
-            tenant_status,
+            _tenant_status,
             resolution_status,
             warnings,
         ) = self._resolve_publication_profiles(
@@ -668,7 +668,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
             tenant_profile,
             tenant_status,
             _resolution_status,
-            warnings,
+            _warnings,
         ) = self._resolve_publication_profiles(
             tenant_domain=normalized_request.tenant_domain,
         )

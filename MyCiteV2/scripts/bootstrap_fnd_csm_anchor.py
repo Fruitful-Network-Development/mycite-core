@@ -162,7 +162,7 @@ def bootstrap_anchor(
             "row_count": str(len(rows)),
         }
 
-    next_documents = tuple(catalog.documents) + (final_document,)
+    next_documents = (*tuple(catalog.documents), final_document)
     next_catalog = AuthoritativeDatumDocumentCatalogResult(
         tenant_id=catalog.tenant_id,
         documents=next_documents,
