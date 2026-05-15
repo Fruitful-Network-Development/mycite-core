@@ -27,21 +27,10 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M4 7h16v10H4z"></path><path d="M9 7V5.5h6V7"></path><path d="M12 11v5"></path><path d="M9.5 13.5h5"></path>' +
         "</svg>";
-    } else if (id === "aws") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M7.5 17.5h8a4 4 0 0 0 .7-7.94A5.2 5.2 0 0 0 6.7 8.5 3.6 3.6 0 0 0 7.5 17.5z"></path>' +
-        '<path d="M8 20c2 .9 5 .9 8 0"></path>' +
-        "</svg>";
     } else if (id === "cts_gis") {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20s5-4.3 5-9a5 5 0 1 0-10 0c0 4.7 5 9 5 9z"></path><circle cx="12" cy="11" r="1.8"></circle>' +
-        "</svg>";
-    } else if (id === "fnd_dcm") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M7 4.5h7l3 3V19.5H7z"></path><path d="M14 4.5v3h3"></path><path d="M10 11h7"></path><path d="M10 15h7"></path><path d="M4.5 9.5v7"></path><path d="M2.5 11.5h4"></path>' +
         "</svg>";
     } else {
       svg =
