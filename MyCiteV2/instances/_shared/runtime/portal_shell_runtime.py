@@ -559,23 +559,6 @@ def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _network_interface_panel(surface_payload: dict[str, Any]) -> dict[str, Any]:
-    workspace = dict(surface_payload.get("workspace") or {})
-    selected_record = workspace.get("selected_record")
-    subject = None
-    if isinstance(selected_record, dict) and _as_text(selected_record.get("datum_address")):
-        subject = {"level": "record", "id": _as_text(selected_record.get("datum_address"))}
-    return {
-        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-        "kind": "summary_panel",
-        "title": "Log Record",
-        "summary": "Read-only log-record detail.",
-        "visible": subject is not None,
-        "subject": subject,
-        "surface_payload": surface_payload,
-    }
-
-
 def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "schema": surface_schema_for_surface(UTILITIES_ROOT_SURFACE_ID),
@@ -795,21 +778,6 @@ def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True)
     }
 
 
-def _generic_interface_panel(surface_payload: dict[str, Any]) -> dict[str, Any]:
-    sections: list[dict[str, Any]] = []
-    for section in list(surface_payload.get("sections") or []):
-        rows = list(section.get("rows") or [])
-        if rows:
-            sections.append({"title": section.get("title") or "Section", "rows": rows})
-    return {
-        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-        "kind": "summary_panel",
-        "title": _as_text(surface_payload.get("title")) or "Overview",
-        "summary": _as_text(surface_payload.get("subtitle")),
-        "sections": sections,
-    }
-
-
 ToolSurfaceBundleBuilder = Callable[..., dict[str, Any]]
 
 
@@ -843,37 +811,6 @@ def _build_cts_gis_tool_bundle(
     )
 
 
-def _build_fnd_csm_tool_bundle(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState | None,
-    request_payload: dict[str, Any] | None,
-    private_dir: str | Path | None,
-    webapps_root: str | Path | None,
-    tool_exposure_policy: dict[str, Any] | None,
-    tool_rows: list[dict[str, Any]],
-    authority_db_file: str | Path | None = None,
-    **_: Any,
-) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-        build_portal_fnd_csm_surface_bundle,
-    )
-
-    if shell_state is None:
-        raise ValueError("FND-CSM shell bundle requires reducer-owned shell_state")
-    return build_portal_fnd_csm_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        private_dir=private_dir,
-        webapps_root=webapps_root,
-        request_payload=request_payload,
-        tool_exposure_policy=tool_exposure_policy,
-        tool_rows=tool_rows,
-        authority_db_file=authority_db_file,
-        portal_instance_id=getattr(portal_scope, "scope_id", None),
-    )
-
-
 def _build_workbench_ui_tool_bundle(
     *,
     portal_scope: PortalScope,
@@ -900,7 +837,10 @@ def _build_workbench_ui_tool_bundle(
 
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
     CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
-    FND_CSM_TOOL_SURFACE_ID: _build_fnd_csm_tool_bundle,
+    # FND_CSM_TOOL_SURFACE_ID dispatcher removed in Phase 13a — the surface
+    # was retired in Phase 7 and the only registry entry for it had already
+    # been dropped. The `build_portal_fnd_csm_surface_bundle` it called is
+    # also gone from portal_fnd_csm_runtime.py.
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
 }
 
@@ -1063,11 +1003,6 @@ def _bundle_for_surface(
                 family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
                 surface_id=selection_surface_id,
             ),
-            "interface_panel": attach_region_family_contract(
-                _network_interface_panel(surface_payload),
-                family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-                surface_id=selection_surface_id,
-            ),
             "tool_rows": tool_rows,
         }
     if selection_surface_id == UTILITIES_ROOT_SURFACE_ID:
@@ -1088,11 +1023,6 @@ def _bundle_for_surface(
             "workbench": attach_region_family_contract(
                 _generic_workbench(surface_payload),
                 family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
-                surface_id=selection_surface_id,
-            ),
-            "interface_panel": attach_region_family_contract(
-                _generic_interface_panel(surface_payload),
-                family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
                 surface_id=selection_surface_id,
             ),
             "tool_rows": tool_rows,
@@ -1134,11 +1064,6 @@ def _bundle_for_surface(
         "workbench": attach_region_family_contract(
             _generic_workbench(surface_payload),
             family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
-            surface_id=selection_surface_id,
-        ),
-        "interface_panel": attach_region_family_contract(
-            _generic_interface_panel(surface_payload),
-            family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
             surface_id=selection_surface_id,
         ),
         "tool_rows": tool_rows,
@@ -1203,7 +1128,7 @@ def run_portal_shell_entry(
         ),
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
-        interface_panel=bundle["interface_panel"],
+        interface_panel=bundle.get("interface_panel"),
         shell_state=composition_shell_state,
         control_panel_collapsed=bool(
             composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
@@ -1361,7 +1286,7 @@ def run_system_profile_basics_action(
         ),
         control_panel=workspace_bundle["control_panel"],
         workbench=workspace_bundle["workbench"],
-        interface_panel=workspace_bundle["interface_panel"],
+        interface_panel=workspace_bundle.get("interface_panel"),
         shell_state=selection.shell_state,
     )
     return build_portal_runtime_envelope(

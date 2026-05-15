@@ -1912,10 +1912,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["shell_composition"]["regions"]["workbench"]["kind"],
                 "network_system_log_workbench",
             )
-            self.assertEqual(
-                envelope["shell_composition"]["regions"]["interface_panel"]["kind"],
-                "summary_panel",
-            )
+            # Phase 13a: the bespoke network interface_panel (kind=summary_panel)
+            # was deleted; the empty placeholder still emits a region for schema
+            # continuity but no longer carries the summary_panel kind.
             self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
             self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
