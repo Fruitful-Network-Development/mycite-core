@@ -676,10 +676,14 @@
   }
 
   function renderMailboxesTable(rows) {
+    // Phase 16c: Domain column so operators of multi-domain grantees
+    // (e.g. CVCC owns cvcc + cvccboard) can tell which mailbox lives
+    // where. Rows are sorted by domain then mailbox server-side.
     return renderRowsTableWithActions(
       "Mailboxes",
       rows,
       [
+        { key: "domain", label: "Domain" },
         { key: "mailbox", label: "Mailbox" },
         { key: "send_as", label: "Send-as" },
         { key: "role", label: "Role" },
