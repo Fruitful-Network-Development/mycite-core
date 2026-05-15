@@ -160,20 +160,21 @@ class AnalyticsExtensionPayloadRefreshActionTests(unittest.TestCase):
         self.assertEqual(payload["refresh_action"]["route"], "/__fnd/analytics/refresh")
         self.assertEqual(payload["refresh_action"]["payload"]["domain"], "alpha.example.test")
 
-    def test_payload_emits_top_paths_from_recent_events(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.analytics import (
-            _top_paths,
-        )
+    def test_payload_emits_top_paths_from_rank_pages_by_attention(self) -> None:
+        # Phase 18c: the ``_top_paths`` helper that summarised recent_
+        # events was replaced by derivations.rank_pages_by_attention,
+        # which computes from the full event set + filters bots.
+        from MyCiteV2.packages.core.analytics import derivations
 
         events = [
-            {"event_type": "page_view", "path": "/", "timestamp": "t1"},
-            {"event_type": "page_view", "path": "/", "timestamp": "t2"},
-            {"event_type": "page_view", "path": "/about", "timestamp": "t3"},
+            {"event_type": "page_view", "page_path": "/", "visitor_cookie_id_hash": "a", "is_bot": False},
+            {"event_type": "page_view", "page_path": "/", "visitor_cookie_id_hash": "b", "is_bot": False},
+            {"event_type": "page_view", "page_path": "/about", "visitor_cookie_id_hash": "c", "is_bot": False},
         ]
-        top = _top_paths(events)
-        self.assertEqual(top[0]["path"], "/")
-        self.assertEqual(top[0]["count"], 2)
-        self.assertEqual(top[1]["path"], "/about")
+        rows = derivations.rank_pages_by_attention(events)
+        self.assertEqual(rows[0]["page_path"], "/")
+        self.assertEqual(rows[0]["view_count"], 2)
+        self.assertEqual(rows[1]["page_path"], "/about")
 
 
 if __name__ == "__main__":

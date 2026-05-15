@@ -156,18 +156,16 @@ class AnalyticsDataSourceTests(unittest.TestCase):
         self.assertEqual(ds["kind"], "")
         self.assertEqual(ds["label"], "Data source")
 
-    def test_data_source_kind_pending_when_summary_datum_absent(self) -> None:
-        # Phase 14c: the in-request 3-month NDJSON fallback is removed. When
-        # the MOS summary datum is absent the renderer returns a `pending`
-        # data_source + a `notice` pointing operators at the refresh job;
-        # the events_dir is still echoed so they know where the source
-        # files would live.
+    def test_data_source_kind_pending_when_no_events(self) -> None:
+        # Phase 18c: insights derive on-demand from the raw NDJSON
+        # log; the renderer returns ``kind=pending`` + a notice when
+        # no events exist yet for the domain.
         out = _build_analytics_extension_payload("example.org", "/nonexistent")
         ds = out["data_source"]
         self.assertEqual(ds["kind"], "pending")
         self.assertIn("example.org", ds["events_dir"])
         self.assertIn("notice", out)
-        self.assertIn("sync", out["notice"].lower())
+        self.assertIn("event", out["notice"].lower())
 
 
 if __name__ == "__main__":
