@@ -128,5 +128,36 @@ class TestPreservationRoutesRegistered(unittest.TestCase):
         self.assertIn("POST", _route_methods_for(self.app, "/__fnd/newsletter/unsubscribe"))
 
 
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class TestNewsletterKnownDomainsResolution(unittest.TestCase):
+    """The newsletter known-domains lookup must derive from the host config's
+    private_dir (V2PortalHostConfig.private_dir / utilities/tools/newsletter-admin/),
+    not from a hardcoded /srv/mycite-state path. Phase 13d-prep refactor — the
+    smoke tests will rely on this so they can boot the portal against a tempdir.
+    """
+
+    def test_known_domains_reads_from_host_config_private_dir(self) -> None:
+        from MyCiteV2.instances._shared.portal_host.app import _newsletter_known_domains
+
+        with tempfile.TemporaryDirectory(prefix="newsletter_admin_") as tmp:
+            private_dir = Path(tmp)
+            admin_dir = private_dir / "utilities" / "tools" / "newsletter-admin"
+            admin_dir.mkdir(parents=True, exist_ok=True)
+            for slug in ("alpha.example.test", "beta.example.test"):
+                (admin_dir / f"newsletter-admin.{slug}.json").write_text("{}\n", encoding="utf-8")
+
+            self.assertEqual(
+                _newsletter_known_domains(private_dir),
+                ["alpha.example.test", "beta.example.test"],
+            )
+
+    def test_known_domains_returns_empty_when_admin_dir_missing(self) -> None:
+        from MyCiteV2.instances._shared.portal_host.app import _newsletter_known_domains
+
+        with tempfile.TemporaryDirectory(prefix="newsletter_admin_empty_") as tmp:
+            # No utilities/tools/newsletter-admin/ subdirectory at all.
+            self.assertEqual(_newsletter_known_domains(Path(tmp)), [])
+
+
 if __name__ == "__main__":
     unittest.main()
