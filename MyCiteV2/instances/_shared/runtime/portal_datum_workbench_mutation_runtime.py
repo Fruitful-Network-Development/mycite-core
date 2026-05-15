@@ -531,7 +531,21 @@ def _aws_csm_apply_or_preview(
         )
         if operation == "upsert_subscriber":
             email = _as_text(payload.get("email")).lower()
+            # Phase 15b: prefer split first/middle/last when supplied.
+            # Back-compat: a single ``name`` is auto-split by the adapter
+            # at write time, but we also normalize here so existing rows
+            # picked up by load_contact_log carry through cleanly.
+            first_name = _as_text(payload.get("first_name"))
+            middle_name = _as_text(payload.get("middle_name"))
+            last_name = _as_text(payload.get("last_name"))
             name = _as_text(payload.get("name"))
+            if not (first_name or middle_name or last_name) and name:
+                first_name, middle_name, last_name = (
+                    MosDatumNewsletterContactLogAdapter._split_legacy_name(name)
+                )
+            composed_name = name or " ".join(
+                t for t in (first_name, middle_name, last_name) if t
+            )
             if not email:
                 raise ValueError("email is required for upsert_subscriber")
             log = adapter.load_contact_log(domain=domain) or {
@@ -546,8 +560,14 @@ def _aws_csm_apply_or_preview(
             for c in contacts:
                 if _as_text(c.get("email")).lower() == email:
                     c["subscribed"] = True
-                    if name:
-                        c["name"] = name
+                    if composed_name:
+                        c["name"] = composed_name
+                    if first_name:
+                        c["first_name"] = first_name
+                    if middle_name:
+                        c["middle_name"] = middle_name
+                    if last_name:
+                        c["last_name"] = last_name
                     c["updated_at"] = now_iso
                     if not _as_text(c.get("source")):
                         c["source"] = "website_signup"
@@ -557,7 +577,10 @@ def _aws_csm_apply_or_preview(
                 contacts.append(
                     {
                         "email": email,
-                        "name": name,
+                        "name": composed_name,
+                        "first_name": first_name,
+                        "middle_name": middle_name,
+                        "last_name": last_name,
                         "subscribed": True,
                         "source": "website_signup",
                         "send_count": 0,

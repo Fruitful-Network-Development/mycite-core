@@ -1501,6 +1501,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
 
         raw_email = _fnd_newsletter_request_field("email")
+        # Phase 15b: capture first / middle / last when the form supplies
+        # them; fall back to a single ``name`` field for legacy forms.
+        # The mutation runtime + adapter auto-split a single name token
+        # into (first, middle, last) so partial input is still useful.
+        first_name = _fnd_newsletter_request_field("first_name")
+        middle_name = _fnd_newsletter_request_field("middle_name")
+        last_name = _fnd_newsletter_request_field("last_name")
         name = _fnd_newsletter_request_field("name")
         # zip_code captured but not yet projected into the v2 datum
         # magnitude set; logged for parity with the legacy upsert path.
@@ -1523,6 +1530,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "domain": domain,
                     "email": email,
                     "name": name,
+                    "first_name": first_name,
+                    "middle_name": middle_name,
+                    "last_name": last_name,
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
@@ -1701,6 +1711,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else payload
         domain = _normalize_domain(_admin_field(payload, "domain"))
         email = _validate_email(_admin_field(fields, "email"))
+        # Phase 15b: capture first / middle / last from the admin form;
+        # legacy ``name`` is still accepted and auto-split downstream.
+        first_name = _admin_field(fields, "first_name")
+        middle_name = _admin_field(fields, "middle_name")
+        last_name = _admin_field(fields, "last_name")
         name = _admin_field(fields, "name")
 
         if not domain:
@@ -1724,6 +1739,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "domain": domain,
                     "email": email,
                     "name": name,
+                    "first_name": first_name,
+                    "middle_name": middle_name,
+                    "last_name": last_name,
                     "source": "operator",
                 },
                 authority_db_file=host_config.authority_db_file,

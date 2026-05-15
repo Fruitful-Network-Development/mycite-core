@@ -49,6 +49,20 @@ repeating_archetype:
     name_confirmed:
       magnitude_kind: boolean
       required: true
+    # Phase 15b: persist the split CSV columns alongside the composed
+    # ``name_ascii`` (which stays for one transition cycle so legacy
+    # readers keep working). The bacillete-encoded binary forms are
+    # only computed for the composed name field for now — first /
+    # middle / last fields are stored as plain ASCII.
+    first_name_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    middle_name_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    last_name_ascii:
+      magnitude_kind: trimmed_string
+      required: false
     subscribed:
       magnitude_kind: boolean
       required: true
@@ -70,17 +84,20 @@ repeating_archetype:
 # composed into final magnitudes and then dropped before the row is
 # persisted.
 csv_column_map:
-  "First Name": _name_first
-  "Middle Name": _name_middle
-  "Last Name": _name_last
+  "First Name": first_name_ascii
+  "Middle Name": middle_name_ascii
+  "Last Name": last_name_ascii
   "E-mail 1 - Value": email_ascii
 
 # Intake pipeline. The csv_intake module interprets these directives
 # in order against each CSV row's working dict. Directives that change
 # row state can also drop the row (returning None / sentinel).
 csv_intake_pipeline:
+  # Phase 15b: the split first/middle/last fields are persisted as
+  # first-class magnitudes. ``name_ascii`` is composed from them so
+  # legacy readers (which still look for the single field) keep working.
   - join_name:
-      from: [_name_first, _name_middle, _name_last]
+      from: [first_name_ascii, middle_name_ascii, last_name_ascii]
       to: name_ascii
       separator: " "
   - skip_if_email_in_name:
