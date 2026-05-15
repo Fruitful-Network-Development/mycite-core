@@ -5,12 +5,17 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
+    _address_tuple,
+    _profile_sort_key,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
 )
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     as_text as _as_text,
 )
+from MyCiteV2.packages.modules.domains.datum_recognition import DatumRecognitionDocument
 
 # A district timeframe label must contain a literal `district_<digits>` (or
 # `district-<digits>` / `district<digits>`) anchored at a word boundary
@@ -33,11 +38,6 @@ _DISTRICT_TIMEFRAME_RE = re.compile(r"(?:^|[-_])district[-_]?\d+(?:$|[-_])")
 def _is_district_timeframe_label(token: str) -> bool:
     """Return True iff the (lowercased) token looks like a real district timeframe."""
     return bool(_DISTRICT_TIMEFRAME_RE.search(token))
-from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
-    _address_tuple,
-    _profile_sort_key,
-)
-from MyCiteV2.packages.modules.domains.datum_recognition import DatumRecognitionDocument
 
 
 def _precinct_profile_matches_attention(*, precinct_node_id: str, attention_node_id: str) -> bool:

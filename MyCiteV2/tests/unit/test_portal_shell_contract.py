@@ -289,7 +289,7 @@ class PortalShellContractTests(unittest.TestCase):
             "ignored": "yes",
         }
 
-        helper_query, warnings = normalize_network_surface_query(raw_query)
+        helper_query, _warnings = normalize_network_surface_query(raw_query)
         self.assertEqual(
             canonical_query_for_surface_query(raw_query, surface_id=NETWORK_ROOT_SURFACE_ID),
             helper_query,

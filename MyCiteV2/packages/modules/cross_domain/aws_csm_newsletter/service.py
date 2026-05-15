@@ -663,7 +663,7 @@ class AwsCsmNewsletterService:
             ),
             "results": results[-_MAX_DISPATCH_RESULT_HISTORY:],
         }
-        contact_log["dispatches"] = list(contact_log.get("dispatches") or [])[-(_MAX_DISPATCH_HISTORY - 1):] + [dispatch_row]
+        contact_log["dispatches"] = [*list(contact_log.get("dispatches") or [])[-(_MAX_DISPATCH_HISTORY - 1):], dispatch_row]
         self._state_port.save_contact_log(domain=domain_token, payload=contact_log)
 
         profile["last_inbound_message_id"] = _as_text(ses_message_id)

@@ -214,7 +214,7 @@ class SyncBehaviorTests(unittest.TestCase):
         self.assertEqual(result["domains_wired"], [domain])
         self.assertEqual(result["permissions_added"], [rule_name])
         # add_permission must come before update_receipt_rule
-        kinds = [c[0] for c in lam.calls + ses.calls if c[0] in {"add_permission", "update_receipt_rule"}]
+        [c[0] for c in lam.calls + ses.calls if c[0] in {"add_permission", "update_receipt_rule"}]
         # both lists are in chronological order per-client; for this test we
         # confirm presence + ordering at the adapter level
         lam_perm_index = next(i for i, c in enumerate(lam.calls) if c[0] == "add_permission")

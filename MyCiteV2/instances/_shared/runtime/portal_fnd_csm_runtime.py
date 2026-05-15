@@ -34,10 +34,7 @@ from MyCiteV2.packages.core.datum_templates import (
     TemplateRegistry,
     recognize_archetype_in_registry,
 )
-from MyCiteV2.packages.core.grantee import (
-    GRANTEE_PROFILE_SCHEMA,
-    load_grantee_profile,
-)
+from MyCiteV2.packages.core.grantee import load_grantee_profile
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
@@ -61,7 +58,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 FND_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.surface.v1"
 FND_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.request.v1"
 FND_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.action.request.v1"
-GRANTEE_PROFILE_SCHEMA = "mycite.v2.grantee.profile.v1"
 
 # Phase 12g (full split): helpers + builders moved under utilities_extensions/.
 # Imported back here for the legacy build_portal_fnd_csm_surface_bundle path
@@ -380,7 +376,8 @@ def _build_email_component_group(
     domain: str,
     engaged_frame_id: str,
 ) -> dict[str, Any]:
-    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    def rk(fid):
+        return _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
     profiles = _as_list(email_tab.get("profiles"))
     mailbox_items = (
         [
@@ -438,7 +435,8 @@ def _build_analytics_component_group(
     domain: str,
     engaged_frame_id: str,
 ) -> dict[str, Any]:
-    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    def rk(fid):
+        return _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
     summary = _as_dict(analytics_tab.get("summary"))
     summary_items = [
         {"label": "page views", "value": str(summary.get("page_view", 0))},
@@ -497,7 +495,8 @@ def _build_newsletter_component_group(
     domain: str,
     engaged_frame_id: str,
 ) -> dict[str, Any]:
-    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    def rk(fid):
+        return _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
     sender_items = [
         {
             "label": "current sender",
@@ -560,7 +559,8 @@ def _build_paypal_component_group(
     domain: str,
     engaged_frame_id: str,
 ) -> dict[str, Any]:
-    rk = lambda fid: _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
+    def rk(fid):
+        return _fnd_csm_render_key(grantee_msn, domain, fid, engaged_frame_id)
     webhook_items = [
         {
             "label": "webhook URL",

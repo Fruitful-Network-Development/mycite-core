@@ -1234,7 +1234,7 @@ def _build_source_evidence(
     supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
     corpus_prefix = _cts_gis_corpus_prefix(supporting_document_name)
     private_tool_root = _cts_gis_private_tool_root(private_dir)
-    data_tool_root = _cts_gis_data_tool_root(data_dir)
+    _cts_gis_data_tool_root(data_dir)
     spec_path = None if private_tool_root is None else private_tool_root / "spec.json"
     tool_anchor_path = _cts_gis_tool_anchor_path(data_dir)
     tool_anchor_payload = _safe_json_object(tool_anchor_path)
@@ -1307,7 +1307,7 @@ def _resolved_tool_state(
     mediation_state = dict(service_surface.get("mediation_state") or {})
     diagnostic_summary = dict(service_surface.get("diagnostic_summary") or {})
     selection_summary = dict(mediation_state.get("selection_summary") or {})
-    requested_selection = dict(requested_tool_state.get("selection") or {})
+    dict(requested_tool_state.get("selection") or {})
     requested_active_path = _normalize_requested_active_path(requested_tool_state.get("active_path"))
     fallback_selected_node_id = ""
     if (
@@ -1805,7 +1805,7 @@ def _build_cts_gis_context_controls(
             "control_type": "stepper",
             "options": intention_options,
             "controls": [
-                _context_control_button(label="−", control_id="intention_previous", entry=previous_intention),
+                _context_control_button(label="−", control_id="intention_previous", entry=previous_intention),  # noqa: RUF001 — Unicode MINUS SIGN intentional for symmetry with "+"
                 _context_control_button(label="+", control_id="intention_next", entry=next_intention),
             ],
             "empty_message": "No intention controls are available.",
@@ -4312,7 +4312,7 @@ def build_portal_cts_gis_surface_bundle(
                 "state": "compiled_state_invalid",
                 "message": "Compiled CTS-GIS state invalid. Run the CTS-GIS compile command or switch to audit_forensic mode.",
             },
-            "warnings": ["compiled_cts_gis_state_invalid"] + list(compiled_issues),
+            "warnings": ["compiled_cts_gis_state_invalid", *list(compiled_issues)],
             "source_layout": dict(source_layout),
         }
         navigation_canvas = {
@@ -4548,7 +4548,7 @@ def build_portal_cts_gis_surface_bundle(
     surface_payload["runtime_diagnostics"] = runtime_diagnostics
     stage_state_public = _staged_insert_state(resolved_tool_state.get("staged_insert"))
     stage_preview_public = dict(stage_state_public.get("last_preview") or {})
-    stage_validation_public = dict(stage_state_public.get("last_validation") or {})
+    dict(stage_state_public.get("last_validation") or {})
 
     # Determine workbench mode: active manipulation or idle tool overview
     has_active_manipulation = bool(stage_preview_public) or _as_text(action_result.get("action_kind")) in {
@@ -4558,14 +4558,13 @@ def build_portal_cts_gis_surface_bundle(
         "stage_insert_yaml",
         "validate_stage",
     }
-    workbench_mode = "manipulation_active" if has_active_manipulation else "tool_overview"
 
     # Always show workbench with appropriate content
     show_workbench = True
     forced_visible = has_active_manipulation  # Force visible only during manipulation
 
     # Build tool summary for idle state
-    tool_summary = {
+    {
         "tool_id": tool_entry.tool_id,
         "configured": tool_exposure_configured(tool_exposure_policy, tool_id=tool_entry.tool_id),
         "operational": operational,

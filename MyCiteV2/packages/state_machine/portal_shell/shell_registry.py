@@ -2,7 +2,13 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from MyCiteV2.packages.core.scalars import as_text
+
+if TYPE_CHECKING:
+    # Lazy at runtime to break the circular import with shell.py (Phase 12a).
+    from .shell import PortalToolRegistryEntry
 
 from .shell_schemas import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,

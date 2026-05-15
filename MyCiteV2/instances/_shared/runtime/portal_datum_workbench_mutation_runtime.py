@@ -259,7 +259,7 @@ def _scaffold_datum(
         if any(d.document_id == real_id for d in catalog.documents):
             result["status"] = "already_present"
             return result
-        next_documents = tuple(catalog.documents) + (final_document,)
+        next_documents = (*tuple(catalog.documents), final_document)
         next_catalog = AuthoritativeDatumDocumentCatalogResult(
             tenant_id=catalog.tenant_id,
             documents=next_documents,

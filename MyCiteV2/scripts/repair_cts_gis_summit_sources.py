@@ -255,7 +255,7 @@ def _issue_sort_key(issue_type: str) -> tuple[int, str]:
 
 
 def _finding_sort_key(finding: dict[str, Any]) -> tuple[int, str]:
-    return _issue_sort_key(_as_text(finding.get("issue_type"))) + (_as_text(finding.get("detail")),)
+    return (*_issue_sort_key(_as_text(finding.get("issue_type"))), _as_text(finding.get("detail")))
 
 
 def _sort_findings(findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -536,7 +536,7 @@ def _reference_geometry_findings(path: Path, payload: dict[str, Any]) -> list[di
         )
 
     for polygon_index, (polygon_entry, reference_polygon) in enumerate(
-        zip(polygon_groups, reference_polygons),
+        zip(polygon_groups, reference_polygons, strict=False),
         start=1,
     ):
         polygon_row_address = _as_text(polygon_entry.get("polygon_row_address"))
@@ -582,7 +582,7 @@ def _reference_geometry_findings(path: Path, payload: dict[str, Any]) -> list[di
             continue
 
         for ring_index, (row_address, actual_tokens, expected_tokens) in enumerate(
-            zip(ring_row_addresses, actual_token_rows, expected_token_rows),
+            zip(ring_row_addresses, actual_token_rows, expected_token_rows, strict=False),
             start=1,
         ):
             if len(actual_tokens) != len(expected_tokens):

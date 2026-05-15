@@ -315,10 +315,7 @@ def _shell_asset_files_from_manifest(manifest: Mapping[str, Any]) -> list[str]:
     files: list[str] = []
     styles = manifest.get("styles") if isinstance(manifest, Mapping) else {}
     scripts = manifest.get("scripts") if isinstance(manifest, Mapping) else {}
-    for asset in list(styles.values()) + [
-        scripts.get("portal_js"),
-        scripts.get("shell_entry"),
-    ]:
+    for asset in [*list(styles.values()), scripts.get("portal_js"), scripts.get("shell_entry")]:
         if isinstance(asset, Mapping):
             filename = _as_text(asset.get("file"))
             if filename:
@@ -1527,7 +1524,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         email = _validate_email(str(payload.get("email") or ""))
         status = str(payload.get("status") or "").strip().lower()
         message_id = str(payload.get("message_id") or "").strip()
-        queue_message_id = str(payload.get("queue_message_id") or "").strip()
+        str(payload.get("queue_message_id") or "").strip()
         error_message = str(payload.get("error_message") or "").strip()
 
         if not email:

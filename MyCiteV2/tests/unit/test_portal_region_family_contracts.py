@@ -77,7 +77,7 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
         # Phase 3 (portal_tool_surface_contract.md): fnd_csm surface retired —
         # its tabs migrated to utilities extensions. Family-contract coverage
         # for fnd_csm is no longer required.
-        with TemporaryDirectory() as temp_dir:
+        with TemporaryDirectory():
             cts_envelope = run_portal_cts_gis(
                 {
                     "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",

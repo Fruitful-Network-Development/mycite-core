@@ -56,20 +56,7 @@ def _anchor_rows() -> tuple[AuthoritativeDatumDocumentRow, ...]:
 
 
 def _anchor_rows_with_chronology() -> tuple[AuthoritativeDatumDocumentRow, ...]:
-    return _anchor_rows() + (
-        AuthoritativeDatumDocumentRow(
-            datum_address="1-1-5",
-            raw=[["1-1-5", "~", "10101010"], ["chronological_hops_space"]],
-        ),
-        AuthoritativeDatumDocumentRow(
-            datum_address="2-0-4",
-            raw=[["2-0-4", "~", "1-1-5"], ["chronological_hops_binding"]],
-        ),
-        AuthoritativeDatumDocumentRow(
-            datum_address="3-1-5",
-            raw=[["3-1-5", "2-0-4", "0"], ["chronological_hops_babelette"]],
-        ),
-    )
+    return (*_anchor_rows(), AuthoritativeDatumDocumentRow(datum_address="1-1-5", raw=[["1-1-5", "~", "10101010"], ["chronological_hops_space"]]), AuthoritativeDatumDocumentRow(datum_address="2-0-4", raw=[["2-0-4", "~", "1-1-5"], ["chronological_hops_binding"]]), AuthoritativeDatumDocumentRow(datum_address="3-1-5", raw=[["3-1-5", "2-0-4", "0"], ["chronological_hops_babelette"]]))
 
 
 def _ascii_bits(text: str) -> str:
@@ -543,8 +530,8 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                 "intention_token": "3-2-3-17-77-1-0",
             },
         )
-        named_row = [row for row in children_surface["rows"] if row["datum_address"] == "7-3-2"][0]
-        title_overlay = [entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
+        named_row = next(row for row in children_surface["rows"] if row["datum_address"] == "7-3-2")
+        title_overlay = next(entry for entry in named_row["overlay_preview"] if entry["overlay_family"] == "title_babelette")
         self.assertEqual(title_overlay["display_value"], "fairlawn")
 
         bad_row_surface = CtsGisReadOnlyService(store).read_surface(
@@ -554,8 +541,8 @@ class CtsGisReadOnlyUnitTests(unittest.TestCase):
                 "intention_token": "self",
             },
         )
-        bad_row = [row for row in bad_row_surface["rows"] if row["datum_address"] == "7-3-3"][0]
-        bad_title_overlay = [entry for entry in bad_row["overlay_preview"] if entry["overlay_family"] == "title_babelette"][0]
+        bad_row = next(row for row in bad_row_surface["rows"] if row["datum_address"] == "7-3-3")
+        bad_title_overlay = next(entry for entry in bad_row["overlay_preview"] if entry["overlay_family"] == "title_babelette")
         self.assertEqual(bad_title_overlay["raw_value"], "HERE")
         self.assertEqual(bad_title_overlay["display_value"], "HERE")
         self.assertIn("illegal_magnitude_literal", bad_row["diagnostic_states"])

@@ -246,7 +246,7 @@ def insert_datum(
     if "raw" in inserted_row and remap:
         inserted_row["raw"] = _rewrite_row_payload(copy.deepcopy(inserted_row["raw"]), remap)
 
-    out = shifted + [inserted_row]
+    out = [*shifted, inserted_row]
     out.sort(key=lambda row: _parse_address(_row_address(row)))
     return out, remap
 
@@ -338,7 +338,7 @@ def shift_iteration(
             moved_row["raw"] = _rewrite_row_payload(
                 copy.deepcopy(moved_row["raw"]), intermediate_remap
             )
-        out = shifted_again + [moved_row]
+        out = [*shifted_again, moved_row]
         full_remap = dict(intermediate_remap)
         full_remap[from_address] = moved_row["datum_address"]
     else:
@@ -361,7 +361,7 @@ def shift_iteration(
             moved_row["raw"] = _rewrite_row_payload(
                 copy.deepcopy(moved_row["raw"]), intermediate_remap
             )
-        out = shifted_again + [moved_row]
+        out = [*shifted_again, moved_row]
         full_remap = dict(intermediate_remap)
         full_remap[from_address] = moved_row["datum_address"]
 

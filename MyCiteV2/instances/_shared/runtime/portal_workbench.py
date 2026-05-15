@@ -168,7 +168,7 @@ def _row_label(row: Any, datum_id: str) -> str:
     labels = _row_value(row, "labels", ())
     if labels:
         try:
-            first = list(labels)[0]
+            first = next(iter(labels))
             if as_text(first):
                 return as_text(first)
         except TypeError:

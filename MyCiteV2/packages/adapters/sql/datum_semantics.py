@@ -266,19 +266,27 @@ def build_document_semantics(document: AuthoritativeDatumDocument) -> dict[str, 
         if parse_datum_address(address)[:2] == (0, 0)
     }
     row_results: dict[str, dict[str, Any]] = {}
-    for address in address_map:
-        closure: list[str] = []
+    def _walk_closure(
+        start: str,
+        deps: dict[str, set[str]],
+    ) -> list[str]:
+        """DFS closure with sorted dependency traversal — captures only its args."""
+        out: list[str] = []
         seen: set[str] = set()
 
-        def walk(current: str) -> None:
+        def visit(current: str) -> None:
             if current in seen:
                 return
             seen.add(current)
-            for dependency in sorted(dependency_map.get(current, ()), key=datum_address_sort_key):
-                walk(dependency)
-            closure.append(current)
+            for dependency in sorted(deps.get(current, ()), key=datum_address_sort_key):
+                visit(dependency)
+            out.append(current)
 
-        walk(address)
+        visit(start)
+        return out
+
+    for address in address_map:
+        closure = _walk_closure(address, dependency_map)
         reachable_rudi_iterations = [
             parse_datum_address(item)[2]
             for item in closure

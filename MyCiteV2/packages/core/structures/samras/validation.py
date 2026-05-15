@@ -153,12 +153,12 @@ def validate_structure(structure: SamrasStructure, *, require_canonical_roundtri
         validate_stop_addresses(stops, len(value_stream))
     except InvalidSamrasStructure as exc:
         errors.append(str(exc))
-    starts = [0] + stops
-    ends = stops + [len(value_stream)]
+    starts = [0, *stops]
+    ends = [*stops, len(value_stream)]
     if len(starts) != len(structure.value_tokens) or len(ends) != len(structure.value_tokens):
         errors.append("stop addresses do not yield the expected number of tokens")
     else:
-        for index, (left, right) in enumerate(zip(starts, ends)):
+        for index, (left, right) in enumerate(zip(starts, ends, strict=False)):
             token = value_stream[left:right]
             if token != structure.value_tokens[index]:
                 errors.append("stop addresses do not match the provided value tokens")

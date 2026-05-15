@@ -160,9 +160,9 @@ def decode_canonical_bitstream(bitstream: str, *, root_ref: str = "0-0-5") -> Sa
     value_stream = token[cursor:]
     if not value_stream:
         raise InvalidSamrasStructure("missing value stream")
-    starts = [0] + stop_addresses
-    ends = stop_addresses + [len(value_stream)]
-    value_tokens = [value_stream[left:right] for left, right in zip(starts, ends)]
+    starts = [0, *stop_addresses]
+    ends = [*stop_addresses, len(value_stream)]
+    value_tokens = [value_stream[left:right] for left, right in zip(starts, ends, strict=False)]
     if any(item == "" for item in value_tokens):
         raise InvalidSamrasStructure("empty value token")
     values = [int(item, 2) for item in value_tokens]
@@ -211,9 +211,9 @@ def decode_legacy_fixed_header_bitstream(bitstream: str, *, root_ref: str = "0-0
     value_stream = token[cursor:]
     if not value_stream:
         raise InvalidSamrasStructure("legacy value stream is empty")
-    starts = [0] + stop_addresses
-    ends = stop_addresses + [len(value_stream)]
-    value_tokens = [value_stream[left:right] for left, right in zip(starts, ends)]
+    starts = [0, *stop_addresses]
+    ends = [*stop_addresses, len(value_stream)]
+    value_tokens = [value_stream[left:right] for left, right in zip(starts, ends, strict=False)]
     if any(item == "" for item in value_tokens):
         raise InvalidSamrasStructure("legacy value stream contains an empty token")
     values = [int(item, 2) for item in value_tokens]

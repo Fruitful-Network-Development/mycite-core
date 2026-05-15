@@ -139,7 +139,7 @@ class FilesystemAwsCsmToolProfileStore(
         if filename in member_files:
             raise ValueError(f"AWS-CSM collection already references {filename}")
         updated_collection = dict(collection_payload)
-        updated_collection["member_files"] = list(member_files) + [filename]
+        updated_collection["member_files"] = [*list(member_files), filename]
 
         original_collection = collection_path.read_text(encoding="utf-8")
         self._tool_root.mkdir(parents=True, exist_ok=True)
@@ -176,7 +176,7 @@ class FilesystemAwsCsmToolProfileStore(
         if filename in member_files:
             raise ValueError(f"AWS-CSM collection already references {filename}")
         updated_collection = dict(collection_payload)
-        updated_collection["member_files"] = list(member_files) + [filename]
+        updated_collection["member_files"] = [*list(member_files), filename]
 
         original_collection = collection_path.read_text(encoding="utf-8")
         self._tool_root.mkdir(parents=True, exist_ok=True)

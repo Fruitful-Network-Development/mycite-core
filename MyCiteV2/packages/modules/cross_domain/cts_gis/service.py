@@ -760,8 +760,8 @@ class CtsGisReadOnlyService:
         cts_gis_documents = [document for document in workbench.documents if _is_cts_gis_document(document)]
         requested_document_id_raw = _as_text(attention_document_id) or _as_text(selected_document_id)
         requested_document_id = requested_document_id_raw
-        requested_row_address = _as_text(selected_row_address)
-        requested_feature_id = _as_text(selected_feature_id)
+        _as_text(selected_row_address)
+        _as_text(selected_feature_id)
         requested_attention_node_id = _as_text(attention_node_id)
         requested_intention_token_text = _as_text(requested_intention_token)
         time_context_active_flag = bool(time_context_active)
@@ -1464,23 +1464,7 @@ class CtsGisReadOnlyService:
             projection_source = "none"
             projection_state = "inspect_only"
         fallback_reason_codes = _dedupe_texts(
-            [
-                "decode_failure"
-                if int(render_projection_summary.get("failed_token_count") or 0) > 0
-                else "",
-                "parity_mismatch"
-                if any(
-                    ("did not align" in warning)
-                    or ("reference GeoJSON carries" in warning)
-                    or ("HOPS row chain resolves" in warning)
-                    for warning in render_projection_warnings
-                )
-                else "",
-                "authority_warning"
-                if any("reference GeoJSON geometry" in warning for warning in render_projection_warnings)
-                else "",
-            ]
-            + list(render_projection_summary.get("reason_codes") or [])
+            ["decode_failure" if int(render_projection_summary.get("failed_token_count") or 0) > 0 else "", "parity_mismatch" if any("did not align" in warning or "reference GeoJSON carries" in warning or "HOPS row chain resolves" in warning for warning in render_projection_warnings) else "", "authority_warning" if any("reference GeoJSON geometry" in warning for warning in render_projection_warnings) else "", *list(render_projection_summary.get("reason_codes") or [])]
         )
         if projection_state == "projectable":
             projection_health = {"state": "ok", "reason_codes": []}

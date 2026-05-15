@@ -145,7 +145,7 @@ def _longest_shared_prefix_depth(left: object, right: object) -> int:
     left_parts = [part for part in _as_text(left).split("-") if part]
     right_parts = [part for part in _as_text(right).split("-") if part]
     depth = 0
-    for left_part, right_part in zip(left_parts, right_parts):
+    for left_part, right_part in zip(left_parts, right_parts, strict=False):
         if left_part != right_part:
             break
         depth += 1

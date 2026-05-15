@@ -159,7 +159,7 @@ class SingleColumnUpdateTests(unittest.TestCase):
             )
             # Two mapped columns means bulk-insert mode is selected; force
             # single-column mode by trimming the column map down to one.
-            tight_template = DatumTemplate(
+            DatumTemplate(
                 template_id=template.template_id,
                 schema=template.schema,
                 sandbox=template.sandbox,

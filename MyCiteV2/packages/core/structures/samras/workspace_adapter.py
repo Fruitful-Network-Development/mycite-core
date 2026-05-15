@@ -208,11 +208,11 @@ def select_preferred_structure_authority(
     if not authorities:
         raise InvalidSamrasStructure("unable to locate a SAMRAS structure row in the payload")
     if not require_decodable:
-        return list(authorities)[0]
+        return next(iter(authorities))
     for authority in authorities:
         if authority.decodable:
             return authority
-    raise InvalidSamrasStructure(list(authorities)[0].error or "unable to decode SAMRAS structure from available authorities")
+    raise InvalidSamrasStructure(next(iter(authorities)).error or "unable to decode SAMRAS structure from available authorities")
 
 
 def reconstruct_addresses_from_rows(payload: dict[str, Any]) -> list[str]:
