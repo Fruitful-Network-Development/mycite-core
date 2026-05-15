@@ -675,6 +675,47 @@
     );
   }
 
+  function renderConnectSubmissionsTable(rows) {
+    // Phase 17b — Connect-form submissions table. Wider than the
+    // newsletter contacts table because each row carries a subject +
+    // free-text message that the operator needs to read in place.
+    var rowList = asList(rows);
+    if (!rowList.length) return "";
+    var columns = [
+      { key: "signup_date", label: "Date" },
+      { key: "name", label: "Name" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "Phone" },
+      { key: "zip", label: "ZIP" },
+      { key: "subject", label: "Subject" },
+      { key: "message", label: "Message" },
+      { key: "forward_status", label: "Forwarded" },
+      { key: "subscribed_to_newsletter", label: "Subscribed" },
+    ];
+    return (
+      '<section class="v2-extensionCard__table v2-extensionCard__connect">' +
+      "<h4>Connect submissions</h4>" +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      columns.map(function (c) { return "<th>" + escapeHtml(asText(c.label)) + "</th>"; }).join("") +
+      "</tr></thead><tbody>" +
+      rowList.map(function (row) {
+        return "<tr>" + columns.map(function (col) {
+          var v = row[col.key];
+          if (typeof v === "boolean") v = v ? "yes" : "no";
+          if (v == null) v = "";
+          // Message column gets a wrapper so long bodies don't blow
+          // out the table width.
+          if (col.key === "message") {
+            return '<td><div class="v2-extensionCard__connectMessage">' +
+              escapeHtml(String(v)) + "</div></td>";
+          }
+          return "<td>" + escapeHtml(String(v)) + "</td>";
+        }).join("") + "</tr>";
+      }).join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
   function renderMailboxesTable(rows) {
     // Phase 16c: Domain column so operators of multi-domain grantees
     // (e.g. CVCC owns cvcc + cvccboard) can tell which mailbox lives
@@ -761,6 +802,9 @@
     }
     if (asList(p.contact_rows).length) {
       html += renderContactsTable(p.contact_rows);
+    }
+    if (asList(p.submissions).length) {
+      html += renderConnectSubmissionsTable(p.submissions);
     }
     if (asList(p.orders).length) {
       html += renderRowsTable("Orders", p.orders, [

@@ -40,8 +40,12 @@ EXPECTED_EXTENSION_IDS = (
     "ext_analytics",
     "ext_newsletter",
     "ext_paypal",
+    # Phase 17b: the Connect extension joins the 4 operational
+    # extensions on the Utilities/Extensions surface.
+    "ext_connect",
     # Phase 9 (grantee_profile_contract.md): grantee profile editor lives
-    # under utilities.tool_exposure alongside the four operational extensions.
+    # under its own utilities.grantee_profile surface alongside the
+    # operational extensions tab strip.
     "ext_grantee_profile",
 )
 

@@ -43,6 +43,8 @@ _EXPECTED_TOOL_IDS = {
     "ext_analytics",
     "ext_newsletter",
     "ext_paypal",
+    # Phase 17b: Connect joins as the 5th operational extension tab.
+    "ext_connect",
 }
 
 
@@ -124,6 +126,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
                     "ext_analytics",
                     "ext_newsletter",
                     "ext_paypal",
+                    "ext_connect",
                 ):
                     page.goto(
                         f"{base}/portal/utilities/extensions"

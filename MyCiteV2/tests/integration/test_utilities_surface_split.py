@@ -86,17 +86,24 @@ def _surface_payload(surface_id: str) -> dict:
 
 
 class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
-    def test_extensions_surface_subtab_lists_4_operational_extensions(self) -> None:
-        # Phase 15a: extensions surface now exposes the 4 operational
+    def test_extensions_surface_subtab_lists_operational_extensions(self) -> None:
+        # Phase 15a: extensions surface exposes the operational
         # extensions via the subtab selector (tabs list), and renders
         # only the active tab's card in payload.extensions.
+        # Phase 17b: ext_connect joins as the 5th operational tab.
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
         self.assertEqual(payload.get("kind"), "extensions")
         selector = payload.get("extension_subtab_selector") or {}
         tab_ids = {tab.get("tool_id") for tab in selector.get("tabs") or []}
         self.assertEqual(
             tab_ids,
-            {"ext_aws_email", "ext_analytics", "ext_newsletter", "ext_paypal"},
+            {
+                "ext_aws_email",
+                "ext_analytics",
+                "ext_newsletter",
+                "ext_paypal",
+                "ext_connect",
+            },
             f"subtab tab_ids={tab_ids!r}",
         )
         active_card_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
