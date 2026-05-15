@@ -1698,6 +1698,161 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
 
     # ------------------------------------------------------------------
+    # FND Connect-form route (Phase 17c)
+    # ------------------------------------------------------------------
+    # Public visitor endpoint backing the website Connect form. Persists
+    # the visitor's contact info as an unsubscribed contact log row
+    # (source=connect_form), then attempts to forward the visitor's
+    # message via SES to ``grantee.connect.forward_to_email``. On SES
+    # failure the contact is still saved with forward_status=pending
+    # so the operator can retry from the Connect extension tab.
+
+    def _resolve_grantee_for_domain(domain: str) -> dict[str, Any]:
+        if host_config.private_dir is None or not domain:
+            return {}
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+                _load_grantee_profiles,
+            )
+
+            for grantee in _load_grantee_profiles(host_config.private_dir):
+                domains = [str(d).lower() for d in (grantee.get("domains") or [])]
+                if domain.lower() in domains:
+                    return grantee
+        except Exception:
+            pass
+        return {}
+
+    def _ses_forward_connect_message(
+        *,
+        grantee: dict[str, Any],
+        domain: str,
+        visitor_email: str,
+        visitor_name: str,
+        subject: str,
+        message: str,
+    ) -> str:
+        """Attempt to forward the Connect-form message via SES.
+
+        Returns one of:
+          - ``"sent"`` on success
+          - ``"pending"`` if forwarding is not configured (no
+            forward_to_email or no aws_ses identity)
+          - ``"failed"`` on SES failure (the operator can retry from
+            the extension tab)
+        """
+        connect_cfg = grantee.get("connect") if isinstance(grantee.get("connect"), dict) else {}
+        aws_cfg = grantee.get("aws_ses") if isinstance(grantee.get("aws_ses"), dict) else {}
+        forward_to = _as_text(connect_cfg.get("forward_to_email"))
+        ses_identity = _as_text(aws_cfg.get("identity"))
+        region = _as_text(aws_cfg.get("region")) or "us-east-1"
+        if not forward_to or not ses_identity:
+            return "pending"
+        try:
+            import boto3
+
+            client = boto3.client("ses", region_name=region)
+            display_subject = subject or f"Connect message from {visitor_email}"
+            body_text = (
+                f"From: {visitor_name or visitor_email} <{visitor_email}>\n"
+                f"Domain: {domain}\n"
+                f"Subject: {display_subject}\n\n"
+                f"{message}\n"
+            )
+            client.send_email(
+                Source=ses_identity,
+                Destination={"ToAddresses": [forward_to]},
+                ReplyToAddresses=[visitor_email] if visitor_email else [],
+                Message={
+                    "Subject": {"Data": f"[Connect] {display_subject}"},
+                    "Body": {"Text": {"Data": body_text}},
+                },
+            )
+        except Exception:
+            return "failed"
+        return "sent"
+
+    @app.post("/__fnd/connect/submit")
+    def fnd_connect_submit() -> tuple[Any, int]:
+        """Public Connect-form endpoint. Same calling convention as
+        ``/__fnd/newsletter/subscribe`` — domain is derived from the
+        request.host, body carries the visitor fields + message.
+        """
+        domain = _normalize_domain(request.host)
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+
+        raw_email = _fnd_newsletter_request_field("email")
+        email = _validate_email(raw_email)
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        message = _fnd_newsletter_request_field("message")
+        if not message:
+            return jsonify({"ok": False, "error": "missing_message"}), 400
+        first_name = _fnd_newsletter_request_field("first_name")
+        middle_name = _fnd_newsletter_request_field("middle_name")
+        last_name = _fnd_newsletter_request_field("last_name")
+        phone = _fnd_newsletter_request_field("phone")
+        zip_code = _fnd_newsletter_request_field("zip")
+        subject = _fnd_newsletter_request_field("subject")
+        display_name = " ".join(t for t in (first_name, last_name) if t) or email
+
+        # Attempt SES forward first so the persisted row reflects the
+        # actual delivery outcome. If forwarding isn't configured we
+        # still persist with forward_status=pending — the operator can
+        # see the queue in the Connect extension tab and retry later.
+        grantee = _resolve_grantee_for_domain(domain)
+        forward_status = _ses_forward_connect_message(
+            grantee=grantee,
+            domain=domain,
+            visitor_email=email,
+            visitor_name=display_name,
+            subject=subject,
+            message=message,
+        )
+
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "submit_connect_form",
+                    "domain": domain,
+                    "email": email,
+                    "first_name": first_name,
+                    "middle_name": middle_name,
+                    "last_name": last_name,
+                    "phone": phone,
+                    "zip": zip_code,
+                    "subject": subject,
+                    "message": message,
+                    "forward_status": forward_status,
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error", "forward_status": forward_status}), 500
+
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error", "forward_status": forward_status}), 500
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "email": email,
+                    "subscribed": False,
+                    "forward_status": forward_status,
+                }
+            ),
+            200,
+        )
+
+    # ------------------------------------------------------------------
     # FND Newsletter admin routes (Phase 14d.1)
     # ------------------------------------------------------------------
     # Three operator-facing routes that back the Newsletter extension's
