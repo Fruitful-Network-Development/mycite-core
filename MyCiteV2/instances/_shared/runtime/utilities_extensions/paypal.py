@@ -8,6 +8,11 @@ Phase 8 (grantee_profile_contract.md): inline ``grantee.paypal.webhook_url``
 is the canonical source. The MOS adapter and the legacy
 ``paypal-webhook.{msn_id}.json`` sidecar remain as fallbacks for one
 transition cycle — production migration is the gate for retiring them.
+
+Phase 14d.3: the payload now carries an ``export_action`` link that
+points at ``GET /__fnd/paypal/admin/export?domain=...`` which returns
+a CSV of the orders log for the domain. The JS renderer wires this as
+a download anchor.
 """
 
 from __future__ import annotations
@@ -15,10 +20,22 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 from MyCiteV2.packages.core.grantee import PaypalConfig
 
 from ._shared import _as_dict, _as_text, _grantee_edit_link, _mask_secret
+
+
+def _export_action(domain: str) -> dict[str, Any]:
+    if not domain:
+        return {}
+    return {
+        "label": "Export CSV",
+        "href": f"/__fnd/paypal/admin/export?domain={quote(domain, safe='')}",
+        "download": f"paypal-orders-{domain}.csv",
+        "variant": "secondary",
+    }
 
 
 def _hydrate_paypal_from_sidecar(
@@ -122,6 +139,7 @@ def _build_paypal_extension_payload(
             "webhook_url": webhook_url,
             "orders": orders,
             "configuration": _paypal_configuration(),
+            "export_action": _export_action(domain),
         }
 
     # Filesystem fallback (unchanged from the pre-MOS behavior).
@@ -168,6 +186,7 @@ def _build_paypal_extension_payload(
         "webhook_url": webhook_url,
         "orders": orders,
         "configuration": _paypal_configuration(),
+        "export_action": _export_action(domain),
     }
 
 
