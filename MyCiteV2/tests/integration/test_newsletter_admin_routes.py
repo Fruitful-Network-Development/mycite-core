@@ -151,6 +151,106 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         self.assertEqual(row["last_name"], "Zaun")
         self.assertEqual(row["name"], "Mary Anne Zaun")
 
+    def test_add_subscriber_persists_phone_zip(self) -> None:
+        # Phase 16a: phone + zip are now first-class magnitudes that
+        # the admin form supplies + the adapter persists.
+        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+            MosDatumNewsletterContactLogAdapter,
+        )
+
+        client, tmp = self._build_client()
+        resp = client.post(
+            "/__fnd/newsletter/admin/add",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {
+                        "email": "phone.fan@subscriber.test",
+                        "first_name": "Phone",
+                        "last_name": "Fan",
+                        "phone": "216-555-9999",
+                        "zip": "44264",
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
+        )
+        loaded = adapter.load_contact_log(domain="alpha.example.test")
+        row = next(c for c in loaded["contacts"] if c["email"] == "phone.fan@subscriber.test")
+        self.assertEqual(row["phone"], "216-555-9999")
+        self.assertEqual(row["zip"], "44264")
+        self.assertRegex(row["signup_date"], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_edit_route_updates_named_fields(self) -> None:
+        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+            MosDatumNewsletterContactLogAdapter,
+        )
+
+        client, tmp = self._build_client()
+        client.post(
+            "/__fnd/newsletter/admin/add",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {"email": "edit.me@subscriber.test", "first_name": "Edit"},
+                }
+            ),
+            content_type="application/json",
+        )
+        resp = client.post(
+            "/__fnd/newsletter/admin/edit",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {
+                        "email": "edit.me@subscriber.test",
+                        "first_name": "Edited",
+                        "last_name": "Done",
+                        "phone": "555-1234",
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(
+            set(body["updated_fields"]), {"first_name", "last_name", "phone"}
+        )
+
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
+        )
+        row = next(
+            c
+            for c in adapter.load_contact_log(domain="alpha.example.test")["contacts"]
+            if c["email"] == "edit.me@subscriber.test"
+        )
+        self.assertEqual(row["first_name"], "Edited")
+        self.assertEqual(row["last_name"], "Done")
+        self.assertEqual(row["phone"], "555-1234")
+
+    def test_edit_route_404_on_unknown_email(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/newsletter/admin/edit",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {"email": "ghost@subscriber.test", "phone": "x"},
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "contact_not_found")
+
     def test_add_subscriber_legacy_single_name_auto_splits(self) -> None:
         # Phase 15b back-compat: clients that still post a single
         # ``name`` field continue to work — the runtime auto-splits.

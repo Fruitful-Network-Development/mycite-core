@@ -63,6 +63,20 @@ repeating_archetype:
     last_name_ascii:
       magnitude_kind: trimmed_string
       required: false
+    # Phase 16a: additional contact-detail magnitudes captured from
+    # website signup forms + the operator-side admin form. Phone and
+    # zip are free-form ASCII (no strict format check yet); signup
+    # date is the ISO-8601 ``YYYY-MM-DD`` token the operator can
+    # filter / sort on.
+    phone_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    zip_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    signup_date:
+      magnitude_kind: trimmed_string
+      required: false
     subscribed:
       magnitude_kind: boolean
       required: true
@@ -125,6 +139,9 @@ csv_intake_pipeline:
       source: "csv_import_2026-05-02"
       last_newsletter_sent_at: ""
       send_count: 0
+      # Phase 16a: stamp the CSV's intake date so back-filled rows
+      # have a meaningful signup_date instead of "today".
+      signup_date: "2026-05-02"
   - dedupe:
       key: email_ascii
       keep: first

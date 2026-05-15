@@ -9030,6 +9030,37 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-extensionTabs__optionLabel {
   font-weight: 600;
 }
+/* Phase 16a — inline contact-row edit. The edit row sits below the
+   contact row and expands a tiny form in place. The form is hidden
+   until the operator clicks Edit. */
+.v2-contactEditRow {
+  background: #f6f8fa;
+}
+.v2-contactEditForm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 8px 4px;
+}
+.v2-contactEditForm__label {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 12px;
+  gap: 2px;
+  min-width: 140px;
+}
+.v2-contactEditForm__label input {
+  padding: 4px 6px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 4px;
+  font: inherit;
+}
+.v2-contactEditForm__actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
 .v2-activitylink.is-active {
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;

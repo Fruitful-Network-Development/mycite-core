@@ -426,6 +426,9 @@ _AWS_CSM_TARGET_AUTHORITIES = frozenset(
 _AWS_CSM_OPERATIONS = frozenset(
     {
         "upsert_subscriber",
+        # Phase 16a: operator-side inline row edit for the newsletter
+        # Contacts table. Updates non-subscription fields only.
+        "edit_subscriber",
         "mark_unsubscribed",
         "update_subscription",
         "record_dispatch_result",
@@ -539,6 +542,10 @@ def _aws_csm_apply_or_preview(
             middle_name = _as_text(payload.get("middle_name"))
             last_name = _as_text(payload.get("last_name"))
             name = _as_text(payload.get("name"))
+            # Phase 16a: also capture phone / zip / signup_date.
+            phone = _as_text(payload.get("phone"))
+            zip_code = _as_text(payload.get("zip"))
+            signup_date = _as_text(payload.get("signup_date"))
             if not (first_name or middle_name or last_name) and name:
                 first_name, middle_name, last_name = (
                     MosDatumNewsletterContactLogAdapter._split_legacy_name(name)
@@ -555,6 +562,8 @@ def _aws_csm_apply_or_preview(
                 "dispatches": [],
             }
             now_iso = _aws_csm_now_iso()
+            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
+            effective_signup_date = signup_date or today_date
             contacts = list(log.get("contacts") or [])
             found = False
             for c in contacts:
@@ -568,6 +577,12 @@ def _aws_csm_apply_or_preview(
                         c["middle_name"] = middle_name
                     if last_name:
                         c["last_name"] = last_name
+                    if phone:
+                        c["phone"] = phone
+                    if zip_code:
+                        c["zip"] = zip_code
+                    if not _as_text(c.get("signup_date")):
+                        c["signup_date"] = effective_signup_date
                     c["updated_at"] = now_iso
                     if not _as_text(c.get("source")):
                         c["source"] = "website_signup"
@@ -581,6 +596,9 @@ def _aws_csm_apply_or_preview(
                         "first_name": first_name,
                         "middle_name": middle_name,
                         "last_name": last_name,
+                        "phone": phone,
+                        "zip": zip_code,
+                        "signup_date": effective_signup_date,
                         "subscribed": True,
                         "source": "website_signup",
                         "send_count": 0,
@@ -599,6 +617,61 @@ def _aws_csm_apply_or_preview(
                 "subscribed": True,
                 "applied": apply,
                 "contact_count": len(contacts),
+            }
+        if operation == "edit_subscriber":
+            # Phase 16a: operator-side row edit. Updates the named
+            # fields on an existing contact without touching subscribed
+            # state. Raises if the contact doesn't exist.
+            email = _as_text(payload.get("email")).lower()
+            if not email:
+                raise ValueError("email is required for edit_subscriber")
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                raise ValueError("contact_log_missing_for_domain")
+            now_iso = _aws_csm_now_iso()
+            updates: dict[str, str] = {}
+            for key in (
+                "first_name",
+                "middle_name",
+                "last_name",
+                "phone",
+                "zip",
+                "signup_date",
+            ):
+                if key in payload:
+                    updates[key] = _as_text(payload.get(key))
+            matched = False
+            for c in log.get("contacts") or []:
+                if _as_text(c.get("email")).lower() == email:
+                    for key, value in updates.items():
+                        c[key] = value
+                    # Recompose the display ``name`` so the legacy
+                    # field stays in sync after a first/last edit.
+                    composed = " ".join(
+                        t
+                        for t in (
+                            _as_text(c.get("first_name")),
+                            _as_text(c.get("middle_name")),
+                            _as_text(c.get("last_name")),
+                        )
+                        if t
+                    )
+                    if composed:
+                        c["name"] = composed
+                    c["updated_at"] = now_iso
+                    matched = True
+                    break
+            if not matched:
+                raise ValueError("contact_not_found")
+            log["updated_at"] = now_iso
+            if apply:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "applied": apply,
+                "updated_fields": list(updates.keys()),
             }
         if operation == "mark_unsubscribed":
             email = _as_text(payload.get("email")).lower()

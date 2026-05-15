@@ -126,6 +126,13 @@ class MosDatumNewsletterContactLogAdapter:
                     MosDatumNewsletterContactLogAdapter._split_legacy_name(composed)
                 )
             name = composed or " ".join(t for t in (first_name, middle_name, last_name) if t)
+            # Phase 16a: phone / zip / signup_date. signup_date falls
+            # back to the date prefix of created_at for rows imported
+            # before the magnitude landed.
+            created_at = _as_text(magnitudes.get("created_at"))
+            signup_date = _as_text(magnitudes.get("signup_date"))
+            if not signup_date and created_at and len(created_at) >= 10:
+                signup_date = created_at[:10]
             contacts.append(
                 {
                     "email": email,
@@ -133,13 +140,16 @@ class MosDatumNewsletterContactLogAdapter:
                     "first_name": first_name,
                     "middle_name": middle_name,
                     "last_name": last_name,
+                    "phone": _as_text(magnitudes.get("phone_ascii")),
+                    "zip": _as_text(magnitudes.get("zip_ascii")),
+                    "signup_date": signup_date,
                     "subscribed": _as_bool(magnitudes.get("subscribed")),
                     "source": _as_text(magnitudes.get("source")),
                     "last_newsletter_sent_at": _as_text(
                         magnitudes.get("last_newsletter_sent_at")
                     ),
                     "send_count": _as_int(magnitudes.get("send_count")),
-                    "created_at": _as_text(magnitudes.get("created_at")),
+                    "created_at": created_at,
                     "name_binary": _as_text(magnitudes.get("name_binary")),
                     "name_confirmed": _as_bool(magnitudes.get("name_confirmed")),
                     "email_binary": _as_text(magnitudes.get("email_binary")),
@@ -329,6 +339,17 @@ class MosDatumNewsletterContactLogAdapter:
 
         email_binary, email_confirmed = encode_email_bacillete(email_ascii)
         name_binary, name_confirmed = encode_name_bacillete(name_ascii)
+        # Phase 16a: capture phone / zip / signup_date. signup_date
+        # defaults to today's date if neither it nor created_at is
+        # supplied — every new subscriber lands with a date the
+        # operator can sort + filter on.
+        phone_ascii = _as_text(contact.get("phone_ascii") or contact.get("phone"))
+        zip_ascii = _as_text(contact.get("zip_ascii") or contact.get("zip"))
+        signup_date = _as_text(contact.get("signup_date"))
+        if not signup_date:
+            created_at = _as_text(contact.get("created_at"))
+            if created_at and len(created_at) >= 10:
+                signup_date = created_at[:10]  # ISO-8601 date prefix
         magnitudes: dict[str, Any] = {
             "email_ascii": email_ascii,
             "email_binary": email_binary,
@@ -339,6 +360,9 @@ class MosDatumNewsletterContactLogAdapter:
             "first_name_ascii": first_name,
             "middle_name_ascii": middle_name,
             "last_name_ascii": last_name,
+            "phone_ascii": phone_ascii,
+            "zip_ascii": zip_ascii,
+            "signup_date": signup_date,
             "subscribed": _as_bool(contact.get("subscribed")),
             "source": _as_text(contact.get("source")),
             "last_newsletter_sent_at": _as_text(contact.get("last_newsletter_sent_at")),
