@@ -429,6 +429,10 @@ _AWS_CSM_OPERATIONS = frozenset(
         # Phase 16a: operator-side inline row edit for the newsletter
         # Contacts table. Updates non-subscription fields only.
         "edit_subscriber",
+        # Phase 17a: Connect-form submission. Upserts a contact with
+        # subscribed=false, source=connect_form, plus subject+message
+        # so the operator sees the full record in the Connect tab.
+        "submit_connect_form",
         "mark_unsubscribed",
         "update_subscription",
         "record_dispatch_result",
@@ -637,6 +641,12 @@ def _aws_csm_apply_or_preview(
                 "phone",
                 "zip",
                 "signup_date",
+                # Phase 17a: subject / message / forward_status are
+                # editable too — operator can fix typos in the message
+                # or mark forward_status=sent after a manual retry.
+                "subject",
+                "message",
+                "forward_status",
             ):
                 if key in payload:
                     updates[key] = _as_text(payload.get(key))
@@ -672,6 +682,99 @@ def _aws_csm_apply_or_preview(
                 "email": email,
                 "applied": apply,
                 "updated_fields": list(updates.keys()),
+            }
+        if operation == "submit_connect_form":
+            # Phase 17a: a website visitor used the Connect form. Land
+            # the contact as an UNSUBSCRIBED row with source=
+            # connect_form + subject + message + forward_status (set
+            # by the /__fnd/connect/submit endpoint after the SES send
+            # attempt). Re-submissions overwrite the message but
+            # preserve the existing subscribed state — a visitor who
+            # was already a newsletter subscriber stays subscribed.
+            email = _as_text(payload.get("email")).lower()
+            if not email:
+                raise ValueError("email is required for submit_connect_form")
+            first_name = _as_text(payload.get("first_name"))
+            middle_name = _as_text(payload.get("middle_name"))
+            last_name = _as_text(payload.get("last_name"))
+            phone = _as_text(payload.get("phone"))
+            zip_code = _as_text(payload.get("zip"))
+            subject = _as_text(payload.get("subject"))
+            message = _as_text(payload.get("message"))
+            forward_status = _as_text(payload.get("forward_status"))
+            log = adapter.load_contact_log(domain=domain) or {
+                "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
+                "domain": domain,
+                "contacts": [],
+                "dispatches": [],
+            }
+            now_iso = _aws_csm_now_iso()
+            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
+            contacts = list(log.get("contacts") or [])
+            composed_name = " ".join(
+                t for t in (first_name, middle_name, last_name) if t
+            )
+            found = False
+            for c in contacts:
+                if _as_text(c.get("email")).lower() == email:
+                    # Preserve subscribed state — don't downgrade an
+                    # existing newsletter subscriber.
+                    if first_name:
+                        c["first_name"] = first_name
+                    if middle_name:
+                        c["middle_name"] = middle_name
+                    if last_name:
+                        c["last_name"] = last_name
+                    if composed_name:
+                        c["name"] = composed_name
+                    if phone:
+                        c["phone"] = phone
+                    if zip_code:
+                        c["zip"] = zip_code
+                    c["subject"] = subject
+                    c["message"] = message
+                    c["forward_status"] = forward_status
+                    c["source"] = "connect_form"
+                    if not _as_text(c.get("signup_date")):
+                        c["signup_date"] = today_date
+                    c["updated_at"] = now_iso
+                    found = True
+                    break
+            if not found:
+                contacts.append(
+                    {
+                        "email": email,
+                        "name": composed_name,
+                        "first_name": first_name,
+                        "middle_name": middle_name,
+                        "last_name": last_name,
+                        "phone": phone,
+                        "zip": zip_code,
+                        "subject": subject,
+                        "message": message,
+                        "forward_status": forward_status,
+                        "signup_date": today_date,
+                        # Connect submissions land UNSUBSCRIBED. The
+                        # visitor opts into the newsletter separately.
+                        "subscribed": False,
+                        "source": "connect_form",
+                        "send_count": 0,
+                        "last_newsletter_sent_at": "",
+                        "created_at": now_iso,
+                    }
+                )
+            log["contacts"] = contacts
+            log["updated_at"] = now_iso
+            if apply:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "subscribed": False,
+                "forward_status": forward_status,
+                "applied": apply,
+                "contact_count": len(contacts),
             }
         if operation == "mark_unsubscribed":
             email = _as_text(payload.get("email")).lower()

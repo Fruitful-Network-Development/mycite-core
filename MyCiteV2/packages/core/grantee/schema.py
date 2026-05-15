@@ -151,6 +151,35 @@ class NewsletterConfig:
 
 
 @dataclass(frozen=True)
+class ConnectConfig:
+    """Phase 17a: per-grantee Connect-form configuration.
+
+    The Connect form (separate from the Newsletter form) lets a
+    website visitor send a message that the FND portal forwards to
+    ``forward_to_email`` via SES. The submission also lands in the
+    grantee's contact log as an unsubscribed contact tagged with
+    ``source=connect_form`` so the operator builds a lead list.
+    """
+
+    forward_to_email: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "forward_to_email",
+            _validate_email(self.forward_to_email, field_label="connect.forward_to_email"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"forward_to_email": self.forward_to_email}
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> ConnectConfig:
+        data = payload if isinstance(payload, dict) else {}
+        return cls(forward_to_email=_as_text(data.get("forward_to_email")))
+
+
+@dataclass(frozen=True)
 class GranteeProfile:
     msn_id: str
     label: str = ""
@@ -160,6 +189,7 @@ class GranteeProfile:
     paypal: PaypalConfig | None = None
     aws_ses: AwsSesConfig | None = None
     newsletter: NewsletterConfig | None = None
+    connect: ConnectConfig | None = None
     schema: str = field(default=GRANTEE_PROFILE_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -190,6 +220,8 @@ class GranteeProfile:
             out["aws_ses"] = self.aws_ses.to_dict()
         if self.newsletter is not None:
             out["newsletter"] = self.newsletter.to_dict()
+        if self.connect is not None:
+            out["connect"] = self.connect.to_dict()
         return out
 
     @classmethod
@@ -210,6 +242,7 @@ class GranteeProfile:
             paypal=PaypalConfig.from_dict(payload["paypal"]) if isinstance(payload.get("paypal"), dict) else None,
             aws_ses=AwsSesConfig.from_dict(payload["aws_ses"]) if isinstance(payload.get("aws_ses"), dict) else None,
             newsletter=NewsletterConfig.from_dict(payload["newsletter"]) if isinstance(payload.get("newsletter"), dict) else None,
+            connect=ConnectConfig.from_dict(payload["connect"]) if isinstance(payload.get("connect"), dict) else None,
         )
 
     def with_paypal(self, paypal: PaypalConfig | None) -> GranteeProfile:
@@ -224,6 +257,7 @@ class GranteeProfile:
 __all__ = [
     "GRANTEE_PROFILE_SCHEMA",
     "AwsSesConfig",
+    "ConnectConfig",
     "GranteeProfile",
     "NewsletterConfig",
     "PaypalConfig",

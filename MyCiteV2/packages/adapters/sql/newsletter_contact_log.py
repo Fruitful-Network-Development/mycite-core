@@ -143,6 +143,11 @@ class MosDatumNewsletterContactLogAdapter:
                     "phone": _as_text(magnitudes.get("phone_ascii")),
                     "zip": _as_text(magnitudes.get("zip_ascii")),
                     "signup_date": signup_date,
+                    # Phase 17a: Connect-form fields. Empty for non-
+                    # Connect rows; populated for source=connect_form.
+                    "subject": _as_text(magnitudes.get("subject_ascii")),
+                    "message": _as_text(magnitudes.get("message_ascii")),
+                    "forward_status": _as_text(magnitudes.get("forward_status")),
                     "subscribed": _as_bool(magnitudes.get("subscribed")),
                     "source": _as_text(magnitudes.get("source")),
                     "last_newsletter_sent_at": _as_text(
@@ -350,6 +355,11 @@ class MosDatumNewsletterContactLogAdapter:
             created_at = _as_text(contact.get("created_at"))
             if created_at and len(created_at) >= 10:
                 signup_date = created_at[:10]  # ISO-8601 date prefix
+        # Phase 17a: Connect-form submissions persist subject +
+        # message + forward_status next to the contact entry.
+        subject_ascii = _as_text(contact.get("subject_ascii") or contact.get("subject"))
+        message_ascii = _as_text(contact.get("message_ascii") or contact.get("message"))
+        forward_status = _as_text(contact.get("forward_status"))
         magnitudes: dict[str, Any] = {
             "email_ascii": email_ascii,
             "email_binary": email_binary,
@@ -363,6 +373,9 @@ class MosDatumNewsletterContactLogAdapter:
             "phone_ascii": phone_ascii,
             "zip_ascii": zip_ascii,
             "signup_date": signup_date,
+            "subject_ascii": subject_ascii,
+            "message_ascii": message_ascii,
+            "forward_status": forward_status,
             "subscribed": _as_bool(contact.get("subscribed")),
             "source": _as_text(contact.get("source")),
             "last_newsletter_sent_at": _as_text(contact.get("last_newsletter_sent_at")),

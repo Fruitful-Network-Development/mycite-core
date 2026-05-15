@@ -77,6 +77,21 @@ repeating_archetype:
     signup_date:
       magnitude_kind: trimmed_string
       required: false
+    # Phase 17a: Connect-form submissions persist the visitor's
+    # subject + message inline so the operator has the full record
+    # next to the contact entry. ``forward_status`` is one of
+    # ``sent`` / ``pending`` / ``failed`` / empty (the latter means
+    # this row didn't come from a Connect submission). Newsletter
+    # signups leave all three empty.
+    subject_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    message_ascii:
+      magnitude_kind: trimmed_string
+      required: false
+    forward_status:
+      magnitude_kind: trimmed_string
+      required: false
     subscribed:
       magnitude_kind: boolean
       required: true
