@@ -1860,6 +1860,79 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
 
     # ------------------------------------------------------------------
+    # FND Analytics admin route (Phase 14d.4)
+    # ------------------------------------------------------------------
+    # The Analytics extension card surfaces a Refresh button that POSTs
+    # here. The handler re-runs ``_aggregate_for_domain`` from
+    # ``MyCiteV2.scripts.sync_fnd_analytics_summary`` for the requested
+    # domain and persists the result through
+    # ``MosDatumAnalyticsSummaryAdapter.save_summary``. Returns the new
+    # counts so the client can refresh the card without a full page
+    # reload (the workbench renderer triggers a shell reload regardless).
+
+    @app.post("/__fnd/analytics/refresh")
+    def fnd_analytics_refresh() -> tuple[Any, int]:
+        payload = _json_payload()
+        domain = _normalize_domain(_as_text(payload.get("domain")))
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if host_config.webapps_root is None:
+            return jsonify({"ok": False, "error": "webapps_root_not_configured"}), 500
+        if host_config.authority_db_file is None:
+            return jsonify({"ok": False, "error": "authority_db_not_configured"}), 500
+
+        events_dir = (
+            Path(host_config.webapps_root) / "clients" / domain / "analytics" / "events"
+        )
+        if not events_dir.exists() or not events_dir.is_dir():
+            return jsonify({"ok": False, "error": "no_events_directory"}), 404
+
+        try:
+            from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
+                MosDatumAnalyticsSummaryAdapter,
+            )
+            from MyCiteV2.scripts.sync_fnd_analytics_summary import (
+                DEFAULT_WINDOW_MONTHS,
+                _aggregate_for_domain,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        try:
+            window_months = int(payload.get("window_months") or DEFAULT_WINDOW_MONTHS)
+        except (TypeError, ValueError):
+            window_months = DEFAULT_WINDOW_MONTHS
+
+        try:
+            counts, recent = _aggregate_for_domain(
+                webapps_root=Path(host_config.webapps_root),
+                domain=domain,
+                window_months=window_months,
+            )
+            adapter = MosDatumAnalyticsSummaryAdapter(
+                authority_db_file=host_config.authority_db_file,
+                tenant_id=host_config.portal_instance_id or "fnd",
+            )
+            adapter.save_summary(
+                domain=domain,
+                window_months=window_months,
+                counts=counts,
+                recent_events=recent,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "refresh_failed"}), 500
+
+        return jsonify(
+            {
+                "ok": True,
+                "domain": domain,
+                "window_months": window_months,
+                "counts": counts,
+                "recent_events_captured": len(recent),
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)
     # ------------------------------------------------------------------
 

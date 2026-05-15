@@ -503,6 +503,16 @@
       }
     }
     html += renderAdminForms(p.admin_forms);
+    if (asObject(p.refresh_action).route) {
+      html +=
+        '<div class="v2-extensionCard__refresh">' +
+        renderRowAction(p.refresh_action) +
+        "</div>";
+    }
+    if (asText(p.notice)) {
+      html +=
+        '<p class="v2-extensionCard__notice">' + escapeHtml(asText(p.notice)) + "</p>";
+    }
     if (asObject(p.configuration).items || asObject(p.configuration).label) {
       html += renderConfigurationSection(p.configuration);
     }
@@ -516,6 +526,12 @@
       html += renderRowsTable("Event totals", summaryRows, [
         { key: "key", label: "Event type" },
         { key: "count", label: "Count" },
+      ]);
+    }
+    if (asList(p.top_paths).length) {
+      html += renderRowsTable("Top paths", p.top_paths, [
+        { key: "path", label: "Path" },
+        { key: "count", label: "Views" },
       ]);
     }
     if (asList(p.recent_events).length) {
