@@ -268,6 +268,70 @@
     );
   }
 
+  // Phase 15a — extension subtab strip (Email / Analytics / Newsletter
+  // / PayPal). Mirrors the grantee selector mechanic: server-side
+  // reload on click via ctx.loadShell so the page's surface_payload
+  // narrows to the active tab.
+  function renderExtensionTabs(selector) {
+    if (!selector) return "";
+    var tabs = asList(selector.tabs);
+    if (!tabs.length) return "";
+    var label = asText(selector.label) || "Extension";
+    var optionsHtml = tabs
+      .map(function (tab, index) {
+        var toolId = asText(tab.tool_id);
+        var labelText = asText(tab.label) || toolId || "—";
+        var active = tab.active === true;
+        return (
+          '<button type="button" class="v2-extensionTabs__option' +
+          (active ? " is-active" : "") +
+          '" data-extension-tool-id="' +
+          escapeHtml(toolId) +
+          '" data-extension-tab-index="' +
+          String(index) +
+          '" aria-pressed="' +
+          (active ? "true" : "false") +
+          '">' +
+          '<span class="v2-extensionTabs__optionLabel">' +
+          escapeHtml(labelText) +
+          "</span>" +
+          "</button>"
+        );
+      })
+      .join("");
+    return (
+      '<section class="v2-card v2-extensionTabs" style="margin-top:0">' +
+      "<h3>" +
+      escapeHtml(label) +
+      "</h3>" +
+      '<div class="v2-extensionTabs__options" role="tablist">' +
+      optionsHtml +
+      "</div></section>"
+    );
+  }
+
+  function bindExtensionTabs(ctx, target, selector) {
+    if (!selector || !target) return;
+    var tabs = asList(selector.tabs);
+    if (!tabs.length) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll(".v2-extensionTabs__option"),
+      function (node) {
+        node.addEventListener("click", function () {
+          var index = Number(node.getAttribute("data-extension-tab-index"));
+          if (Number.isNaN(index) || index < 0 || index >= tabs.length) return;
+          var tab = tabs[index] || {};
+          var action = asObject(tab.select_action);
+          var payload = asObject(action.payload);
+          if (!payload || !payload.requested_surface_id) return;
+          if (typeof ctx.loadShell === "function") {
+            ctx.loadShell(payload);
+          }
+        });
+      }
+    );
+  }
+
   function toolSurfaceAdapter() {
     return window.PortalToolSurfaceAdapter || {};
   }
@@ -795,10 +859,14 @@
     var granteeSelector = surfacePayload && surfacePayload.grantee_selector
       ? asObject(surfacePayload.grantee_selector)
       : null;
+    var extensionTabs = surfacePayload && surfacePayload.extension_subtab_selector
+      ? asObject(surfacePayload.extension_subtab_selector)
+      : null;
     var extensions = asList(surfacePayload && surfacePayload.extensions);
     var hasContent =
       adapter.hasGenericContent(surfacePayload) ||
       (granteeSelector && asList(granteeSelector.grantees).length > 0) ||
+      (extensionTabs && asList(extensionTabs.tabs).length > 0) ||
       extensions.length > 0;
     var rendered = adapter.renderWrappedSurface(
       target,
@@ -809,6 +877,7 @@
         hasContent: hasContent,
       }),
       renderGranteeSelector(granteeSelector) +
+        renderExtensionTabs(extensionTabs) +
         renderCards(surfacePayload.cards || []) +
         renderSections(surfacePayload.sections || []) +
         renderExtensions(extensions) +
@@ -816,6 +885,9 @@
     );
     if (rendered && granteeSelector) {
       bindGranteeSelector(ctx, target, granteeSelector);
+    }
+    if (rendered && extensionTabs) {
+      bindExtensionTabs(ctx, target, extensionTabs);
     }
     if (rendered && extensions.length) {
       bindExtensionActions(ctx, target, extensions);

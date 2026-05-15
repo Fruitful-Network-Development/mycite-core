@@ -110,32 +110,43 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
     def test_extension_cards_render_with_tool_ids(self) -> None:
         from playwright.sync_api import sync_playwright
 
+        # Phase 15a: only the active subtab's card renders at any time.
+        # Walk each tab in turn and confirm its card lands in the DOM.
         server, thread, base = self._boot_portal()
         try:
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(headless=True)
                 ctx = browser.new_context()
                 page = ctx.new_page()
-                page.goto(
-                    f"{base}/portal/utilities/extensions",
-                    wait_until="networkidle",
-                    timeout=15000,
-                )
-                # Shell hydration may post after networkidle; wait for the
-                # extension cards explicitly.
-                page.wait_for_selector(".v2-extensionCard", timeout=10000)
-                tool_ids = page.eval_on_selector_all(
-                    ".v2-extensionCard",
-                    "els => els.map(e => e.getAttribute('data-tool-id'))",
-                )
-                # Phase 14b: extensions surface excludes ext_grantee_profile,
-                # which now lives on the dedicated grantee-profile surface.
-                self.assertEqual(
-                    set(tool_ids),
-                    _EXPECTED_TOOL_IDS,
-                    f"DOM extension cards: {tool_ids!r}",
-                )
-                self.assertNotIn("ext_grantee_profile", tool_ids)
+                seen: set[str] = set()
+                for tool_id in (
+                    "ext_aws_email",
+                    "ext_analytics",
+                    "ext_newsletter",
+                    "ext_paypal",
+                ):
+                    page.goto(
+                        f"{base}/portal/utilities/extensions"
+                        f"?selected_extension_tool_id={tool_id}",
+                        wait_until="networkidle",
+                        timeout=15000,
+                    )
+                    # The visible card must match the requested tab; the
+                    # subtab strip must list all 4 options.
+                    page.wait_for_selector(".v2-extensionCard", timeout=10000)
+                    dom_tool_ids = page.eval_on_selector_all(
+                        ".v2-extensionCard",
+                        "els => els.map(e => e.getAttribute('data-tool-id'))",
+                    )
+                    self.assertEqual(set(dom_tool_ids), {tool_id})
+                    tab_ids = page.eval_on_selector_all(
+                        ".v2-extensionTabs__option",
+                        "els => els.map(e => e.getAttribute('data-extension-tool-id'))",
+                    )
+                    self.assertEqual(set(tab_ids), _EXPECTED_TOOL_IDS)
+                    self.assertNotIn("ext_grantee_profile", tab_ids)
+                    seen.add(tool_id)
+                self.assertEqual(seen, _EXPECTED_TOOL_IDS)
                 browser.close()
         finally:
             server.shutdown()

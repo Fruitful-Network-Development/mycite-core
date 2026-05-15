@@ -130,12 +130,18 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 # Phase 14b: the grantee selector now lives on
                 # ``utilities.extensions`` (the legacy tool_exposure surface
                 # is retained but 302-redirects from its HTTP route).
+                # Phase 15a: ext_paypal lives behind a subtab — request it
+                # explicitly via selected_extension_tool_id so the API
+                # returns the paypal card.
                 api_resp = page.request.post(
                     f"{base}/portal/api/v2/shell",
                     data=json.dumps(
                         {
                             "schema": "mycite.v2.portal.shell.request.v1",
                             "requested_surface_id": "utilities.extensions",
+                            "surface_query": {
+                                "selected_extension_tool_id": "ext_paypal"
+                            },
                         }
                     ),
                     headers={"content-type": "application/json"},
@@ -156,13 +162,19 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 )
 
                 # Switching grantees via surface_query pivots extension domain.
+                # Phase 15a: pin the paypal tab too — without it the active tab
+                # defaults to ext_aws_email and the paypal card isn't in the
+                # response.
                 api_resp2 = page.request.post(
                     f"{base}/portal/api/v2/shell",
                     data=json.dumps(
                         {
                             "schema": "mycite.v2.portal.shell.request.v1",
                             "requested_surface_id": "utilities.extensions",
-                            "surface_query": {"selected_grantee_msn": "beta"},
+                            "surface_query": {
+                                "selected_grantee_msn": "beta",
+                                "selected_extension_tool_id": "ext_paypal",
+                            },
                         }
                     ),
                     headers={"content-type": "application/json"},
