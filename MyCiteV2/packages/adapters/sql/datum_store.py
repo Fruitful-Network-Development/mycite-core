@@ -92,6 +92,18 @@ def _workbench_from_payload(payload: dict[str, object]) -> SystemDatumWorkbenchR
     )
 
 
+# Phase 14c: module-level catalog cache shared across SqliteSystemDatumStoreAdapter
+# instances. The MOS extension adapters (PayPal, Newsletter, Email) each
+# instantiate a fresh adapter per request → per-instance cache (still present
+# below) couldn't help cross-extension. With the production authority DB at
+# 244 MB and the ext_paypal `_find_doc` doing a full catalog scan to find one
+# canonical_name, parallelized rendering still serialized on this load. The
+# module-level cache lets 4 extensions share one fetch per (db_path, tenant_id)
+# until the file's mtime changes; any write through `_invalidate_catalog`
+# clears both layers.
+_GLOBAL_CATALOG_CACHE: dict[tuple[str, str], tuple[int, Any]] = {}
+
+
 class SqliteSystemDatumStoreAdapter(
     SystemDatumStorePort,
     AuthoritativeDatumDocumentMutationPort,
@@ -109,6 +121,9 @@ class SqliteSystemDatumStoreAdapter(
         self._clock = clock or (lambda: int(time.time() * 1000))
         self._allow_legacy_writes_flag = bool(allow_legacy_writes)
         # Per-instance catalog cache: dict[tenant_id, (db_mtime_ns, catalog_result)]
+        # Kept for tests that introspect per-instance state; the module-level
+        # _GLOBAL_CATALOG_CACHE is consulted first to share fetches across
+        # ephemeral adapter instances.
         self._catalog_cache: dict[str, tuple[int, Any]] = {}
 
     def _connect(self):
@@ -267,6 +282,12 @@ class SqliteSystemDatumStoreAdapter(
                     connection.rollback()
                 connection.execute(f"PRAGMA temp_store = {prior_temp_store}")
                 connection.execute(f"PRAGMA journal_mode = {prior_journal_mode}")
+        # Phase 14c: invalidate the in-memory catalog caches on EVERY
+        # catalog write path — the per-instance + module-level dicts both
+        # rely on this since mtime granularity on some filesystems is
+        # coarser than the test save→load sequence.
+        self._catalog_cache.pop(normalized.tenant_id, None)
+        _GLOBAL_CATALOG_CACHE.pop((str(self._db_file.resolve()), normalized.tenant_id), None)
 
     def replace_single_document_efficient(
         self,
@@ -419,9 +440,12 @@ class SqliteSystemDatumStoreAdapter(
                     connection.rollback()
                 connection.execute(f"PRAGMA temp_store = {prior_temp_store}")
                 connection.execute(f"PRAGMA journal_mode = {prior_journal_mode}")
-        # Invalidate the in-memory catalog cache so the next read picks
-        # up the swap.
+        # Invalidate both the in-memory catalog caches (per-instance + module-
+        # level) so the next read picks up the swap. The mtime check alone is
+        # not enough — within a single test the file write may not bump
+        # st_mtime to a different second on some filesystems.
         self._catalog_cache.pop(tenant_id, None)
+        _GLOBAL_CATALOG_CACHE.pop((str(self._db_file.resolve()), tenant_id), None)
 
     def store_system_workbench(self, result: SystemDatumWorkbenchResult) -> None:
         normalized = (
@@ -517,9 +541,17 @@ class SqliteSystemDatumStoreAdapter(
         )
         tenant_id = normalized_request.tenant_id
         db_mtime = self._db_mtime_ns()
+        # Per-instance cache first (preserved for tests that introspect state).
         cached = self._catalog_cache.get(tenant_id)
         if cached is not None and cached[0] == db_mtime:
             return cached[1]
+        # Phase 14c: module-level cache shared across instances. Auto-
+        # invalidates on db_mtime change (any write bumps it).
+        global_key = (str(self._db_file.resolve()), tenant_id)
+        global_cached = _GLOBAL_CATALOG_CACHE.get(global_key)
+        if global_cached is not None and global_cached[0] == db_mtime:
+            self._catalog_cache[tenant_id] = global_cached
+            return global_cached[1]
 
         with self._connect() as connection:
             row = connection.execute(
@@ -535,11 +567,13 @@ class SqliteSystemDatumStoreAdapter(
                     warnings=("sql_authoritative_catalog_missing",),
                 )
                 self._catalog_cache[tenant_id] = (db_mtime, result)
+                _GLOBAL_CATALOG_CACHE[global_key] = (db_mtime, result)
                 return result
             payload = loads_json(row["payload_json"])
             self._project_canonical_document_ids(connection, tenant_id, payload)
         result = AuthoritativeDatumDocumentCatalogResult.from_dict(payload)
         self._catalog_cache[tenant_id] = (db_mtime, result)
+        _GLOBAL_CATALOG_CACHE[global_key] = (db_mtime, result)
         return result
 
     def _project_canonical_document_ids(
