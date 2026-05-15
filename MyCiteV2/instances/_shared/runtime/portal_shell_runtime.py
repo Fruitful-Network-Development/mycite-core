@@ -973,28 +973,6 @@ def _grantee_selector_for_target(
     return rewritten
 
 
-def _surface_payload_for_integrations(integration_flags: dict[str, bool]) -> dict[str, Any]:
-    return {
-        "schema": surface_schema_for_surface(UTILITIES_INTEGRATIONS_SURFACE_ID),
-        "kind": "integrations",
-        "title": "Integrations",
-        "subtitle": "Shared integration and package state for visible service tools.",
-        "sections": [
-            {
-                "title": "Integration readiness",
-                "rows": [
-                    {
-                        "label": key,
-                        "status": "ready" if value else "missing",
-                        "detail": "shared integration state",
-                    }
-                    for key, value in integration_flags.items()
-                ],
-            }
-        ],
-    }
-
-
 def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True) -> dict[str, Any]:
     return {
         "schema": PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
@@ -1294,13 +1272,15 @@ def _bundle_for_surface(
             )
     elif selection_surface_id == UTILITIES_TOOLS_SURFACE_ID:
         surface_payload = _surface_payload_for_tools(tool_rows)
-    elif selection_surface_id == UTILITIES_PERIPHERALS_SURFACE_ID:
-        surface_payload = _surface_payload_for_peripherals()
     else:
-        # utilities.integrations — legacy surface kept for one transition
-        # cycle so external bookmarks resolve; the route 302-redirects to
-        # /portal/utilities/peripherals.
-        surface_payload = _surface_payload_for_integrations(integration_flags)
+        # All remaining UTILITIES_SURFACE_IDS resolve to the peripherals
+        # landing. Phase 14e (cleanup): the legacy integrations surface
+        # payload builder was removed, so callers requesting
+        # ``utilities.integrations`` directly via the API now receive
+        # the peripherals payload. The HTTP route at /portal/utilities/
+        # integrations 302-redirects regardless, so this only affects
+        # API clients that hand-craft surface_id requests.
+        surface_payload = _surface_payload_for_peripherals()
     return {
         "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
         "read_write_posture": "read-only",
