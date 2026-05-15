@@ -4,7 +4,14 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any
 
-from .structure import SamrasStructure, address_sort_key, as_text, format_address, parent_address, parse_address_segments
+from .structure import (
+    SamrasStructure,
+    address_sort_key,
+    as_text,
+    format_address,
+    parent_address,
+    parse_address_segments,
+)
 
 
 class InvalidSamrasStructure(ValueError):

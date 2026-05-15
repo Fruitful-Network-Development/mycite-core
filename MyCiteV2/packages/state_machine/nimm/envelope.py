@@ -36,7 +36,7 @@ class NimmDirectiveEnvelope:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | "NimmDirectiveEnvelope") -> "NimmDirectiveEnvelope":
+    def from_dict(cls, payload: dict[str, Any] | NimmDirectiveEnvelope) -> NimmDirectiveEnvelope:
         if isinstance(payload, cls):
             return payload
         if not isinstance(payload, dict):
@@ -56,7 +56,7 @@ class NimmDirectiveEnvelope:
         directive: NimmDirective | dict[str, Any],
         defaults: AitasContext | dict[str, Any] | None = None,
         overrides: AitasContext | dict[str, Any] | None = None,
-    ) -> "NimmDirectiveEnvelope":
+    ) -> NimmDirectiveEnvelope:
         return cls(
             directive=directive,
             aitas=merge_aitas_context(defaults=defaults, overrides=overrides),

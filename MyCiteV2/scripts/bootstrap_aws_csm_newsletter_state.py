@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import secrets
 import shutil
+from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.event_transport import AwsEc2RoleNewsletterCloudAdapter

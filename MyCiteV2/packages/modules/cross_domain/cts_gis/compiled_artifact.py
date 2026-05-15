@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import copy
-from collections import OrderedDict
-from datetime import datetime, timezone
 import hashlib
 import json
+from collections import OrderedDict
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +21,7 @@ CTS_GIS_SOURCE_LAYOUT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.source_lay
 
 
 def _utc_timestamp() -> str:
-    return datetime.now(tz=timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def cts_gis_source_root(data_dir: str | Path | None) -> Path | None:
@@ -65,7 +65,7 @@ def build_cts_gis_source_layout_summary(data_dir: str | Path | None) -> dict[str
         except Exception:
             relative_path = path.name
         stat = path.stat()
-        fingerprint.update(f"{relative_path}|{int(stat.st_mtime_ns)}|{int(stat.st_size)}\n".encode("utf-8"))
+        fingerprint.update(f"{relative_path}|{int(stat.st_mtime_ns)}|{int(stat.st_size)}\n".encode())
         relative_paths.append(relative_path)
     return {
         "schema": CTS_GIS_SOURCE_LAYOUT_SCHEMA,
@@ -154,7 +154,7 @@ def _navigation_model_from_canvas(navigation_canvas: dict[str, Any]) -> dict[str
                         "display_label": as_text(option.get("display_label")),
                         "selected": bool(option.get("selected")),
                     }
-                    for option in list((dropdown.get("options") or []))
+                    for option in list(dropdown.get("options") or [])
                     if isinstance(option, dict)
                 ],
             }
@@ -1088,7 +1088,7 @@ __all__ = [
     "read_compiled_artifact_cached",
     "read_district_profile_static_from_source_datum",
     "read_district_profile_static_with_geometry_from_source_datum",
-    "validate_cts_gis_source_layout",
     "validate_compiled_artifact",
+    "validate_cts_gis_source_layout",
     "write_compiled_artifact",
 ]

@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import json
-from pathlib import Path
 import re
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 from ...ports.fnd_ebi_read_only import (
+    NDJSON_KIND_COUNTS_KEY,
     FndEbiReadOnlyPort,
     FndEbiReadOnlyRequest,
     FndEbiReadOnlyResult,
     FndEbiReadOnlySource,
-    NDJSON_KIND_COUNTS_KEY,
     classify_ndjson_log_kind,
 )
 
@@ -154,7 +154,7 @@ def _parse_nginx_timestamp(value: object) -> datetime | None:
     if not token:
         return None
     try:
-        return datetime.strptime(token, "%d/%b/%Y:%H:%M:%S %z").astimezone(timezone.utc)
+        return datetime.strptime(token, "%d/%b/%Y:%H:%M:%S %z").astimezone(UTC)
     except Exception:
         return None
 
@@ -169,7 +169,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
         if number > 10_000_000_000:
             number = number / 1000.0
         try:
-            return datetime.fromtimestamp(number, tz=timezone.utc)
+            return datetime.fromtimestamp(number, tz=UTC)
         except Exception:
             return None
     token = _as_text(value)
@@ -182,8 +182,8 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             token = token[:-1] + "+00:00"
         parsed = datetime.fromisoformat(token)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
     except Exception:
         return _parse_nginx_timestamp(token)
 
@@ -324,7 +324,7 @@ def _summarize_nginx_access(lines: list[str], *, now_utc: datetime) -> dict[str,
         "requests_24h": int(requests_24h),
         "requests_7d": int(requests_7d),
         "requests_30d": int(requests_30d),
-        "unique_visitors_approx_30d": int(len(unique_ips_30d)),
+        "unique_visitors_approx_30d": len(unique_ips_30d),
         "response_breakdown": {
             "2xx": int(status_counts.get("2xx") or 0),
             "3xx": int(status_counts.get("3xx") or 0),
@@ -367,7 +367,7 @@ def _summarize_nginx_error(lines: list[str]) -> dict[str, Any]:
         match = re.search(r"\[(?P<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})\]", line)
         if match:
             try:
-                parsed = datetime.strptime(match.group("ts"), "%Y/%m/%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                parsed = datetime.strptime(match.group("ts"), "%Y/%m/%d %H:%M:%S").replace(tzinfo=UTC)
                 if last_seen is None or parsed > last_seen:
                     last_seen = parsed
             except Exception:
@@ -419,7 +419,7 @@ def _summarize_ndjson_events(lines: list[str], *, now_utc: datetime) -> dict[str
     return {
         "line_count": len(lines),
         NDJSON_KIND_COUNTS_KEY: kind_counts,
-        "session_count_approx": int(len(session_ids)),
+        "session_count_approx": len(session_ids),
         "invalid_line_count": int(invalid_line_count),
         "last_seen_utc": last_seen.isoformat() if last_seen else "",
         "events_24h": int(events_24h),
@@ -481,7 +481,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
         )
 
     def _current_year_month(self) -> str:
-        now = self._now_utc or datetime.now(timezone.utc)
+        now = self._now_utc or datetime.now(UTC)
         return f"{now.year:04d}-{now.month:02d}"
 
     def _profile_root(self) -> Path:
@@ -630,7 +630,7 @@ class FilesystemFndEbiReadOnlyAdapter(FndEbiReadOnlyPort):
         *,
         year_month: str,
     ) -> dict[str, Any]:
-        now_utc = self._now_utc or datetime.now(timezone.utc)
+        now_utc = self._now_utc or datetime.now(UTC)
         domain = _normalize_domain(payload.get("domain"))
         site_root = _as_text(payload.get("site_root"))
         derived, warnings = self._derive_paths(domain=domain, site_root=site_root, year_month=year_month)

@@ -6,16 +6,15 @@ from pathlib import Path
 from threading import Lock
 from typing import Any
 
+from MyCiteV2.instances._shared.runtime.portal_workbench import (
+    build_datum_file_workbench,
+)
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
     PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     SYSTEM_ROOT_SURFACE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     attach_region_family_contract,
-)
-from MyCiteV2.instances._shared.runtime.portal_workbench import (
-    build_datum_file_workbench,
 )
 from MyCiteV2.packages.adapters.sql import (
     SqliteAuditLogAdapter,
@@ -23,12 +22,16 @@ from MyCiteV2.packages.adapters.sql import (
     SqliteSystemDatumStoreAdapter,
 )
 from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
-from MyCiteV2.packages.modules.domains.datum_recognition import DatumWorkbenchProjection, DatumWorkbenchService
+from MyCiteV2.packages.modules.domains.datum_recognition import (
+    DatumWorkbenchProjection,
+    DatumWorkbenchService,
+)
 from MyCiteV2.packages.modules.domains.publication import (
     PublicationProfileBasicsService,
     PublicationTenantSummary,
     PublicationTenantSummaryService,
 )
+from MyCiteV2.packages.modules.shared.scalars import as_text
 from MyCiteV2.packages.ports.directive_context import DirectiveContextRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     FOCUS_LEVEL_DATUM,
@@ -36,36 +39,33 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FOCUS_LEVEL_OBJECT,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-    PortalScope,
-    PortalShellState,
     SYSTEM_ACTIVITY_FILE_KEY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
-    SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_ROOT_ROUTE,
+    SYSTEM_ROOT_SURFACE_ID,
+    TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
-    TRANSITION_BACK_OUT,
     TRANSITION_SET_VERB,
     VERB_INVESTIGATE,
     VERB_MANIPULATE,
     VERB_MEDIATE,
     VERB_NAVIGATE,
-    build_portal_shell_request_payload,
-    canonical_query_for_shell_state,
+    PortalScope,
+    PortalShellState,
     anchor_file_key_for_sandbox,
+    build_portal_shell_request_payload,
     focus_level_for_shell_state,
     sandbox_id_for_file_key,
     segment_id_for_level,
 )
-from MyCiteV2.packages.modules.shared.scalars import as_text
 
 _DIRECTIVE_CONTEXT_TOOL_ID = "system_workspace"
 _WORKBENCH_PROJECTION_CACHE_LOCK = Lock()
 _WORKBENCH_PROJECTION_CACHE_MAX = 8
-_WORKBENCH_PROJECTION_CACHE: "OrderedDict[tuple[str, str, int], DatumWorkbenchProjection]" = OrderedDict()
+_WORKBENCH_PROJECTION_CACHE: OrderedDict[tuple[str, str, int], DatumWorkbenchProjection] = OrderedDict()
 
 
 def _path_or_none(value: str | Path | None) -> Path | None:
@@ -1758,9 +1758,9 @@ def build_system_workspace_bundle(
 
 
 __all__ = [
+    "_invalidate_workbench_projection_cache",
     "build_system_workspace_bundle",
     "build_unified_control_panel",
     "build_workspace_file_entries",
     "read_system_workbench_projection",
-    "_invalidate_workbench_projection_cache",
 ]

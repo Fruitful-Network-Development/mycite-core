@@ -7,6 +7,8 @@ from typing import Any
 
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     as_text as _as_text,
 )
 

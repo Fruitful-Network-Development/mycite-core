@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 from urllib.parse import urlencode
 
 from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
@@ -11,9 +12,9 @@ from MyCiteV2.packages.state_machine.nimm import (
     NimmTargetAddress,
     normalize_nimm_verb,
 )
-from . import shell_registry as _shell_registry
 
-from .shell_schemas import *  # noqa: F401,F403 — re-export all portal shell constants
+from . import shell_registry as _shell_registry
+from .shell_schemas import *
 
 
 def _as_text(value: object) -> str:
@@ -87,7 +88,7 @@ class PortalScope:
         }
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | str | None) -> "PortalScope":
+    def from_value(cls, payload: dict[str, Any] | str | None) -> PortalScope:
         if payload is None:
             return cls()
         if isinstance(payload, str):
@@ -118,7 +119,7 @@ class PortalShellChrome:
         }
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | None) -> "PortalShellChrome":
+    def from_value(cls, payload: dict[str, Any] | None) -> PortalShellChrome:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):
@@ -148,7 +149,7 @@ class PortalFocusSegment:
         return {"level": self.level, "id": self.id}
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | "PortalFocusSegment") -> "PortalFocusSegment":
+    def from_value(cls, payload: dict[str, Any] | PortalFocusSegment) -> PortalFocusSegment:
         if isinstance(payload, cls):
             return payload
         if not isinstance(payload, dict):
@@ -256,11 +257,11 @@ class PortalShellState:
     @classmethod
     def from_value(
         cls,
-        payload: dict[str, Any] | "PortalShellState" | None,
+        payload: dict[str, Any] | PortalShellState | None,
         *,
         portal_scope: PortalScope | None = None,
         fallback_surface_id: str = SYSTEM_ROOT_SURFACE_ID,
-    ) -> "PortalShellState":
+    ) -> PortalShellState:
         if isinstance(payload, cls):
             return payload
         if payload is None:
@@ -323,7 +324,7 @@ class PortalShellTransition:
         return payload
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | "PortalShellTransition" | None) -> "PortalShellTransition | None":
+    def from_value(cls, payload: dict[str, Any] | PortalShellTransition | None) -> PortalShellTransition | None:
         if payload is None:
             return None
         if isinstance(payload, cls):
@@ -397,7 +398,7 @@ class PortalShellRequest:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "PortalShellRequest":
+    def from_dict(cls, payload: dict[str, Any] | None) -> PortalShellRequest:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):
@@ -1681,10 +1682,6 @@ __all__ = [
     "FND_CSM_TOOL_ENTRYPOINT_ID",
     "FND_CSM_TOOL_ROUTE",
     "FND_CSM_TOOL_SURFACE_ID",
-    "WORKBENCH_UI_SANDBOX_TOKEN",
-    "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
-    "WORKBENCH_UI_TOOL_ROUTE",
-    "WORKBENCH_UI_TOOL_SURFACE_ID",
     "FOCUS_LEVEL_DATUM",
     "FOCUS_LEVEL_FILE",
     "FOCUS_LEVEL_OBJECT",
@@ -1702,15 +1699,6 @@ __all__ = [
     "PORTAL_SHELL_STATE_SCHEMA",
     "PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA",
     "PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA",
-    "PortalFocusSegment",
-    "PortalScope",
-    "PortalShellChrome",
-    "PortalShellRequest",
-    "PortalShellResolution",
-    "PortalShellState",
-    "PortalShellTransition",
-    "PortalSurfaceCatalogEntry",
-    "PortalToolRegistryEntry",
     "SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY",
     "SURFACE_POSTURE_PALETTE_TARGET",
     "SYSTEM_ACTIVITY_FILE_KEY",
@@ -1718,8 +1706,8 @@ __all__ = [
     "SYSTEM_PROFILE_BASICS_FILE_KEY",
     "SYSTEM_ROOT_ROUTE",
     "SYSTEM_ROOT_SURFACE_ID",
-    "SYSTEM_SURFACE_IDS",
     "SYSTEM_SANDBOX_QUERY_FILE_TOKEN",
+    "SYSTEM_SURFACE_IDS",
     "TOOL_ANCHOR_FILE_KEY",
     "TOOL_KIND_GENERAL",
     "TOOL_KIND_HOST_ALIAS",
@@ -1731,9 +1719,6 @@ __all__ = [
     "TRANSITION_FOCUS_FILE",
     "TRANSITION_FOCUS_OBJECT",
     "TRANSITION_FOCUS_SANDBOX",
-    "anchor_file_key_for_sandbox",
-    "sandbox_id_for_file_key",
-    "sandbox_id_for_surface",
     "TRANSITION_SET_VERB",
     "UTILITIES_INTEGRATIONS_ROUTE",
     "UTILITIES_INTEGRATIONS_SURFACE_ID",
@@ -1745,7 +1730,21 @@ __all__ = [
     "VERB_MANIPULATE",
     "VERB_MEDIATE",
     "VERB_NAVIGATE",
+    "WORKBENCH_UI_SANDBOX_TOKEN",
+    "WORKBENCH_UI_TOOL_ENTRYPOINT_ID",
+    "WORKBENCH_UI_TOOL_ROUTE",
+    "WORKBENCH_UI_TOOL_SURFACE_ID",
+    "PortalFocusSegment",
+    "PortalScope",
+    "PortalShellChrome",
+    "PortalShellRequest",
+    "PortalShellResolution",
+    "PortalShellState",
+    "PortalShellTransition",
+    "PortalSurfaceCatalogEntry",
+    "PortalToolRegistryEntry",
     "activity_icon_id_for_surface",
+    "anchor_file_key_for_sandbox",
     "apply_surface_posture_to_composition",
     "build_canonical_url",
     "build_nimm_envelope_for_shell_state",
@@ -1755,9 +1754,9 @@ __all__ = [
     "build_portal_surface_catalog",
     "build_portal_tool_registry_entries",
     "build_shell_composition_payload",
-    "canonical_query_for_surface_query",
     "canonical_query_for_runtime_request_payload",
     "canonical_query_for_shell_state",
+    "canonical_query_for_surface_query",
     "canonical_route_for_surface",
     "canonicalize_portal_shell_state",
     "default_focus_path",
@@ -1776,6 +1775,8 @@ __all__ = [
     "resolve_portal_shell_request",
     "resolve_portal_surface",
     "resolve_portal_tool_registry_entry",
+    "sandbox_id_for_file_key",
+    "sandbox_id_for_surface",
     "segment_id_for_level",
     "shell_composition_mode_for_surface",
     "surface_posture_for_surface",

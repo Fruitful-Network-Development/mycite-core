@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from MyCiteV2.packages.ports.aws_csm_onboarding import AwsCsmOnboardingCloudPort
-
 
 class AwsCsmOnboardingUnconfiguredCloudPort:
     """Production default until SES/S3/Route53 adapters are wired."""

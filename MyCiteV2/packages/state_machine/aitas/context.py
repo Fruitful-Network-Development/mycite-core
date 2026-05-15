@@ -47,7 +47,7 @@ class AitasContext:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, object] | "AitasContext" | None) -> "AitasContext":
+    def from_dict(cls, payload: dict[str, object] | AitasContext | None) -> AitasContext:
         if isinstance(payload, cls):
             return payload
         data = payload if isinstance(payload, dict) else {}

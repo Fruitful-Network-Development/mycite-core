@@ -263,7 +263,7 @@ class PublicationTenantSummary:
         tenant_id: str,
         tenant_domain: str,
         warnings: tuple[str, ...] = (),
-    ) -> "PublicationTenantSummary":
+    ) -> PublicationTenantSummary:
         fallback_title = _pretty_label(tenant_id, fallback=_as_text(tenant_id) or "Tenant")
         return cls(
             tenant_id=tenant_id,
@@ -398,7 +398,7 @@ class PublicationProfileBasicsCommand:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsCommand":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationProfileBasicsCommand:
         if not isinstance(payload, dict):
             raise ValueError("publication_profile_basics must be a dict")
         extra_fields = sorted(set(payload.keys()) - _PROFILE_BASICS_COMMAND_FIELDS)

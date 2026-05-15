@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any
 
 from MyCiteV2.packages.modules.shared import as_dict, as_text, utc_now_iso
@@ -149,7 +149,7 @@ class AwsCsmCreateProfileCommand:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsCsmCreateProfileCommand":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsCsmCreateProfileCommand:
         if not isinstance(payload, dict):
             raise ValueError("aws_csm_profile_registry.create_profile must be a dict")
         return cls(

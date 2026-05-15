@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import re
-from typing import Iterable
+from collections.abc import Iterable
 
 from .structure import SamrasStructure, as_text
-from .validation import InvalidSamrasStructure, child_counts_from_addresses, derive_addresses_from_child_counts, validate_structure
-
+from .validation import (
+    InvalidSamrasStructure,
+    child_counts_from_addresses,
+    derive_addresses_from_child_counts,
+    validate_structure,
+)
 
 _BIN_RE = re.compile(r"^[01]+$")
 _NUMERIC_HYPHEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)*$")

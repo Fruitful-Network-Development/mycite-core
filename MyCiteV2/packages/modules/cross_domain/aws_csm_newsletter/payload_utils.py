@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 from email import policy
 from email.parser import BytesParser
 from email.utils import getaddresses
-import hashlib
-import hmac
 from typing import Any
 
 from MyCiteV2.packages.modules.shared import as_text, utc_now_iso
@@ -68,9 +68,7 @@ def email_addresses(value: object) -> set[str]:
 
 
 def render_unsubscribe_token(secret: str, *, domain: str, email: str) -> str:
-    payload = f"{normalized_domain(domain, field_name='domain')}|{normalized_email(email, field_name='email')}".encode(
-        "utf-8"
-    )
+    payload = f"{normalized_domain(domain, field_name='domain')}|{normalized_email(email, field_name='email')}".encode()
     return hmac.new(as_text(secret).encode("utf-8"), payload, hashlib.sha256).hexdigest()
 
 

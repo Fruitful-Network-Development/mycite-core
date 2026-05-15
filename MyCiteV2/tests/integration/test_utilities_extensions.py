@@ -35,7 +35,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
 )
 
-
 EXPECTED_EXTENSION_IDS = (
     "ext_aws_email",
     "ext_analytics",

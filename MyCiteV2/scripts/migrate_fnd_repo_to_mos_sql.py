@@ -21,9 +21,9 @@ from MyCiteV2.packages.adapters.sql import (
 from MyCiteV2.packages.adapters.sql._sqlite import open_sqlite
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRequest,
+    PublicationTenantSummaryRequest,
     PublicationTenantSummaryResult,
     PublicationTenantSummarySource,
-    PublicationTenantSummaryRequest,
     SystemDatumStoreRequest,
 )
 from MyCiteV2.packages.ports.portal_authority import PortalAuthoritySource

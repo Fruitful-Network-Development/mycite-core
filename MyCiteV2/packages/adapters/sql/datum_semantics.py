@@ -4,7 +4,10 @@ import hashlib
 import re
 from typing import Any
 
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRow
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentRow,
+)
 
 from ._sqlite import dumps_json
 
@@ -48,7 +51,7 @@ def datum_address_sort_key(value: object) -> tuple[int, int, int]:
 
 
 def _sha256_token(*, prefix: str, payload: Any) -> str:
-    digest = hashlib.sha256(f"{prefix}:{dumps_json(payload)}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{prefix}:{dumps_json(payload)}".encode()).hexdigest()
     return f"sha256:{digest}"
 
 

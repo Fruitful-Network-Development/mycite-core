@@ -10,7 +10,12 @@ from .base import (
     SecretReferenceLens,
     TrimmedStringLens,
 )
-from .registry import DEFAULT_DATUM_LENS_REGISTRY, DatumLensRegistry, LensResolution, resolve_datum_lens
+from .registry import (
+    DEFAULT_DATUM_LENS_REGISTRY,
+    DatumLensRegistry,
+    LensResolution,
+    resolve_datum_lens,
+)
 
 __all__ = [
     "BinaryTextLens",

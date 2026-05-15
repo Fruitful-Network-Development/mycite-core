@@ -5,7 +5,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.core.document_naming import CanonicalNameError, derive_canonical_id_from_legacy, parse_canonical_document_id
+from MyCiteV2.packages.core.document_naming import (
+    CanonicalNameError,
+    derive_canonical_id_from_legacy,
+    parse_canonical_document_id,
+)
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -210,7 +214,7 @@ class FilesystemSystemDatumStoreAdapter(SystemDatumStorePort):
         system_sources_dir: str | Path | None = None,
         payload_cache_dir: str | Path | None = None,
         sandbox_root_dir: str | Path | None = None,
-    ) -> "FilesystemSystemDatumStoreAdapter":
+    ) -> FilesystemSystemDatumStoreAdapter:
         if system_anthology_file is not None:
             self._path_capabilities["system_anthology_file"] = Path(system_anthology_file)
         if system_sources_dir is not None:

@@ -77,7 +77,7 @@ class AwsNarrowWriteRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsNarrowWriteRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsNarrowWriteRequest:
         if not isinstance(payload, dict):
             raise ValueError("aws_narrow_write_request must be a dict")
         return cls(
@@ -104,7 +104,7 @@ class AwsNarrowWriteSource:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsNarrowWriteSource":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsNarrowWriteSource:
         if not isinstance(payload, dict):
             raise ValueError("aws_narrow_write_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -128,7 +128,7 @@ class AwsNarrowWriteResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsNarrowWriteResult":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsNarrowWriteResult:
         if not isinstance(payload, dict):
             raise ValueError("aws_narrow_write_result must be a dict")
         return cls(source=payload.get("source"))

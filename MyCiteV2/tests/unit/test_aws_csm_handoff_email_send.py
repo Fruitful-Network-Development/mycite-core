@@ -14,7 +14,6 @@ from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import 
     AwsEc2RoleOnboardingCloudAdapter,
 )
 
-
 _DEFAULT_FROM = "dylan@fruitfulnetworkdevelopment.com"
 _SEND_AS = "mark@trappfamilyfarm.com"
 _DESTINATION = "trapp.family.farm@gmail.com"
@@ -82,7 +81,7 @@ class _ResetEnv:
         AWS_CSM_HANDOFF_CONFIGURATION_SET_ENV,
     )
 
-    def __enter__(self) -> "_ResetEnv":
+    def __enter__(self) -> _ResetEnv:
         self._prior = {k: os.environ.get(k) for k in self._KEYS}
         for k in self._KEYS:
             os.environ.pop(k, None)

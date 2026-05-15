@@ -73,7 +73,7 @@ class FndEbiDonationsReadOnlyRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiDonationsReadOnlyRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiDonationsReadOnlyRequest:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_donations_read_only_request must be a dict")
         return cls(
@@ -97,7 +97,7 @@ class FndEbiDonationsReadOnlySource:
         return {"payload": dict(self.payload)}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiDonationsReadOnlySource":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiDonationsReadOnlySource:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_donations_read_only_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -130,7 +130,7 @@ class FndEbiDonationsReadOnlyResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiDonationsReadOnlyResult":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiDonationsReadOnlyResult:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_donations_read_only_result must be a dict")
         return cls(source=payload.get("source"))

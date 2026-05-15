@@ -26,7 +26,7 @@ filesystem otherwise.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +37,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRow,
 )
 from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
-
 
 ORDERS_SCHEMA = "mycite.v2.datum.fnd.paypal.orders.v1"
 WEBHOOK_SCHEMA = "mycite.v2.datum.fnd.paypal.webhook.v1"
@@ -77,7 +76,7 @@ def _webhook_canonical_name(msn_id: str) -> str:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _persist_doc(
@@ -291,9 +290,9 @@ class MosDatumPayPalWebhookAdapter:
 
 
 __all__ = [
-    "MosDatumPayPalOrdersAdapter",
-    "MosDatumPayPalWebhookAdapter",
     "ORDERS_MAX_PER_DOMAIN",
     "ORDERS_SCHEMA",
     "WEBHOOK_SCHEMA",
+    "MosDatumPayPalOrdersAdapter",
+    "MosDatumPayPalWebhookAdapter",
 ]

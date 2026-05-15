@@ -5,7 +5,10 @@ import json
 import re
 from typing import Any
 
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRow
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentRow,
+)
 
 MSS_VERSION_HASH_POLICY = "mos.mss_sha256_v1"
 
@@ -49,7 +52,7 @@ def _dumps_json(value: Any) -> str:
 
 
 def _sha256_token(*, prefix: str, payload: Any) -> str:
-    digest = hashlib.sha256(f"{prefix}:{_dumps_json(payload)}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{prefix}:{_dumps_json(payload)}".encode()).hexdigest()
     return f"sha256:{digest}"
 
 

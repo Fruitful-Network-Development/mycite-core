@@ -3,18 +3,18 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from MyCiteV2.packages.adapters.sql._sqlite import dumps_json, loads_json, open_sqlite
 from MyCiteV2.packages.ports.audit_log import (
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
     AuditLogPort,
-    AuditLogRecentWindowRequest,
-    AuditLogRecentWindowResult,
     AuditLogReadRequest,
     AuditLogReadResult,
+    AuditLogRecentWindowRequest,
+    AuditLogRecentWindowResult,
     AuditLogRecord,
 )
 

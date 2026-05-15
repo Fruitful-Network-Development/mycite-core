@@ -9,9 +9,9 @@ from MyCiteV2.packages.ports.audit_log import (
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
     AuditLogPort,
+    AuditLogReadRequest,
     AuditLogRecentWindowRequest,
     AuditLogRecentWindowResult,
-    AuditLogReadRequest,
     AuditLogRecord,
 )
 
@@ -120,7 +120,7 @@ class LocalAuditRecord:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "LocalAuditRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> LocalAuditRecord:
         if not isinstance(payload, dict):
             raise ValueError("local_audit must be a dict")
         extra_fields = sorted(set(payload.keys()) - _ALLOWED_LOCAL_AUDIT_FIELDS)
@@ -255,7 +255,7 @@ class LocalAuditVisibleRecord:
         }
 
     @classmethod
-    def from_stored_record(cls, record: StoredLocalAuditRecord | dict[str, Any]) -> "LocalAuditVisibleRecord":
+    def from_stored_record(cls, record: StoredLocalAuditRecord | dict[str, Any]) -> LocalAuditVisibleRecord:
         stored = record if isinstance(record, StoredLocalAuditRecord) else StoredLocalAuditRecord(
             record_id=record.get("record_id"),
             recorded_at_unix_ms=record.get("recorded_at_unix_ms"),

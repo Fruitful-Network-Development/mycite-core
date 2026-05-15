@@ -10,12 +10,12 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.packages.adapters.filesystem.network_root_read_model import (  # noqa: E402
+from MyCiteV2.packages.adapters.filesystem.network_root_read_model import (
     FilesystemNetworkRootReadModelAdapter,
     build_system_log_document,
     rebuild_network_system_log_document,
 )
-from MyCiteV2.packages.ports.network_root_read_model import (  # noqa: E402
+from MyCiteV2.packages.ports.network_root_read_model import (
     NetworkRootReadModelRequest,
     validate_network_hops_address,
 )

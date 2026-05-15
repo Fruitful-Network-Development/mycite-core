@@ -29,7 +29,7 @@ Canonical document names:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -41,7 +41,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRow,
 )
 from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
-
 
 PROFILE_SCHEMA = "mycite.v2.datum.aws_csm.operator_profile.v1"
 DOMAIN_SCHEMA = "mycite.v2.datum.aws_csm.domain.v1"
@@ -61,7 +60,7 @@ def _as_dict(value: Any) -> dict[str, Any]:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _profile_canonical_name(profile_id: str) -> str:
@@ -294,6 +293,6 @@ def _matches_tenant_scope(record: dict[str, Any], tenant_scope_id: str) -> bool:
 
 __all__ = [
     "DOMAIN_SCHEMA",
-    "MosDatumAwsCsmProfileAdapter",
     "PROFILE_SCHEMA",
+    "MosDatumAwsCsmProfileAdapter",
 ]

@@ -31,7 +31,6 @@ from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
     MosDatumAnalyticsSummaryAdapter,
 )
 
-
 DEFAULT_WINDOW_MONTHS = 3
 
 

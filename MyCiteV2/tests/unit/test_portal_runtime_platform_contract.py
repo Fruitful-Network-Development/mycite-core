@@ -12,12 +12,12 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     FND_CSM_TOOL_REQUEST_SCHEMA,
     FND_CSM_TOOL_SURFACE_SCHEMA,
-    PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     PORTAL_RUNTIME_ENTRYPOINT_DESCRIPTOR_SCHEMA,
+    PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     PORTAL_RUNTIME_REQUIRED_ENVELOPE_KEYS,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
-    build_portal_runtime_envelope,
     build_portal_runtime_entrypoint_catalog,
+    build_portal_runtime_envelope,
     build_portal_runtime_error,
     resolve_portal_runtime_entrypoint,
 )

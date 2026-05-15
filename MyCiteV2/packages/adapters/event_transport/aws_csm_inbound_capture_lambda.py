@@ -13,7 +13,6 @@ from typing import Any
 
 import boto3
 
-
 SES_REGION = os.environ.get("SES_REGION", "us-east-1").strip() or "us-east-1"
 INBOUND_SECRET_NAME = os.environ.get("INBOUND_SECRET_NAME", "").strip()
 CALLBACK_URL_TEMPLATE = os.environ.get(
@@ -129,7 +128,7 @@ def _extract_links(raw_bytes: bytes) -> list[str]:
                 continue
             try:
                 text_parts.append(str(part.get_content() or ""))
-            except Exception:  # noqa: BLE001
+            except Exception:
                 payload = part.get_payload(decode=True)
                 if payload:
                     charset = str(part.get_content_charset() or "utf-8")
@@ -470,7 +469,7 @@ def _handle_verification_record(
             raw_bytes = _read_raw_message(candidate)
             s3_uri = candidate
             break
-        except Exception:  # noqa: BLE001
+        except Exception:
             continue
     if not raw_bytes:
         return {
@@ -542,7 +541,7 @@ def lambda_handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
             for recipient in list(mail.get("destination") or receipt.get("recipients") or [])
             if _normalized_email(recipient)
         ]
-        subject = _text(((mail.get("commonHeaders") or {}).get("subject")))
+        subject = _text((mail.get("commonHeaders") or {}).get("subject"))
         captured_at = _text(receipt.get("timestamp"))
         newsletter_recipient = next((recipient for recipient in destinations if recipient.startswith("news@")), "")
         if newsletter_recipient:

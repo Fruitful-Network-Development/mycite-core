@@ -1,20 +1,20 @@
 from __future__ import annotations
 
 import json
-from contextlib import contextmanager
 import time
 import uuid
+from collections.abc import Callable
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable
 
 from MyCiteV2.packages.ports.audit_log import (
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
     AuditLogPort,
-    AuditLogRecentWindowRequest,
-    AuditLogRecentWindowResult,
     AuditLogReadRequest,
     AuditLogReadResult,
+    AuditLogRecentWindowRequest,
+    AuditLogRecentWindowResult,
     AuditLogRecord,
 )
 

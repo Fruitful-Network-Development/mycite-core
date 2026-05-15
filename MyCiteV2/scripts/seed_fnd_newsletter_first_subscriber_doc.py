@@ -33,7 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -43,8 +43,6 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
     run_datum_workbench_mutation_action,
 )
-
-
 from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
 
 SANDBOX_TOKEN = FND_CSM_SANDBOX_TOKEN
@@ -58,7 +56,7 @@ def _canonical_name_for(domain: str) -> str:
 
 
 def _now_utc_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _legacy_contact_log_path(*, webapps_root: Path, domain: str) -> Path:

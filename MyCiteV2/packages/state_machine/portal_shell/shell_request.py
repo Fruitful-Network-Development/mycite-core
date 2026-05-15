@@ -2,17 +2,33 @@
 
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 from urllib.parse import urlencode
 
 from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
+from MyCiteV2.packages.core.scalars import as_text
 from MyCiteV2.packages.state_machine.nimm import (
     NimmDirective,
     NimmDirectiveEnvelope,
     NimmTargetAddress,
 )
-from MyCiteV2.packages.core.scalars import as_text
 
+from .shell import (
+    anchor_file_key_for_sandbox,
+    canonicalize_portal_shell_state,
+    initial_portal_shell_state,
+    reduce_portal_shell_state,
+    sandbox_id_for_surface,
+    segment_id_for_level,
+)
+from .shell_registry import (
+    build_portal_surface_catalog,
+    canonical_route_for_surface,
+    is_tool_surface,
+    requires_shell_state_machine,
+    resolve_portal_surface,
+)
 from .shell_schemas import (
     AWS_CSM_TOOL_SURFACE_ID,
     FND_DCM_DEFAULT_SITE,
@@ -22,7 +38,6 @@ from .shell_schemas import (
     FOCUS_LEVEL_OBJECT,
     FOCUS_LEVEL_SANDBOX,
     NETWORK_ROOT_SURFACE_ID,
-    SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_SANDBOX_QUERY_FILE_TOKEN,
@@ -42,21 +57,6 @@ from .shell_state import (
     _normalize_slug,
     _normalize_surface_query,
     _subject_from_segment,
-)
-from .shell_registry import (
-    build_portal_surface_catalog,
-    canonical_route_for_surface,
-    is_tool_surface,
-    requires_shell_state_machine,
-    resolve_portal_surface,
-)
-from .shell import (
-    anchor_file_key_for_sandbox,
-    canonicalize_portal_shell_state,
-    initial_portal_shell_state,
-    reduce_portal_shell_state,
-    sandbox_id_for_surface,
-    segment_id_for_level,
 )
 
 

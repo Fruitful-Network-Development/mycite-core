@@ -13,8 +13,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
     MAX_RECENT_EVENTS,
-    MosDatumAnalyticsSummaryAdapter,
     SCHEMA,
+    MosDatumAnalyticsSummaryAdapter,
 )
 
 

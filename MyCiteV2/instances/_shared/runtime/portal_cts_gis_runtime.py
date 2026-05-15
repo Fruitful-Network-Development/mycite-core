@@ -7,8 +7,8 @@ import subprocess
 import sys
 import threading
 from collections import OrderedDict
-from time import perf_counter
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
@@ -27,7 +27,6 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     CTS_GIS_TOOL_SURFACE_SCHEMA,
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
     PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-    PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     attach_region_family_contract,
     tool_exposure_configured,
     tool_exposure_enabled,
@@ -52,23 +51,39 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     compiled_artifact_path,
     evict_compiled_artifact_read_cache,
     read_compiled_artifact_cached,
-    validate_cts_gis_source_layout,
     validate_compiled_artifact,
+    validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
-from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_NAV_MODE_DIRECTORY as _CTS_GIS_NAV_MODE_DIRECTORY,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC as _CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT as _CTS_GIS_RUNTIME_MODE_PRODUCTION_STRICT,
-    CTS_GIS_NAV_MODE_DIRECTORY as _CTS_GIS_NAV_MODE_DIRECTORY,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_ARCHETYPE_FAMILY_ID as _DEFAULT_ARCHETYPE_FAMILY_ID,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_RULE_ID,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     as_text as _as_text,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
     canonical_runtime_intention_rule_id,
     canonical_service_intention_token,
 )
+from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 
 # Presumed default attention node for the CTS-GIS Garland wireframe.
 # Per the daemon-load contract: when the Garland tab loads with no
@@ -82,26 +97,6 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
 # node such as a county).
 CTS_GIS_PRESUMED_ATTENTION_NODE_ID = "3-2-3-17"
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
-from MyCiteV2.packages.state_machine.portal_shell import (
-    CTS_GIS_TOOL_ENTRYPOINT_ID,
-    CTS_GIS_TOOL_ROUTE,
-    CTS_GIS_TOOL_SURFACE_ID,
-    FOCUS_LEVEL_DATUM,
-    FOCUS_LEVEL_FILE,
-    FOCUS_LEVEL_OBJECT,
-    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-    PORTAL_SHELL_REQUEST_SCHEMA,
-    TOOL_ANCHOR_FILE_KEY,
-    TRANSITION_FOCUS_FILE,
-    PortalScope,
-    PortalShellState,
-    build_portal_shell_request_payload,
-    normalize_runtime_shell_action_request_payload,
-    normalize_runtime_shell_surface_request_payload,
-    resolve_portal_tool_registry_entry,
-    segment_id_for_level,
-)
 from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
 from MyCiteV2.packages.state_machine.nimm import (
     CTS_GIS_CANONICAL_ACTIONS,
@@ -117,6 +112,23 @@ from MyCiteV2.packages.state_machine.nimm import (
     normalize_mutation_lifecycle_action,
     parse_directive_text,
 )
+from MyCiteV2.packages.state_machine.portal_shell import (
+    CTS_GIS_TOOL_ENTRYPOINT_ID,
+    CTS_GIS_TOOL_ROUTE,
+    CTS_GIS_TOOL_SURFACE_ID,
+    FOCUS_LEVEL_FILE,
+    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
+    PORTAL_SHELL_REQUEST_SCHEMA,
+    TOOL_ANCHOR_FILE_KEY,
+    TRANSITION_FOCUS_FILE,
+    PortalScope,
+    PortalShellState,
+    build_portal_shell_request_payload,
+    normalize_runtime_shell_action_request_payload,
+    normalize_runtime_shell_surface_request_payload,
+    resolve_portal_tool_registry_entry,
+    segment_id_for_level,
+)
 
 _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
@@ -128,7 +140,7 @@ _DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
 _WORKBENCH_PROJECTION_CACHE: dict[tuple[str, str], tuple[int, dict]] = {}
 # Service-surface-from-compiled-artifact cache: keyed by
 # (artifact_path_str, artifact_signature, canonical_tool_state_sha1) → service_surface_dict
-_COMPILED_SERVICE_SURFACE_CACHE: "OrderedDict[tuple[str, str, str], dict[str, Any]]" = OrderedDict()
+_COMPILED_SERVICE_SURFACE_CACHE: OrderedDict[tuple[str, str, str], dict[str, Any]] = OrderedDict()
 _COMPILED_SERVICE_SURFACE_CACHE_MAX = 32
 
 
@@ -3206,7 +3218,7 @@ def _build_cts_gis_structured_interface_body(
             for _feat in (
                 (geospatial_projection.get("feature_collection") or {}).get("features") or []
             ):
-                active_points.extend(_geometry_points(dict((_feat.get("geometry") or {}))))
+                active_points.extend(_geometry_points(dict(_feat.get("geometry") or {})))
             computed_focus = _bounds_from_points(active_points)
             if computed_focus:
                 geospatial_projection = {
@@ -3931,7 +3943,7 @@ def _navigation_canvas_from_compiled_artifact(
     title_map: dict[str, str] = {}
     available_nodes: set[str] = set()
     for dropdown in dropdown_models:
-        for option in list((dropdown.get("options") or [])):
+        for option in list(dropdown.get("options") or []):
             node_id = _as_text(option.get("node_id"))
             if node_id:
                 title_map[node_id] = _as_text(option.get("title"))
@@ -3991,7 +4003,7 @@ def _navigation_canvas_from_compiled_artifact(
         if depth in effective_selections_by_depth:
             selected_node_id = effective_selections_by_depth[depth]
         dropdown_options = []
-        for option in list((dropdown.get("options") or [])):
+        for option in list(dropdown.get("options") or []):
             node_id = _as_text(option.get("node_id"))
             if not node_id:
                 continue

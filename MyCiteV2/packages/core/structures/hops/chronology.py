@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from .time_address import normalize_time_address_for_schema
@@ -47,16 +47,16 @@ def build_chronology_authority(
 def _as_utc_datetime(value: datetime | int | float) -> datetime:
     if isinstance(value, datetime):
         if value.tzinfo is None:
-            return value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc)
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
     number = float(value)
     if number > 10_000_000_000:
         number = number / 1000.0
-    return datetime.fromtimestamp(number, tz=timezone.utc)
+    return datetime.fromtimestamp(number, tz=UTC)
 
 
 def _day_in_quadrennium(current: datetime, cycle_start_year: int) -> int:
-    cycle_start = datetime(cycle_start_year, 1, 1, tzinfo=timezone.utc)
+    cycle_start = datetime(cycle_start_year, 1, 1, tzinfo=UTC)
     delta = current - cycle_start
     day_index = int(delta.total_seconds() // _SECONDS_PER_DAY) + 1
     if day_index < 1:

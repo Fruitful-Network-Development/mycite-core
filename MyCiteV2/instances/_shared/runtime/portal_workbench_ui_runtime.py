@@ -7,7 +7,6 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_unified_control_panel,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
     PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
     PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
@@ -16,20 +15,19 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
 )
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.state_machine.portal_shell import (
-    PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-    PortalScope,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
+    PortalScope,
     build_canonical_url,
     build_portal_shell_request_payload,
-    canonical_query_for_runtime_request_payload,
     canonical_query_for_surface_query,
     normalize_runtime_surface_request_payload,
 )
 from MyCiteV2.packages.tools.workbench_ui import WorkbenchUiReadService
+
 
 def _as_text(value: object) -> str:
     if value is None:

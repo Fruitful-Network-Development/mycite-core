@@ -33,14 +33,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
-    AwsEc2RoleOnboardingCloudAdapter,
     _FORWARDER_LAMBDA_NAME,
     _FORWARDER_ROUTE_MAP_ENV_KEY,
+    AwsEc2RoleOnboardingCloudAdapter,
 )
 from MyCiteV2.packages.adapters.filesystem.aws_csm_tool_profile_store import (
     FilesystemAwsCsmToolProfileStore,
 )
-
 
 DEFAULT_PRIVATE_DIR = Path("/srv/mycite-state/instances/fnd/private")
 
@@ -99,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         try:
             current = _current_routes(adapter)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             print(f"failed to read current lambda env: {exc}")
             return 1
         added = sorted(set(desired) - set(current))

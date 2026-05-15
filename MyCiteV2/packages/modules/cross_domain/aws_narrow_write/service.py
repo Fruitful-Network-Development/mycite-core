@@ -3,11 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from MyCiteV2.packages.modules.shared import as_text, normalize_focus_subject
 from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility import (
     AwsReadOnlyOperationalVisibility,
     normalize_aws_operational_visibility,
 )
+from MyCiteV2.packages.modules.shared import as_text, normalize_focus_subject
 from MyCiteV2.packages.ports.aws_narrow_write import AwsNarrowWritePort, AwsNarrowWriteRequest
 
 ALLOWED_AWS_NARROW_WRITE_FIELDS = frozenset({"selected_verified_sender"})
@@ -67,7 +67,7 @@ class AwsNarrowWriteCommand:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsNarrowWriteCommand":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsNarrowWriteCommand:
         if not isinstance(payload, dict):
             raise ValueError("aws_narrow_write must be a dict")
         extra_fields = sorted(set(payload.keys()) - _ALLOWED_COMMAND_FIELDS)

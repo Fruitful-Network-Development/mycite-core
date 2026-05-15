@@ -41,7 +41,6 @@ from MyCiteV2.packages.core.document_naming import (
     parse_canonical_document_id,
 )
 
-
 _CANONICAL_REGEX = re.compile(
     r"^(lv|stl|cptr)\.[^.]+(\.[^.]+)?\.[^.]+\.[a-f0-9]{64}$"
 )

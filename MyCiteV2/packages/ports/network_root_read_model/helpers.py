@@ -94,16 +94,16 @@ def build_log_kind_filter(
 
 
 __all__ = [
-    "ChronologyAuthority",
     "LOCAL_LOG_KIND_ID_KEY",
     "LOG_KIND_BABELETTE_LABEL",
     "LOG_KIND_COLLECTION_LABEL",
-    "LOG_KIND_COUNT_KEY",
     "LOG_KIND_COUNTS_KEY",
+    "LOG_KIND_COUNT_KEY",
     "LOG_KIND_FILTERS_KEY",
     "LOG_KIND_ID_KEY",
     "LOG_KIND_LABEL_KEY",
     "LOG_KIND_SLUG_KEY",
+    "ChronologyAuthority",
     "build_log_kind_entry",
     "build_log_kind_filter",
     "build_network_chronology_authority",

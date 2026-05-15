@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -39,7 +39,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
         if number > 10_000_000_000:
             number = number / 1000.0
         try:
-            return datetime.fromtimestamp(number, tz=timezone.utc)
+            return datetime.fromtimestamp(number, tz=UTC)
         except Exception:
             return None
     token = _as_text(value)
@@ -52,8 +52,8 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             token = token[:-1] + "+00:00"
         parsed = datetime.fromisoformat(token)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
     except Exception:
         return None
 
@@ -207,7 +207,7 @@ class FilesystemFndEbiDonationsReadOnlyAdapter(FndEbiDonationsReadOnlyPort):
             if isinstance(request, FndEbiDonationsReadOnlyRequest)
             else FndEbiDonationsReadOnlyRequest.from_dict(request)
         )
-        now_utc = self._now_utc or datetime.now(timezone.utc)
+        now_utc = self._now_utc or datetime.now(UTC)
         warnings: list[str] = []
         profiles: list[dict[str, Any]] = []
 

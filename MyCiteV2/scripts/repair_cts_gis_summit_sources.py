@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
 import re
 import sys
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +21,20 @@ from MyCiteV2.packages.ports.datum_store import (
 )
 from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     as_text as _shared_as_text,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     encode_hops_coordinate as _shared_encode_hops_coordinate,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     normalize_ring_open as _shared_normalize_ring_open,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     read_json as _shared_read_json,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     reference_polygons_from_geojson as _shared_reference_polygons_from_geojson,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     write_json as _shared_write_json,
 )
 

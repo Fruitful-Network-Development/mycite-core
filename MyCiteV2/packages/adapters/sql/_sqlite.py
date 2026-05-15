@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import json
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
-
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS authoritative_catalog_snapshots (

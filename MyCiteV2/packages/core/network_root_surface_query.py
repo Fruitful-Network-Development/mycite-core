@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 NETWORK_ROOT_DEFAULT_VIEW = "system_logs"
 NETWORK_ROOT_SUPPORTED_QUERY_KEYS = frozenset({"view", "contract", "type", "record"})

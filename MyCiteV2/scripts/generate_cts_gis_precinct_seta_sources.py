@@ -7,9 +7,15 @@ from typing import Any
 
 from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     as_text as _as_text,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     encode_hops_coordinate,
     normalize_ring_closed,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     read_json as _read_json,
+)
+from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
     write_json as _write_json,
 )
 

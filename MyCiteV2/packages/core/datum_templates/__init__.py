@@ -27,10 +27,11 @@ and ``DocumentArchetypeReport`` reports.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-import re
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 import yaml
 
@@ -38,7 +39,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRow,
 )
-
 
 _DATUM_TEMPLATE_SCHEMA = "mycite.v2.core.datum_template.v1"
 _ARCHETYPE_REPORT_SCHEMA = "mycite.v2.core.datum_template.archetype_report.v1"

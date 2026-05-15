@@ -129,7 +129,7 @@ class NimmTargetAddress:
         return payload
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | "NimmTargetAddress") -> "NimmTargetAddress":
+    def from_value(cls, payload: dict[str, Any] | NimmTargetAddress) -> NimmTargetAddress:
         if isinstance(payload, cls):
             return payload
         if not isinstance(payload, dict):
@@ -184,7 +184,7 @@ class NimmDirective:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | "NimmDirective") -> "NimmDirective":
+    def from_dict(cls, payload: dict[str, Any] | NimmDirective) -> NimmDirective:
         if isinstance(payload, cls):
             return payload
         if not isinstance(payload, dict):

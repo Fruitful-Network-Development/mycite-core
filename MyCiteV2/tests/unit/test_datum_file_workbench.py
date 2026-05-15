@@ -15,9 +15,9 @@ from MyCiteV2.instances._shared.runtime.portal_workbench import (
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     FND_CSM_TOOL_SURFACE_ID,
+    SYSTEM_ROOT_SURFACE_ID,
     PortalScope,
     PortalShellState,
-    SYSTEM_ROOT_SURFACE_ID,
 )
 
 

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
-from pathlib import Path
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +30,7 @@ PROJECTION_GLOB = "sc.3-2-3-17-77-1-6-4-1-4.fnd.*.json"
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _read_manifest(path: Path) -> dict[str, Any]:
@@ -159,7 +159,7 @@ def _linked_row_addresses(space: dict[str, Any], row_address: str) -> list[str]:
 
 
 def _owner_row_address_for_node(space: dict[str, Any], node_id: str) -> str:
-    candidates = sorted((address for address in space.keys() if _is_row_address(address, families={"7"})))
+    candidates = sorted(address for address in space.keys() if _is_row_address(address, families={"7"}))
     for address in candidates:
         tokens = _row_tokens(space, address)
         rf_indexes = [idx for idx, token in enumerate(tokens[:-1]) if as_text(token) == "rf.3-1-2"]

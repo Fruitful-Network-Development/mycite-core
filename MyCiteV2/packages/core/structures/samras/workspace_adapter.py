@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from .codec import decode_structure, encode_canonical_structure_from_addresses
-from .structure import SamrasStructure, address_depth, address_sort_key, as_text, parent_address, parse_address_segments
+from .structure import (
+    SamrasStructure,
+    address_depth,
+    address_sort_key,
+    as_text,
+    parent_address,
+    parse_address_segments,
+)
 from .validation import InvalidSamrasStructure
 
 

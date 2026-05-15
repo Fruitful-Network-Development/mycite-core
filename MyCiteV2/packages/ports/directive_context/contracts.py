@@ -68,7 +68,7 @@ class DirectiveContextRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DirectiveContextRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> DirectiveContextRequest:
         if not isinstance(payload, dict):
             raise ValueError("directive_context_request must be a dict")
         return cls(
@@ -151,7 +151,7 @@ class DirectiveContextSource:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DirectiveContextSource":
+    def from_dict(cls, payload: dict[str, Any]) -> DirectiveContextSource:
         if not isinstance(payload, dict):
             raise ValueError("directive_context_source must be a dict")
         return cls(
@@ -206,7 +206,7 @@ class DirectiveContextResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DirectiveContextResult":
+    def from_dict(cls, payload: dict[str, Any]) -> DirectiveContextResult:
         if not isinstance(payload, dict):
             raise ValueError("directive_context_result must be a dict")
         warnings = payload.get("warnings") or ()
@@ -284,7 +284,7 @@ class DirectiveContextEventRecord:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DirectiveContextEventRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> DirectiveContextEventRecord:
         if not isinstance(payload, dict):
             raise ValueError("directive_context_event must be a dict")
         return cls(
@@ -326,7 +326,7 @@ class DirectiveContextEventQuery:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "DirectiveContextEventQuery":
+    def from_dict(cls, payload: dict[str, Any]) -> DirectiveContextEventQuery:
         if not isinstance(payload, dict):
             raise ValueError("directive_context_event_query must be a dict")
         return cls(

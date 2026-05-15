@@ -9,7 +9,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.state_machine.aitas import AitasContext, merge_aitas_context
-from MyCiteV2.packages.state_machine.lens import EmailAddressLens, SamrasTitleLens, SecretReferenceLens, TrimmedStringLens
+from MyCiteV2.packages.state_machine.lens import (
+    EmailAddressLens,
+    SamrasTitleLens,
+    SecretReferenceLens,
+    TrimmedStringLens,
+)
 from MyCiteV2.packages.state_machine.nimm import (
     MINIMAL_NIMM_VERBS,
     NIMM_DIRECTIVE_GRAMMAR_V1,
@@ -17,18 +22,21 @@ from MyCiteV2.packages.state_machine.nimm import (
     NIMM_ENVELOPE_SCHEMA_V1,
     VERB_INVESTIGATE,
     VERB_MANIPULATE,
-    handle_nimm_investigate,
     NimmDirective,
     NimmDirectiveEnvelope,
     NimmTargetAddress,
     StagingArea,
     cts_gis_runtime_action_kind,
-    validate_nimm_directive_payload,
+    handle_nimm_investigate,
     mutation_action_endpoint,
     normalize_mutation_lifecycle_action,
     normalize_nimm_verb,
+    validate_nimm_directive_payload,
 )
-from MyCiteV2.packages.state_machine.portal_shell import PortalShellState, build_nimm_envelope_for_shell_state
+from MyCiteV2.packages.state_machine.portal_shell import (
+    PortalShellState,
+    build_nimm_envelope_for_shell_state,
+)
 
 
 class NimmPhase2FoundationTests(unittest.TestCase):
