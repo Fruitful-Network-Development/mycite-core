@@ -448,29 +448,23 @@
     );
   }
 
-  function renderContactsTable(rows) {
+  function renderRowsTableWithActions(title, rows, columns, actionKey, actionLabel) {
     var rowList = asList(rows);
     if (!rowList.length) return "";
     var hasActions = rowList.some(function (r) {
-      return asObject(r).remove_action && asObject(r).remove_action.route;
+      var a = asObject(r)[actionKey];
+      return a && asObject(a).route;
     });
-    var columns = [
-      { key: "email", label: "Email" },
-      { key: "subscribed", label: "Subscribed" },
-      { key: "source", label: "Source" },
-      { key: "send_count", label: "Sends" },
-      { key: "last_sent", label: "Last sent" },
-    ];
     return (
-      '<section class="v2-extensionCard__table v2-extensionCard__contacts">' +
-      "<h4>Contacts</h4>" +
+      '<section class="v2-extensionCard__table">' +
+      (title ? "<h4>" + escapeHtml(asText(title)) + "</h4>" : "") +
       '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
       columns
         .map(function (col) {
           return "<th>" + escapeHtml(asText(col.label)) + "</th>";
         })
         .join("") +
-      (hasActions ? "<th>Actions</th>" : "") +
+      (hasActions ? "<th>" + escapeHtml(asText(actionLabel) || "Actions") + "</th>" : "") +
       "</tr></thead><tbody>" +
       rowList
         .map(function (row) {
@@ -483,12 +477,44 @@
             })
             .join("");
           var actionCell = hasActions
-            ? "<td>" + renderRowAction(row.remove_action) + "</td>"
+            ? "<td>" + renderRowAction(row[actionKey]) + "</td>"
             : "";
           return "<tr>" + cells + actionCell + "</tr>";
         })
         .join("") +
       "</tbody></table></div></section>"
+    );
+  }
+
+  function renderContactsTable(rows) {
+    return renderRowsTableWithActions(
+      "Contacts",
+      rows,
+      [
+        { key: "email", label: "Email" },
+        { key: "subscribed", label: "Subscribed" },
+        { key: "source", label: "Source" },
+        { key: "send_count", label: "Sends" },
+        { key: "last_sent", label: "Last sent" },
+      ],
+      "remove_action",
+      "Actions"
+    );
+  }
+
+  function renderMailboxesTable(rows) {
+    return renderRowsTableWithActions(
+      "Mailboxes",
+      rows,
+      [
+        { key: "mailbox", label: "Mailbox" },
+        { key: "send_as", label: "Send-as" },
+        { key: "role", label: "Role" },
+        { key: "lifecycle", label: "Lifecycle" },
+        { key: "inbound", label: "Inbound" },
+      ],
+      "suspend_action",
+      "Actions"
     );
   }
 
@@ -554,13 +580,7 @@
       ]);
     }
     if (asList(p.profiles).length) {
-      html += renderRowsTable("Mailboxes", p.profiles, [
-        { key: "mailbox", label: "Mailbox" },
-        { key: "send_as", label: "Send-as" },
-        { key: "role", label: "Role" },
-        { key: "lifecycle", label: "Lifecycle" },
-        { key: "inbound", label: "Inbound" },
-      ]);
+      html += renderMailboxesTable(p.profiles);
     }
     if (asText(p.empty_message) && !html) {
       html += '<p class="v2-extensionCard__empty">' + escapeHtml(asText(p.empty_message)) + "</p>";
