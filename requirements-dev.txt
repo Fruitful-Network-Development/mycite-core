@@ -28,3 +28,6 @@ playwright>=1.58.0
 
 # Crypto used by grantee schema (password fields) + paypal token signing
 cryptography>=46.0.0
+
+# Linter — config in repo-root pyproject.toml [tool.ruff]
+ruff>=0.8.0

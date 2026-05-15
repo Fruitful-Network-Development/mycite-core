@@ -1,0 +1,42 @@
+# Repo-root configuration. Currently houses only the ruff config; if we add
+# poetry/uv/setuptools later this is where their tables go.
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = [
+    "docs",
+    "evidence",
+    "knowledge",
+]
+
+[tool.ruff.lint]
+# Enabled rule sets:
+#   E   pycodestyle errors
+#   F   pyflakes (unused imports, undefined names — the actual bug catchers)
+#   I   isort (import ordering)
+#   UP  pyupgrade (Python-version-aware syntax modernization)
+#   B   flake8-bugbear (common gotchas)
+#   RUF ruff-specific rules
+select = ["E", "F", "I", "UP", "B", "RUF"]
+ignore = [
+    "E501",   # line length — ruff format handles most cases; long URLs / comments fine
+    "B008",   # function call in default args — Flask + dataclass-defaults pattern
+    "RUF012", # mutable class defaults — false-positive on dataclass-style classes
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests do sys.path.insert(0, REPO_ROOT) before MyCiteV2 imports (the project
+# is not pip-installed); allow E402 there. Tests also reuse fixtures and import
+# things they don't directly call (skipUnless guards, etc); allow F401 + F811.
+"MyCiteV2/tests/**/*.py" = ["F401", "F811", "E402"]
+# packages/state_machine/portal_shell/__init__.py and packages/__init__.py
+# files deliberately re-export public surface via `from .shell import *`.
+# That's the canonical aggregator pattern; ruff cannot statically resolve the
+# names, so allow F403/F405 + the dunder-all unsort here.
+"MyCiteV2/packages/**/__init__.py" = ["F403", "F405", "RUF022"]
+"MyCiteV2/instances/**/__init__.py" = ["F403", "F405", "RUF022"]
+# shell.py is a 1,750-LOC aggregator that mirrors sibling modules via wildcard
+# imports (documented in Phase 12 evidence). The duplicate-definition postcondition
+# pins the canonical-home rule; ruff star-import lints don't add signal here.
+"MyCiteV2/packages/state_machine/portal_shell/shell.py" = ["F403", "F405"]
