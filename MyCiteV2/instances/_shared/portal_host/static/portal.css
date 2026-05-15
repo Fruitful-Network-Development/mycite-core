@@ -8946,6 +8946,53 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 13px;
   line-height: 1.45;
 }
+/* Phase 12h utilities surface — grantee selector. Sits at the top of
+   /portal/utilities/tool-exposure; clicking switches the active grantee
+   and repopulates the extension payloads below. Markup + JS in
+   v2_portal_workbench_renderers.js (renderGranteeSelector / bindGranteeSelector). */
+.v2-granteeSelector {
+  margin-top: 0;
+}
+.v2-granteeSelector__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.v2-granteeSelector__option {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 12px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 6px;
+  background: var(--ide-panel-bg, #fff);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.v2-granteeSelector__option:hover {
+  background: #eef1f5;
+}
+.v2-granteeSelector__option.is-active {
+  background: var(--ide-accent, #1f883d);
+  color: #fff;
+  border-color: var(--ide-accent, #1f883d);
+}
+.v2-granteeSelector__optionLabel {
+  font-weight: 600;
+}
+.v2-granteeSelector__optionDomains {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-top: 2px;
+}
+.v2-granteeSelector__empty {
+  color: #6b7280;
+  font-style: italic;
+  margin: 8px 0 0;
+}
 .v2-activitylink.is-active {
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;
