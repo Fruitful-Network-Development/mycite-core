@@ -59,6 +59,13 @@ class SharedLibraryContractTests(unittest.TestCase):
         self.assertIn("MyciteExtensions.mountNewsletterForm", self.newsletter)
         self.assertIn("data-mycite-newsletter", self.newsletter)
 
+    def test_newsletter_reads_phone_and_zip(self) -> None:
+        # Phase 16a: the public form posts phone + zip alongside the
+        # split-name fields. Pin the JS reads them so a future refactor
+        # can't silently drop them.
+        self.assertIn('readField(form, "phone")', self.newsletter)
+        self.assertIn('readField(form, "zip")', self.newsletter)
+
     def test_donate_targets_canonical_endpoints(self) -> None:
         self.assertIn("/__fnd/paypal/create-order", self.donate)
         self.assertIn("/__fnd/paypal/capture-order", self.donate)
@@ -109,9 +116,36 @@ class WebdesignFormWiringTests(unittest.TestCase):
         # first/last (the schema Phase 15b expanded).
         self.assertIn('name="first_name"', html)
         self.assertIn('name="last_name"', html)
+        # Phase 16b: phone + zip inputs land on the public form.
+        self.assertIn('name="phone"', html)
+        self.assertIn('name="zip"', html)
         # Shared lib must be loaded.
         self.assertIn("mycite-extensions/form-utils.js", html)
         self.assertIn("mycite-extensions/newsletter.js", html)
+
+    def test_no_site_posts_to_legacy_newsletter_endpoint(self) -> None:
+        # Phase 16b: the legacy ``/newsletter/subscribe`` (without
+        # __fnd prefix) is gone from every site's frontend + source
+        # manifests. The canonical endpoint is /__fnd/newsletter/
+        # subscribe, which all 3 sites share via the FND portal.
+        for host in (
+            "trappfamilyfarm.com",
+            "cuyahogavalleycountrysideconservancy.org",
+            "fruitfulnetworkdevelopment.com",
+        ):
+            site_root = WEBAPPS_ROOT / "clients" / host / "frontend"
+            for path in site_root.rglob("*.html"):
+                content = path.read_text(encoding="utf-8")
+                self.assertNotIn(
+                    "'/newsletter/subscribe'",
+                    content,
+                    f"{path} still posts to the legacy endpoint",
+                )
+                self.assertNotIn(
+                    '"/newsletter/subscribe"',
+                    content,
+                    f"{path} still posts to the legacy endpoint",
+                )
 
     def test_cvcc_donate_uses_data_attribute(self) -> None:
         html = (
