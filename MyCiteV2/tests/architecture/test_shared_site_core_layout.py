@@ -36,6 +36,9 @@ class SharedLibraryLayoutTests(unittest.TestCase):
     def test_donate_extension_present(self) -> None:
         self.assertTrue((EXT_DIR / "donate.js").is_file())
 
+    def test_connect_extension_present(self) -> None:
+        self.assertTrue((EXT_DIR / "connect.js").is_file())
+
     def test_extensions_doc_present(self) -> None:
         self.assertTrue((SITE_CORE / "docs" / "extensions.md").is_file())
 
@@ -48,6 +51,7 @@ class SharedLibraryContractTests(unittest.TestCase):
         cls.utils = (JS_DIR / "form-utils.js").read_text(encoding="utf-8")
         cls.newsletter = (EXT_DIR / "newsletter.js").read_text(encoding="utf-8")
         cls.donate = (EXT_DIR / "donate.js").read_text(encoding="utf-8")
+        cls.connect = (EXT_DIR / "connect.js").read_text(encoding="utf-8")
 
     def test_form_utils_exposes_canonical_names(self) -> None:
         for name in ("validateEmail", "normalizeText", "showBanner", "postJSON"):
@@ -72,6 +76,30 @@ class SharedLibraryContractTests(unittest.TestCase):
         self.assertIn("MyciteExtensions.mountDonateForm", self.donate)
         self.assertIn("data-mycite-donate", self.donate)
 
+    def test_connect_targets_canonical_endpoint(self) -> None:
+        self.assertIn("/__fnd/connect/submit", self.connect)
+        self.assertIn("MyciteExtensions.mountConnectForm", self.connect)
+        self.assertIn("data-mycite-connect", self.connect)
+
+    def test_connect_reads_full_field_set(self) -> None:
+        # Phase 17d: pin the canonical Connect-form field names so a
+        # rename can't silently drop one.
+        for field in (
+            "email",
+            "message",
+            "subject",
+            "first_name",
+            "middle_name",
+            "last_name",
+            "phone",
+            "zip",
+        ):
+            self.assertIn(
+                f'readField(form, "{field}")',
+                self.connect,
+                f"{field} not read in connect.js",
+            )
+
 
 class SiteSyncTargetsTests(unittest.TestCase):
     """Each of the 3 sites must carry the synced JS bundle alongside
@@ -83,17 +111,17 @@ class SiteSyncTargetsTests(unittest.TestCase):
 
     def test_tff_has_synced_bundle(self) -> None:
         d = self._frontend_for("trappfamilyfarm.com", "js")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js"):
+        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
     def test_cvcc_has_synced_bundle(self) -> None:
         d = self._frontend_for("cuyahogavalleycountrysideconservancy.org", "JS")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js"):
+        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
     def test_fnd_has_synced_bundle(self) -> None:
         d = self._frontend_for("fruitfulnetworkdevelopment.com", "js")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js"):
+        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
 
@@ -170,11 +198,22 @@ class WebdesignFormWiringTests(unittest.TestCase):
             / "frontend"
             / "contact.html"
         ).read_text(encoding="utf-8")
-        # Phase 15c normalized FND off the legacy /newsletter/subscribe
-        # path; Phase 15 deferred a full migration of the contact-form
-        # checkbox to the data-mycite-newsletter auto-mount.
+        # Phase 17d: the FND contact page is now the canonical Connect
+        # form (data-mycite-connect). The newsletter-subscribe POST
+        # still fires when the "Also subscribe" checkbox is checked,
+        # but it uses the canonical /__fnd/newsletter/subscribe path
+        # and is wired as a side-effect of the Connect submission.
+        self.assertIn("data-mycite-connect", html)
+        self.assertIn('data-domain="fruitfulnetworkdevelopment.com"', html)
+        self.assertIn("mycite-extensions/connect.js", html)
         self.assertIn("/__fnd/newsletter/subscribe", html)
         self.assertNotIn("'/newsletter/subscribe'", html)
+        # Split-name fields from Phase 15b carried through.
+        self.assertIn('name="first_name"', html)
+        self.assertIn('name="last_name"', html)
+        # Required Connect-form fields.
+        self.assertIn('name="message"', html)
+        self.assertIn('name="subject"', html)
 
 
 if __name__ == "__main__":
