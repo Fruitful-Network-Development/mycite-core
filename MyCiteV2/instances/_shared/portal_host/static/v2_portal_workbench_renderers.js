@@ -329,14 +329,287 @@
     );
   }
 
+  // Phase 14a: render the utilities-tab extension payloads emitted by
+  // _build_utilities_extensions. The runtime returns a list of
+  // `{tool_id, label, summary, payload}` entries; the payload shape
+  // varies by extension (form_frame / configuration+rows / orders /
+  // contact_rows / events). renderExtensionCard dispatches by shape.
+  function renderConfigurationItems(items) {
+    if (!items || !items.length) return "";
+    return (
+      '<dl class="v2-extensionCard__configList">' +
+      items
+        .map(function (item) {
+          return (
+            "<dt>" +
+            escapeHtml(asText(item.label) || "") +
+            "</dt><dd>" +
+            escapeHtml(asText(item.value) || "—") +
+            "</dd>"
+          );
+        })
+        .join("") +
+      "</dl>"
+    );
+  }
+
+  function renderConfigurationSection(cfg) {
+    var c = asObject(cfg);
+    if (!c.label && !asList(c.items).length && !c.edit_link) return "";
+    var editLink = asObject(c.edit_link);
+    var editHref = asText(editLink.href);
+    var editLabel = asText(editLink.label) || "Edit in Grantee Profile";
+    return (
+      '<section class="v2-extensionCard__config">' +
+      (c.label ? "<h4>" + escapeHtml(asText(c.label)) + "</h4>" : "") +
+      (c.summary ? '<p class="v2-extensionCard__summary">' + escapeHtml(asText(c.summary)) + "</p>" : "") +
+      renderConfigurationItems(asList(c.items)) +
+      (editHref
+        ? '<a class="v2-extensionCard__editLink" href="' +
+          escapeHtml(editHref) +
+          '">' +
+          escapeHtml(editLabel) +
+          "</a>"
+        : "") +
+      "</section>"
+    );
+  }
+
+  function renderRowsTable(title, rows, columns) {
+    var rowList = asList(rows);
+    if (!rowList.length) return "";
+    return (
+      '<section class="v2-extensionCard__table">' +
+      (title ? "<h4>" + escapeHtml(asText(title)) + "</h4>" : "") +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      columns
+        .map(function (col) {
+          return "<th>" + escapeHtml(asText(col.label)) + "</th>";
+        })
+        .join("") +
+      "</tr></thead><tbody>" +
+      rowList
+        .map(function (row) {
+          return (
+            "<tr>" +
+            columns
+              .map(function (col) {
+                var v = row[col.key];
+                if (typeof v === "boolean") v = v ? "yes" : "no";
+                if (v == null) v = "";
+                return "<td>" + escapeHtml(String(v)) + "</td>";
+              })
+              .join("") +
+            "</tr>"
+          );
+        })
+        .join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
+  function componentLibrary() {
+    return window.PortalComponentLibrary || null;
+  }
+
+  function renderExtensionCardBody(payload) {
+    var p = asObject(payload);
+    var html = "";
+
+    if (asObject(p.form_frame).component_type) {
+      var lib = componentLibrary();
+      if (lib && typeof lib.renderComponentFrame === "function") {
+        html += lib.renderComponentFrame(p.form_frame);
+      }
+    }
+    if (asObject(p.configuration).items || asObject(p.configuration).label) {
+      html += renderConfigurationSection(p.configuration);
+    }
+    if (asObject(p.data_source).label) {
+      html += renderConfigurationSection(p.data_source);
+    }
+    if (asObject(p.summary) && Object.keys(asObject(p.summary)).length) {
+      var summaryRows = Object.keys(p.summary).map(function (k) {
+        return { key: k, count: p.summary[k] };
+      });
+      html += renderRowsTable("Event totals", summaryRows, [
+        { key: "key", label: "Event type" },
+        { key: "count", label: "Count" },
+      ]);
+    }
+    if (asList(p.recent_events).length) {
+      html += renderRowsTable("Recent events", p.recent_events, [
+        { key: "event_type", label: "Event" },
+        { key: "path", label: "Path" },
+        { key: "timestamp", label: "Time" },
+      ]);
+    }
+    if (asList(p.contact_rows).length) {
+      html += renderRowsTable("Contacts", p.contact_rows, [
+        { key: "email", label: "Email" },
+        { key: "subscribed", label: "Subscribed" },
+        { key: "source", label: "Source" },
+        { key: "send_count", label: "Sends" },
+        { key: "last_sent", label: "Last sent" },
+      ]);
+    }
+    if (asList(p.orders).length) {
+      html += renderRowsTable("Orders", p.orders, [
+        { key: "order_id", label: "Order" },
+        { key: "amount", label: "Amount" },
+        { key: "currency_code", label: "Currency" },
+        { key: "status", label: "Status" },
+        { key: "event", label: "Event" },
+      ]);
+    }
+    if (asList(p.profiles).length) {
+      html += renderRowsTable("Mailboxes", p.profiles, [
+        { key: "mailbox", label: "Mailbox" },
+        { key: "send_as", label: "Send-as" },
+        { key: "role", label: "Role" },
+        { key: "lifecycle", label: "Lifecycle" },
+        { key: "inbound", label: "Inbound" },
+      ]);
+    }
+    if (asText(p.empty_message) && !html) {
+      html += '<p class="v2-extensionCard__empty">' + escapeHtml(asText(p.empty_message)) + "</p>";
+    }
+    return html;
+  }
+
+  function renderExtensions(extensions) {
+    var list = asList(extensions);
+    if (!list.length) return "";
+    return (
+      '<div class="v2-extensions">' +
+      list
+        .map(function (entry) {
+          var e = asObject(entry);
+          var body = renderExtensionCardBody(e.payload);
+          return (
+            '<article class="v2-card v2-extensionCard" data-tool-id="' +
+            escapeHtml(asText(e.tool_id)) +
+            '">' +
+            "<h3>" +
+            escapeHtml(asText(e.label) || asText(e.tool_id)) +
+            "</h3>" +
+            (e.summary
+              ? '<p class="v2-extensionCard__intro">' + escapeHtml(asText(e.summary)) + "</p>"
+              : "") +
+            body +
+            "</article>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }
+
+  function collectFormFieldValues(form) {
+    var values = {};
+    Array.prototype.forEach.call(
+      form.querySelectorAll("[data-form-field-key]"),
+      function (node) {
+        var key = node.getAttribute("data-form-field-key");
+        var type = node.getAttribute("data-form-field-type");
+        if (type === "boolean") {
+          values[key] = !!node.checked;
+        } else if (type === "string_list") {
+          try {
+            values[key] = JSON.parse(node.getAttribute("data-form-field-values") || "[]");
+          } catch (_) {
+            values[key] = [];
+          }
+        } else {
+          values[key] = node.value || "";
+        }
+      }
+    );
+    return values;
+  }
+
+  function showFormResultBanner(form, ok, message) {
+    var existing = form.querySelector(".v2-form__banner");
+    if (existing) existing.parentNode.removeChild(existing);
+    var banner = document.createElement("div");
+    banner.className = "v2-form__banner v2-form__banner--" + (ok ? "ok" : "error");
+    banner.textContent = message;
+    form.appendChild(banner);
+  }
+
+  function bindFormSubmit(ctx, form) {
+    if (!form || form.dataset.formBound === "1") return;
+    form.dataset.formBound = "1";
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var route = form.getAttribute("data-form-submit-route");
+      var schema = form.getAttribute("data-form-submit-schema");
+      var basePayload = {};
+      try {
+        basePayload = JSON.parse(form.getAttribute("data-form-base-payload") || "{}");
+      } catch (_) {}
+      var fields = collectFormFieldValues(form);
+      var body = Object.assign({}, basePayload, { schema: schema, fields: fields });
+      var submitBtn = form.querySelector(".v2-form__submit");
+      if (submitBtn) submitBtn.disabled = true;
+      fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { status: r.status, body: j };
+          });
+        })
+        .then(function (out) {
+          if (submitBtn) submitBtn.disabled = false;
+          var ok = out.status >= 200 && out.status < 300 && out.body && out.body.ok !== false;
+          var msg = ok
+            ? "Saved."
+            : "Save failed: " +
+              (out.body && (out.body.detail || out.body.error || ("HTTP " + out.status)) || "unknown");
+          showFormResultBanner(form, ok, msg);
+          if (ok && typeof ctx.loadShell === "function") {
+            // Refresh the surface so the saved values surface in the next render.
+            var envelope = ctx.getEnvelope && ctx.getEnvelope();
+            if (envelope) {
+              ctx.loadShell({
+                schema: "mycite.v2.portal.shell.request.v1",
+                requested_surface_id: envelope.surface_id,
+                surface_query: envelope.surface_query || {},
+              });
+            }
+          }
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          showFormResultBanner(form, false, "Network error: " + (err && err.message ? err.message : err));
+        });
+    });
+  }
+
+  function bindExtensionActions(ctx, target, extensions) {
+    if (!target || !extensions || !extensions.length) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll("form[data-form-submit-route]"),
+      function (form) {
+        bindFormSubmit(ctx, form);
+      }
+    );
+  }
+
   function renderGenericSurface(ctx, target, region, surfacePayload) {
     var adapter = toolSurfaceAdapter();
     var granteeSelector = surfacePayload && surfacePayload.grantee_selector
       ? asObject(surfacePayload.grantee_selector)
       : null;
+    var extensions = asList(surfacePayload && surfacePayload.extensions);
     var hasContent =
       adapter.hasGenericContent(surfacePayload) ||
-      (granteeSelector && asList(granteeSelector.grantees).length > 0);
+      (granteeSelector && asList(granteeSelector.grantees).length > 0) ||
+      extensions.length > 0;
     var rendered = adapter.renderWrappedSurface(
       target,
       adapter.resolveSurfaceState({
@@ -348,10 +621,14 @@
       renderGranteeSelector(granteeSelector) +
         renderCards(surfacePayload.cards || []) +
         renderSections(surfacePayload.sections || []) +
+        renderExtensions(extensions) +
         renderNotes(surfacePayload.notes || [])
     );
     if (rendered && granteeSelector) {
       bindGranteeSelector(ctx, target, granteeSelector);
+    }
+    if (rendered && extensions.length) {
+      bindExtensionActions(ctx, target, extensions);
     }
     return rendered;
   }
