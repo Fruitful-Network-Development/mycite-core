@@ -51,11 +51,20 @@ class TestExtensionRegistry(unittest.TestCase):
         entries = build_portal_tool_registry_entries()
         extension_entries = {e.tool_id: e for e in entries if e.is_extension}
         self.assertEqual(set(extension_entries.keys()), set(EXPECTED_EXTENSION_IDS))
+        # Phase 14b split: the four operational extensions (Email,
+        # Analytics, Newsletter, PayPal) live on ``utilities.extensions``;
+        # the ext_grantee_profile form is hosted by its own dedicated
+        # ``utilities.grantee_profile`` surface.
         for tool_id, entry in extension_entries.items():
+            expected_surface = (
+                "utilities.grantee_profile"
+                if tool_id == "ext_grantee_profile"
+                else "utilities.extensions"
+            )
             self.assertEqual(
                 entry.surface_id,
-                "utilities.tool_exposure",
-                f"{tool_id} must register under utilities.tool_exposure",
+                expected_surface,
+                f"{tool_id} must register under {expected_surface}",
             )
             self.assertEqual(entry.surface_posture, "palette_target")
 

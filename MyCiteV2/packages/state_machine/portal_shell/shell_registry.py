@@ -23,12 +23,20 @@ from .shell_schemas import (
     TOOL_KIND_GENERAL,
     TOOL_KIND_SERVICE,
     TOOL_SURFACE_IDS,
+    UTILITIES_EXTENSIONS_ROUTE,
+    UTILITIES_EXTENSIONS_SURFACE_ID,
+    UTILITIES_GRANTEE_PROFILE_ROUTE,
+    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_INTEGRATIONS_ROUTE,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
+    UTILITIES_PERIPHERALS_ROUTE,
+    UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_ROUTE,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_ROUTE,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    UTILITIES_TOOLS_ROUTE,
+    UTILITIES_TOOLS_SURFACE_ID,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
     WORKBENCH_UI_TOOL_ROUTE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -81,6 +89,41 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             route=UTILITIES_INTEGRATIONS_ROUTE,
             root_surface_id=UTILITIES_ROOT_SURFACE_ID,
             surface_kind="utilities_integrations",
+            page_owner="utilities",
+        ),
+        # Phase 14b: four dedicated Utilities surfaces. The legacy two
+        # entries above remain registered for one transition cycle so
+        # external bookmarks resolve via a 302 redirect at the HTTP layer.
+        PortalSurfaceCatalogEntry(
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
+            label="Extensions",
+            route=UTILITIES_EXTENSIONS_ROUTE,
+            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
+            surface_kind="utilities_extensions",
+            page_owner="utilities",
+        ),
+        PortalSurfaceCatalogEntry(
+            surface_id=UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+            label="Grantee Profile",
+            route=UTILITIES_GRANTEE_PROFILE_ROUTE,
+            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
+            surface_kind="utilities_grantee_profile",
+            page_owner="utilities",
+        ),
+        PortalSurfaceCatalogEntry(
+            surface_id=UTILITIES_TOOLS_SURFACE_ID,
+            label="Tools",
+            route=UTILITIES_TOOLS_ROUTE,
+            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
+            surface_kind="utilities_tools",
+            page_owner="utilities",
+        ),
+        PortalSurfaceCatalogEntry(
+            surface_id=UTILITIES_PERIPHERALS_SURFACE_ID,
+            label="Peripherals",
+            route=UTILITIES_PERIPHERALS_ROUTE,
+            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
+            surface_kind="utilities_peripherals",
             page_owner="utilities",
         ),
         PortalSurfaceCatalogEntry(
@@ -154,9 +197,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
         PortalToolRegistryEntry(
             tool_id="ext_aws_email",
             label="Email",
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
             entrypoint_id="portal.utilities.ext_aws_email",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            route=UTILITIES_EXTENSIONS_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
             read_write_posture="write",
@@ -167,9 +210,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
         PortalToolRegistryEntry(
             tool_id="ext_analytics",
             label="Analytics",
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
             entrypoint_id="portal.utilities.ext_analytics",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            route=UTILITIES_EXTENSIONS_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
             read_write_posture="read-only",
@@ -180,9 +223,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
         PortalToolRegistryEntry(
             tool_id="ext_newsletter",
             label="Newsletter",
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
             entrypoint_id="portal.utilities.ext_newsletter",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            route=UTILITIES_EXTENSIONS_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
             read_write_posture="write",
@@ -193,9 +236,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
         PortalToolRegistryEntry(
             tool_id="ext_paypal",
             label="PayPal",
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
             entrypoint_id="portal.utilities.ext_paypal",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            route=UTILITIES_EXTENSIONS_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
             read_write_posture="write",
@@ -206,13 +249,15 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
         # Phase 9 (grantee_profile_contract.md): editable form over the
         # grantee JSON file. This is the single home for per-grantee
         # configuration that the other extensions read (paypal, aws_ses,
-        # newsletter sub-configs).
+        # newsletter sub-configs). Phase 14b: hosted by its own dedicated
+        # Utilities/Grantee Profile surface — not bundled with the
+        # operational extensions.
         PortalToolRegistryEntry(
             tool_id="ext_grantee_profile",
             label="Grantee Profile",
-            surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            surface_id=UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
             entrypoint_id="portal.utilities.ext_grantee_profile",
-            route=UTILITIES_TOOL_EXPOSURE_ROUTE,
+            route=UTILITIES_GRANTEE_PROFILE_ROUTE,
             tool_kind=TOOL_KIND_SERVICE,
             surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
             read_write_posture="write",

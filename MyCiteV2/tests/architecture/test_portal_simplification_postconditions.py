@@ -38,6 +38,8 @@ if FLASK_AVAILABLE:
 
 from MyCiteV2.packages.state_machine.portal_shell import (
     SURFACE_POSTURE_PALETTE_TARGET,
+    UTILITIES_EXTENSIONS_SURFACE_ID,
+    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     WORKBENCH_UI_TOOL_SURFACE_ID,
     build_portal_surface_catalog,
@@ -118,12 +120,21 @@ class RegistryPostconditionTests(unittest.TestCase):
             )
 
     def test_extensions_live_under_utilities_tool_exposure(self) -> None:
+        # Phase 14b split: operational extensions live under
+        # ``utilities.extensions``; the ext_grantee_profile form lives
+        # under its own ``utilities.grantee_profile`` surface. The
+        # invariant is "every extension is hosted by *some* Utilities
+        # extension-bearing surface", not the single legacy surface.
+        permitted = {
+            UTILITIES_EXTENSIONS_SURFACE_ID,
+            UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+        }
         for entry in build_portal_tool_registry_entries():
             if entry.is_extension:
-                self.assertEqual(
+                self.assertIn(
                     entry.surface_id,
-                    UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-                    f"Extension {entry.tool_id} must live under utilities.tool_exposure",
+                    permitted,
+                    f"Extension {entry.tool_id} must live on a Utilities extension surface",
                 )
 
 

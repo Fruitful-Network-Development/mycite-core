@@ -1,9 +1,11 @@
 """Phase 14a DOM visibility smoke — extensions surface payloads reach the user.
 
 Boots a tempdir-backed portal with a seeded grantee, navigates Chromium
-to ``/portal/utilities/tool-exposure`` (the surface 14b will rename to
-``/portal/utilities/extensions``), and asserts the 5 extension cards
-render in the DOM with the right ``data-tool-id`` attributes.
+to ``/portal/utilities/extensions`` (Phase 14b renamed the legacy
+``tool-exposure`` surface and split off the grantee form to its own
+``/portal/utilities/grantee-profile`` surface). Asserts the 4 operational
+extension cards render on the extensions surface and the grantee form
+renders on the grantee-profile surface.
 
 Before Phase 14a, the surface payload's ``extensions`` array was built
 server-side but the JS renderer dropped it silently — operators saw
@@ -41,7 +43,6 @@ _EXPECTED_TOOL_IDS = {
     "ext_analytics",
     "ext_newsletter",
     "ext_paypal",
-    "ext_grantee_profile",
 }
 
 
@@ -116,7 +117,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
                 ctx = browser.new_context()
                 page = ctx.new_page()
                 page.goto(
-                    f"{base}/portal/utilities/tool-exposure",
+                    f"{base}/portal/utilities/extensions",
                     wait_until="networkidle",
                     timeout=15000,
                 )
@@ -127,11 +128,14 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
                     ".v2-extensionCard",
                     "els => els.map(e => e.getAttribute('data-tool-id'))",
                 )
+                # Phase 14b: extensions surface excludes ext_grantee_profile,
+                # which now lives on the dedicated grantee-profile surface.
                 self.assertEqual(
                     set(tool_ids),
                     _EXPECTED_TOOL_IDS,
                     f"DOM extension cards: {tool_ids!r}",
                 )
+                self.assertNotIn("ext_grantee_profile", tool_ids)
                 browser.close()
         finally:
             server.shutdown()
@@ -146,8 +150,11 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
                 browser = pw.chromium.launch(headless=True)
                 ctx = browser.new_context()
                 page = ctx.new_page()
+                # Phase 14b: the grantee form now lives on its own
+                # /portal/utilities/grantee-profile surface, not bundled
+                # alongside the operational extensions.
                 page.goto(
-                    f"{base}/portal/utilities/tool-exposure",
+                    f"{base}/portal/utilities/grantee-profile",
                     wait_until="networkidle",
                     timeout=15000,
                 )

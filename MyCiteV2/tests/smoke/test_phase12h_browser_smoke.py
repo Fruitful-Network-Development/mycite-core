@@ -127,12 +127,15 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 page = ctx.new_page()
 
                 # API contract — grantee_selector on the surface payload.
+                # Phase 14b: the grantee selector now lives on
+                # ``utilities.extensions`` (the legacy tool_exposure surface
+                # is retained but 302-redirects from its HTTP route).
                 api_resp = page.request.post(
                     f"{base}/portal/api/v2/shell",
                     data=json.dumps(
                         {
                             "schema": "mycite.v2.portal.shell.request.v1",
-                            "requested_surface_id": "utilities.tool_exposure",
+                            "requested_surface_id": "utilities.extensions",
                         }
                     ),
                     headers={"content-type": "application/json"},
@@ -158,7 +161,7 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                     data=json.dumps(
                         {
                             "schema": "mycite.v2.portal.shell.request.v1",
-                            "requested_surface_id": "utilities.tool_exposure",
+                            "requested_surface_id": "utilities.extensions",
                             "surface_query": {"selected_grantee_msn": "beta"},
                         }
                     ),
@@ -180,8 +183,10 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 self.assertEqual(_ext_domain(surface2, "ext_paypal"), "beta.example.org")
 
                 # DOM contract — selector card renders, click dispatches.
+                # Phase 14b: navigate to the new extensions surface (the
+                # legacy /tool-exposure URL 302-redirects to this anyway).
                 page.goto(
-                    f"{base}/portal/utilities/tool-exposure",
+                    f"{base}/portal/utilities/extensions",
                     wait_until="networkidle",
                     timeout=15000,
                 )

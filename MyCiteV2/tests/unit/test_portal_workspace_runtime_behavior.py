@@ -2026,7 +2026,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual([group["title"] for group in control_panel["groups"]], ["Sections"])
         self.assertEqual(
             [entry["label"] for entry in control_panel["groups"][0]["entries"]],
-            ["Tool Exposure", "Integrations"],
+            ["Extensions", "Grantee Profile", "Tools", "Peripherals"],
         )
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
