@@ -53,11 +53,34 @@ Install once per dev box / CI runner:
 When either is missing the smoke is `@unittest.skipUnless`-skipped, so
 the suite stays green on hosts that haven't run the install.
 
+## Linting
+
+```bash
+/srv/venvs/fnd_portal/bin/ruff check MyCiteV2/
+```
+
+Config lives at `../pyproject.toml`. The selected rule sets are E
+(pycodestyle errors), F (pyflakes — unused imports, undefined names),
+I (isort), UP (pyupgrade), B (flake8-bugbear), and RUF (ruff-specific).
+Per-file allowlists carve out:
+
+- Tests can `sys.path.insert` before MyCiteV2 imports (E402) and import
+  fixtures they don't directly call (F401, F811).
+- `__init__.py` and `shell.py` aggregators do `from .X import *` by
+  design (F403, F405, RUF022).
+
+To auto-fix the safe-fixable subset:
+
+```bash
+ruff check MyCiteV2/ --fix
+```
+
 ## CI
 
-`.github/workflows/tests.yml` runs two parallel jobs on push / PR to
+`.github/workflows/tests.yml` runs three parallel jobs on push / PR to
 `main`:
 
+- `lint` — installs ruff, runs `ruff check MyCiteV2/`.
 - `pytest` — fast: installs `requirements-dev.txt`, runs
   `pytest MyCiteV2/tests/ --ignore=MyCiteV2/tests/smoke`.
 - `smoke` — installs `requirements-dev.txt` + chromium-headless-shell,
