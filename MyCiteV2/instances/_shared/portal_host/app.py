@@ -2204,6 +2204,177 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # counts so the client can refresh the card without a full page
     # reload (the workbench renderer triggers a shell reload regardless).
 
+    # ------------------------------------------------------------------
+    # FND Analytics raw-event collector (Phase 18a)
+    # ------------------------------------------------------------------
+    # Browser-facing collector. Every <script src="/__fnd/analytics.js">
+    # in the 3 webdesigns POSTs each captured event here. The endpoint
+    # validates + server-stamps + appends to the canonical NDJSON file
+    # under <webapps>/clients/<domain>/analytics/events/<YYYY-MM>.ndjson.
+    # Visitor identity is an HttpOnly first-party cookie ``fnd_vid``
+    # minted on first request; the hash of that cookie + IP is what
+    # actually lands in the event row (the raw values never persist).
+
+    _ANALYTICS_VISITOR_COOKIE = "fnd_vid"
+    _ANALYTICS_SALT_HOLDER: dict[str, str] = {}
+    _ANALYTICS_DEDUP_WINDOW_MS = 250
+    _ANALYTICS_DEDUP: dict[tuple[str, str, str], int] = {}
+
+    def _analytics_salt() -> str:
+        cached = _ANALYTICS_SALT_HOLDER.get("salt")
+        if cached:
+            return cached
+        if host_config.private_dir is None:
+            return ""
+        secret_path = (
+            Path(host_config.private_dir)
+            / "utilities"
+            / "tools"
+            / "analytics"
+            / "secret.txt"
+        )
+        try:
+            if secret_path.exists():
+                value = secret_path.read_text(encoding="utf-8").strip()
+            else:
+                import secrets as _secrets
+
+                value = _secrets.token_hex(32)
+                secret_path.parent.mkdir(parents=True, exist_ok=True)
+                secret_path.write_text(value, encoding="utf-8")
+        except OSError:
+            value = ""
+        if value:
+            _ANALYTICS_SALT_HOLDER["salt"] = value
+        return value
+
+    def _analytics_remote_addr() -> str:
+        # nginx passes the public IP via X-Forwarded-For; fall back to
+        # X-Real-IP and finally request.remote_addr.
+        forwarded = _as_text(request.headers.get("X-Forwarded-For"))
+        if forwarded:
+            return forwarded.split(",", 1)[0].strip()
+        return _as_text(request.headers.get("X-Real-IP")) or _as_text(
+            request.remote_addr
+        )
+
+    def _analytics_dedup_hit(
+        visitor_cookie_hash: str, page_path: str, event_type: str
+    ) -> bool:
+        # Best-effort same-process dedup so a naive retry from the
+        # browser doesn't create two rows. The window is 250ms.
+        import time as _time
+
+        key = (visitor_cookie_hash, page_path, event_type)
+        now_ms = int(_time.time() * 1000)
+        prev = _ANALYTICS_DEDUP.get(key)
+        if prev is not None and now_ms - prev <= _ANALYTICS_DEDUP_WINDOW_MS:
+            return True
+        _ANALYTICS_DEDUP[key] = now_ms
+        # Lazy GC: cap dictionary size at 4096 entries.
+        if len(_ANALYTICS_DEDUP) > 4096:
+            cutoff = now_ms - 5 * _ANALYTICS_DEDUP_WINDOW_MS
+            for k, ts in list(_ANALYTICS_DEDUP.items()):
+                if ts < cutoff:
+                    _ANALYTICS_DEDUP.pop(k, None)
+        return False
+
+    @app.get("/__fnd/analytics.js")
+    def fnd_analytics_js() -> Any:
+        # Phase 18a stub: serve an empty JS body so the existing
+        # <script src="/__fnd/analytics.js"> tags on every webdesign
+        # page stop returning 404. Phase 18b replaces this with the
+        # actual capture script from clients/_shared/site-core/.
+        site_core_path = Path(
+            "/srv/webapps/clients/_shared/site-core/js/extensions/analytics.js"
+        )
+        body = ""
+        if site_core_path.exists():
+            try:
+                body = site_core_path.read_text(encoding="utf-8")
+            except OSError:
+                body = ""
+        response = make_response(body, 200)
+        response.headers["Content-Type"] = "application/javascript; charset=utf-8"
+        response.headers["Cache-Control"] = "public, max-age=300"
+        return response
+
+    @app.post("/__fnd/analytics/event")
+    def fnd_analytics_event() -> tuple[Any, int]:
+        from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+        from MyCiteV2.packages.core.analytics import RawEvent
+
+        body = _json_payload()
+        domain = _normalize_domain(request.host)
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+
+        visitor_cookie = _as_text(request.cookies.get(_ANALYTICS_VISITOR_COOKIE))
+        mint_cookie = not visitor_cookie
+        if mint_cookie:
+            import secrets as _secrets
+
+            visitor_cookie = _secrets.token_urlsafe(18)
+
+        salt = _analytics_salt()
+        try:
+            received_at_utc = datetime.now(UTC).isoformat()
+            event = RawEvent.from_request(
+                body,
+                domain=domain,
+                site_id=host_config.portal_instance_id,
+                environment="prod",
+                visitor_cookie=visitor_cookie,
+                remote_addr=_analytics_remote_addr(),
+                user_agent=_as_text(request.headers.get("User-Agent")),
+                salt=salt,
+                received_at_utc=received_at_utc,
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "invalid_event", "detail": str(exc)}), 400
+        except Exception:
+            return jsonify({"ok": False, "error": "schema_error"}), 500
+
+        if _analytics_dedup_hit(
+            event.visitor_cookie_id_hash, event.page_path, event.event_type
+        ):
+            response = make_response(jsonify({"ok": True, "deduped": True}), 200)
+            if mint_cookie:
+                response.set_cookie(
+                    _ANALYTICS_VISITOR_COOKIE,
+                    visitor_cookie,
+                    max_age=365 * 24 * 60 * 60,
+                    httponly=True,
+                    secure=True,
+                    samesite="Lax",
+                    path="/",
+                )
+            return response, 200
+
+        try:
+            year_month = received_at_utc[:7]
+            resolver = AnalyticsEventPathResolver(
+                webapps_root=host_config.webapps_root or Path("/srv/webapps"),
+            )
+            resolver.append_payload(
+                domain=domain, year_month=year_month, payload=event.to_dict()
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        response = make_response(jsonify({"ok": True}), 200)
+        if mint_cookie:
+            response.set_cookie(
+                _ANALYTICS_VISITOR_COOKIE,
+                visitor_cookie,
+                max_age=365 * 24 * 60 * 60,
+                httponly=True,
+                secure=True,
+                samesite="Lax",
+                path="/",
+            )
+        return response, 200
+
     @app.post("/__fnd/analytics/refresh")
     def fnd_analytics_refresh() -> tuple[Any, int]:
         payload = _json_payload()
