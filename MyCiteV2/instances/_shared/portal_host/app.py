@@ -1676,6 +1676,190 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
 
     # ------------------------------------------------------------------
+    # FND Newsletter admin routes (Phase 14d.1)
+    # ------------------------------------------------------------------
+    # Three operator-facing routes that back the Newsletter extension's
+    # interactive controls on /portal/utilities/extensions. Unlike the
+    # public /__fnd/newsletter/{subscribe,unsubscribe,dispatch-result}
+    # endpoints — which derive their target ``domain`` from
+    # request.host so the public website can only touch its own
+    # contact log — these routes accept the domain explicitly in the
+    # JSON body so the portal operator can manage any grantee's list
+    # from the same surface.
+    #
+    # All three dispatch through the canonical mutation runtime
+    # (target_authority="aws_csm_newsletter_contact_log") or, in the
+    # case of set_sender, persist back to the grantee JSON via
+    # save_grantee_profile.
+
+    def _admin_field(payload: dict[str, Any], key: str) -> str:
+        return _as_text(payload.get(key)) if isinstance(payload, dict) else ""
+
+    @app.post("/__fnd/newsletter/admin/add")
+    def fnd_newsletter_admin_add() -> tuple[Any, int]:
+        payload = _json_payload()
+        fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else payload
+        domain = _normalize_domain(_admin_field(payload, "domain"))
+        email = _validate_email(_admin_field(fields, "email"))
+        name = _admin_field(fields, "name")
+
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        known = _newsletter_known_domains(host_config.private_dir)
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "upsert_subscriber",
+                    "domain": domain,
+                    "email": email,
+                    "name": name,
+                    "source": "operator",
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+        return jsonify({"ok": True, "domain": domain, "email": email, "subscribed": True}), 200
+
+    @app.post("/__fnd/newsletter/admin/remove")
+    def fnd_newsletter_admin_remove() -> tuple[Any, int]:
+        payload = _json_payload()
+        fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else payload
+        domain = _normalize_domain(_admin_field(payload, "domain"))
+        email = _validate_email(_admin_field(fields, "email"))
+
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        known = _newsletter_known_domains(host_config.private_dir)
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        try:
+            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+                run_datum_workbench_mutation_action,
+            )
+
+            result = run_datum_workbench_mutation_action(
+                "apply",
+                {
+                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "operation": "mark_unsubscribed",
+                    "domain": domain,
+                    "email": email,
+                },
+                authority_db_file=host_config.authority_db_file,
+                portal_instance_id=host_config.portal_instance_id,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+
+        if not result.get("ok"):
+            return jsonify({"ok": False, "error": "storage_error"}), 500
+        return jsonify({"ok": True, "domain": domain, "email": email, "subscribed": False}), 200
+
+    @app.post("/__fnd/newsletter/admin/set_sender")
+    def fnd_newsletter_admin_set_sender() -> tuple[Any, int]:
+        """Persist the newsletter sender address to the grantee JSON.
+
+        Body: ``{"msn_id": "<grantee>", "fields": {"sender_address": "..."}}``.
+        Reuses the existing grantee-save persistence path so the same
+        validation + atomic write contract applies. Returns the updated
+        newsletter sub-config on success.
+        """
+        import glob as _glob
+        from pathlib import Path as _Path
+
+        from MyCiteV2.packages.core.grantee import (
+            AwsSesConfig,
+            GranteeProfile,
+            NewsletterConfig,
+            PaypalConfig,
+            load_grantee_profile,
+            save_grantee_profile,
+        )
+        from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
+
+        payload = _json_payload()
+        fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else payload
+        msn_id = _admin_field(payload, "msn_id")
+        sender_address = _validate_email(_admin_field(fields, "sender_address"))
+
+        if not msn_id:
+            return jsonify({"ok": False, "error": "missing_msn_id"}), 400
+        if not sender_address:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
+        if len(candidates) == 0:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        if len(candidates) > 1:
+            return jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409
+        target_path = _Path(candidates[0])
+
+        try:
+            current = load_grantee_profile(target_path)
+        except (FileNotFoundError, ValueError) as exc:
+            return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
+
+        # Operator must be in the grantee's users list — prevents
+        # promoting an arbitrary email into the sender slot.
+        if sender_address not in {u.lower() for u in current.users}:
+            return jsonify({"ok": False, "error": "sender_not_in_users"}), 400
+
+        current_newsletter = current.newsletter.to_dict() if current.newsletter is not None else {}
+        current_newsletter["selected_sender_address"] = sender_address
+        try:
+            next_profile = GranteeProfile(
+                msn_id=current.msn_id,
+                label=current.label,
+                short_name=current.short_name,
+                domains=current.domains,
+                users=current.users,
+                paypal=current.paypal,
+                aws_ses=current.aws_ses,
+                newsletter=NewsletterConfig.from_dict(current_newsletter),
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
+
+        # Suppress unused import warnings — kept for symmetry with grantee-save.
+        del AwsSesConfig, PaypalConfig
+
+        try:
+            save_grantee_profile(target_path, next_profile)
+        except GranteeProfileWriteError as exc:
+            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
+
+        return (
+            jsonify({
+                "ok": True,
+                "msn_id": msn_id,
+                "newsletter": next_profile.newsletter.to_dict() if next_profile.newsletter else {},
+            }),
+            200,
+        )
+
+    # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)
     # ------------------------------------------------------------------
 

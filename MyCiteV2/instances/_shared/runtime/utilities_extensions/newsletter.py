@@ -4,6 +4,18 @@ Reads the contact log and newsletter sender profile for the domain.
 When ``authority_db_file`` is provided, the contact log is sourced from
 the MOS v2 datum (``fnd_newsletter_contact_log_<domain>``). Profile
 reads stay on the filesystem adapter regardless.
+
+Phase 14d.1 extends the payload with three operator-facing controls:
+
+  * ``admin_forms[add_subscriber]`` — form_component_frame for adding
+    a subscriber. Submits to ``POST /__fnd/newsletter/admin/add``.
+  * ``admin_forms[set_sender]`` — form_component_frame for picking the
+    newsletter sender from ``grantee.users``. Submits to
+    ``POST /__fnd/newsletter/admin/set_sender``.
+  * ``contact_rows[].remove_action`` — per-row ``{label, route,
+    payload}`` triple the JS renderer wires as a button. Subscribed
+    rows get an "Unsubscribe" action; unsubscribed rows get a
+    re-subscribe action.
 """
 
 from __future__ import annotations
@@ -12,8 +24,77 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemAwsCsmNewsletterStateAdapter
+from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
+    build_form_component_frame,
+)
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link
+
+
+def _build_add_subscriber_form(domain: str) -> dict[str, Any]:
+    return build_form_component_frame(
+        frame_id="newsletter_add_subscriber",
+        label="Add subscriber",
+        intro="Insert an operator-driven subscription. Public sign-ups still flow through /__fnd/newsletter/subscribe.",
+        fields=[
+            {"key": "email", "label": "Email", "type": "email", "required": True},
+            {"key": "name", "label": "Name", "type": "text", "required": False},
+        ],
+        submit_action={
+            "route": "/__fnd/newsletter/admin/add",
+            "schema": "mycite.v2.newsletter.admin.add.request.v1",
+            "payload": {"domain": domain},
+        },
+        submit_label="Add subscriber",
+        target_authority="aws_csm_newsletter_contact_log",
+    )
+
+
+def _build_set_sender_form(msn_id: str, users: list[str], current_sender: str) -> dict[str, Any] | None:
+    options = [{"value": u, "label": u} for u in users if _as_text(u)]
+    if not options:
+        return None
+    return build_form_component_frame(
+        frame_id="newsletter_set_sender",
+        label="Change newsletter sender",
+        intro="Pick the operator address that signs outgoing newsletters. Persists to the grantee JSON.",
+        fields=[
+            {
+                "key": "sender_address",
+                "label": "Sender",
+                "type": "select",
+                "value": current_sender or (options[0]["value"] if options else ""),
+                "options": options,
+                "required": True,
+            }
+        ],
+        submit_action={
+            "route": "/__fnd/newsletter/admin/set_sender",
+            "schema": "mycite.v2.newsletter.admin.set_sender.request.v1",
+            "payload": {"msn_id": msn_id},
+        },
+        submit_label="Set as sender",
+        target_authority="grantee_profile",
+    )
+
+
+def _remove_action_for_contact(domain: str, email: str, subscribed: bool) -> dict[str, Any]:
+    if subscribed:
+        return {
+            "label": "Unsubscribe",
+            "route": "/__fnd/newsletter/admin/remove",
+            "schema": "mycite.v2.newsletter.admin.remove.request.v1",
+            "payload": {"domain": domain, "fields": {"email": email}},
+            "confirm": f"Unsubscribe {email}?",
+            "variant": "danger",
+        }
+    return {
+        "label": "Re-subscribe",
+        "route": "/__fnd/newsletter/admin/add",
+        "schema": "mycite.v2.newsletter.admin.add.request.v1",
+        "payload": {"domain": domain, "fields": {"email": email}},
+        "variant": "secondary",
+    }
 
 
 def _build_newsletter_extension_payload(
@@ -24,6 +105,8 @@ def _build_newsletter_extension_payload(
     portal_instance_id: str | None = None,
 ) -> dict[str, Any]:
     newsletter_subconfig = _as_dict(grantee.get("newsletter"))
+    msn_id = _as_text(grantee.get("msn_id"))
+    users = [_as_text(u) for u in _as_list(grantee.get("users")) if _as_text(u)]
     configuration = {
         "label": "Newsletter configuration",
         "summary": "Sender address, display name, and reply-to. Edit in the Grantee Profile.",
@@ -34,13 +117,23 @@ def _build_newsletter_extension_payload(
         ],
         "edit_link": _grantee_edit_link("newsletter"),
     }
+    admin_forms: list[dict[str, Any]] = []
+    if domain:
+        admin_forms.append(_build_add_subscriber_form(domain))
+    set_sender_form = _build_set_sender_form(
+        msn_id, users, _as_text(newsletter_subconfig.get("selected_sender_address"))
+    )
+    if set_sender_form is not None:
+        admin_forms.append(set_sender_form)
+
     if not domain or private_dir is None:
         return {
             "domain": domain,
-            "sender_options": _as_list(grantee.get("users")),
+            "sender_options": users,
             "current_sender": "",
             "contact_rows": [],
             "configuration": configuration,
+            "admin_forms": admin_forms,
         }
     contacts: list[dict[str, Any]] = []
     current_sender = ""
@@ -66,6 +159,9 @@ def _build_newsletter_extension_payload(
                 "source": _as_text(c.get("source")),
                 "last_sent": _as_text(c.get("last_newsletter_sent_at")),
                 "send_count": int(c.get("send_count") or 0),
+                "remove_action": _remove_action_for_contact(
+                    domain, _as_text(c.get("email")), bool(c.get("subscribed"))
+                ),
             }
             for c in raw_contacts
             if isinstance(c, dict) and _as_text(c.get("email"))
@@ -78,12 +174,13 @@ def _build_newsletter_extension_payload(
         pass
     return {
         "domain": domain,
-        "sender_options": _as_list(grantee.get("users")),
+        "sender_options": users,
         "current_sender": current_sender,
         "contact_rows": contacts,
         "subscribed_count": sum(1 for c in contacts if c.get("subscribed")),
         "unsubscribed_count": sum(1 for c in contacts if not c.get("subscribed")),
         "configuration": configuration,
+        "admin_forms": admin_forms,
     }
 
 
