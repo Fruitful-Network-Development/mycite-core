@@ -69,7 +69,38 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
-PORTAL_BUILD_ID = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID")) or "not-set"
+def _default_portal_build_id() -> str:
+    """Fall back to the git short SHA when MYCITE_V2_PORTAL_BUILD_ID is unset.
+
+    Phase 14c: operators were seeing healthz report a stale build tag
+    (``20260514-000401-visual-verify``) months after the deploy pipeline
+    stopped bumping it, which made it impossible to tell which code the
+    deployed gunicorn was actually running. Now: if the env var is
+    explicitly set, use that (deploy pipelines + CI can override). If
+    unset, try ``git rev-parse --short HEAD`` so the build tag reflects
+    the actual code. If even that fails (no git tree, no binary), fall
+    back to a sentinel so existing tests + tooling don't break.
+    """
+    explicit = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID"))
+    if explicit:
+        return explicit
+    try:
+        import subprocess
+
+        repo_root = Path(__file__).resolve().parents[4]
+        sha = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).decode("ascii").strip()
+        if sha:
+            return f"git-{sha}"
+    except Exception:
+        pass
+    return "not-set"
+
+
+PORTAL_BUILD_ID = _default_portal_build_id()
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
 PORTAL_SHELL_INITIAL_LOAD_BUDGET_GZIP_BYTES = 41000
 PORTAL_SHELL_TOTAL_BUDGET_GZIP_BYTES = 65000

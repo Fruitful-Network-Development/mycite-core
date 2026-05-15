@@ -156,14 +156,18 @@ class AnalyticsDataSourceTests(unittest.TestCase):
         self.assertEqual(ds["kind"], "")
         self.assertEqual(ds["label"], "Data source")
 
-    def test_data_source_kind_set_to_webapps_ndjson_in_filesystem_mode(self) -> None:
-        # webapps_root path doesn't exist so the events_dir won't exist either,
-        # but the data_source.kind should still settle on webapps_ndjson and
-        # carry the events_dir path so operators can find where to look.
+    def test_data_source_kind_pending_when_summary_datum_absent(self) -> None:
+        # Phase 14c: the in-request 3-month NDJSON fallback is removed. When
+        # the MOS summary datum is absent the renderer returns a `pending`
+        # data_source + a `notice` pointing operators at the refresh job;
+        # the events_dir is still echoed so they know where the source
+        # files would live.
         out = _build_analytics_extension_payload("example.org", "/nonexistent")
         ds = out["data_source"]
-        self.assertEqual(ds["kind"], "webapps_ndjson")
+        self.assertEqual(ds["kind"], "pending")
         self.assertIn("example.org", ds["events_dir"])
+        self.assertIn("notice", out)
+        self.assertIn("sync", out["notice"].lower())
 
 
 if __name__ == "__main__":

@@ -665,7 +665,17 @@ def _build_utilities_extensions(
     Phase 12h split the grantee context resolution into
     `_build_utilities_surface_context` so the surface-level grantee selector
     can share the resolved selection without duplicating the load.
+
+    Phase 14c: extensions read disjoint state (analytics → events dir,
+    paypal → orders.ndjson, email → AWS profile store, newsletter → MOS
+    contact log) so they can render in parallel. A ThreadPoolExecutor
+    cuts wall-clock latency on cold-cache request paths; a soft per-
+    extension timeout returns a ``degraded`` flag instead of blocking
+    the whole bundle.
     """
+    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import TimeoutError as FuturesTimeoutError
+
     from MyCiteV2.instances._shared.runtime.utilities_extensions import (
         EXTENSION_RENDERERS,
         render_extension,
@@ -674,23 +684,61 @@ def _build_utilities_extensions(
     extension_entries = [
         entry for entry in build_portal_tool_registry_entries() if entry.is_extension
     ]
-    if not extension_entries:
+    eligible_entries = [
+        entry
+        for entry in extension_entries
+        if entry.tool_id in EXTENSION_RENDERERS
+        and _extension_enabled(tool_exposure_policy, entry.tool_id)
+    ]
+    if not eligible_entries:
         return []
 
     out: list[dict[str, Any]] = []
-    for entry in extension_entries:
-        if entry.tool_id not in EXTENSION_RENDERERS:
-            continue
-        if not _extension_enabled(tool_exposure_policy, entry.tool_id):
-            continue
-        out.append(
-            {
-                "tool_id": entry.tool_id,
-                "label": entry.label,
-                "summary": entry.summary,
-                "payload": render_extension(entry.tool_id, ctx),
-            }
-        )
+    with ThreadPoolExecutor(max_workers=max(1, len(eligible_entries))) as pool:
+        futures = {
+            pool.submit(render_extension, entry.tool_id, ctx): entry
+            for entry in eligible_entries
+        }
+        for entry in eligible_entries:
+            future = next(f for f, e in futures.items() if e is entry)
+            try:
+                payload = future.result(timeout=5.0)
+                out.append(
+                    {
+                        "tool_id": entry.tool_id,
+                        "label": entry.label,
+                        "summary": entry.summary,
+                        "payload": payload,
+                    }
+                )
+            except FuturesTimeoutError:
+                out.append(
+                    {
+                        "tool_id": entry.tool_id,
+                        "label": entry.label,
+                        "summary": entry.summary,
+                        "payload": {
+                            "degraded": True,
+                            "notice": (
+                                f"{entry.label} did not respond within 5s; "
+                                "rendering a placeholder. Check the extension's "
+                                "data source."
+                            ),
+                        },
+                    }
+                )
+            except Exception as exc:  # pragma: no cover - resilience
+                out.append(
+                    {
+                        "tool_id": entry.tool_id,
+                        "label": entry.label,
+                        "summary": entry.summary,
+                        "payload": {
+                            "degraded": True,
+                            "notice": f"{entry.label} failed to render: {exc}",
+                        },
+                    }
+                )
     return out
 
 
