@@ -1995,6 +1995,100 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         ), 200
 
     # ------------------------------------------------------------------
+    # FND PayPal admin route (Phase 14d.3) — CSV export of orders
+    # ------------------------------------------------------------------
+    # The PayPal extension surfaces an "Export CSV" link that hits this
+    # GET endpoint. Returns ``text/csv`` with one row per order plus
+    # a Content-Disposition header so the browser downloads it.
+
+    @app.get("/__fnd/paypal/admin/export")
+    def fnd_paypal_admin_export() -> tuple[Any, int]:
+        import csv as _csv
+        import io as _io
+
+        domain = _normalize_domain(_as_text(request.args.get("domain")))
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+
+        orders: list[dict[str, Any]] = []
+        if host_config.authority_db_file is not None:
+            try:
+                from MyCiteV2.packages.adapters.sql.fnd_paypal import (
+                    MosDatumPayPalOrdersAdapter,
+                )
+
+                adapter = MosDatumPayPalOrdersAdapter(
+                    authority_db_file=host_config.authority_db_file,
+                    tenant_id=host_config.portal_instance_id or "fnd",
+                )
+                orders = adapter.load_orders(domain=domain) or []
+            except Exception:
+                orders = []
+
+        # Filesystem fallback (mirrors the extension renderer).
+        if not orders and host_config.private_dir is not None:
+            ndjson_path = (
+                Path(host_config.private_dir)
+                / "utilities"
+                / "tools"
+                / "paypal-csm"
+                / "orders.ndjson"
+            )
+            try:
+                if ndjson_path.exists():
+                    for line in ndjson_path.read_text(encoding="utf-8").splitlines():
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            order = json.loads(line)
+                        except Exception:
+                            continue
+                        if _as_text(order.get("domain")).lower() != domain.lower():
+                            continue
+                        orders.append(order)
+            except Exception:
+                pass
+
+        buf = _io.StringIO()
+        writer = _csv.writer(buf)
+        writer.writerow(
+            [
+                "timestamp_ms",
+                "event",
+                "order_id",
+                "status",
+                "amount",
+                "currency_code",
+                "domain",
+                "donor_email",
+                "donor_name",
+            ]
+        )
+        for o in orders:
+            writer.writerow(
+                [
+                    _as_text(o.get("timestamp_ms")),
+                    _as_text(o.get("event")),
+                    _as_text(o.get("order_id")),
+                    _as_text(o.get("status")),
+                    _as_text(o.get("amount")),
+                    _as_text(o.get("currency_code") or o.get("currency")),
+                    _as_text(o.get("domain")),
+                    _as_text(o.get("donor_email")),
+                    _as_text(o.get("donor_name")),
+                ]
+            )
+        body = buf.getvalue()
+
+        response = make_response(body, 200)
+        response.headers["Content-Type"] = "text/csv; charset=utf-8"
+        response.headers["Content-Disposition"] = (
+            f'attachment; filename="paypal-orders-{domain}.csv"'
+        )
+        return response, 200
+
+    # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)
     # ------------------------------------------------------------------
 

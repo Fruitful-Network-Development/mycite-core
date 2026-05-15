@@ -535,6 +535,21 @@
         renderRowAction(p.refresh_action) +
         "</div>";
     }
+    if (asObject(p.export_action).href) {
+      var ea = asObject(p.export_action);
+      var variant = asText(ea.variant) || "secondary";
+      html +=
+        '<div class="v2-extensionCard__export">' +
+        '<a class="v2-extensionCard__exportLink v2-rowAction--' +
+        escapeHtml(variant) +
+        '" href="' +
+        escapeHtml(asText(ea.href)) +
+        '"' +
+        (asText(ea.download) ? ' download="' + escapeHtml(asText(ea.download)) + '"' : "") +
+        ">" +
+        escapeHtml(asText(ea.label) || "Export") +
+        "</a></div>";
+    }
     if (asText(p.notice)) {
       html +=
         '<p class="v2-extensionCard__notice">' + escapeHtml(asText(p.notice)) + "</p>";
