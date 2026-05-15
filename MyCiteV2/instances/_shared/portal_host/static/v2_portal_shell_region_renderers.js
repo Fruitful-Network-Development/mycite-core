@@ -43,12 +43,6 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M7 4.5h7l3 3V19.5H7z"></path><path d="M14 4.5v3h3"></path><path d="M10 11h7"></path><path d="M10 15h7"></path><path d="M4.5 9.5v7"></path><path d="M2.5 11.5h4"></path>' +
         "</svg>";
-    } else if (id === "fnd_ebi") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M4.5 6.5h15"></path><path d="M4.5 12h15"></path><path d="M4.5 17.5h9"></path>' +
-        '<path d="M17 16l2.5 2.5"></path><circle cx="14.5" cy="13.5" r="3.5"></circle>' +
-        "</svg>";
     } else {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
