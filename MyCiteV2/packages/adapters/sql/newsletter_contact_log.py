@@ -113,10 +113,26 @@ class MosDatumNewsletterContactLogAdapter:
             email = _as_text(magnitudes.get("email_ascii"))
             if not email:
                 continue
+            # Phase 15b: hydrate first/middle/last from the new magnitudes
+            # when present; otherwise back-fill from the legacy single
+            # ``name_ascii`` so callers that still read `name` continue
+            # to work while the migration runs.
+            first_name = _as_text(magnitudes.get("first_name_ascii"))
+            middle_name = _as_text(magnitudes.get("middle_name_ascii"))
+            last_name = _as_text(magnitudes.get("last_name_ascii"))
+            composed = _as_text(magnitudes.get("name_ascii"))
+            if not (first_name or middle_name or last_name) and composed:
+                first_name, middle_name, last_name = (
+                    MosDatumNewsletterContactLogAdapter._split_legacy_name(composed)
+                )
+            name = composed or " ".join(t for t in (first_name, middle_name, last_name) if t)
             contacts.append(
                 {
                     "email": email,
-                    "name": _as_text(magnitudes.get("name_ascii")),
+                    "name": name,
+                    "first_name": first_name,
+                    "middle_name": middle_name,
+                    "last_name": last_name,
                     "subscribed": _as_bool(magnitudes.get("subscribed")),
                     "source": _as_text(magnitudes.get("source")),
                     "last_newsletter_sent_at": _as_text(
@@ -271,11 +287,46 @@ class MosDatumNewsletterContactLogAdapter:
         return out
 
     @staticmethod
+    def _split_legacy_name(name: str) -> tuple[str, str, str]:
+        """Decompose a single ``name`` token into (first, middle, last).
+
+        Back-compat helper for callers that still pass a single ``name``
+        field (e.g. the public /__fnd/newsletter/subscribe endpoint
+        before Phase 15b). Conventions:
+
+          * 1 token  → first only
+          * 2 tokens → first + last
+          * 3+ tokens → first + middle (joined) + last
+        """
+        tokens = [t for t in _as_text(name).split() if t]
+        if not tokens:
+            return "", "", ""
+        if len(tokens) == 1:
+            return tokens[0], "", ""
+        if len(tokens) == 2:
+            return tokens[0], "", tokens[1]
+        return tokens[0], " ".join(tokens[1:-1]), tokens[-1]
+
+    @staticmethod
     def _magnitudes_from_contact(contact: Any) -> dict[str, Any]:
         if not isinstance(contact, dict):
             return {}
         email_ascii = _as_text(contact.get("email_ascii") or contact.get("email")).lower()
-        name_ascii = _as_text(contact.get("name_ascii") or contact.get("name"))
+
+        # Phase 15b: prefer the split first/middle/last fields. Fall back
+        # to splitting a legacy single ``name`` for callers that haven't
+        # migrated. ``name_ascii`` is always composed from the split for
+        # the bacillete encoder + legacy readers.
+        first_name = _as_text(contact.get("first_name_ascii") or contact.get("first_name"))
+        middle_name = _as_text(contact.get("middle_name_ascii") or contact.get("middle_name"))
+        last_name = _as_text(contact.get("last_name_ascii") or contact.get("last_name"))
+        if not (first_name or middle_name or last_name):
+            legacy_name = _as_text(contact.get("name_ascii") or contact.get("name"))
+            first_name, middle_name, last_name = (
+                MosDatumNewsletterContactLogAdapter._split_legacy_name(legacy_name)
+            )
+        name_ascii = " ".join(t for t in (first_name, middle_name, last_name) if t)
+
         email_binary, email_confirmed = encode_email_bacillete(email_ascii)
         name_binary, name_confirmed = encode_name_bacillete(name_ascii)
         magnitudes: dict[str, Any] = {
@@ -285,6 +336,9 @@ class MosDatumNewsletterContactLogAdapter:
             "name_ascii": name_ascii,
             "name_binary": name_binary,
             "name_confirmed": name_confirmed,
+            "first_name_ascii": first_name,
+            "middle_name_ascii": middle_name,
+            "last_name_ascii": last_name,
             "subscribed": _as_bool(contact.get("subscribed")),
             "source": _as_text(contact.get("source")),
             "last_newsletter_sent_at": _as_text(contact.get("last_newsletter_sent_at")),

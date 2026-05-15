@@ -188,7 +188,11 @@ csv_column_map:
         # magnitude names that the intake pipeline composes into the
         # final per-contact row.
         self.assertEqual(template.csv_column_map["E-mail 1 - Value"], "email_ascii")
-        self.assertEqual(template.csv_column_map["First Name"], "_name_first")
+        # Phase 15b: the split name fields now persist as first-class
+        # magnitudes (no leading underscore — they are not scratch).
+        self.assertEqual(template.csv_column_map["First Name"], "first_name_ascii")
+        self.assertEqual(template.csv_column_map["Middle Name"], "middle_name_ascii")
+        self.assertEqual(template.csv_column_map["Last Name"], "last_name_ascii")
 
 
 class RegistryRecognitionIntegrationTests(unittest.TestCase):

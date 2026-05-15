@@ -38,7 +38,11 @@ def _build_add_subscriber_form(domain: str) -> dict[str, Any]:
         intro="Insert an operator-driven subscription. Public sign-ups still flow through /__fnd/newsletter/subscribe.",
         fields=[
             {"key": "email", "label": "Email", "type": "email", "required": True},
-            {"key": "name", "label": "Name", "type": "text", "required": False},
+            # Phase 15b: split name fields so the operator-entered data
+            # matches the CSV-imported rows from the legacy intake.
+            {"key": "first_name", "label": "First name", "type": "text", "required": False},
+            {"key": "middle_name", "label": "Middle name", "type": "text", "required": False},
+            {"key": "last_name", "label": "Last name", "type": "text", "required": False},
         ],
         submit_action={
             "route": "/__fnd/newsletter/admin/add",
@@ -152,20 +156,34 @@ def _build_newsletter_extension_payload(
         else:
             contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
         raw_contacts = _as_list(contacts_payload.get("contacts"))
-        contacts = [
-            {
-                "email": _as_text(c.get("email")),
-                "subscribed": bool(c.get("subscribed")),
-                "source": _as_text(c.get("source")),
-                "last_sent": _as_text(c.get("last_newsletter_sent_at")),
-                "send_count": int(c.get("send_count") or 0),
-                "remove_action": _remove_action_for_contact(
-                    domain, _as_text(c.get("email")), bool(c.get("subscribed"))
-                ),
-            }
-            for c in raw_contacts
-            if isinstance(c, dict) and _as_text(c.get("email"))
-        ]
+        contacts = []
+        for c in raw_contacts:
+            if not (isinstance(c, dict) and _as_text(c.get("email"))):
+                continue
+            first = _as_text(c.get("first_name"))
+            middle = _as_text(c.get("middle_name"))
+            last = _as_text(c.get("last_name"))
+            display = (
+                " ".join(t for t in (first, last) if t)
+                or " ".join(t for t in (first, middle, last) if t)
+                or _as_text(c.get("name"))
+            )
+            contacts.append(
+                {
+                    "email": _as_text(c.get("email")),
+                    "name": display,
+                    "first_name": first,
+                    "middle_name": middle,
+                    "last_name": last,
+                    "subscribed": bool(c.get("subscribed")),
+                    "source": _as_text(c.get("source")),
+                    "last_sent": _as_text(c.get("last_newsletter_sent_at")),
+                    "send_count": int(c.get("send_count") or 0),
+                    "remove_action": _remove_action_for_contact(
+                        domain, _as_text(c.get("email")), bool(c.get("subscribed"))
+                    ),
+                }
+            )
         profile = _as_dict(adapter.load_profile(domain=domain))
         current_sender = _as_text(
             profile.get("selected_sender_address") or profile.get("sender_address")

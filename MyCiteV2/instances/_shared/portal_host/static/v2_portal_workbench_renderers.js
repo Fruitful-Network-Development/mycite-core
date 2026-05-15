@@ -551,11 +551,16 @@
   }
 
   function renderContactsTable(rows) {
+    // Phase 15b: surface first + last name alongside the email so
+    // operators can recognise the row. The server-side renderer
+    // composes a friendly "First Last" display string in the ``name``
+    // field, falling back to the legacy single name token.
     return renderRowsTableWithActions(
       "Contacts",
       rows,
       [
         { key: "email", label: "Email" },
+        { key: "name", label: "Name" },
         { key: "subscribed", label: "Subscribed" },
         { key: "source", label: "Source" },
         { key: "send_count", label: "Sends" },

@@ -97,10 +97,16 @@ def main(argv: list[str] | None = None) -> int:
     for row in intake.new_rows:
         magnitudes = row.raw[1] if isinstance(row.raw, list) and len(row.raw) >= 2 else {}
         if isinstance(magnitudes, dict):
+            # Phase 15b: persist the split first/middle/last names from
+            # the CSV alongside the composed ``name`` token. The adapter
+            # writes both back into the magnitudes datum.
             contacts.append(
                 {
                     "email": magnitudes.get("email_ascii", ""),
                     "name": magnitudes.get("name_ascii", ""),
+                    "first_name": magnitudes.get("first_name_ascii", ""),
+                    "middle_name": magnitudes.get("middle_name_ascii", ""),
+                    "last_name": magnitudes.get("last_name_ascii", ""),
                     "subscribed": bool(magnitudes.get("subscribed", True)),
                     "source": magnitudes.get("source", "csv_import"),
                     "send_count": int(magnitudes.get("send_count") or 0),

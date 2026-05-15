@@ -113,6 +113,74 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         self.assertEqual(body["email"], "new@subscriber.test")
         self.assertTrue(body["subscribed"])
 
+    def test_add_subscriber_persists_split_name_fields(self) -> None:
+        # Phase 15b: the admin form sends first_name / middle_name /
+        # last_name separately. The mutation runtime + adapter persist
+        # them as their own magnitudes, recoverable via load_contact_log.
+        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+            MosDatumNewsletterContactLogAdapter,
+        )
+
+        client, tmp = self._build_client()
+        resp = client.post(
+            "/__fnd/newsletter/admin/add",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {
+                        "email": "mary.zaun@subscriber.test",
+                        "first_name": "Mary",
+                        "middle_name": "Anne",
+                        "last_name": "Zaun",
+                    },
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
+        )
+        loaded = adapter.load_contact_log(domain="alpha.example.test")
+        row = next(
+            c for c in loaded["contacts"] if c["email"] == "mary.zaun@subscriber.test"
+        )
+        self.assertEqual(row["first_name"], "Mary")
+        self.assertEqual(row["middle_name"], "Anne")
+        self.assertEqual(row["last_name"], "Zaun")
+        self.assertEqual(row["name"], "Mary Anne Zaun")
+
+    def test_add_subscriber_legacy_single_name_auto_splits(self) -> None:
+        # Phase 15b back-compat: clients that still post a single
+        # ``name`` field continue to work — the runtime auto-splits.
+        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+            MosDatumNewsletterContactLogAdapter,
+        )
+
+        client, tmp = self._build_client()
+        resp = client.post(
+            "/__fnd/newsletter/admin/add",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {"email": "legacy@subscriber.test", "name": "Adrienne Gordon"},
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
+        )
+        loaded = adapter.load_contact_log(domain="alpha.example.test")
+        row = next(
+            c for c in loaded["contacts"] if c["email"] == "legacy@subscriber.test"
+        )
+        self.assertEqual(row["first_name"], "Adrienne")
+        self.assertEqual(row["last_name"], "Gordon")
+
     def test_add_subscriber_rejects_missing_domain(self) -> None:
         client, _ = self._build_client()
         resp = client.post(
