@@ -412,6 +412,86 @@
     return window.PortalComponentLibrary || null;
   }
 
+  function renderAdminForms(forms) {
+    var list = asList(forms);
+    if (!list.length) return "";
+    var lib = componentLibrary();
+    if (!lib || typeof lib.renderComponentFrame !== "function") return "";
+    return list
+      .map(function (frame) {
+        return lib.renderComponentFrame(asObject(frame));
+      })
+      .join("");
+  }
+
+  function renderRowAction(action) {
+    var a = asObject(action);
+    if (!a.route || !a.label) return "";
+    var variant = asText(a.variant) || "secondary";
+    var payload = JSON.stringify(asObject(a.payload));
+    var schema = asText(a.schema);
+    var confirm = asText(a.confirm);
+    return (
+      '<button type="button" class="v2-rowAction v2-rowAction--' +
+      escapeHtml(variant) +
+      '"' +
+      ' data-row-action-route="' +
+      escapeHtml(asText(a.route)) +
+      '"' +
+      (schema ? ' data-row-action-schema="' + escapeHtml(schema) + '"' : "") +
+      (confirm ? ' data-row-action-confirm="' + escapeHtml(confirm) + '"' : "") +
+      " data-row-action-payload='" +
+      escapeHtml(payload) +
+      "'>" +
+      escapeHtml(asText(a.label)) +
+      "</button>"
+    );
+  }
+
+  function renderContactsTable(rows) {
+    var rowList = asList(rows);
+    if (!rowList.length) return "";
+    var hasActions = rowList.some(function (r) {
+      return asObject(r).remove_action && asObject(r).remove_action.route;
+    });
+    var columns = [
+      { key: "email", label: "Email" },
+      { key: "subscribed", label: "Subscribed" },
+      { key: "source", label: "Source" },
+      { key: "send_count", label: "Sends" },
+      { key: "last_sent", label: "Last sent" },
+    ];
+    return (
+      '<section class="v2-extensionCard__table v2-extensionCard__contacts">' +
+      "<h4>Contacts</h4>" +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      columns
+        .map(function (col) {
+          return "<th>" + escapeHtml(asText(col.label)) + "</th>";
+        })
+        .join("") +
+      (hasActions ? "<th>Actions</th>" : "") +
+      "</tr></thead><tbody>" +
+      rowList
+        .map(function (row) {
+          var cells = columns
+            .map(function (col) {
+              var v = row[col.key];
+              if (typeof v === "boolean") v = v ? "yes" : "no";
+              if (v == null) v = "";
+              return "<td>" + escapeHtml(String(v)) + "</td>";
+            })
+            .join("");
+          var actionCell = hasActions
+            ? "<td>" + renderRowAction(row.remove_action) + "</td>"
+            : "";
+          return "<tr>" + cells + actionCell + "</tr>";
+        })
+        .join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
   function renderExtensionCardBody(payload) {
     var p = asObject(payload);
     var html = "";
@@ -422,6 +502,7 @@
         html += lib.renderComponentFrame(p.form_frame);
       }
     }
+    html += renderAdminForms(p.admin_forms);
     if (asObject(p.configuration).items || asObject(p.configuration).label) {
       html += renderConfigurationSection(p.configuration);
     }
@@ -445,13 +526,7 @@
       ]);
     }
     if (asList(p.contact_rows).length) {
-      html += renderRowsTable("Contacts", p.contact_rows, [
-        { key: "email", label: "Email" },
-        { key: "subscribed", label: "Subscribed" },
-        { key: "source", label: "Source" },
-        { key: "send_count", label: "Sends" },
-        { key: "last_sent", label: "Last sent" },
-      ]);
+      html += renderContactsTable(p.contact_rows);
     }
     if (asList(p.orders).length) {
       html += renderRowsTable("Orders", p.orders, [
@@ -590,12 +665,76 @@
     });
   }
 
+  function bindRowAction(ctx, button) {
+    if (!button || button.dataset.rowActionBound === "1") return;
+    button.dataset.rowActionBound = "1";
+    button.addEventListener("click", function () {
+      var route = button.getAttribute("data-row-action-route");
+      var schema = button.getAttribute("data-row-action-schema") || "";
+      var confirmMsg = button.getAttribute("data-row-action-confirm") || "";
+      if (!route) return;
+      if (confirmMsg && typeof window.confirm === "function" && !window.confirm(confirmMsg)) {
+        return;
+      }
+      var basePayload = {};
+      try {
+        basePayload = JSON.parse(button.getAttribute("data-row-action-payload") || "{}");
+      } catch (_) {}
+      button.disabled = true;
+      var body = Object.assign({ schema: schema }, basePayload);
+      fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { status: r.status, body: j };
+          });
+        })
+        .then(function (out) {
+          button.disabled = false;
+          var ok = out.status >= 200 && out.status < 300 && out.body && out.body.ok !== false;
+          if (ok && typeof ctx.loadShell === "function") {
+            var envelope = ctx.getEnvelope && ctx.getEnvelope();
+            if (envelope) {
+              ctx.loadShell({
+                schema: "mycite.v2.portal.shell.request.v1",
+                requested_surface_id: envelope.surface_id,
+                surface_query: envelope.surface_query || {},
+              });
+            }
+          } else if (!ok) {
+            var msg =
+              (out.body && (out.body.detail || out.body.error || ("HTTP " + out.status))) ||
+              "unknown error";
+            try {
+              window.alert("Action failed: " + msg);
+            } catch (_) {}
+          }
+        })
+        .catch(function (err) {
+          button.disabled = false;
+          try {
+            window.alert("Network error: " + (err && err.message ? err.message : err));
+          } catch (_) {}
+        });
+    });
+  }
+
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
     Array.prototype.forEach.call(
       target.querySelectorAll("form[data-form-submit-route]"),
       function (form) {
         bindFormSubmit(ctx, form);
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll(".v2-rowAction[data-row-action-route]"),
+      function (button) {
+        bindRowAction(ctx, button);
       }
     );
   }
