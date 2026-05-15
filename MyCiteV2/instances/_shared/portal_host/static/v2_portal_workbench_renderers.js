@@ -793,6 +793,51 @@
         { key: "count", label: "Views" },
       ]);
     }
+    // Phase 18c: insight tables computed on-demand from the raw
+    // NDJSON log by the Analytics extension renderer.
+    if (
+      typeof p.visitor_count !== "undefined"
+      || typeof p.repeat_visitor_count !== "undefined"
+      || typeof p.high_intent_count !== "undefined"
+    ) {
+      html += renderRowsTable("Visitor breakdown", [
+        { metric: "Distinct visitors (humans)", value: String(p.visitor_count || 0) },
+        { metric: "Repeat visitors (>= 2 sessions)", value: String(p.repeat_visitor_count || 0) },
+        { metric: "High-intent sessions", value: String(p.high_intent_count || 0) },
+        { metric: "Sessions (total)", value: String(p.session_count || 0) },
+        { metric: "Bot events filtered", value: String(p.bot_event_count || 0) },
+        { metric: "VPN / geo-jump flags", value: String(p.vpn_geo_jump_count || 0) },
+      ], [
+        { key: "metric", label: "Metric" },
+        { key: "value", label: "Count" },
+      ]);
+    }
+    if (asList(p.top_referrers).length) {
+      html += renderRowsTable("Top referrers", p.top_referrers, [
+        { key: "referrer_domain", label: "Referrer" },
+        { key: "sessions", label: "Sessions" },
+        { key: "unique_visitors", label: "Visitors" },
+        { key: "average_active_time_ms", label: "Avg active ms" },
+      ]);
+    }
+    if (asList(p.top_entry_pages).length) {
+      html += renderRowsTable("Top entry pages", p.top_entry_pages, [
+        { key: "page_path", label: "Entry page" },
+        { key: "count", label: "Sessions" },
+      ]);
+    }
+    if (asList(p.top_exit_pages).length) {
+      html += renderRowsTable("Top exit pages", p.top_exit_pages, [
+        { key: "page_path", label: "Exit page" },
+        { key: "count", label: "Sessions" },
+      ]);
+    }
+    if (asList(p.common_paths).length) {
+      html += renderRowsTable("Common page sequences", p.common_paths, [
+        { key: "path", label: "Sequence" },
+        { key: "count", label: "Count" },
+      ]);
+    }
     if (asList(p.recent_events).length) {
       html += renderRowsTable("Recent events", p.recent_events, [
         { key: "event_type", label: "Event" },

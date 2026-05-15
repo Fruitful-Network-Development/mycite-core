@@ -265,11 +265,298 @@ def classify_origin(referrer_domain: str, utm_source: str = "") -> str:
     return "referral"
 
 
+# ---------------------------------------------------------------------
+# Phase 18c — richer insight derivations.
+# Each function below reads pre-sessionized events (or accepts raw
+# events + sessionizes internally) and returns a JSON-serializable
+# result that lands in the Analytics extension card.
+# ---------------------------------------------------------------------
+
+
+def count_visitors(
+    events: Iterable[dict[str, Any]], *, include_bots: bool = False
+) -> int:
+    """Distinct visitor cookies seen, optionally including bots."""
+    seen: set[str] = set()
+    for event in events:
+        if not include_bots and event.get("is_bot"):
+            continue
+        token = event.get("visitor_cookie_id_hash") or ""
+        if token:
+            seen.add(token)
+    return len(seen)
+
+
+def count_repeat_visitors(
+    sessions: Iterable[dict[str, Any]], *, min_sessions: int = 2
+) -> int:
+    """Number of visitors with at least ``min_sessions`` sessions."""
+    by_visitor: dict[str, int] = defaultdict(int)
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        token = session.get("visitor_cookie_id_hash") or ""
+        if not token:
+            continue
+        by_visitor[token] += 1
+    return sum(1 for c in by_visitor.values() if c >= min_sessions)
+
+
+def rank_pages_by_attention(
+    events: Iterable[dict[str, Any]], *, top_k: int = 10
+) -> list[dict[str, Any]]:
+    """Rank pages by their engagement signals.
+
+    For each ``page_view`` event we accumulate view count, unique
+    visitor count, average active_time_ms, and average scroll
+    depth. Sorted by view count descending. Bots are excluded.
+    """
+    by_path: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {
+            "view_count": 0,
+            "visitors": set(),
+            "active_time_ms": 0,
+            "active_samples": 0,
+            "scroll_depth_total": 0,
+            "scroll_samples": 0,
+        }
+    )
+    for event in events:
+        if event.get("is_bot"):
+            continue
+        path = event.get("page_path") or ""
+        if not path:
+            continue
+        bucket = by_path[path]
+        if event.get("event_type") == "page_view":
+            bucket["view_count"] += 1
+            visitor = event.get("visitor_cookie_id_hash")
+            if visitor:
+                bucket["visitors"].add(visitor)
+        active = int(event.get("active_time_ms") or 0)
+        if active:
+            bucket["active_time_ms"] += active
+            bucket["active_samples"] += 1
+        scroll = int(event.get("scroll_depth_percent") or 0)
+        if scroll:
+            bucket["scroll_depth_total"] += scroll
+            bucket["scroll_samples"] += 1
+    rows: list[dict[str, Any]] = []
+    for path, bucket in by_path.items():
+        rows.append(
+            {
+                "page_path": path,
+                "view_count": bucket["view_count"],
+                "unique_visitors": len(bucket["visitors"]),
+                "average_active_time_ms": (
+                    bucket["active_time_ms"] // bucket["active_samples"]
+                    if bucket["active_samples"]
+                    else 0
+                ),
+                "scroll_depth_average": (
+                    bucket["scroll_depth_total"] // bucket["scroll_samples"]
+                    if bucket["scroll_samples"]
+                    else 0
+                ),
+            }
+        )
+    rows.sort(key=lambda r: (r["view_count"], r["unique_visitors"]), reverse=True)
+    return rows[:top_k]
+
+
+def rank_referrers(
+    events: Iterable[dict[str, Any]], *, top_k: int = 10
+) -> list[dict[str, Any]]:
+    """Rank referrer domains by session count.
+
+    Counts each visitor's first event in a session — that's the
+    referrer for the whole session.
+    """
+    by_session: dict[tuple[str, str], dict[str, Any]] = {}
+    for event in events:
+        if event.get("is_bot"):
+            continue
+        key = (
+            event.get("visitor_cookie_id_hash") or "",
+            event.get("session_id") or "",
+        )
+        if key in by_session:
+            continue
+        by_session[key] = {
+            "referrer_domain": (event.get("referrer_domain") or "").lower(),
+            "active_time_ms": int(event.get("active_time_ms") or 0),
+        }
+    aggregates: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"sessions": 0, "visitors": set(), "active_time_ms": 0}
+    )
+    for (visitor, _session), info in by_session.items():
+        ref = info["referrer_domain"] or "(direct)"
+        bucket = aggregates[ref]
+        bucket["sessions"] += 1
+        if visitor:
+            bucket["visitors"].add(visitor)
+        bucket["active_time_ms"] += info["active_time_ms"]
+    rows = [
+        {
+            "referrer_domain": ref,
+            "sessions": bucket["sessions"],
+            "unique_visitors": len(bucket["visitors"]),
+            "average_active_time_ms": (
+                bucket["active_time_ms"] // bucket["sessions"]
+                if bucket["sessions"]
+                else 0
+            ),
+        }
+        for ref, bucket in aggregates.items()
+    ]
+    rows.sort(key=lambda r: r["sessions"], reverse=True)
+    return rows[:top_k]
+
+
+def top_entry_pages(
+    sessions: Iterable[dict[str, Any]], *, top_k: int = 10
+) -> list[dict[str, Any]]:
+    """Pages that most often start a session."""
+    counts: dict[str, int] = defaultdict(int)
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        entry = session.get("entry_page") or ""
+        if entry:
+            counts[entry] += 1
+    rows = [{"page_path": p, "count": c} for p, c in counts.items()]
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows[:top_k]
+
+
+def top_exit_pages(
+    sessions: Iterable[dict[str, Any]], *, top_k: int = 10
+) -> list[dict[str, Any]]:
+    """Pages that most often end a session."""
+    counts: dict[str, int] = defaultdict(int)
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        exit_page = session.get("exit_page") or ""
+        if exit_page:
+            counts[exit_page] += 1
+    rows = [{"page_path": p, "count": c} for p, c in counts.items()]
+    rows.sort(key=lambda r: r["count"], reverse=True)
+    return rows[:top_k]
+
+
+def find_common_paths(
+    events: Iterable[dict[str, Any]],
+    *,
+    min_length: int = 2,
+    top_k: int = 10,
+) -> list[dict[str, Any]]:
+    """Most common ordered page-path sequences within a session.
+
+    Considers each visitor's session as a string of page_view paths
+    in order, and counts identical sub-sequences of at least
+    ``min_length``. Returns the top_k most common.
+    """
+    # Build per-session page sequences.
+    by_session: dict[tuple[str, str], list[str]] = defaultdict(list)
+    for event in events:
+        if event.get("is_bot"):
+            continue
+        if event.get("event_type") != "page_view":
+            continue
+        key = (
+            event.get("visitor_cookie_id_hash") or "",
+            event.get("session_id") or "",
+        )
+        path = event.get("page_path") or ""
+        if path:
+            by_session[key].append(path)
+    counts: dict[tuple[str, ...], int] = defaultdict(int)
+    for seq in by_session.values():
+        if len(seq) < min_length:
+            continue
+        # Sliding window from min_length up to full sequence length.
+        for window in range(min_length, len(seq) + 1):
+            for start in range(0, len(seq) - window + 1):
+                counts[tuple(seq[start : start + window])] += 1
+    rows = [
+        {"path": list(seq), "count": count, "length": len(seq)}
+        for seq, count in counts.items()
+    ]
+    rows.sort(key=lambda r: (r["count"], r["length"]), reverse=True)
+    return rows[:top_k]
+
+
+def high_intent_sessions(
+    sessions: Iterable[dict[str, Any]],
+    *,
+    intent_pages: tuple[str, ...] = ("/pricing", "/contact", "/donate", "/subscribe"),
+    min_active_ms: int = 60_000,
+) -> list[dict[str, Any]]:
+    """Sessions that visited an intent page AND spent meaningful
+    active time. Used as the operator's "real buyers" filter.
+    """
+    intent_set = {p.lower() for p in intent_pages}
+    out: list[dict[str, Any]] = []
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        if session.get("active_time_ms", 0) < min_active_ms:
+            continue
+        # Cheap heuristic: entry or exit page is an intent page.
+        # The full session would need to be re-queried for an
+        # exact-match check; this approximation is good enough for
+        # the operator-facing high_intent_count metric.
+        entry = (session.get("entry_page") or "").lower()
+        exit_p = (session.get("exit_page") or "").lower()
+        if any(p in entry for p in intent_set) or any(p in exit_p for p in intent_set):
+            out.append(session)
+    return out
+
+
+def detect_vpn_geo_jumps(
+    events: Iterable[dict[str, Any]],
+    *,
+    max_prefixes_per_visitor: int = 1,
+) -> list[dict[str, Any]]:
+    """Suspect VPN / geo-jump: same visitor cookie seen from >1
+    distinct ``ip_prefix``. The threshold is conservative — mobile
+    networks rotate prefixes legitimately, so this is *evidence*
+    not a conclusion.
+    """
+    prefixes_by_visitor: dict[str, set[str]] = defaultdict(set)
+    for event in events:
+        visitor = event.get("visitor_cookie_id_hash") or ""
+        prefix = event.get("ip_prefix") or ""
+        if visitor and prefix:
+            prefixes_by_visitor[visitor].add(prefix)
+    flagged: list[dict[str, Any]] = []
+    for visitor, prefixes in prefixes_by_visitor.items():
+        if len(prefixes) > max_prefixes_per_visitor:
+            flagged.append(
+                {
+                    "visitor_cookie_id_hash": visitor,
+                    "ip_prefixes": sorted(prefixes),
+                    "evidence": ["multi_prefix"],
+                }
+            )
+    return flagged
+
+
 __all__ = [
     "DEFAULT_INACTIVITY_GAP_MS",
     "classify_origin",
+    "count_repeat_visitors",
+    "count_visitors",
+    "detect_vpn_geo_jumps",
     "filter_bots",
+    "find_common_paths",
+    "high_intent_sessions",
+    "rank_pages_by_attention",
+    "rank_referrers",
     "read_events",
     "reconstruct_visitor_timeline",
     "sessionize",
+    "top_entry_pages",
+    "top_exit_pages",
 ]
