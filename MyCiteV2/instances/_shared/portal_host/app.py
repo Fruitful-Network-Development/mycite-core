@@ -696,31 +696,28 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
 # FND newsletter subscribe pipeline — helpers
 # ---------------------------------------------------------------------------
 
-_NEWSLETTER_WEBAPPS_ROOT = "/srv/webapps/clients"
-_NEWSLETTER_ADMIN_PROFILE_GLOB = (
-    "/srv/mycite-state/instances/fnd/private/utilities/tools/newsletter-admin/newsletter-admin.*.json"
-)
 _CONTACT_LOG_SCHEMA = "mycite.webapp.contact_log.v1"
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
+# Path layout under `host_config.private_dir`. Phase 13d follow-up: both the
+# newsletter-admin profile glob and the webapps clients root used to be
+# hardcoded to /srv/{webapps,mycite-state}; they now derive from the
+# V2PortalHostConfig instance so smoke tests can boot the portal against a
+# tempdir without monkey-patching module-level constants.
+_NEWSLETTER_ADMIN_PROFILE_SUBPATH = Path("utilities/tools/newsletter-admin")
 
-def _newsletter_contact_log_path(domain: str) -> Path:
-    """Derive canonical contact log path from domain.
 
-    Pattern: /srv/webapps/clients/<domain>/contacts/<domain>-contact_log.json
-    The route handler must NOT rely on the newsletter-admin profile's
-    contact_log_path field at runtime (may be stale).
+def _newsletter_known_domains(private_dir: Path) -> list[str]:
+    """Load known newsletter domains from the newsletter-admin profile directory.
+
+    Reads ``<private_dir>/utilities/tools/newsletter-admin/newsletter-admin.<domain>.json``
+    files and returns the deduplicated, sorted list of <domain> tokens.
     """
-    return Path(_NEWSLETTER_WEBAPPS_ROOT) / domain / "contacts" / f"{domain}-contact_log.json"
-
-
-def _newsletter_known_domains() -> list[str]:
-    """Load known newsletter domains from newsletter-admin profile directory."""
+    admin_dir = Path(private_dir) / _NEWSLETTER_ADMIN_PROFILE_SUBPATH
     domains: list[str] = []
-    for path in glob.glob(_NEWSLETTER_ADMIN_PROFILE_GLOB):
+    for path in glob.glob(str(admin_dir / "newsletter-admin.*.json")):
         basename = os.path.basename(path)
-        # newsletter-admin.<domain>.json
         token = basename.removeprefix("newsletter-admin.").removesuffix(".json").strip().lower()
         if token:
             domains.append(token)
@@ -1404,7 +1401,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         operation=upsert_subscriber).
         """
         domain = _normalize_domain(request.host)
-        known = _newsletter_known_domains()
+        known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
 
@@ -1450,7 +1447,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_newsletter_unsubscribe() -> tuple[Any, int]:
         # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
         domain = _normalize_domain(request.host)
-        known = _newsletter_known_domains()
+        known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
 
@@ -1514,7 +1511,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_newsletter_dispatch_result() -> tuple[Any, int]:
         # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
         domain = _normalize_domain(request.host)
-        known = _newsletter_known_domains()
+        known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
 
