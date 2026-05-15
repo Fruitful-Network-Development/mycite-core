@@ -39,6 +39,10 @@ class SharedLibraryLayoutTests(unittest.TestCase):
     def test_connect_extension_present(self) -> None:
         self.assertTrue((EXT_DIR / "connect.js").is_file())
 
+    def test_analytics_extension_present(self) -> None:
+        # Phase 18b: site-wide raw-event capture.
+        self.assertTrue((EXT_DIR / "analytics.js").is_file())
+
     def test_extensions_doc_present(self) -> None:
         self.assertTrue((SITE_CORE / "docs" / "extensions.md").is_file())
 
@@ -52,6 +56,7 @@ class SharedLibraryContractTests(unittest.TestCase):
         cls.newsletter = (EXT_DIR / "newsletter.js").read_text(encoding="utf-8")
         cls.donate = (EXT_DIR / "donate.js").read_text(encoding="utf-8")
         cls.connect = (EXT_DIR / "connect.js").read_text(encoding="utf-8")
+        cls.analytics = (EXT_DIR / "analytics.js").read_text(encoding="utf-8")
 
     def test_form_utils_exposes_canonical_names(self) -> None:
         for name in ("validateEmail", "normalizeText", "showBanner", "postJSON"):
@@ -80,6 +85,18 @@ class SharedLibraryContractTests(unittest.TestCase):
         self.assertIn("/__fnd/connect/submit", self.connect)
         self.assertIn("MyciteExtensions.mountConnectForm", self.connect)
         self.assertIn("data-mycite-connect", self.connect)
+
+    def test_analytics_targets_canonical_endpoint(self) -> None:
+        # Phase 18b: every captured event POSTs here. Pin so a
+        # rename can't silently break ingestion.
+        self.assertIn("/__fnd/analytics/event", self.analytics)
+        # Pin the auto-bind public name + the session key so future
+        # refactors don't drift.
+        self.assertIn("MyciteAnalytics", self.analytics)
+        self.assertIn("fnd_analytics_session", self.analytics)
+        # Required event types the JS produces.
+        for et in ("page_view", "heartbeat", "outbound_click", "form_submit"):
+            self.assertIn(et, self.analytics, f"event_type {et} not emitted")
 
     def test_connect_reads_full_field_set(self) -> None:
         # Phase 17d: pin the canonical Connect-form field names so a
@@ -111,17 +128,35 @@ class SiteSyncTargetsTests(unittest.TestCase):
 
     def test_tff_has_synced_bundle(self) -> None:
         d = self._frontend_for("trappfamilyfarm.com", "js")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
+        for leaf in (
+            "form-utils.js",
+            "newsletter.js",
+            "donate.js",
+            "connect.js",
+            "analytics.js",
+        ):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
     def test_cvcc_has_synced_bundle(self) -> None:
         d = self._frontend_for("cuyahogavalleycountrysideconservancy.org", "JS")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
+        for leaf in (
+            "form-utils.js",
+            "newsletter.js",
+            "donate.js",
+            "connect.js",
+            "analytics.js",
+        ):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
     def test_fnd_has_synced_bundle(self) -> None:
         d = self._frontend_for("fruitfulnetworkdevelopment.com", "js")
-        for leaf in ("form-utils.js", "newsletter.js", "donate.js", "connect.js"):
+        for leaf in (
+            "form-utils.js",
+            "newsletter.js",
+            "donate.js",
+            "connect.js",
+            "analytics.js",
+        ):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
 
@@ -150,6 +185,35 @@ class WebdesignFormWiringTests(unittest.TestCase):
         # Shared lib must be loaded.
         self.assertIn("mycite-extensions/form-utils.js", html)
         self.assertIn("mycite-extensions/newsletter.js", html)
+
+    def test_analytics_script_uses_absolute_path(self) -> None:
+        # Phase 18b: relative ``__fnd/analytics.js`` resolves to
+        # /<page-dir>/__fnd/analytics.js for any non-root page →
+        # 404. Every HTML file that loads the analytics script must
+        # use the absolute path ``/__fnd/analytics.js``.
+        for host in (
+            "trappfamilyfarm.com",
+            "cuyahogavalleycountrysideconservancy.org",
+            "fruitfulnetworkdevelopment.com",
+        ):
+            site_root = WEBAPPS_ROOT / "clients" / host / "frontend"
+            for path in site_root.rglob("*.html"):
+                content = path.read_text(encoding="utf-8")
+                if "analytics.js" not in content:
+                    continue
+                # If the file references analytics.js at all, every
+                # reference must be via the absolute path or the
+                # site-relative mycite-extensions copy.
+                self.assertNotIn(
+                    'src="__fnd/analytics.js"',
+                    content,
+                    f"{path} uses relative analytics path",
+                )
+                self.assertNotIn(
+                    'src="./__fnd/analytics.js"',
+                    content,
+                    f"{path} uses relative analytics path",
+                )
 
     def test_no_site_posts_to_legacy_newsletter_endpoint(self) -> None:
         # Phase 16b: the legacy ``/newsletter/subscribe`` (without
