@@ -11,14 +11,40 @@ path is REMOVED. That fallback was the dominant latency driver on
 the renderer now returns a ``pending`` placeholder pointing operators
 at the refresh endpoint. The expensive aggregation only happens in
 the offline sync job (or via the manually-triggered refresh route).
+
+Phase 14d.4: the payload now carries a ``refresh_action`` button (row
+action shape) that POSTs to ``/__fnd/analytics/refresh`` and triggers
+the sync for the current domain on demand. ``top_paths`` is also
+derived from ``recent_events`` so operators see the most-visited
+pages without leaving the extension card.
 """
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 from ._shared import _as_text
+
+
+def _top_paths(recent_events: list[dict[str, Any]], limit: int = 5) -> list[dict[str, Any]]:
+    counter: Counter[str] = Counter()
+    for event in recent_events or []:
+        path = _as_text(event.get("path")) if isinstance(event, dict) else ""
+        if path and path != "—":
+            counter[path] += 1
+    return [{"path": path, "count": count} for path, count in counter.most_common(limit)]
+
+
+def _refresh_action(domain: str) -> dict[str, Any]:
+    return {
+        "label": "Refresh summary",
+        "route": "/__fnd/analytics/refresh",
+        "schema": "mycite.v2.analytics.refresh.request.v1",
+        "payload": {"domain": domain},
+        "variant": "primary",
+    }
 
 
 def _build_analytics_extension_payload(
@@ -38,6 +64,7 @@ def _build_analytics_extension_payload(
             "domain": domain,
             "summary": {},
             "recent_events": [],
+            "top_paths": [],
             "data_source": data_source,
             "notice": "No domain selected.",
         }
@@ -56,13 +83,19 @@ def _build_analytics_extension_payload(
                 data_source["kind"] = "mos_datum"
                 events_dir = Path(webapps_root) / "clients" / domain / "analytics" / "events"
                 data_source["events_dir"] = str(events_dir)
+                computed_at = _as_text(cached.get("computed_at"))
+                if computed_at:
+                    data_source["computed_at"] = computed_at
+                recent_events = cached.get("recent_events", []) or []
                 return {
                     "domain": domain,
                     "summary": cached.get("summary", {}),
-                    "recent_events": cached.get("recent_events", []),
+                    "recent_events": recent_events,
+                    "top_paths": _top_paths(recent_events),
                     "source": "mos_datum",
-                    "computed_at": _as_text(cached.get("computed_at")),
+                    "computed_at": computed_at,
                     "data_source": data_source,
+                    "refresh_action": _refresh_action(domain),
                 }
         except Exception:
             pass
@@ -75,12 +108,14 @@ def _build_analytics_extension_payload(
         "domain": domain,
         "summary": {},
         "recent_events": [],
+        "top_paths": [],
         "data_source": data_source,
         "notice": (
-            "Analytics summary not yet computed for this domain. Run the "
-            "sync_fnd_analytics_summary script, or use the Refresh button "
-            "above to trigger it."
+            "Analytics summary not yet computed for this domain. Use the "
+            "Refresh button to trigger the sync now, or wait for the next "
+            "scheduled sync_fnd_analytics_summary run."
         ),
+        "refresh_action": _refresh_action(domain),
     }
 
 
