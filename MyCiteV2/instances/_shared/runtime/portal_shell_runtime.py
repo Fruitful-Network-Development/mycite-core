@@ -36,9 +36,13 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_SURFACE_IDS,
     TRANSITION_FOCUS_FILE,
+    UTILITIES_EXTENSIONS_SURFACE_ID,
+    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
+    UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    UTILITIES_TOOLS_SURFACE_ID,
     WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
     PortalShellRequest,
@@ -251,6 +255,7 @@ def _tool_posture_rows(
                 "label": entry.label,
                 "route": entry.route,
                 "surface_id": entry.surface_id,
+                "is_extension": bool(getattr(entry, "is_extension", False)),
                 "configured": configured,
                 "enabled": enabled,
                 "operational": bool(configured and enabled and not missing_integrations and not missing_capabilities),
@@ -340,10 +345,18 @@ def _plain_control_panel(
 
 
 def _utilities_surface_label(surface_id: str) -> str:
+    if surface_id == UTILITIES_EXTENSIONS_SURFACE_ID:
+        return "Extensions"
+    if surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
+        return "Grantee Profile"
+    if surface_id == UTILITIES_TOOLS_SURFACE_ID:
+        return "Tools"
+    if surface_id == UTILITIES_PERIPHERALS_SURFACE_ID:
+        return "Peripherals"
     if surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
-        return "Tool Exposure"
+        return "Tool Exposure (legacy)"
     if surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID:
-        return "Integrations"
+        return "Integrations (legacy)"
     return "Overview"
 
 
@@ -351,21 +364,35 @@ def _utilities_control_panel(
     *,
     active_surface_id: str,
 ) -> dict[str, Any]:
+    # Phase 14b: control-panel navigation lists the 4 new dedicated
+    # surfaces. The legacy "Tool Exposure" + "Integrations" routes still
+    # work but 302-redirect; their entries are removed from the
+    # operator-facing nav.
     entries = [
         {
-            "label": "Tool Exposure",
-            "href": "/portal/utilities/tool-exposure",
-            "active": active_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            "label": "Extensions",
+            "href": "/portal/utilities/extensions",
+            "active": active_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID,
         },
         {
-            "label": "Integrations",
-            "href": "/portal/utilities/integrations",
-            "active": active_surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID,
+            "label": "Grantee Profile",
+            "href": "/portal/utilities/grantee-profile",
+            "active": active_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+        },
+        {
+            "label": "Tools",
+            "href": "/portal/utilities/tools",
+            "active": active_surface_id == UTILITIES_TOOLS_SURFACE_ID,
+        },
+        {
+            "label": "Peripherals",
+            "href": "/portal/utilities/peripherals",
+            "active": active_surface_id == UTILITIES_PERIPHERALS_SURFACE_ID,
         },
     ]
     if active_surface_id == UTILITIES_ROOT_SURFACE_ID:
-        entries[0]["active"] = False
-        entries[1]["active"] = False
+        for entry in entries:
+            entry["active"] = False
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "focus_selection_panel",
@@ -558,22 +585,27 @@ def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    # Phase 14b: navigation links into the four dedicated Utilities surfaces.
+    # The old "Tool Exposure" + "Integrations" entries are removed from the
+    # cards (their routes 302-redirect to the new equivalents).
     return {
         "schema": surface_schema_for_surface(UTILITIES_ROOT_SURFACE_ID),
         "kind": "utilities_overview",
         "title": "Utilities",
-        "subtitle": "Configuration, exposure, integration, vault, peripherals, and control surfaces.",
+        "subtitle": "Extensions, grantee profile, tools, peripherals.",
         "cards": [
-            _metric_card("tool exposure entries", len(tool_rows)),
-            _metric_card("configuration owner", "utilities"),
-            _metric_card("tool work pages", "system"),
+            _metric_card("extensions", 4),
+            _metric_card("grantees configured", "managed via Grantee Profile"),
+            _metric_card("tools", "1 (CTS-GIS)"),
         ],
         "sections": [
             {
                 "title": "Utilities children",
                 "rows": [
-                    {"label": "Tool Exposure", "status": "available", "detail": "/portal/utilities/tool-exposure"},
-                    {"label": "Integrations", "status": "available", "detail": "/portal/utilities/integrations"},
+                    {"label": "Extensions", "status": "available", "detail": "/portal/utilities/extensions"},
+                    {"label": "Grantee Profile", "status": "available", "detail": "/portal/utilities/grantee-profile"},
+                    {"label": "Tools", "status": "available", "detail": "/portal/utilities/tools"},
+                    {"label": "Peripherals", "status": "available", "detail": "/portal/utilities/peripherals"},
                 ],
             }
         ],
@@ -789,6 +821,156 @@ def _surface_payload_for_tool_exposure(
     if grantee_selector is not None:
         payload["grantee_selector"] = grantee_selector
     return payload
+
+
+# Phase 14b: four dedicated surface payloads that replace the single
+# tool-exposure surface mixing tools + extensions + grantee profile.
+# Each one is scoped to one operator concern.
+
+
+def _surface_payload_for_extensions(
+    extensions: list[dict[str, Any]] | None = None,
+    grantee_selector: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Operational utilities-tab extensions only (Email, Analytics,
+    Newsletter, PayPal). Grantee Profile is hosted by its own surface.
+    """
+    payload: dict[str, Any] = {
+        "schema": surface_schema_for_surface(UTILITIES_EXTENSIONS_SURFACE_ID),
+        "kind": "extensions",
+        "title": "Extensions",
+        "subtitle": (
+            "Operational extensions driven by the active Grantee Profile. "
+            "Switch grantees above to repopulate."
+        ),
+    }
+    if grantee_selector is not None:
+        payload["grantee_selector"] = _grantee_selector_for_target(
+            grantee_selector, UTILITIES_EXTENSIONS_SURFACE_ID
+        )
+    operational = [
+        ext for ext in (extensions or []) if ext.get("tool_id") != "ext_grantee_profile"
+    ]
+    if operational:
+        payload["extensions"] = operational
+    return payload
+
+
+def _surface_payload_for_grantee_profile(
+    extensions: list[dict[str, Any]] | None = None,
+    grantee_selector: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Grantee Profile editor surface. Hosts only the grantee selector +
+    the ext_grantee_profile form_frame — none of the operational
+    extensions live here.
+    """
+    payload: dict[str, Any] = {
+        "schema": surface_schema_for_surface(UTILITIES_GRANTEE_PROFILE_SURFACE_ID),
+        "kind": "grantee_profile",
+        "title": "Grantee Profile",
+        "subtitle": (
+            "The single source of truth for every extension's credentials, "
+            "domains, and operator mailbox list."
+        ),
+    }
+    if grantee_selector is not None:
+        payload["grantee_selector"] = _grantee_selector_for_target(
+            grantee_selector, UTILITIES_GRANTEE_PROFILE_SURFACE_ID
+        )
+    profile_only = [
+        ext for ext in (extensions or []) if ext.get("tool_id") == "ext_grantee_profile"
+    ]
+    if profile_only:
+        payload["extensions"] = profile_only
+    return payload
+
+
+def _surface_payload_for_tools(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Tools posture/configuration surface. Lists only entries where
+    ``is_extension=False``, filters out ``workbench_ui`` (a SYSTEM tool
+    that should never appear under Utilities), leaving CTS-GIS (and
+    future AGRO-ERP) as the operator-facing tool catalog.
+    """
+    excluded_tool_ids = {"workbench_ui"}
+    filtered_rows = [
+        row
+        for row in tool_rows
+        if not row.get("is_extension")
+        and row.get("tool_id") not in excluded_tool_ids
+    ]
+    return {
+        "schema": surface_schema_for_surface(UTILITIES_TOOLS_SURFACE_ID),
+        "kind": "tools",
+        "title": "Tools",
+        "subtitle": (
+            "First-class palette tools that visualize MOS datum data in "
+            "particular ways. Tools may be grayed out when required datum "
+            "archetypes are absent."
+        ),
+        "sections": [
+            {
+                "title": "Tool posture",
+                "columns": [
+                    {"key": "tool", "label": "Tool"},
+                    {"key": "configured", "label": "Configured"},
+                    {"key": "enabled", "label": "Enabled"},
+                    {"key": "operational", "label": "Operational"},
+                ],
+                "items": _rows_for_tool_table(filtered_rows),
+            }
+        ],
+    }
+
+
+def _surface_payload_for_peripherals() -> dict[str, Any]:
+    """Stub landing for peripherals + keypass vault. Replaces the
+    ``utilities.integrations`` surface (which "didn't do anything").
+    Implementation arrives in a follow-up phase.
+    """
+    return {
+        "schema": surface_schema_for_surface(UTILITIES_PERIPHERALS_SURFACE_ID),
+        "kind": "peripherals",
+        "title": "Peripherals",
+        "subtitle": (
+            "Keypass vault, peripheral integrations, and operator hardware. "
+            "Implementation pending."
+        ),
+        "cards": [
+            {"label": "Keypass vault", "value": "Coming soon"},
+            {"label": "Peripheral integrations", "value": "Coming soon"},
+            {"label": "TLS / cert health", "value": "Coming soon"},
+        ],
+        "notes": [
+            "Operational integration readiness is reported by /portal/healthz "
+            "(authority_db, static_files_present, shell_asset_manifest)."
+        ],
+    }
+
+
+def _grantee_selector_for_target(
+    grantee_selector: dict[str, Any], target_surface_id: str
+) -> dict[str, Any]:
+    """Rewrite a grantee selector built by `_build_utilities_surface_context`
+    so each option's ``select_action`` posts back to the given surface.
+    The base context builder hard-codes the tool-exposure surface (Phase
+    12h was authored when that was the only utilities surface); Phase 14b
+    needs the selector to navigate within its own surface.
+    """
+    rewritten: dict[str, Any] = dict(grantee_selector)
+    rewritten["grantees"] = [
+        {
+            **g,
+            "select_action": {
+                **g.get("select_action", {}),
+                "payload": {
+                    **(g.get("select_action", {}).get("payload") or {}),
+                    "requested_surface_id": target_surface_id,
+                },
+            },
+        }
+        for g in (grantee_selector.get("grantees") or [])
+    ]
+    return rewritten
 
 
 def _surface_payload_for_integrations(integration_flags: dict[str, bool]) -> dict[str, Any]:
@@ -1073,7 +1255,11 @@ def _bundle_for_surface(
             ),
             "tool_rows": tool_rows,
         }
-    if selection_surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
+    if selection_surface_id in {
+        UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+        UTILITIES_EXTENSIONS_SURFACE_ID,
+        UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+    }:
         # Phase 12h: resolve grantee/domain once, share between the
         # surface-level selector and the per-extension ctx.
         ctx_bundle = _build_utilities_surface_context(
@@ -1087,12 +1273,33 @@ def _bundle_for_surface(
             tool_exposure_policy=tool_exposure_policy,
             ctx=ctx_bundle["ctx"],
         )
-        surface_payload = _surface_payload_for_tool_exposure(
-            tool_rows,
-            extensions=extensions,
-            grantee_selector=ctx_bundle["grantee_selector"],
-        )
+        if selection_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID:
+            surface_payload = _surface_payload_for_extensions(
+                extensions=extensions,
+                grantee_selector=ctx_bundle["grantee_selector"],
+            )
+        elif selection_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
+            surface_payload = _surface_payload_for_grantee_profile(
+                extensions=extensions,
+                grantee_selector=ctx_bundle["grantee_selector"],
+            )
+        else:
+            # Legacy tool-exposure surface kept for one transition cycle so
+            # external bookmarks resolve. Phase 14b's app.py 302-redirects
+            # this route to /portal/utilities/extensions.
+            surface_payload = _surface_payload_for_tool_exposure(
+                tool_rows,
+                extensions=extensions,
+                grantee_selector=ctx_bundle["grantee_selector"],
+            )
+    elif selection_surface_id == UTILITIES_TOOLS_SURFACE_ID:
+        surface_payload = _surface_payload_for_tools(tool_rows)
+    elif selection_surface_id == UTILITIES_PERIPHERALS_SURFACE_ID:
+        surface_payload = _surface_payload_for_peripherals()
     else:
+        # utilities.integrations — legacy surface kept for one transition
+        # cycle so external bookmarks resolve; the route 302-redirects to
+        # /portal/utilities/peripherals.
         surface_payload = _surface_payload_for_integrations(integration_flags)
     return {
         "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,

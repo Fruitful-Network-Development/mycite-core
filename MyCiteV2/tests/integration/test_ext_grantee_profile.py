@@ -77,7 +77,10 @@ class GranteeProfileExtensionRegistryTests(unittest.TestCase):
             e for e in build_portal_tool_registry_entries() if e.tool_id == "ext_grantee_profile"
         )
         self.assertTrue(entry.is_extension)
-        self.assertEqual(entry.surface_id, "utilities.tool_exposure")
+        # Phase 14b: ext_grantee_profile moved off the legacy
+        # ``utilities.tool_exposure`` and onto its own dedicated
+        # ``utilities.grantee_profile`` surface.
+        self.assertEqual(entry.surface_id, "utilities.grantee_profile")
         self.assertEqual(entry.read_write_posture, "write")
 
     def test_dispatch_table_routes_grantee_profile(self) -> None:

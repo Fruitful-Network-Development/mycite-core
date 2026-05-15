@@ -48,9 +48,11 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
-    UTILITIES_INTEGRATIONS_SURFACE_ID,
+    UTILITIES_EXTENSIONS_SURFACE_ID,
+    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+    UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
-    UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    UTILITIES_TOOLS_SURFACE_ID,
     WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
     build_portal_shell_state_from_query,
@@ -1094,13 +1096,38 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def portal_utilities_root() -> str:
         return _render_surface(UTILITIES_ROOT_SURFACE_ID, host_config)
 
+    # Phase 14b: four dedicated surfaces under Utilities. The old
+    # /tool-exposure and /integrations routes 302-redirect for one
+    # transition cycle so external bookmarks keep resolving.
+    @app.get("/portal/utilities/extensions")
+    def portal_utilities_extensions() -> str:
+        return _render_surface(UTILITIES_EXTENSIONS_SURFACE_ID, host_config)
+
+    @app.get("/portal/utilities/grantee-profile")
+    def portal_utilities_grantee_profile() -> str:
+        return _render_surface(UTILITIES_GRANTEE_PROFILE_SURFACE_ID, host_config)
+
+    @app.get("/portal/utilities/tools")
+    def portal_utilities_tools() -> str:
+        return _render_surface(UTILITIES_TOOLS_SURFACE_ID, host_config)
+
+    @app.get("/portal/utilities/peripherals")
+    def portal_utilities_peripherals() -> str:
+        return _render_surface(UTILITIES_PERIPHERALS_SURFACE_ID, host_config)
+
     @app.get("/portal/utilities/tool-exposure")
-    def portal_utilities_tool_exposure() -> str:
-        return _render_surface(UTILITIES_TOOL_EXPOSURE_SURFACE_ID, host_config)
+    def portal_utilities_tool_exposure_legacy() -> Any:
+        # Phase 14b: tool-exposure conflated tools + extensions + grantee
+        # profile + workbench_ui into one confusing table. Operators are now
+        # routed to the dedicated extensions surface. Kept as a redirect for
+        # one cycle so external bookmarks still resolve.
+        return redirect("/portal/utilities/extensions", code=302)
 
     @app.get("/portal/utilities/integrations")
-    def portal_utilities_integrations() -> str:
-        return _render_surface(UTILITIES_INTEGRATIONS_SURFACE_ID, host_config)
+    def portal_utilities_integrations_legacy() -> Any:
+        # Phase 14b: integrations surface had no operator-actionable
+        # content. Redirected to the new peripherals landing.
+        return redirect("/portal/utilities/peripherals", code=302)
 
     @app.get("/portal/api/tools/eligible")
     def portal_tools_eligible() -> tuple[Any, int]:

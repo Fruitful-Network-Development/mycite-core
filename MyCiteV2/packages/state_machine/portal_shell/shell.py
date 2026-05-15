@@ -499,9 +499,21 @@ class PortalToolRegistryEntry:
         if not _as_text(self.tool_id):
             raise ValueError("tool_registry.tool_id is required")
         if self.is_extension:
-            if self.surface_id != UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
+            # Phase 14b: extensions now live across two Utilities surfaces:
+            # ``utilities.extensions`` (operational: Email, Analytics,
+            # Newsletter, PayPal) and ``utilities.grantee_profile`` (the
+            # ext_grantee_profile form). The legacy ``utilities.tool_exposure``
+            # surface_id remains accepted so external bookmarks resolve until
+            # 14e drops it entirely.
+            if self.surface_id not in {
+                UTILITIES_EXTENSIONS_SURFACE_ID,
+                UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+                UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+            }:
                 raise ValueError(
-                    "tool_registry.surface_id must equal UTILITIES_TOOL_EXPOSURE_SURFACE_ID when is_extension=True"
+                    "tool_registry.surface_id must be a Utilities extension surface "
+                    "(utilities.extensions, utilities.grantee_profile, or the legacy "
+                    "utilities.tool_exposure) when is_extension=True"
                 )
         else:
             if self.surface_id not in TOOL_SURFACE_IDS:
@@ -1725,10 +1737,18 @@ __all__ = [
     "TRANSITION_FOCUS_OBJECT",
     "TRANSITION_FOCUS_SANDBOX",
     "TRANSITION_SET_VERB",
+    "UTILITIES_EXTENSIONS_ROUTE",
+    "UTILITIES_EXTENSIONS_SURFACE_ID",
+    "UTILITIES_GRANTEE_PROFILE_ROUTE",
+    "UTILITIES_GRANTEE_PROFILE_SURFACE_ID",
     "UTILITIES_INTEGRATIONS_ROUTE",
     "UTILITIES_INTEGRATIONS_SURFACE_ID",
+    "UTILITIES_PERIPHERALS_ROUTE",
+    "UTILITIES_PERIPHERALS_SURFACE_ID",
     "UTILITIES_ROOT_ROUTE",
     "UTILITIES_ROOT_SURFACE_ID",
+    "UTILITIES_TOOLS_ROUTE",
+    "UTILITIES_TOOLS_SURFACE_ID",
     "UTILITIES_TOOL_EXPOSURE_ROUTE",
     "UTILITIES_TOOL_EXPOSURE_SURFACE_ID",
     "VERB_INVESTIGATE",

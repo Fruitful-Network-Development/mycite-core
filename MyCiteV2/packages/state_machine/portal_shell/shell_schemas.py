@@ -17,6 +17,15 @@ NETWORK_ROOT_SURFACE_ID = "network.root"
 UTILITIES_ROOT_SURFACE_ID = "utilities.root"
 UTILITIES_TOOL_EXPOSURE_SURFACE_ID = "utilities.tool_exposure"
 UTILITIES_INTEGRATIONS_SURFACE_ID = "utilities.integrations"
+# Phase 14b: replace the single mixed-purpose tool-exposure surface
+# (which conflated extensions + tools + grantee profile + workbench UI)
+# with four dedicated surfaces. The old IDs above stay registered for
+# one transition cycle so external bookmarks still resolve via a 302
+# redirect; new operator nav points at these.
+UTILITIES_EXTENSIONS_SURFACE_ID = "utilities.extensions"
+UTILITIES_GRANTEE_PROFILE_SURFACE_ID = "utilities.grantee_profile"
+UTILITIES_TOOLS_SURFACE_ID = "utilities.tools"
+UTILITIES_PERIPHERALS_SURFACE_ID = "utilities.peripherals"
 
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_CSM_TOOL_SURFACE_ID = "system.tools.fnd_csm"
@@ -41,6 +50,11 @@ NETWORK_ROOT_ROUTE = "/portal/network"
 UTILITIES_ROOT_ROUTE = "/portal/utilities"
 UTILITIES_TOOL_EXPOSURE_ROUTE = "/portal/utilities/tool-exposure"
 UTILITIES_INTEGRATIONS_ROUTE = "/portal/utilities/integrations"
+# Phase 14b: per-surface canonical routes.
+UTILITIES_EXTENSIONS_ROUTE = "/portal/utilities/extensions"
+UTILITIES_GRANTEE_PROFILE_ROUTE = "/portal/utilities/grantee-profile"
+UTILITIES_TOOLS_ROUTE = "/portal/utilities/tools"
+UTILITIES_PERIPHERALS_ROUTE = "/portal/utilities/peripherals"
 
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_CSM_TOOL_ROUTE = "/portal/system/tools/fnd-csm"
@@ -133,6 +147,10 @@ UTILITIES_SURFACE_IDS = frozenset(
         UTILITIES_ROOT_SURFACE_ID,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
         UTILITIES_INTEGRATIONS_SURFACE_ID,
+        UTILITIES_EXTENSIONS_SURFACE_ID,
+        UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
+        UTILITIES_TOOLS_SURFACE_ID,
+        UTILITIES_PERIPHERALS_SURFACE_ID,
     }
 )
 REDUCER_OWNED_SURFACE_IDS = frozenset(
