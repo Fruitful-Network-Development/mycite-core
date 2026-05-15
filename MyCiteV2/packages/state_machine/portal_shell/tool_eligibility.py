@@ -15,7 +15,8 @@ See `portal_tool_surface_contract.md` for the architectural intent.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from MyCiteV2.packages.core.mss.datum_identity import derive_hyphae_chain
 

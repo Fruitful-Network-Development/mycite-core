@@ -68,7 +68,7 @@ class AuditLogAppendRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogAppendRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogAppendRequest:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_append must be a dict")
         return cls(record=payload.get("record"))
@@ -100,7 +100,7 @@ class AuditLogAppendReceipt:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogAppendReceipt":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogAppendReceipt:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_append_receipt must be a dict")
         return cls(
@@ -125,7 +125,7 @@ class AuditLogReadRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogReadRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogReadRequest:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_read must be a dict")
         return cls(record_id=payload.get("record_id"))
@@ -164,7 +164,7 @@ class AuditLogRecord:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogRecord":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogRecord:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_record must be a dict")
         return cls(
@@ -199,7 +199,7 @@ class AuditLogReadResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogReadResult":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogReadResult:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_read_result must be a dict")
         return cls(record=payload.get("record"))
@@ -227,7 +227,7 @@ class AuditLogRecentWindowRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "AuditLogRecentWindowRequest":
+    def from_dict(cls, payload: dict[str, Any] | None) -> AuditLogRecentWindowRequest:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):
@@ -265,7 +265,7 @@ class AuditLogRecentWindowResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuditLogRecentWindowResult":
+    def from_dict(cls, payload: dict[str, Any]) -> AuditLogRecentWindowResult:
         if not isinstance(payload, dict):
             raise ValueError("audit_log_recent_window_result must be a dict")
         records = payload.get("records")

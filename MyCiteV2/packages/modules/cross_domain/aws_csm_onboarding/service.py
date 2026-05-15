@@ -14,7 +14,6 @@ from MyCiteV2.packages.ports.aws_csm_onboarding import (
     AwsCsmOnboardingProfileStorePort,
 )
 
-
 _INBOUND_TOUCHING_ACTIONS = frozenset(
     {
         "refresh_inbound_status",
@@ -89,7 +88,7 @@ class AwsCsmOnboardingService:
                 try:
                     all_profiles = list_callable(tenant_scope_id=None)
                     forwarding_sync = sync_callable(profiles=list(all_profiles or []))
-                except Exception as exc:  # noqa: BLE001 — never block the save
+                except Exception as exc:
                     forwarding_sync = {"status": "failed", "error": str(exc)}
 
         return AwsCsmOnboardingOutcome(

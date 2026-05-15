@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from .codec import encode_canonical_structure_from_addresses
-from .structure import SamrasStructure, address_sort_key, as_text, parent_address as parent_of_address
+from .structure import SamrasStructure, address_sort_key, as_text
+from .structure import parent_address as parent_of_address
 from .validation import InvalidSamrasStructure, validate_address_set
 
 

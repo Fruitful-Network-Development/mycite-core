@@ -14,7 +14,7 @@ on the invariants once a profile is in hand.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field, fields, replace
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 GRANTEE_PROFILE_SCHEMA = "mycite.v2.grantee.profile.v1"
@@ -76,7 +76,7 @@ class PaypalConfig:
         }
 
     @classmethod
-    def from_dict(cls, payload: Any) -> "PaypalConfig":
+    def from_dict(cls, payload: Any) -> PaypalConfig:
         data = payload if isinstance(payload, dict) else {}
         return cls(
             webhook_url=_as_text(data.get("webhook_url")),
@@ -108,7 +108,7 @@ class AwsSesConfig:
         }
 
     @classmethod
-    def from_dict(cls, payload: Any) -> "AwsSesConfig":
+    def from_dict(cls, payload: Any) -> AwsSesConfig:
         data = payload if isinstance(payload, dict) else {}
         return cls(
             region=_as_text(data.get("region")),
@@ -141,7 +141,7 @@ class NewsletterConfig:
         }
 
     @classmethod
-    def from_dict(cls, payload: Any) -> "NewsletterConfig":
+    def from_dict(cls, payload: Any) -> NewsletterConfig:
         data = payload if isinstance(payload, dict) else {}
         return cls(
             selected_sender_address=_as_text(data.get("selected_sender_address")),
@@ -193,7 +193,7 @@ class GranteeProfile:
         return out
 
     @classmethod
-    def from_dict(cls, payload: Any) -> "GranteeProfile":
+    def from_dict(cls, payload: Any) -> GranteeProfile:
         if not isinstance(payload, dict):
             raise ValueError("grantee_profile payload must be a dict")
         declared_schema = _as_text(payload.get("schema"))
@@ -212,7 +212,7 @@ class GranteeProfile:
             newsletter=NewsletterConfig.from_dict(payload["newsletter"]) if isinstance(payload.get("newsletter"), dict) else None,
         )
 
-    def with_paypal(self, paypal: PaypalConfig | None) -> "GranteeProfile":
+    def with_paypal(self, paypal: PaypalConfig | None) -> GranteeProfile:
         """Return a copy of this profile with paypal sub-config replaced.
 
         Used by the runtime to hydrate paypal from the legacy sidecar without
@@ -222,8 +222,8 @@ class GranteeProfile:
 
 
 __all__ = [
-    "AwsSesConfig",
     "GRANTEE_PROFILE_SCHEMA",
+    "AwsSesConfig",
     "GranteeProfile",
     "NewsletterConfig",
     "PaypalConfig",

@@ -21,7 +21,6 @@ from typing import Any
 from MyCiteV2.packages.ports.aws_csm_newsletter import (
     AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
     AWS_CSM_NEWSLETTER_PROFILE_SCHEMA,
-    AwsCsmNewsletterStatePort,
 )
 
 _NEWSLETTER_TABLES_SQL = """

@@ -10,7 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis, run_portal_cts_gis_action
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    run_portal_cts_gis,
+    run_portal_cts_gis_action,
+)
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,

@@ -8,7 +8,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import _normalize_request, run_portal_cts_gis
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    _normalize_request,
+    run_portal_cts_gis,
+)
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 
 

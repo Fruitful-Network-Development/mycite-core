@@ -10,7 +10,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.adapters.sql.datum_semantics import build_document_version_identity
 from MyCiteV2.packages.core.mss.datum_identity import compute_mss_hash, derive_hyphae_chain
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRow
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentRow,
+)
 
 
 def _doc(

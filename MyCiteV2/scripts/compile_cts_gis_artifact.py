@@ -2,14 +2,16 @@ from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    build_portal_cts_gis_surface_bundle,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
@@ -20,7 +22,9 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
-from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     PortalScope,

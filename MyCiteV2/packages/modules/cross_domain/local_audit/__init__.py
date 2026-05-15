@@ -2,9 +2,9 @@
 
 from .service import (
     FORBIDDEN_LOCAL_AUDIT_KEYS,
-    LocalAuditRecord,
-    LocalAuditRecentActivityProjection,
     LocalAuditOperationalStatusSummary,
+    LocalAuditRecentActivityProjection,
+    LocalAuditRecord,
     LocalAuditService,
     LocalAuditVisibleRecord,
     StoredLocalAuditRecord,

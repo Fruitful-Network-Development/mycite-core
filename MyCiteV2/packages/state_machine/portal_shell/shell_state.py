@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Mapping
+from typing import Any
 
+from MyCiteV2.packages.core.scalars import as_text
 from MyCiteV2.packages.state_machine.nimm import (
     NimmDirectiveEnvelope,
     normalize_nimm_verb,
 )
-from MyCiteV2.packages.core.scalars import as_text
 
 from .shell_schemas import (
     FOCUS_LEVEL_INDEX,
@@ -90,7 +91,7 @@ class PortalScope:
         }
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | str | None) -> "PortalScope":
+    def from_value(cls, payload: dict[str, Any] | str | None) -> PortalScope:
         if payload is None:
             return cls()
         if isinstance(payload, str):
@@ -121,7 +122,7 @@ class PortalShellChrome:
         }
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | None) -> "PortalShellChrome":
+    def from_value(cls, payload: dict[str, Any] | None) -> PortalShellChrome:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):
@@ -151,7 +152,7 @@ class PortalFocusSegment:
         return {"level": self.level, "id": self.id}
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | "PortalFocusSegment") -> "PortalFocusSegment":
+    def from_value(cls, payload: dict[str, Any] | PortalFocusSegment) -> PortalFocusSegment:
         if isinstance(payload, cls):
             return payload
         if not isinstance(payload, dict):
@@ -259,11 +260,11 @@ class PortalShellState:
     @classmethod
     def from_value(
         cls,
-        payload: dict[str, Any] | "PortalShellState" | None,
+        payload: dict[str, Any] | PortalShellState | None,
         *,
         portal_scope: PortalScope | None = None,
         fallback_surface_id: str = SYSTEM_ROOT_SURFACE_ID,
-    ) -> "PortalShellState":
+    ) -> PortalShellState:
         if isinstance(payload, cls):
             return payload
         if payload is None:
@@ -324,7 +325,7 @@ class PortalShellTransition:
         return payload
 
     @classmethod
-    def from_value(cls, payload: dict[str, Any] | "PortalShellTransition" | None) -> "PortalShellTransition | None":
+    def from_value(cls, payload: dict[str, Any] | PortalShellTransition | None) -> PortalShellTransition | None:
         if payload is None:
             return None
         if isinstance(payload, cls):
@@ -397,7 +398,7 @@ class PortalShellRequest:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any] | None) -> "PortalShellRequest":
+    def from_dict(cls, payload: dict[str, Any] | None) -> PortalShellRequest:
         if payload is None:
             return cls()
         if not isinstance(payload, dict):

@@ -6,6 +6,11 @@ from typing import Any
 
 from MyCiteV2.packages.core.scalars import as_text
 
+from .shell_registry import (
+    is_tool_surface,
+    resolve_portal_tool_registry_entry,
+    surface_root_id,
+)
 from .shell_schemas import (
     AWS_CSM_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -13,11 +18,6 @@ from .shell_schemas import (
     FND_EBI_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PAYPAL_CSM_TOOL_SURFACE_ID,
-    PORTAL_SCOPE_DEFAULT_ID,
-    PORTAL_SHELL_COMPOSITION_SCHEMA,
-    PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA,
-    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-    PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
@@ -28,11 +28,6 @@ from .shell_schemas import (
 )
 from .shell_state import (
     PortalShellState,
-)
-from .shell_registry import (
-    is_tool_surface,
-    resolve_portal_tool_registry_entry,
-    surface_root_id,
 )
 
 

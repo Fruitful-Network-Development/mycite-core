@@ -1,20 +1,20 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import sys
 import unittest
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.packages.core.structures.hops.chronology import (  # noqa: E402
+from MyCiteV2.packages.core.structures.hops.chronology import (
     build_chronology_authority,
     encode_utc_datetime_as_hops,
 )
-from MyCiteV2.packages.core.structures.hops.time_address import compare_time_addresses  # noqa: E402
-from MyCiteV2.packages.core.structures.hops.time_address_schema import (  # noqa: E402
+from MyCiteV2.packages.core.structures.hops.time_address import compare_time_addresses
+from MyCiteV2.packages.core.structures.hops.time_address_schema import (
     schema_from_anchor_payload,
     validate_address_with_schema,
 )
@@ -55,7 +55,7 @@ class HopsChronologyTests(unittest.TestCase):
             quadrennium_payload=self._quadrennium_payload(),
         )
         hops = encode_utc_datetime_as_hops(
-            datetime(2026, 7, 4, 12, 34, 56, tzinfo=timezone.utc),
+            datetime(2026, 7, 4, 12, 34, 56, tzinfo=UTC),
             authority=authority,
         )
         self.assertEqual(hops, "0-0-0-507-916-12-34-56")

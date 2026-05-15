@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import sys
+import json
 import multiprocessing
+import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
-import json
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -16,8 +16,8 @@ from MyCiteV2.packages.ports.audit_log import (
     AUDIT_LOG_RECENT_WINDOW_LIMIT,
     AuditLogAppendRequest,
     AuditLogPort,
-    AuditLogRecentWindowRequest,
     AuditLogReadRequest,
+    AuditLogRecentWindowRequest,
 )
 
 

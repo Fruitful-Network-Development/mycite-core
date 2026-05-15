@@ -41,7 +41,6 @@ from MyCiteV2.packages.ports.datum_store import (
 )
 from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
 
-
 FND_CSM_SANDBOX = FND_CSM_SANDBOX_TOKEN
 ANCHOR_NAME = "anchor"
 DEFAULT_TENANT_ID = "fnd"
@@ -78,7 +77,7 @@ def _existing_anchor(
     for document in catalog.documents:
         if not document.is_anchor:
             continue
-        if document.document_id.startswith(f"lv.") and f".{FND_CSM_SANDBOX}." in document.document_id:
+        if document.document_id.startswith("lv.") and f".{FND_CSM_SANDBOX}." in document.document_id:
             return document
     return None
 

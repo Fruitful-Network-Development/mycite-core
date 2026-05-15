@@ -59,7 +59,7 @@ class SystemDatumStoreRequest:
         return {"tenant_id": self.tenant_id}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "SystemDatumStoreRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> SystemDatumStoreRequest:
         if not isinstance(payload, dict):
             raise ValueError("system_datum_store_request must be a dict")
         return cls(tenant_id=payload.get("tenant_id"))
@@ -79,7 +79,7 @@ class AuthoritativeDatumDocumentRequest:
         return {"tenant_id": self.tenant_id}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> AuthoritativeDatumDocumentRequest:
         if not isinstance(payload, dict):
             raise ValueError("authoritative_datum_document_request must be a dict")
         return cls(tenant_id=payload.get("tenant_id"))
@@ -110,7 +110,7 @@ class AuthoritativeDatumDocumentRow:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentRow":
+    def from_dict(cls, payload: dict[str, Any]) -> AuthoritativeDatumDocumentRow:
         if not isinstance(payload, dict):
             raise ValueError("authoritative_datum_document_row must be a dict")
         return cls(
@@ -230,7 +230,7 @@ class AuthoritativeDatumDocument:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocument":
+    def from_dict(cls, payload: dict[str, Any]) -> AuthoritativeDatumDocument:
         if not isinstance(payload, dict):
             raise ValueError("authoritative_datum_document must be a dict")
         anchor_rows = payload.get("anchor_rows") or ()
@@ -320,7 +320,7 @@ class AuthoritativeDatumDocumentCatalogResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AuthoritativeDatumDocumentCatalogResult":
+    def from_dict(cls, payload: dict[str, Any]) -> AuthoritativeDatumDocumentCatalogResult:
         if not isinstance(payload, dict):
             raise ValueError("authoritative_datum_document_catalog must be a dict")
         documents = payload.get("documents") or ()
@@ -370,7 +370,7 @@ class SystemDatumResourceRow:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "SystemDatumResourceRow":
+    def from_dict(cls, payload: dict[str, Any]) -> SystemDatumResourceRow:
         if not isinstance(payload, dict):
             raise ValueError("system_datum_resource_row must be a dict")
         labels = payload.get("labels") or ()
@@ -466,7 +466,7 @@ class PublicationTenantSummaryRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationTenantSummaryRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationTenantSummaryRequest:
         if not isinstance(payload, dict):
             raise ValueError("publication_tenant_summary_request must be a dict")
         return cls(
@@ -540,7 +540,7 @@ class PublicationTenantSummarySource:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationTenantSummarySource":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationTenantSummarySource:
         if not isinstance(payload, dict):
             raise ValueError("publication_tenant_summary_source must be a dict")
         return cls(
@@ -593,7 +593,7 @@ class PublicationTenantSummaryResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationTenantSummaryResult":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationTenantSummaryResult:
         if not isinstance(payload, dict):
             raise ValueError("publication_tenant_summary_result must be a dict")
         warnings = payload.get("warnings") or ()
@@ -647,7 +647,7 @@ class PublicationProfileBasicsWriteRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsWriteRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationProfileBasicsWriteRequest:
         if not isinstance(payload, dict):
             raise ValueError("publication_profile_basics_write_request must be a dict")
         return cls(
@@ -700,7 +700,7 @@ class PublicationProfileBasicsWriteResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PublicationProfileBasicsWriteResult":
+    def from_dict(cls, payload: dict[str, Any]) -> PublicationProfileBasicsWriteResult:
         if not isinstance(payload, dict):
             raise ValueError("publication_profile_basics_write_result must be a dict")
         warnings = payload.get("warnings") or ()

@@ -10,12 +10,17 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import build_system_workspace_bundle
-from MyCiteV2.packages.adapters.sql import SqliteDirectiveContextAdapter, SqliteSystemDatumStoreAdapter
+from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
+    build_system_workspace_bundle,
+)
+from MyCiteV2.packages.adapters.sql import (
+    SqliteDirectiveContextAdapter,
+    SqliteSystemDatumStoreAdapter,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
-    PortalScope,
     SYSTEM_ROOT_SURFACE_ID,
     TRANSITION_FOCUS_DATUM,
+    PortalScope,
     initial_portal_shell_state,
     reduce_portal_shell_state,
 )

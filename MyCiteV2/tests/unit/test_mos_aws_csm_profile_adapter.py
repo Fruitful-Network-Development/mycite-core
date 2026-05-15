@@ -13,8 +13,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.adapters.sql.aws_csm_profile_registry import (
     DOMAIN_SCHEMA,
-    MosDatumAwsCsmProfileAdapter,
     PROFILE_SCHEMA,
+    MosDatumAwsCsmProfileAdapter,
 )
 
 

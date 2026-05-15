@@ -17,8 +17,8 @@ at least ``datum_address``); ``raw`` and any other content is preserved.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 
 _DATUM_ADDRESS_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 

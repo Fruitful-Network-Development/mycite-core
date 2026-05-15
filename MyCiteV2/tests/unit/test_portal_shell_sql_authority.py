@@ -11,7 +11,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
-from MyCiteV2.packages.adapters.sql import SqlitePortalAuthorityAdapter, SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql import (
+    SqlitePortalAuthorityAdapter,
+    SqliteSystemDatumStoreAdapter,
+)
 
 
 def _seed_sql_authority(*, data_dir: Path, public_dir: Path, db_file: Path) -> None:

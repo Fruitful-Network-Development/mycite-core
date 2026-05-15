@@ -15,8 +15,20 @@ from .mutation import (
     remove_branch,
     set_child_count,
 )
-from .structure import SamrasStructure, address_depth, address_sort_key, as_text, format_address, parent_address
-from .validation import InvalidSamrasStructure, child_counts_from_addresses, derive_addresses_from_child_counts, validate_structure
+from .structure import (
+    SamrasStructure,
+    address_depth,
+    address_sort_key,
+    as_text,
+    format_address,
+    parent_address,
+)
+from .validation import (
+    InvalidSamrasStructure,
+    child_counts_from_addresses,
+    derive_addresses_from_child_counts,
+    validate_structure,
+)
 from .workspace_adapter import (
     SamrasStructureAuthority,
     SamrasWorkspaceNode,

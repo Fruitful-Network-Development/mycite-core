@@ -112,7 +112,7 @@ class FndDcmReadOnlyRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndDcmReadOnlyRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> FndDcmReadOnlyRequest:
         if not isinstance(payload, dict):
             raise ValueError("fnd_dcm_read_only_request must be a dict")
         return cls(
@@ -139,7 +139,7 @@ class FndDcmReadOnlySource:
         return {"payload": dict(self.payload)}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndDcmReadOnlySource":
+    def from_dict(cls, payload: dict[str, Any]) -> FndDcmReadOnlySource:
         if not isinstance(payload, dict):
             raise ValueError("fnd_dcm_read_only_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -170,7 +170,7 @@ class FndDcmReadOnlyResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndDcmReadOnlyResult":
+    def from_dict(cls, payload: dict[str, Any]) -> FndDcmReadOnlyResult:
         if not isinstance(payload, dict):
             raise ValueError("fnd_dcm_read_only_result must be a dict")
         return cls(source=payload.get("source"))

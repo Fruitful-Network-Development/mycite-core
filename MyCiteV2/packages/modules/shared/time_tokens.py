@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def utc_now_iso(*, seconds_precision: bool = False) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if seconds_precision:
         now = now.replace(microsecond=0)
     return now.isoformat()

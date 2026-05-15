@@ -8,10 +8,6 @@ from MyCiteV2.packages.core.structures.hops import (
     classify_hops_coordinate_token,
     decode_hops_coordinate_token,
 )
-from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
-    DEFAULT_ATTENTION_NODE_ID as _DEFAULT_ATTENTION_NODE_ID,
-    as_text as _as_text,
-)
 from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
     _address_tuple,
     _as_lower,
@@ -20,6 +16,12 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
     _parent_node_id,
     _profile_sort_key,
     _sorted_addresses,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_ATTENTION_NODE_ID as _DEFAULT_ATTENTION_NODE_ID,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    as_text as _as_text,
 )
 from MyCiteV2.packages.modules.domains.datum_recognition import (
     DatumRecognitionDocument,

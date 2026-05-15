@@ -10,8 +10,8 @@ for the canonical schema and storage invariants.
 """
 
 from .schema import (
-    AwsSesConfig,
     GRANTEE_PROFILE_SCHEMA,
+    AwsSesConfig,
     GranteeProfile,
     NewsletterConfig,
     PaypalConfig,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from MyCiteV2.packages.ports.aws_csm_newsletter import AwsCsmNewsletterCloudPort
@@ -37,7 +37,7 @@ def _email_domain(value: object) -> str:
 
 def _iso_timestamp(value: object) -> str:
     if isinstance(value, datetime):
-        return value.astimezone(timezone.utc).isoformat()
+        return value.astimezone(UTC).isoformat()
     return _as_text(value)
 
 
@@ -142,7 +142,7 @@ class AwsEc2RoleNewsletterCloudAdapter(AwsCsmNewsletterCloudPort):
                 "arn": _as_text(response.get("Arn")),
                 "user_id": _as_text(response.get("UserId")),
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"status": "error", "message": _as_text(exc)}
 
     def queue_health_summary(self, *, queue_url: str, queue_arn: str, region: str) -> dict[str, Any]:
@@ -157,7 +157,7 @@ class AwsEc2RoleNewsletterCloudAdapter(AwsCsmNewsletterCloudPort):
                 "queue_arn": _as_text(values.get("QueueArn")) or queue_arn,
                 "pending_message_count": int(values.get("ApproximateNumberOfMessages") or 0),
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"status": "error", "message": _as_text(exc)}
 
     def lambda_health_summary(self, *, function_name: str, region: str) -> dict[str, Any]:
@@ -170,7 +170,7 @@ class AwsEc2RoleNewsletterCloudAdapter(AwsCsmNewsletterCloudPort):
                 "role": _as_text(configuration.get("Role")),
                 "last_modified": _as_text(configuration.get("LastModified")),
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"status": "error", "message": _as_text(exc)}
 
     def receipt_rule_summary(
@@ -184,7 +184,7 @@ class AwsEc2RoleNewsletterCloudAdapter(AwsCsmNewsletterCloudPort):
         try:
             response = self._client("ses", region=region).describe_active_receipt_rule_set()
             rules = list(response.get("Rules") or [])
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {"status": "error", "message": _as_text(exc)}
         matching = []
         expected_email = _normalized_email(expected_recipient)

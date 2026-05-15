@@ -27,7 +27,7 @@ Profile, secret, and bootstrap methods delegate to a wrapped
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,20 +36,12 @@ from MyCiteV2.packages.core.datum_templates.bacillete import (
     encode_email_bacillete,
     encode_name_bacillete,
 )
-from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
-from MyCiteV2.packages.ports.aws_csm_newsletter import (
-    AwsCsmNewsletterStatePort,
-)
-from MyCiteV2.packages.ports.aws_csm_newsletter.contracts import (
-    AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
-)
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
-    AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
-
+from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
 
 V2_SCHEMA = "mycite.v2.datum.fnd.newsletter.contact_log.v2"
 SANDBOX = FND_CSM_SANDBOX_TOKEN
@@ -66,7 +58,7 @@ def _canonical_name_for(domain: str) -> str:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _as_text(value: object) -> str:
@@ -344,7 +336,7 @@ class CompositeAwsCsmNewsletterStateAdapter:
 
 
 __all__ = [
+    "V2_SCHEMA",
     "CompositeAwsCsmNewsletterStateAdapter",
     "MosDatumNewsletterContactLogAdapter",
-    "V2_SCHEMA",
 ]

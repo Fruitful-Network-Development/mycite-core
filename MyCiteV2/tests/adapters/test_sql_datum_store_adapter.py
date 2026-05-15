@@ -11,8 +11,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
-from MyCiteV2.packages.adapters.sql._sqlite import open_sqlite
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql._sqlite import open_sqlite
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,

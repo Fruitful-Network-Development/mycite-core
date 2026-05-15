@@ -54,7 +54,7 @@ class AwsReadOnlyStatusRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsReadOnlyStatusRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsReadOnlyStatusRequest:
         if not isinstance(payload, dict):
             raise ValueError("aws_read_only_status_request must be a dict")
         return cls(tenant_scope_id=payload.get("tenant_scope_id"))
@@ -77,7 +77,7 @@ class AwsReadOnlyStatusSource:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsReadOnlyStatusSource":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsReadOnlyStatusSource:
         if not isinstance(payload, dict):
             raise ValueError("aws_read_only_status_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -108,7 +108,7 @@ class AwsReadOnlyStatusResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "AwsReadOnlyStatusResult":
+    def from_dict(cls, payload: dict[str, Any]) -> AwsReadOnlyStatusResult:
         if not isinstance(payload, dict):
             raise ValueError("aws_read_only_status_result must be a dict")
         return cls(source=payload.get("source"))

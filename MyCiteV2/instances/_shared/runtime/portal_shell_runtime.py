@@ -34,18 +34,17 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
-    PortalScope,
-    PortalShellRequest,
-    PortalShellState,
-    SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
+    SYSTEM_SURFACE_IDS,
     TRANSITION_FOCUS_FILE,
     UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-    VERB_NAVIGATE,
     WORKBENCH_UI_TOOL_SURFACE_ID,
+    PortalScope,
+    PortalShellRequest,
+    PortalShellState,
     activity_icon_id_for_surface,
     build_canonical_url,
     build_portal_activity_dispatch_bodies,
@@ -57,7 +56,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonicalize_portal_shell_state,
     initial_portal_shell_state,
     resolve_portal_shell_request,
-    SYSTEM_SURFACE_IDS,
 )
 
 
@@ -827,7 +825,9 @@ def _build_cts_gis_tool_bundle(
     tool_rows: list[dict[str, Any]],
     **_: Any,
 ) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
+    from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+        build_portal_cts_gis_surface_bundle,
+    )
 
     if shell_state is None:
         raise ValueError("CTS-GIS shell bundle requires reducer-owned shell_state")
@@ -855,7 +855,9 @@ def _build_fnd_csm_tool_bundle(
     authority_db_file: str | Path | None = None,
     **_: Any,
 ) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import build_portal_fnd_csm_surface_bundle
+    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+        build_portal_fnd_csm_surface_bundle,
+    )
 
     if shell_state is None:
         raise ValueError("FND-CSM shell bundle requires reducer-owned shell_state")

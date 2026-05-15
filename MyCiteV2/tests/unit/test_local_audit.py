@@ -9,9 +9,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.modules.cross_domain.local_audit import (
-    LocalAuditRecord,
-    LocalAuditRecentActivityProjection,
     LocalAuditOperationalStatusSummary,
+    LocalAuditRecentActivityProjection,
+    LocalAuditRecord,
     LocalAuditService,
     LocalAuditVisibleRecord,
     StoredLocalAuditRecord,
@@ -19,8 +19,8 @@ from MyCiteV2.packages.modules.cross_domain.local_audit import (
 )
 from MyCiteV2.packages.ports.audit_log import (
     AuditLogAppendReceipt,
-    AuditLogRecentWindowResult,
     AuditLogReadResult,
+    AuditLogRecentWindowResult,
     AuditLogRecord,
 )
 

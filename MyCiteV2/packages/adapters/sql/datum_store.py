@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.sql._sqlite import dumps_json, loads_json, open_sqlite
 from MyCiteV2.packages.adapters.sql.datum_semantics import (
     build_document_semantics,
+)
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_delete as preview_document_delete_mutation,
+)
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_insert as preview_document_insert_mutation,
+)
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_move as preview_document_move_mutation,
 )
 from MyCiteV2.packages.core.document_naming import is_canonical_document_id
@@ -27,7 +34,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentMutationPort,
-    AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
     PublicationProfileBasicsWritePort,
     PublicationProfileBasicsWriteRequest,

@@ -5,7 +5,7 @@ from typing import Any
 
 from MyCiteV2.packages.state_machine.lens import Lens
 
-from .directives import NimmDirective, NimmTargetAddress, VERB_MANIPULATE
+from .directives import VERB_MANIPULATE, NimmDirective, NimmTargetAddress
 from .envelope import NimmDirectiveEnvelope
 
 
@@ -63,7 +63,7 @@ class StagingArea:
         target: NimmTargetAddress | dict[str, Any],
         lens: Lens,
         display_value: Any,
-    ) -> "StagingArea":
+    ) -> StagingArea:
         normalized_target = target if isinstance(target, NimmTargetAddress) else NimmTargetAddress.from_value(target)
         issues = lens.validate_display(display_value)
         canonical_value = lens.encode(display_value)
@@ -81,7 +81,7 @@ class StagingArea:
         next_values[_target_key(replacement.target)] = replacement
         return StagingArea(staged_values=tuple(next_values.values()))
 
-    def discard(self) -> "StagingArea":
+    def discard(self) -> StagingArea:
         return StagingArea(staged_values=())
 
     def to_dict(self) -> dict[str, Any]:

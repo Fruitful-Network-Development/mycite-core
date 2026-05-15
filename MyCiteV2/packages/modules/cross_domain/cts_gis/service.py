@@ -3,40 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
-    BRANCH_INTENTION_PREFIX as _BRANCH_INTENTION_PREFIX,
-    CTS_GIS_CANONICAL_DOCUMENT_PREFIX as _CTS_GIS_CANONICAL_DOCUMENT_PREFIX,
-    CTS_GIS_CANONICAL_TOOL_PUBLIC_ID as _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID,
-    DEFAULT_ATTENTION_NODE_ID as _DEFAULT_ATTENTION_NODE_ID,
-    DEFAULT_ATTENTION_PROFILE_LABEL as _DEFAULT_ATTENTION_PROFILE_LABEL,
-    DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_TOKEN,
-    DEFAULT_PROJECTION_DOCUMENT_SUFFIX as _DEFAULT_PROJECTION_DOCUMENT_SUFFIX,
-    DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
-    DEFAULT_TIME_DIRECTIVE as _DEFAULT_TIME_DIRECTIVE,
-    LEGACY_SELF_INTENTION_TOKEN as _LEGACY_SELF_INTENTION_TOKEN,
-    as_text as _as_text,
-    canonical_service_intention_token,
-    children_intention_token as _contract_children_intention_token,
-    descendants_intention_token as _contract_descendants_intention_token,
-)
-from MyCiteV2.packages.modules.domains.datum_recognition import (
-    DatumRecognitionDocument,
-    DatumRecognitionRow,
-    DatumWorkbenchService,
-)
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
-from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
-    _address_is_descendant,
-    _address_tuple,
-    _as_lower,
-    _first_non_empty,
-    _node_depth,
-    _parent_node_id,
-    _profile_sort_key,
-    _sorted_addresses,
-)
 from MyCiteV2.packages.modules.cross_domain.cts_gis._overlay import (
-    _district_collection_label,
     _district_precinct_collection_summaries,
     _district_timeframe_tokens,
     _document_district_timeframe_tokens,
@@ -48,36 +15,66 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis._overlay import (
     _time_context_in_timeframe,
 )
 from MyCiteV2.packages.modules.cross_domain.cts_gis._projection import (
-    _binding_family,
-    _binding_overlay,
     _build_document_projection,
-    _build_cts_gis_coordinate_authority,
-    _coordinate_projection,
-    _coordinate_ring,
     _dedupe_texts,
     _feature_bounds,
-    _feature_bounds_from_geometry,
-    _feature_from_geometry,
-    _feature_from_row,
-    _geometry_from_row_address,
     _geometry_points,
-    _geometry_polygons,
-    _linked_row_addresses,
-    _node_guardrail_envelope,
-    _normalized_reference_ring,
-    _prefer_reference_geojson_projection,
-    _primary_samras_node_id,
     _projection_summary_for_row_addresses,
-    _reachable_row_addresses,
-    _reference_geojson_profile_features,
-    _row_declared_coordinate_count,
-    _row_family,
-    _row_label_text,
-    _row_polygon_groups,
-    _row_projection,
-    _safe_coordinate_pair,
-    _semantic_projection_assessment,
 )
+from MyCiteV2.packages.modules.cross_domain.cts_gis._utils import (
+    _address_is_descendant,
+    _address_tuple,
+    _as_lower,
+    _first_non_empty,
+    _node_depth,
+    _parent_node_id,
+    _profile_sort_key,
+    _sorted_addresses,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    BRANCH_INTENTION_PREFIX as _BRANCH_INTENTION_PREFIX,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_CANONICAL_DOCUMENT_PREFIX as _CTS_GIS_CANONICAL_DOCUMENT_PREFIX,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_CANONICAL_TOOL_PUBLIC_ID as _CTS_GIS_CANONICAL_TOOL_PUBLIC_ID,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_ATTENTION_NODE_ID as _DEFAULT_ATTENTION_NODE_ID,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_ATTENTION_PROFILE_LABEL as _DEFAULT_ATTENTION_PROFILE_LABEL,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_INTENTION_TOKEN as _DEFAULT_INTENTION_TOKEN,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_PROJECTION_DOCUMENT_SUFFIX as _DEFAULT_PROJECTION_DOCUMENT_SUFFIX,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    DEFAULT_SUPPORTING_DOCUMENT_NAME as _DEFAULT_SUPPORTING_DOCUMENT_NAME,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    LEGACY_SELF_INTENTION_TOKEN as _LEGACY_SELF_INTENTION_TOKEN,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    as_text as _as_text,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    canonical_service_intention_token,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    children_intention_token as _contract_children_intention_token,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    descendants_intention_token as _contract_descendants_intention_token,
+)
+from MyCiteV2.packages.modules.domains.datum_recognition import (
+    DatumRecognitionDocument,
+    DatumWorkbenchService,
+)
+from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentPort
 
 _VALID_OVERLAY_MODES = frozenset({"auto", "raw_only"})
 

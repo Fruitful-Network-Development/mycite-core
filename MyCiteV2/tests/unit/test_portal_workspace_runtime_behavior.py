@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import sys
 import unittest
-from unittest.mock import patch
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -22,25 +22,25 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_system_workspace_bundle,
     read_system_workbench_projection,
 )
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.adapters.filesystem.network_root_read_model import build_system_log_document
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.structures.samras import encode_canonical_structure_from_addresses
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     FOCUS_LEVEL_OBJECT,
     FOCUS_LEVEL_SANDBOX,
     NETWORK_ROOT_SURFACE_ID,
-    PortalScope,
     SYSTEM_ROOT_SURFACE_ID,
     TRANSITION_BACK_OUT,
     TRANSITION_FOCUS_DATUM,
     TRANSITION_FOCUS_FILE,
     TRANSITION_FOCUS_OBJECT,
     TRANSITION_SET_VERB,
-    build_shell_composition_payload,
     UTILITIES_ROOT_SURFACE_ID,
     VERB_MEDIATE,
     VERB_NAVIGATE,
+    PortalScope,
+    build_shell_composition_payload,
     initial_portal_shell_state,
     reduce_portal_shell_state,
 )
@@ -1352,13 +1352,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             base_collections = list(base_profile.get("district_precinct_collections") or [])
             self.assertEqual(base_collections[0]["summary_state"], "deferred")
             toggle_request = dict(
-                (
+                
                     (
                         base_profile.get("district_overlay_toggle")
                         or {}
                     ).get("shell_request")
                     or {}
-                )
+                
             )
 
             self.assertEqual(toggle_request.get("runtime_mode"), "audit_forensic")
@@ -2258,7 +2258,9 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
 
             scope = PortalScope(scope_id="fnd", capabilities=("fnd_peripheral_routing",))
 
-            from MyCiteV2.instances._shared.runtime import portal_system_workspace_runtime as workspace_runtime
+            from MyCiteV2.instances._shared.runtime import (
+                portal_system_workspace_runtime as workspace_runtime,
+            )
 
             workspace_runtime._invalidate_workbench_projection_cache()
             with patch.object(

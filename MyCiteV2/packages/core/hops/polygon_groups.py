@@ -18,7 +18,7 @@ row_record`` where each row exposes (a) its address (in the dict key) and
 from __future__ import annotations
 
 import re
-from typing import Callable, Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 
 _DATUM_ADDRESS_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
 

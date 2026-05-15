@@ -38,7 +38,7 @@ class ParsedDocumentId:
 
     prefix: str
     msn_id: str
-    sandbox: Optional[str]
+    sandbox: str | None
     name: str
     version_hash: str
 
@@ -67,7 +67,7 @@ def format_canonical_document_id(
     *,
     prefix: str,
     msn_id: str,
-    sandbox: Optional[str],
+    sandbox: str | None,
     name: str,
     version_hash: str,
 ) -> str:
@@ -176,7 +176,7 @@ _SC_MSN_RE = re.compile(r"^[0-9][0-9\-]*[0-9]$")
 _SC_NAMESPACE_MARKERS = ("msn-", "msn_", "fnd.", "cts.", "registrar.")
 
 
-def extract_semantic_name_from_sc_stem(stem: str) -> Optional[str]:
+def extract_semantic_name_from_sc_stem(stem: str) -> str | None:
     """Extract the canonical semantic name from a source-file stem.
 
     Source files follow the pattern ``sc.<msn_id>.<namespace><semantic>``.

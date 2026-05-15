@@ -30,10 +30,10 @@ from MyCiteV2.packages.state_machine.portal_shell.shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
-    PortalToolRegistryEntry,
     SURFACE_POSTURE_PALETTE_TARGET,
     TOOL_KIND_GENERAL,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+    PortalToolRegistryEntry,
 )
 from MyCiteV2.packages.state_machine.portal_shell.tool_eligibility import (
     recognize_applicable_tools,

@@ -1,23 +1,24 @@
 from __future__ import annotations
 
 import base64
+import fcntl
+import hashlib
+import hmac
+import io
+import json
+import os
+import time
+import zipfile
+from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email import policy
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.parser import BytesParser
 from email.utils import formataddr, getaddresses, make_msgid
-import io
-import fcntl
-import hashlib
-import hmac
-import json
-import os
-import time
 from pathlib import Path
-from typing import Any, Iterator
-import zipfile
+from typing import Any
 
 from MyCiteV2.packages.adapters.event_transport.aws_csm_newsletter_cloud import (
     AwsEc2RoleNewsletterCloudAdapter,
@@ -83,7 +84,7 @@ def _as_bool(value: Any) -> bool:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def _normalized_domain(value: object) -> str:
@@ -255,7 +256,7 @@ def _aws_smtp_password(secret_access_key: str, *, region: str) -> str:
 def _raw_message_summary(raw_bytes: bytes) -> dict[str, Any]:
     try:
         message = BytesParser(policy=policy.default).parsebytes(raw_bytes)
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {
             "sender": "",
             "recipient": "",
@@ -521,7 +522,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         try:
             client.get_email_identity(EmailIdentity=domain)
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             message = _as_text(exc).lower()
             if "notfound" not in message and "not found" not in message:
                 raise
@@ -846,7 +847,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 parsed_policy = json.loads(policy_text)
                 if isinstance(parsed_policy, dict):
                     existing_policy = parsed_policy
-            except Exception:  # noqa: BLE001 — boto3 raises ResourceNotFoundException when no policy
+            except Exception:
                 existing_policy = {"Statement": []}
             statements = list(existing_policy.get("Statement") or [])
             has_perm = any(
@@ -1181,7 +1182,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return summary
         try:
             raw_bytes = self.read_s3_bytes(s3_uri=s3_uri_token, region=region)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             summary["access_error"] = _as_text(exc)
             return summary
         summary["accessible"] = bool(raw_bytes)
@@ -1239,7 +1240,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                     seen.add(key)
                     try:
                         candidates.extend(self.list_s3_objects(bucket=bucket, prefix=prefix, region=region, max_keys=20))
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         continue
         if matching_rules:
             default_bucket = _as_text(_as_dict(matching_rules[0]).get("s3_bucket"))
@@ -1249,7 +1250,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                     seen.add(key)
                     try:
                         candidates.extend(self.list_s3_objects(bucket=default_bucket, prefix=prefix, region=region, max_keys=20))
-                    except Exception:  # noqa: BLE001
+                    except Exception:
                         continue
         candidates.sort(key=lambda item: item.get("last_modified") or "", reverse=True)
         for candidate in candidates[:40]:
@@ -1357,7 +1358,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return {}
         try:
             payload = self._newsletter_state.load_profile(domain=domain)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {}
         return payload if isinstance(payload, dict) else {}
 
@@ -1381,7 +1382,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return []
         try:
             response = self._client("route53domains", region=_DEFAULT_REGION).get_domain_detail(DomainName=domain)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         nameservers = []
         for row in _as_list(response.get("Nameservers")):
@@ -1397,7 +1398,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             return []
         try:
             response = self._client("route53").get_hosted_zone(Id=hosted_zone_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         delegation = _as_dict(response.get("DelegationSet"))
         nameservers = [
@@ -1424,7 +1425,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
             }
         try:
             response = self._client("route53").list_resource_record_sets(HostedZoneId=hosted_zone_id)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {
                 "mx_record_present": False,
                 "mx_record_values": [],
@@ -1481,7 +1482,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         client = self._client("sesv2", region=region)
         try:
             response = client.get_email_identity(EmailIdentity=domain)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             message = _as_text(exc).lower()
             if "notfound" in message or "not found" in message:
                 return {
@@ -1531,7 +1532,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 "state": "missing",
                 "message": "No SMTP secret exists yet.",
             }
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {
                 "secret_name": secret_name,
                 "username": "",
@@ -1586,7 +1587,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 return current
             try:
                 created = self._create_smtp_secret_material(secret_name=secret_name, region=region)
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 current["state"] = "error"
                 current["message"] = _as_text(exc) or "Unable to materialize SMTP secret material."
                 return current
@@ -1673,7 +1674,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
                 kwargs["NextToken"] = next_token
             try:
                 response = client.list_secrets(**kwargs)
-            except Exception:  # noqa: BLE001
+            except Exception:
                 return collected
             for row in _as_list(response.get("SecretList")):
                 if not isinstance(row, dict):
@@ -1690,7 +1691,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
     def _list_smtp_access_keys(self) -> list[dict[str, Any]]:
         try:
             payload = self._client("iam").list_access_keys(UserName=_AWS_SMTP_IAM_USER)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return []
         rows = payload.get("AccessKeyMetadata") if isinstance(payload, dict) else []
         out: list[dict[str, Any]] = []
@@ -1904,7 +1905,7 @@ class AwsEc2RoleOnboardingCloudAdapter(AwsEc2RoleNewsletterCloudAdapter, AwsCsmO
         client = self._client("sesv2", region=region)
         try:
             response = client.get_email_identity(EmailIdentity=identity)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             message = _as_text(exc)
             lowered = message.lower()
             if "notfound" in lowered or "not found" in lowered:

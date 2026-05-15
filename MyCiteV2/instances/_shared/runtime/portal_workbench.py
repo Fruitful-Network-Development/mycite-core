@@ -102,7 +102,7 @@ def _document_summary(document: Any | None) -> dict[str, Any]:
     if document is None:
         return {}
     if hasattr(document, "to_summary_dict"):
-        summary = getattr(document, "to_summary_dict")()
+        summary = document.to_summary_dict()
         if isinstance(summary, dict):
             document = summary
     if isinstance(document, dict) and isinstance(document.get("document_summary"), dict):
@@ -538,7 +538,7 @@ def build_datum_file_workbench(
 
 
 __all__ = [
-    "build_datum_file_workbench",
-    "PORTAL_SHELL_REGION_DATUM_FILE_WORKBENCH_SCHEMA",
     "DATUM_FILE_WORKBENCH_KIND",
+    "PORTAL_SHELL_REGION_DATUM_FILE_WORKBENCH_SCHEMA",
+    "build_datum_file_workbench",
 ]

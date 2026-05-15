@@ -10,7 +10,6 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_STATE_ROOT = Path("/srv/mycite-state/instances/fnd/private/utilities/tools/aws-csm")
 LAMBDA_SOURCE = REPO_ROOT / "MyCiteV2" / "packages" / "adapters" / "event_transport" / "aws_csm_inbound_capture_lambda.py"

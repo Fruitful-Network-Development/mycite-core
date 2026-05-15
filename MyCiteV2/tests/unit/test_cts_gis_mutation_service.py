@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 import sys
 import unittest
-from unittest.mock import patch
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:

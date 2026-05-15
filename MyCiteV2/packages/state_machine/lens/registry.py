@@ -83,4 +83,4 @@ def resolve_datum_lens(
     )
 
 
-__all__ = ["DatumLensRegistry", "DEFAULT_DATUM_LENS_REGISTRY", "LensResolution", "resolve_datum_lens"]
+__all__ = ["DEFAULT_DATUM_LENS_REGISTRY", "DatumLensRegistry", "LensResolution", "resolve_datum_lens"]

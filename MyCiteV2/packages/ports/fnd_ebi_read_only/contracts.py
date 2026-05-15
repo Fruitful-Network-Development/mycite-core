@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 from typing import Any, Protocol, runtime_checkable
 
 JsonScalar = str | int | float | bool | None
@@ -95,7 +95,7 @@ class FndEbiReadOnlyRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiReadOnlyRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiReadOnlyRequest:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_read_only_request must be a dict")
         return cls(
@@ -120,7 +120,7 @@ class FndEbiReadOnlySource:
         return {"payload": dict(self.payload)}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiReadOnlySource":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiReadOnlySource:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_read_only_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -151,7 +151,7 @@ class FndEbiReadOnlyResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "FndEbiReadOnlyResult":
+    def from_dict(cls, payload: dict[str, Any]) -> FndEbiReadOnlyResult:
         if not isinstance(payload, dict):
             raise ValueError("fnd_ebi_read_only_result must be a dict")
         return cls(source=payload.get("source"))

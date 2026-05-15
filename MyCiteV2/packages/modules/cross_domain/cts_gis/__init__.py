@@ -19,8 +19,8 @@ from .compiled_artifact import (
     read_compiled_artifact_cached,
     read_district_profile_static_from_source_datum,
     read_district_profile_static_with_geometry_from_source_datum,
-    validate_cts_gis_source_layout,
     validate_compiled_artifact,
+    validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
 from .mutation_service import (

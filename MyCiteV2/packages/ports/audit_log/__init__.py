@@ -5,10 +5,10 @@ from .contracts import (
     AuditLogAppendReceipt,
     AuditLogAppendRequest,
     AuditLogPort,
-    AuditLogRecentWindowRequest,
-    AuditLogRecentWindowResult,
     AuditLogReadRequest,
     AuditLogReadResult,
+    AuditLogRecentWindowRequest,
+    AuditLogRecentWindowResult,
     AuditLogRecord,
 )
 

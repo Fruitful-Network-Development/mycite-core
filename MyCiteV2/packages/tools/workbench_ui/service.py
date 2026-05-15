@@ -1,14 +1,27 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteDirectiveContextAdapter, SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.adapters.sql.datum_semantics import datum_address_sort_key, parse_datum_address
+from MyCiteV2.packages.adapters.sql import (
+    SqliteDirectiveContextAdapter,
+    SqliteSystemDatumStoreAdapter,
+)
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
+    datum_address_sort_key,
+    parse_datum_address,
+)
 from MyCiteV2.packages.modules.domains.datum_recognition import recognize_authoritative_document
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocument, AuthoritativeDatumDocumentRequest
-from MyCiteV2.packages.ports.directive_context import DirectiveContextEventQuery, DirectiveContextRequest
+from MyCiteV2.packages.ports.datum_store import (
+    AuthoritativeDatumDocument,
+    AuthoritativeDatumDocumentRequest,
+)
+from MyCiteV2.packages.ports.directive_context import (
+    DirectiveContextEventQuery,
+    DirectiveContextRequest,
+)
 from MyCiteV2.packages.state_machine.lens import resolve_datum_lens
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"

@@ -8,9 +8,9 @@ from MyCiteV2.packages.ports.datum_store import (
     SYSTEM_DATUM_RESOURCE_WORKBENCH_SCHEMA,
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
-    AuthoritativeDatumDocumentRow,
     AuthoritativeDatumDocumentPort,
     AuthoritativeDatumDocumentRequest,
+    AuthoritativeDatumDocumentRow,
 )
 
 _RF_TOKEN_RE = re.compile(r"^rf\.([0-9]+-[0-9]+-[0-9]+)$")
@@ -169,7 +169,7 @@ def _anchor_label_map(document: AuthoritativeDatumDocument) -> dict[str, str]:
     return out
 
 
-def _diagnostic_counts(rows: tuple["DatumRecognitionRow", ...]) -> dict[str, int]:
+def _diagnostic_counts(rows: tuple[DatumRecognitionRow, ...]) -> dict[str, int]:
     counts = {state: 0 for state in sorted(_DIAGNOSTIC_STATES)}
     for row in rows:
         for state in row.diagnostic_states:

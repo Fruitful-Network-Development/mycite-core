@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
 import glob
 import json
 import os
-from pathlib import Path
 import re
 import tempfile
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from collections.abc import Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 try:
     from flask import Flask, abort, jsonify, make_response, redirect, render_template, request
@@ -451,7 +452,7 @@ class V2PortalHostConfig:
         )
 
     @classmethod
-    def from_env(cls) -> "V2PortalHostConfig":
+    def from_env(cls) -> V2PortalHostConfig:
         return cls(
             portal_instance_id=_required_env_text("PORTAL_INSTANCE_ID"),
             public_dir=Path(_required_env_text("PUBLIC_DIR")),
@@ -745,7 +746,7 @@ def _validate_email(value: object) -> str:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _legacy_deprecation_headers(target_authority: str, operation: str) -> dict[str, str]:
@@ -1045,11 +1046,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # endpoint with the currently-selected datum's document_id and
         # datum_address, and receives the subset of tool registry entries
         # whose applies_to_archetype / applies_to_source_kind matches.
-        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
-            build_eligible_tools_response,
-        )
         from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
             _datum_store_for_authority_db,
+        )
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
+            build_eligible_tools_response,
         )
 
         document_id = _as_text(request.args.get("document_id"))
@@ -1135,8 +1136,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/fnd-csm/actions")
     def portal_fnd_csm_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm_action
-        from MyCiteV2.instances._shared.runtime.runtime_platform import FND_CSM_TOOL_ACTION_REQUEST_SCHEMA
+        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+            run_portal_fnd_csm_action,
+        )
+        from MyCiteV2.instances._shared.runtime.runtime_platform import (
+            FND_CSM_TOOL_ACTION_REQUEST_SCHEMA,
+        )
 
         try:
             payload = _json_payload()
@@ -1186,7 +1191,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/cts-gis/actions")
     def portal_cts_gis_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            run_portal_cts_gis_action,
+        )
 
         try:
             payload = _json_payload()
@@ -1213,10 +1220,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/mutations/<action>")
     def portal_mutation_action(action: str) -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            run_portal_cts_gis_action,
+        )
         from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
             run_datum_workbench_mutation_action,
         )
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 
         try:
             payload = _json_payload()
@@ -1259,7 +1268,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
+        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+            run_portal_workbench_ui,
+        )
 
         try:
             payload = _json_payload()
@@ -1461,11 +1472,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         # Validate HMAC token via service layer
         try:
-            from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter.payload_utils import (
-                render_unsubscribe_token as _render_unsubscribe_token,
-            )
             from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
                 FilesystemAwsCsmNewsletterStateAdapter,
+            )
+            from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter.payload_utils import (
+                render_unsubscribe_token as _render_unsubscribe_token,
             )
             state_adapter = FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
             signing_secret = state_adapter.runtime_secret_seed(secret_kind="signing_secret")
@@ -1581,8 +1592,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/create-order")
     def fnd_paypal_create_order() -> tuple[Any, int]:
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         payload = _json_payload()
         domain = _normalize_domain(request.host)
@@ -1681,8 +1692,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/paypal/capture-order")
     def fnd_paypal_capture_order() -> tuple[Any, int]:
-        import urllib.request
         import urllib.error
+        import urllib.request
 
         payload = _json_payload()
         domain = _normalize_domain(request.host)
@@ -1759,9 +1770,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
 __all__ = [
     "HOST_SHAPE",
+    "PORTAL_SHELL_ASSET_MANIFEST_SCHEMA",
     "V2_PORTAL_ERROR_SCHEMA",
     "V2_PORTAL_HEALTH_SCHEMA",
-    "PORTAL_SHELL_ASSET_MANIFEST_SCHEMA",
     "V2PortalHostConfig",
     "build_shell_asset_manifest",
     "create_app",

@@ -23,7 +23,7 @@ Document layout:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -34,7 +34,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRow,
 )
 from MyCiteV2.packages.state_machine.portal_shell import FND_CSM_SANDBOX_TOKEN
-
 
 SCHEMA = "mycite.v2.datum.fnd.analytics.summary.v1"
 SANDBOX = FND_CSM_SANDBOX_TOKEN
@@ -64,7 +63,7 @@ def _canonical_name_for(domain: str) -> str:
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class MosDatumAnalyticsSummaryAdapter:
@@ -244,4 +243,4 @@ class MosDatumAnalyticsSummaryAdapter:
         return out
 
 
-__all__ = ["MAX_RECENT_EVENTS", "MosDatumAnalyticsSummaryAdapter", "SCHEMA"]
+__all__ = ["MAX_RECENT_EVENTS", "SCHEMA", "MosDatumAnalyticsSummaryAdapter"]

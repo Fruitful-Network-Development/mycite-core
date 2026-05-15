@@ -25,7 +25,7 @@ import csv
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 from MyCiteV2.packages.core.datum_templates import DatumTemplate
 from MyCiteV2.packages.core.datum_templates.bacillete import (
@@ -36,7 +36,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRow,
 )
-
 
 _PIPELINE_DROP = object()  # sentinel: directive removed the row
 

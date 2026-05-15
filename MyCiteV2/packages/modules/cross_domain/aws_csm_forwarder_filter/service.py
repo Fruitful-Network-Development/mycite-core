@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesParser
-import re
 
 from MyCiteV2.packages.modules.shared import as_text
-
 
 _REPORT_SUBJECT_TOKENS = (
     "report-id:",

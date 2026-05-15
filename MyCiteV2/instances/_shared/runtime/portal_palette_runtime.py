@@ -11,7 +11,6 @@ can be applied to the currently-selected datum.
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.ports.datum_store import (

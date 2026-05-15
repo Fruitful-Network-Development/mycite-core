@@ -68,7 +68,7 @@ class PortalAuthorityRequest:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PortalAuthorityRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> PortalAuthorityRequest:
         if not isinstance(payload, dict):
             raise ValueError("portal_authority_request must be a dict")
         return cls(
@@ -118,7 +118,7 @@ class PortalAuthoritySource:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PortalAuthoritySource":
+    def from_dict(cls, payload: dict[str, Any]) -> PortalAuthoritySource:
         if not isinstance(payload, dict):
             raise ValueError("portal_authority_source must be a dict")
         return cls(
@@ -168,7 +168,7 @@ class PortalAuthorityResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "PortalAuthorityResult":
+    def from_dict(cls, payload: dict[str, Any]) -> PortalAuthorityResult:
         if not isinstance(payload, dict):
             raise ValueError("portal_authority_result must be a dict")
         warnings = payload.get("warnings") or ()

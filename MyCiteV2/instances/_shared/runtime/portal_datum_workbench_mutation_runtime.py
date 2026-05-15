@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
+from datetime import UTC
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.datum_templates import (
@@ -12,7 +14,6 @@ from MyCiteV2.packages.core.datum_templates import (
 )
 from MyCiteV2.packages.core.document_naming import (
     format_canonical_document_id,
-    parse_canonical_document_id,
 )
 from MyCiteV2.packages.core.mss import compute_mss_hash
 from MyCiteV2.packages.ports.datum_store import (
@@ -488,7 +489,7 @@ def _run_aws_csm_mutation_action(
         )
     except ValueError as exc:
         return _error("aws_csm_mutation_failed", str(exc))
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         return _error("aws_csm_mutation_error", str(exc), status_code=500)
     return _ok(
         action,
@@ -720,9 +721,9 @@ def _aws_csm_apply_or_preview(
 
 
 def _aws_csm_now_iso() -> str:
-    from datetime import datetime, timezone
+    from datetime import datetime
 
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 _DOCUMENT_ACTION_KINDS = {"rename_document", "delete_document"}

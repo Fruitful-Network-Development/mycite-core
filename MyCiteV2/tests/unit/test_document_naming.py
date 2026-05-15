@@ -11,15 +11,13 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.core.document_naming import (
     CanonicalNameError,
     MalformedSourceNameError,
+    _sanitize_sandbox_token,
+    _sanitize_segment,
     derive_canonical_id_from_legacy,
     extract_semantic_name_from_sc_stem,
     format_canonical_document_id,
     is_canonical_document_id,
     parse_canonical_document_id,
-)
-from MyCiteV2.packages.core.document_naming import (
-    _sanitize_sandbox_token,
-    _sanitize_segment,
 )
 
 MSN = "3-2-3-17-77-1-6-4-1-4"

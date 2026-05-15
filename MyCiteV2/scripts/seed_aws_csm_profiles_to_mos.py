@@ -71,7 +71,7 @@ def main(argv: list[str] | None = None) -> int:
         except json.JSONDecodeError as exc:
             print(f"  SKIP {path.name}: {exc}")
             continue
-        profile_id = str(((payload.get("identity") or {}).get("profile_id") or "")).strip()
+        profile_id = str((payload.get("identity") or {}).get("profile_id") or "").strip()
         if not profile_id:
             print(f"  SKIP {path.name}: no identity.profile_id")
             continue
@@ -85,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
         except json.JSONDecodeError as exc:
             print(f"  SKIP {path.name}: {exc}")
             continue
-        tenant_id = str(((payload.get("identity") or {}).get("tenant_id") or "")).strip()
+        tenant_id = str((payload.get("identity") or {}).get("tenant_id") or "").strip()
         if not tenant_id:
             print(f"  SKIP {path.name}: no identity.tenant_id")
             continue

@@ -12,9 +12,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+    V2_SCHEMA,
     CompositeAwsCsmNewsletterStateAdapter,
     MosDatumNewsletterContactLogAdapter,
-    V2_SCHEMA,
 )
 
 

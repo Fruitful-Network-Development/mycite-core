@@ -17,12 +17,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.event_transport.aws_csm_onboarding_cloud import (
-    AwsEc2RoleOnboardingCloudAdapter,
     _FORWARDER_ACCOUNT_ID,
     _FORWARDER_LAMBDA_NAME,
     _FORWARDER_PORTAL_CAPTURE_PREFIX,
     _FORWARDER_ROUTE_MAP_ENV_KEY,
     _FORWARDER_RULE_SET,
+    AwsEc2RoleOnboardingCloudAdapter,
 )
 
 

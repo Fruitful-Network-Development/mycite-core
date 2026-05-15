@@ -124,11 +124,11 @@ def encode_hops_coordinate(longitude: float, latitude: float) -> str:
 
 __all__ = [
     "as_text",
-    "read_json",
-    "write_json",
-    "sha256_file",
-    "normalize_ring_open",
-    "normalize_ring_closed",
-    "reference_polygons_from_geojson",
     "encode_hops_coordinate",
+    "normalize_ring_closed",
+    "normalize_ring_open",
+    "read_json",
+    "reference_polygons_from_geojson",
+    "sha256_file",
+    "write_json",
 ]

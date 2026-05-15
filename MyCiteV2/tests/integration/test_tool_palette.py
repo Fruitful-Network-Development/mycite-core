@@ -43,9 +43,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
-    PortalToolRegistryEntry,
     SURFACE_POSTURE_PALETTE_TARGET,
     TOOL_KIND_GENERAL,
+    PortalToolRegistryEntry,
 )
 
 

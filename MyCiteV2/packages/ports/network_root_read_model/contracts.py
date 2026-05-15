@@ -83,7 +83,7 @@ class NetworkRootReadModelRequest:
         return payload
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "NetworkRootReadModelRequest":
+    def from_dict(cls, payload: dict[str, Any]) -> NetworkRootReadModelRequest:
         if not isinstance(payload, dict):
             raise ValueError("network_root_read_model_request must be a dict")
         return cls(
@@ -108,7 +108,7 @@ class NetworkRootReadModelSource:
         return {"payload": dict(self.payload)}
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "NetworkRootReadModelSource":
+    def from_dict(cls, payload: dict[str, Any]) -> NetworkRootReadModelSource:
         if not isinstance(payload, dict):
             raise ValueError("network_root_read_model_source must be a dict")
         return cls(payload=payload.get("payload"))
@@ -139,7 +139,7 @@ class NetworkRootReadModelResult:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "NetworkRootReadModelResult":
+    def from_dict(cls, payload: dict[str, Any]) -> NetworkRootReadModelResult:
         if not isinstance(payload, dict):
             raise ValueError("network_root_read_model_result must be a dict")
         return cls(source=payload.get("source"))

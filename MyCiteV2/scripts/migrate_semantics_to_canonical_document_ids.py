@@ -215,7 +215,7 @@ def main() -> int:
                 )
                 connection.commit()
                 migrated += 1
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 connection.rollback()
                 err = json.dumps(
                     {

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -47,7 +47,7 @@ def main() -> int:
     document = rebuilt["system_log_document"]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists() and not args.no_backup:
-        stamp = datetime.now(tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        stamp = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
         backup_path = output_path.with_name(f"{output_path.stem}.pre_network_rebuild.{stamp}{output_path.suffix}")
         backup_path.write_text(output_path.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"Backup written: {backup_path}")

@@ -9,7 +9,10 @@ from MyCiteV2.packages.modules.cross_domain.aws_operational_visibility.sender_do
     selected_verified_sender_allowed,
 )
 from MyCiteV2.packages.modules.shared import as_text, reject_forbidden_keys
-from MyCiteV2.packages.ports.aws_read_only_status import AwsReadOnlyStatusPort, AwsReadOnlyStatusRequest
+from MyCiteV2.packages.ports.aws_read_only_status import (
+    AwsReadOnlyStatusPort,
+    AwsReadOnlyStatusRequest,
+)
 
 FORBIDDEN_AWS_VISIBILITY_KEYS = frozenset(
     {
@@ -163,7 +166,7 @@ class CanonicalNewsletterOperationalProfile:
         }
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "CanonicalNewsletterOperationalProfile":
+    def from_dict(cls, payload: dict[str, Any]) -> CanonicalNewsletterOperationalProfile:
         if not isinstance(payload, dict):
             raise ValueError("canonical_newsletter_profile must be a dict")
         _require_allowed_fields(

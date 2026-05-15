@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from functools import cmp_to_key
 import hashlib
 import json
+from datetime import UTC, datetime
+from functools import cmp_to_key
 from pathlib import Path
 from typing import Any
 
 from ...ports.network_root_read_model import (
-    ChronologyAuthority,
     LOCAL_LOG_KIND_ID_KEY,
     LOG_KIND_BABELETTE_LABEL,
     LOG_KIND_COLLECTION_LABEL,
@@ -17,6 +16,7 @@ from ...ports.network_root_read_model import (
     LOG_KIND_ID_KEY,
     LOG_KIND_LABEL_KEY,
     LOG_KIND_SLUG_KEY,
+    ChronologyAuthority,
     NetworkRootReadModelPort,
     NetworkRootReadModelRequest,
     NetworkRootReadModelResult,
@@ -73,7 +73,7 @@ def _parse_any_timestamp(value: object) -> datetime | None:
         if number > 10_000_000_000:
             number = number / 1000.0
         try:
-            return datetime.fromtimestamp(number, tz=timezone.utc)
+            return datetime.fromtimestamp(number, tz=UTC)
         except Exception:
             return None
     token = _as_text(value)
@@ -86,8 +86,8 @@ def _parse_any_timestamp(value: object) -> datetime | None:
             token = token[:-1] + "+00:00"
         parsed = datetime.fromisoformat(token)
         if parsed.tzinfo is None:
-            parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(timezone.utc)
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
     except Exception:
         return None
 
@@ -604,7 +604,7 @@ def build_system_log_document(
         ]
     return {
         "anchor_file_version": "mycite.v2.network_system_log.v1",
-        "generated_at_utc": datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at_utc": datetime.now(tz=UTC).isoformat().replace("+00:00", "Z"),
         "generated_by": "mycite.v2.network_system_log_rebuild.v1",
         "datum_addressing_abstraction_space": space,
     }

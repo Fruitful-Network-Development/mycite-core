@@ -1,33 +1,51 @@
 from __future__ import annotations
 
-import json
 import secrets
 from typing import Any
 
-from MyCiteV2.packages.modules.shared import as_text
+from MyCiteV2.packages.modules.shared import as_text, dedupe_warnings, utc_now_iso
 from MyCiteV2.packages.ports.aws_csm_newsletter import (
-    AWS_CSM_NEWSLETTER_CONTACT_LOG_SCHEMA,
-    AWS_CSM_NEWSLETTER_PROFILE_SCHEMA,
     AwsCsmNewsletterCloudPort,
     AwsCsmNewsletterStatePort,
 )
-from MyCiteV2.packages.modules.shared import dedupe_warnings, utc_now_iso
+
 from .payload_utils import (
     DELIVERY_MODE as _DELIVERY_MODE,
+)
+from .payload_utils import (
     MAX_CONTACT_PREVIEW as _MAX_CONTACT_PREVIEW,
+)
+from .payload_utils import (
     MAX_DISPATCH_HISTORY as _MAX_DISPATCH_HISTORY,
+)
+from .payload_utils import (
     MAX_DISPATCH_RESULT_HISTORY as _MAX_DISPATCH_RESULT_HISTORY,
+)
+from .payload_utils import (
     contact_summary as _contact_summary,
-    email_addresses as _email_addresses,
+)
+from .payload_utils import (
     message_subject_from_email as _message_subject_from_email,
+)
+from .payload_utils import (
     message_text_from_email as _message_text_from_email,
-    normalize_contact as _normalize_contact,
+)
+from .payload_utils import (
     normalize_contact_log as _normalize_contact_log,
+)
+from .payload_utils import (
     normalized_domain as _normalized_domain,
+)
+from .payload_utils import (
     normalized_email as _normalized_email,
+)
+from .payload_utils import (
     optional_email as _optional_email,
-    preserved_email as _preserved_email,
+)
+from .payload_utils import (
     render_inbound_capture_signature as _render_inbound_capture_signature,
+)
+from .payload_utils import (
     render_unsubscribe_token as _render_unsubscribe_token,
 )
 

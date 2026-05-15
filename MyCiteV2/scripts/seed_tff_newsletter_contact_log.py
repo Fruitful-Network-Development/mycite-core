@@ -29,9 +29,8 @@ script.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -44,13 +43,12 @@ from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
 from MyCiteV2.packages.core.datum_templates import TemplateRegistry
 from MyCiteV2.packages.core.datum_templates.csv_intake import import_csv_via_template
 
-
 DEFAULT_TENANT_ID = "fnd"
 DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 
 
 def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def main(argv: list[str] | None = None) -> int:

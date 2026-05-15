@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import unicodedata
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 try:
     import yaml
@@ -15,6 +16,8 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
     datum_address_sort_key,
     format_datum_address,
     parse_datum_address,
+)
+from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_insert as preview_document_insert_mutation,
 )
 from MyCiteV2.packages.ports.datum_store import (
@@ -975,7 +978,7 @@ class CtsGisMutationService:
                 checked_row_count += 1
                 try:
                     parse_datum_address(_as_text(getattr(row, "datum_address", "") or ""))
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     failures.append({
                         "code": "malformed_datum_address",
                         "message": str(exc),
@@ -992,8 +995,8 @@ class CtsGisMutationService:
 
 __all__ = [
     "CTS_GIS_MANIPULATION_STAGE_SCHEMA",
-    "CTS_GIS_STAGE_INSERT_SCHEMA",
     "CTS_GIS_STAGED_INSERT_STATE_SCHEMA",
+    "CTS_GIS_STAGE_INSERT_SCHEMA",
     "CtsGisMutationError",
     "CtsGisMutationService",
 ]

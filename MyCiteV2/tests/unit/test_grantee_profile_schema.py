@@ -26,8 +26,8 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.core.grantee import (
-    AwsSesConfig,
     GRANTEE_PROFILE_SCHEMA,
+    AwsSesConfig,
     GranteeProfile,
     NewsletterConfig,
     PaypalConfig,

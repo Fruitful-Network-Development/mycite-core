@@ -10,8 +10,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import build_portal_cts_gis_surface_bundle
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
+from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+    build_portal_cts_gis_surface_bundle,
+    run_portal_cts_gis_action,
+)
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
@@ -19,8 +21,12 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     compiled_artifact_path,
     write_compiled_artifact,
 )
-from MyCiteV2.packages.modules.cross_domain.cts_gis.compiled_artifact import validate_compiled_artifact
-from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import CTS_GIS_COMPILED_ARTIFACT_SCHEMA
+from MyCiteV2.packages.modules.cross_domain.cts_gis.compiled_artifact import (
+    validate_compiled_artifact,
+)
+from MyCiteV2.packages.modules.cross_domain.cts_gis.contracts import (
+    CTS_GIS_COMPILED_ARTIFACT_SCHEMA,
+)
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
