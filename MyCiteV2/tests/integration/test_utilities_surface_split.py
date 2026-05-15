@@ -86,20 +86,32 @@ def _surface_payload(surface_id: str) -> dict:
 
 
 class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
-    def test_extensions_surface_contains_4_operational_extensions(self) -> None:
+    def test_extensions_surface_subtab_lists_4_operational_extensions(self) -> None:
+        # Phase 15a: extensions surface now exposes the 4 operational
+        # extensions via the subtab selector (tabs list), and renders
+        # only the active tab's card in payload.extensions.
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
         self.assertEqual(payload.get("kind"), "extensions")
-        tool_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
+        selector = payload.get("extension_subtab_selector") or {}
+        tab_ids = {tab.get("tool_id") for tab in selector.get("tabs") or []}
         self.assertEqual(
-            tool_ids,
+            tab_ids,
             {"ext_aws_email", "ext_analytics", "ext_newsletter", "ext_paypal"},
-            f"extensions={tool_ids!r}",
+            f"subtab tab_ids={tab_ids!r}",
         )
+        active_card_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
+        self.assertEqual(active_card_ids, {"ext_aws_email"})
 
     def test_extensions_surface_excludes_grantee_profile(self) -> None:
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
-        tool_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
-        self.assertNotIn("ext_grantee_profile", tool_ids)
+        # Grantee profile appears in neither the cards list nor the tab list.
+        card_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
+        self.assertNotIn("ext_grantee_profile", card_ids)
+        tab_ids = {
+            tab.get("tool_id")
+            for tab in (payload.get("extension_subtab_selector") or {}).get("tabs") or []
+        }
+        self.assertNotIn("ext_grantee_profile", tab_ids)
 
     def test_extensions_surface_has_grantee_selector(self) -> None:
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)

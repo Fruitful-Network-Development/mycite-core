@@ -8993,6 +8993,43 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-style: italic;
   margin: 8px 0 0;
 }
+/* Phase 15a — Extension subtabs rendered below the grantee selector on
+   /portal/utilities/extensions. Slimmer pill chips than the grantee
+   selector so the two strips read as distinct axes. Markup + JS in
+   v2_portal_workbench_renderers.js (renderExtensionTabs /
+   bindExtensionTabs). */
+.v2-extensionTabs {
+  margin-top: 12px;
+}
+.v2-extensionTabs__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.v2-extensionTabs__option {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 999px;
+  background: var(--ide-panel-bg, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.v2-extensionTabs__option:hover {
+  background: #eef1f5;
+}
+.v2-extensionTabs__option.is-active {
+  background: var(--ide-accent, #1f883d);
+  color: #fff;
+  border-color: var(--ide-accent, #1f883d);
+}
+.v2-extensionTabs__optionLabel {
+  font-weight: 600;
+}
 .v2-activitylink.is-active {
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;

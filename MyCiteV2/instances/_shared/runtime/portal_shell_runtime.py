@@ -831,9 +831,16 @@ def _surface_payload_for_tool_exposure(
 def _surface_payload_for_extensions(
     extensions: list[dict[str, Any]] | None = None,
     grantee_selector: dict[str, Any] | None = None,
+    *,
+    selected_extension_tool_id: str = "",
 ) -> dict[str, Any]:
     """Operational utilities-tab extensions only (Email, Analytics,
     Newsletter, PayPal). Grantee Profile is hosted by its own surface.
+
+    Phase 15a: the surface now carries an ``extension_subtab_selector``
+    sitting below the grantee_selector. Only the active tab's
+    extension card lands in ``payload["extensions"]`` — the others are
+    available behind clicks that POST back to /portal/api/v2/shell.
     """
     payload: dict[str, Any] = {
         "schema": surface_schema_for_surface(UTILITIES_EXTENSIONS_SURFACE_ID),
@@ -841,18 +848,33 @@ def _surface_payload_for_extensions(
         "title": "Extensions",
         "subtitle": (
             "Operational extensions driven by the active Grantee Profile. "
-            "Switch grantees above to repopulate."
+            "Switch grantees above and the extension tab below to navigate."
         ),
     }
-    if grantee_selector is not None:
-        payload["grantee_selector"] = _grantee_selector_for_target(
-            grantee_selector, UTILITIES_EXTENSIONS_SURFACE_ID
-        )
     operational = [
         ext for ext in (extensions or []) if ext.get("tool_id") != "ext_grantee_profile"
     ]
+    active_tool_id = _resolve_selected_extension_tool_id(
+        operational, _as_text(selected_extension_tool_id)
+    )
+    selected_grantee_msn = (
+        _as_text((grantee_selector or {}).get("selected_grantee_msn"))
+        if grantee_selector
+        else ""
+    )
+    if grantee_selector is not None:
+        payload["grantee_selector"] = _grantee_selector_for_target(
+            grantee_selector,
+            UTILITIES_EXTENSIONS_SURFACE_ID,
+            preserved_query={"selected_extension_tool_id": active_tool_id},
+        )
     if operational:
-        payload["extensions"] = operational
+        payload["extension_subtab_selector"] = _build_extension_subtab_selector(
+            operational, active_tool_id, selected_grantee_msn=selected_grantee_msn
+        )
+        payload["extensions"] = [
+            ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
+        ]
     return payload
 
 
@@ -948,14 +970,23 @@ def _surface_payload_for_peripherals() -> dict[str, Any]:
 
 
 def _grantee_selector_for_target(
-    grantee_selector: dict[str, Any], target_surface_id: str
+    grantee_selector: dict[str, Any],
+    target_surface_id: str,
+    *,
+    preserved_query: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Rewrite a grantee selector built by `_build_utilities_surface_context`
     so each option's ``select_action`` posts back to the given surface.
     The base context builder hard-codes the tool-exposure surface (Phase
     12h was authored when that was the only utilities surface); Phase 14b
     needs the selector to navigate within its own surface.
+
+    Phase 15a: ``preserved_query`` carries extra ``surface_query`` keys
+    (e.g. the active ``selected_extension_tool_id``) that must survive a
+    grantee switch — without it, clicking a grantee would reset the
+    active extension tab to the default.
     """
+    extras = dict(preserved_query or {})
     rewritten: dict[str, Any] = dict(grantee_selector)
     rewritten["grantees"] = [
         {
@@ -965,12 +996,96 @@ def _grantee_selector_for_target(
                 "payload": {
                     **(g.get("select_action", {}).get("payload") or {}),
                     "requested_surface_id": target_surface_id,
+                    "surface_query": {
+                        **(g.get("select_action", {}).get("payload") or {}).get(
+                            "surface_query", {}
+                        ),
+                        **extras,
+                    },
                 },
             },
         }
         for g in (grantee_selector.get("grantees") or [])
     ]
     return rewritten
+
+
+# Phase 15a — per-extension subtabs on the Extensions surface.
+# Order is the operator-facing tab order, left to right.
+_OPERATIONAL_EXTENSION_ORDER: tuple[str, ...] = (
+    "ext_aws_email",
+    "ext_analytics",
+    "ext_newsletter",
+    "ext_paypal",
+)
+_OPERATIONAL_EXTENSION_DEFAULT = "ext_aws_email"
+
+
+def _resolve_selected_extension_tool_id(
+    extensions: list[dict[str, Any]] | None,
+    requested_tool_id: str,
+) -> str:
+    """Pick the active extension tab. Honors the request when it names a
+    known operational extension; otherwise falls back to the leftmost
+    extension present in ``extensions`` (or ext_aws_email).
+    """
+    available = {
+        _as_text(ext.get("tool_id"))
+        for ext in (extensions or [])
+        if _as_text(ext.get("tool_id")) in _OPERATIONAL_EXTENSION_ORDER
+    }
+    if requested_tool_id in available:
+        return requested_tool_id
+    for tool_id in _OPERATIONAL_EXTENSION_ORDER:
+        if tool_id in available:
+            return tool_id
+    return _OPERATIONAL_EXTENSION_DEFAULT
+
+
+def _build_extension_subtab_selector(
+    extensions: list[dict[str, Any]] | None,
+    selected_tool_id: str,
+    *,
+    selected_grantee_msn: str,
+) -> dict[str, Any]:
+    """Build the per-extension tab strip rendered below the grantee
+    selector on /portal/utilities/extensions. Each tab's
+    ``select_action`` posts to /portal/api/v2/shell preserving the
+    current grantee — switching tabs must not reset the grantee axis.
+    """
+    by_tool_id = {
+        _as_text(ext.get("tool_id")): ext for ext in (extensions or []) if isinstance(ext, dict)
+    }
+    tabs: list[dict[str, Any]] = []
+    for tool_id in _OPERATIONAL_EXTENSION_ORDER:
+        ext = by_tool_id.get(tool_id)
+        if ext is None:
+            continue
+        tabs.append(
+            {
+                "tool_id": tool_id,
+                "label": _as_text(ext.get("label")) or tool_id,
+                "summary": _as_text(ext.get("summary")),
+                "active": tool_id == selected_tool_id,
+                "select_action": {
+                    "route": "/portal/api/v2/shell",
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "payload": {
+                        "requested_surface_id": UTILITIES_EXTENSIONS_SURFACE_ID,
+                        "surface_query": {
+                            "selected_grantee_msn": selected_grantee_msn,
+                            "selected_extension_tool_id": tool_id,
+                        },
+                    },
+                },
+            }
+        )
+    return {
+        "label": "Extension",
+        "selected_tool_id": selected_tool_id,
+        "tabs": tabs,
+        "empty_message": "No operational extensions are enabled for this grantee.",
+    }
 
 
 def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True) -> dict[str, Any]:
@@ -1255,6 +1370,9 @@ def _bundle_for_surface(
             surface_payload = _surface_payload_for_extensions(
                 extensions=extensions,
                 grantee_selector=ctx_bundle["grantee_selector"],
+                selected_extension_tool_id=_as_text(
+                    (surface_query or {}).get("selected_extension_tool_id")
+                ),
             )
         elif selection_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
             surface_payload = _surface_payload_for_grantee_profile(
