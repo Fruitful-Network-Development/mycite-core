@@ -1860,6 +1860,68 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
 
     # ------------------------------------------------------------------
+    # FND Email admin route (Phase 14d.2)
+    # ------------------------------------------------------------------
+    # The Email extension surfaces a per-row Suspend / Resume button.
+    # The handler toggles ``workflow.lifecycle_state`` on the matching
+    # AWS-CSM operator profile JSON. Add-mailbox flow is deferred: the
+    # LIVE_AWS_PROFILE_SCHEMA carries enough required fields (smtp,
+    # verification, provider, workflow, inbound) that constructing a
+    # net-new profile via a form is its own scope; suspend ships now
+    # because operators need it for runbook lockouts today.
+
+    @app.post("/__fnd/email/admin/suspend")
+    def fnd_email_admin_suspend() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+        suspended = bool(payload.get("suspended"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.adapters.filesystem import (
+                FilesystemAwsCsmToolProfileStore,
+            )
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        aws_csm_root = (
+            Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        store = FilesystemAwsCsmToolProfileStore(aws_csm_root)
+        # The profile_id itself is a valid tenant_scope_id (matches
+        # identity.profile_id branch of _matches_tenant_scope), so we
+        # can scope reads + writes by it without knowing the tenant.
+        current = store.load_profile(tenant_scope_id=profile_id, profile_id=profile_id)
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        workflow = dict(current.get("workflow") or {})
+        workflow["lifecycle_state"] = "suspended" if suspended else "operational"
+        next_payload = dict(current)
+        next_payload["workflow"] = workflow
+
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "lifecycle_state": workflow["lifecycle_state"],
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
     # FND Analytics admin route (Phase 14d.4)
     # ------------------------------------------------------------------
     # The Analytics extension card surfaces a Refresh button that POSTs

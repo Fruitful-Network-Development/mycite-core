@@ -53,7 +53,12 @@ def _build_email_extension_payload(
         except Exception:
             mos_store = None
 
-    fs_store = FilesystemAwsCsmToolProfileStore(private_dir)
+    # Canonical AWS-CSM profile layout is
+    # ``<private>/utilities/tools/aws-csm/aws-csm.<scope>.<mailbox>.json``;
+    # the store globs ``aws-csm.*.json`` directly in its ``tool_root`` so
+    # we must point at the aws-csm subdirectory, not at ``private``.
+    aws_csm_root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
+    fs_store = FilesystemAwsCsmToolProfileStore(aws_csm_root)
 
     domain_record: dict[str, Any] = {}
     try:
@@ -80,17 +85,20 @@ def _build_email_extension_payload(
             ident = _as_dict(payload.get("identity"))
             if _as_text(ident.get("domain")).lower() != domain.lower():
                 continue
+            profile_id = _as_text(ident.get("profile_id"))
+            lifecycle = _as_text(
+                _as_dict(payload.get("workflow")).get("lifecycle_state")
+            )
             profiles.append({
-                "profile_id": _as_text(ident.get("profile_id")),
+                "profile_id": profile_id,
                 "mailbox": _as_text(ident.get("mailbox_local_part")),
                 "send_as": _as_text(ident.get("send_as_email")),
                 "role": _as_text(ident.get("role")),
-                "lifecycle": _as_text(
-                    _as_dict(payload.get("workflow")).get("lifecycle_state")
-                ),
+                "lifecycle": lifecycle,
                 "inbound": _as_text(
                     _as_dict(payload.get("inbound")).get("receive_state")
                 ),
+                "suspend_action": _suspend_action_for_profile(profile_id, lifecycle),
             })
     except Exception:
         pass
@@ -99,6 +107,32 @@ def _build_email_extension_payload(
         "profiles": profiles,
         "domain_record": domain_record,
         "configuration": configuration,
+    }
+
+
+def _suspend_action_for_profile(profile_id: str, lifecycle: str) -> dict[str, Any]:
+    """Per-row toggle button. Suspended rows resume to ``operational``;
+    everything else (``operational``, empty, etc.) becomes ``suspended``.
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    is_suspended = lifecycle.lower() == "suspended"
+    if is_suspended:
+        return {
+            "label": "Resume",
+            "route": "/__fnd/email/admin/suspend",
+            "schema": "mycite.v2.email.admin.suspend.request.v1",
+            "payload": {"profile_id": profile_id, "suspended": False},
+            "variant": "secondary",
+        }
+    return {
+        "label": "Suspend",
+        "route": "/__fnd/email/admin/suspend",
+        "schema": "mycite.v2.email.admin.suspend.request.v1",
+        "payload": {"profile_id": profile_id, "suspended": True},
+        "confirm": f"Suspend mailbox {profile_id}?",
+        "variant": "danger",
     }
 
 
