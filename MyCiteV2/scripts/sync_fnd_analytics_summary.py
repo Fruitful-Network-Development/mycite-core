@@ -1,7 +1,8 @@
 """Sync NDJSON analytics events into the per-domain MOS summary datum.
 
-For each known domain, glob ``<webapps>/clients/<domain>/analytics/events/*.ndjson``,
-aggregate counts + capture the 20 most recent events, write to MOS via
+For each known domain, find the canonical per-grantee NDJSON files via
+:class:`AnalyticsEventPathResolver`, aggregate counts + capture the 20
+most recent events, write to MOS via
 :class:`MosDatumAnalyticsSummaryAdapter`.
 
 Run periodically (cron / systemd timer). Replaces the per-request
@@ -9,10 +10,13 @@ filesystem glob in ``portal_fnd_csm_runtime._build_analytics_extension_payload``
 
 Usage::
 
-    python -m MyCiteV2.scripts.sync_fnd_analytics_summary \
-        --webapps-root /srv/webapps \
-        --domains trappfamilyfarm.com cvccboard.org \
+    python -m MyCiteV2.scripts.sync_fnd_analytics_summary \\
+        --analytics-root /srv/repo/mycite-core/deployed/fnd/private/utilities/tools/analytics \\
+        --domains trappfamilyfarm.com cvccboard.org \\
         [--window-months 3] [--dry-run]
+
+The legacy ``--webapps-root`` flag is still accepted for back-compat
+testing against the pre-2026-05-16 layout.
 """
 
 from __future__ import annotations
@@ -26,23 +30,39 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
 from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
     MAX_RECENT_EVENTS,
     MosDatumAnalyticsSummaryAdapter,
 )
 
 DEFAULT_WINDOW_MONTHS = 3
+DEFAULT_ANALYTICS_ROOT = Path(
+    "/srv/repo/mycite-core/deployed/fnd/private/utilities/tools/analytics"
+)
 
 
 def _aggregate_for_domain(
-    *, webapps_root: Path, domain: str, window_months: int
+    *,
+    resolver: AnalyticsEventPathResolver | None = None,
+    domain: str,
+    window_months: int,
+    # Legacy back-compat: still accept webapps_root as a positional/kw arg
+    # so callers (esp. tests) that haven't switched yet keep working.
+    webapps_root: Path | None = None,
 ) -> tuple[dict[str, int], list[dict[str, str]]]:
+    if resolver is None:
+        if webapps_root is not None:
+            resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
+        else:
+            resolver = AnalyticsEventPathResolver()
+
     counts = {"page_view": 0, "form_submit": 0, "ops_probe": 0, "other": 0}
     recent: list[dict[str, str]] = []
-    events_dir = webapps_root / "clients" / domain / "analytics" / "events"
-    if not events_dir.exists() or not events_dir.is_dir():
+    ndjson_paths = resolver.iter_domain_event_files(domain)[:window_months]
+    if not ndjson_paths:
         return counts, recent
-    for ndjson_path in sorted(events_dir.glob("*.ndjson"), reverse=True)[:window_months]:
+    for ndjson_path in ndjson_paths:
         try:
             for line in ndjson_path.read_text(encoding="utf-8").splitlines():
                 line = line.strip()
@@ -68,11 +88,22 @@ def _aggregate_for_domain(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--webapps-root", type=Path, default=Path("/srv/webapps"))
+    parser.add_argument(
+        "--analytics-root",
+        type=Path,
+        default=DEFAULT_ANALYTICS_ROOT,
+        help="Per-grantee analytics root (canonical mode). Default: %(default)s",
+    )
+    parser.add_argument(
+        "--webapps-root",
+        type=Path,
+        default=None,
+        help="Legacy webapps root (pre-2026-05-16 layout). If set, overrides --analytics-root.",
+    )
     parser.add_argument(
         "--authority-db",
         type=Path,
-        default=Path("/srv/mycite-state/instances/fnd/private/mos_authority.sqlite3"),
+        default=Path("/srv/webapps/mycite/fnd/private/mos_authority.sqlite3"),
     )
     parser.add_argument("--tenant-id", default="fnd")
     parser.add_argument("--msn-id", default="3-2-3-17-77-1-6-4-1-4")
@@ -80,21 +111,25 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--domains",
         nargs="*",
-        help="Explicit domain list; if absent, discovers from webapps/clients/*/analytics/events",
+        help="Explicit domain list; if absent, discovers from the resolver.",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
+    if args.webapps_root is not None:
+        resolver = AnalyticsEventPathResolver(webapps_root=args.webapps_root)
+    else:
+        resolver = AnalyticsEventPathResolver(analytics_root=args.analytics_root)
+
     if args.domains:
         domains = list(args.domains)
     else:
-        domains = sorted(
-            p.name
-            for p in (args.webapps_root / "clients").iterdir()
-            if p.is_dir() and (p / "analytics" / "events").exists()
-        ) if (args.webapps_root / "clients").exists() else []
+        domains = resolver.discover_domains()
 
-    print(f"Syncing analytics summaries for {len(domains)} domains (window={args.window_months} months)")
+    print(
+        f"Syncing analytics summaries for {len(domains)} domains "
+        f"(window={args.window_months} months, root={resolver.analytics_root})"
+    )
     adapter = MosDatumAnalyticsSummaryAdapter(
         authority_db_file=args.authority_db,
         tenant_id=args.tenant_id,
@@ -102,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     for domain in domains:
         counts, recent = _aggregate_for_domain(
-            webapps_root=args.webapps_root,
+            resolver=resolver,
             domain=domain,
             window_months=args.window_months,
         )

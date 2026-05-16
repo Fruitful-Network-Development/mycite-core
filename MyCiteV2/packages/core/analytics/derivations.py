@@ -47,6 +47,8 @@ def read_events(
     *,
     domain: str,
     year_months: Iterable[str],
+    resolver: AnalyticsEventPathResolver | None = None,
+    analytics_root: str | Path | None = None,
     webapps_root: str | Path | None = None,
 ) -> Iterator[dict[str, Any]]:
     """Yield events from one or more NDJSON files for a domain.
@@ -55,10 +57,21 @@ def read_events(
     bad line shouldn't kill the whole derivation pipeline. Caller
     enumerates the year_months explicitly so the read scope is
     bounded.
+
+    Resolution priority:
+        1. ``resolver`` — explicit injected resolver.
+        2. ``analytics_root`` — construct a canonical-mode resolver.
+        3. ``webapps_root`` — construct a legacy-mode resolver (the
+           historical interface; kept for backward compat).
+        4. ``MYCITE_ANALYTICS_ROOT`` env / default canonical root.
     """
-    resolver = AnalyticsEventPathResolver(
-        webapps_root=webapps_root or Path("/srv/webapps")
-    )
+    if resolver is None:
+        if analytics_root is not None:
+            resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
+        elif webapps_root is not None:
+            resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
+        else:
+            resolver = AnalyticsEventPathResolver()
     for year_month in year_months:
         try:
             resolution = resolver.resolve_events_file(

@@ -56,17 +56,20 @@ def _refresh_action(domain: str) -> dict[str, Any]:
 
 def _build_analytics_extension_payload(
     domain: str,
-    webapps_root: str | Path | None,
+    analytics_root: str | Path | None = None,
     authority_db_file: str | Path | None = None,
     portal_instance_id: str | None = None,
+    webapps_root: str | Path | None = None,  # legacy fallback only
 ) -> dict[str, Any]:
+    from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+
     data_source: dict[str, str] = {
         "label": "Data source",
         "summary": "Raw events read from the canonical NDJSON log; insights derived on demand.",
         "events_dir": "",
         "kind": "",
     }
-    if not domain or webapps_root is None:
+    if not domain:
         return {
             "domain": domain,
             "summary": {},
@@ -76,8 +79,13 @@ def _build_analytics_extension_payload(
             "notice": "No domain selected.",
         }
 
-    events_dir = Path(webapps_root) / "clients" / domain / "analytics" / "events"
-    data_source["events_dir"] = str(events_dir)
+    if analytics_root is not None:
+        resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
+    elif webapps_root is not None:
+        resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
+    else:
+        resolver = AnalyticsEventPathResolver()
+    data_source["events_dir"] = str(resolver.analytics_root)
 
     # Phase 18c: on-demand derivation from the raw NDJSON. Bounded
     # to the last 2 month files so the read stays cheap (<200ms for
@@ -87,7 +95,7 @@ def _build_analytics_extension_payload(
     year_months = _current_year_months(n=2)
     events = list(
         derivations.read_events(
-            domain=domain, year_months=year_months, webapps_root=webapps_root
+            domain=domain, year_months=year_months, resolver=resolver
         )
     )
     if not events:
@@ -178,11 +186,17 @@ def _build_analytics_extension_payload(
 
 
 def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
+    # ctx may supply analytics_root directly, or a private_dir from which
+    # we derive it, or the legacy webapps_root as a last resort.
+    analytics_root = ctx.get("analytics_root")
+    if analytics_root is None and ctx.get("private_dir") is not None:
+        analytics_root = Path(ctx["private_dir"]) / "utilities" / "tools" / "analytics"
     return _build_analytics_extension_payload(
         domain=_as_text(ctx.get("domain")),
-        webapps_root=ctx.get("webapps_root"),
+        analytics_root=analytics_root,
         authority_db_file=ctx.get("authority_db_file"),
         portal_instance_id=ctx.get("portal_instance_id"),
+        webapps_root=ctx.get("webapps_root"),
     )
 
 
