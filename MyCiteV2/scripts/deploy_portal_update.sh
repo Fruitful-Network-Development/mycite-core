@@ -7,7 +7,7 @@ Usage: deploy_portal_update.sh [options]
 
 Deploy live portal updates from this repo for one instance:
   - data updates: sync /srv/repo/mycite-core/deployed/<instance> into
-    /srv/mycite-state/instances/<instance>
+    /srv/webapps/mycite/<instance>
   - code updates: bump the portal build id and restart portal service
 
 You can deploy either data, code, or both in one run.
@@ -354,7 +354,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEPLOYED_ROOT="${REPO_ROOT}/deployed/${INSTANCE}"
-LIVE_ROOT="/srv/mycite-state/instances/${INSTANCE}"
+LIVE_ROOT="/srv/webapps/mycite/${INSTANCE}"
 BUILD_ENV_FILE="/srv/compose/portals/v2_portal_build.env"
 SERVICE_NAME="$(portal_service_for_instance "$INSTANCE")"
 PORT="$(portal_port_for_instance "$INSTANCE")"

@@ -40,7 +40,7 @@ from MyCiteV2.scripts.cts_gis_geojson_hops_utils import (
 
 DEFAULT_DATA_ROOTS = [
     REPO_ROOT / "deployed" / "fnd" / "data",
-    Path("/srv/mycite-state/instances/fnd/data"),
+    Path("/srv/webapps/mycite/fnd/data"),
 ]
 ANCHOR_NAME = "tool.3-2-3-17-77-1-6-4-1-4.cts-gis.json"
 PROJECTION_GLOB = "sc.3-2-3-17-77-1-6-4-1-4.fnd.3-2-3-17-77*.json"
@@ -1261,7 +1261,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--data-root",
         action="append",
         default=[],
-        help="One or more authoritative data roots. Defaults to repo deployed data and /srv/mycite-state.",
+        help="One or more authoritative data roots. Defaults to repo deployed data and /srv/webapps/mycite.",
     )
     parser.add_argument(
         "--apply-deterministic-fixes",

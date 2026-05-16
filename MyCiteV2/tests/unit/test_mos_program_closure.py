@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 
-LIVE_FND_STATE_ROOT = Path("/srv/mycite-state/instances/fnd")
+LIVE_FND_STATE_ROOT = Path("/srv/webapps/mycite/fnd")
 LIVE_FND_DATA_DIR = LIVE_FND_STATE_ROOT / "data"
 LIVE_FND_DB_FILE = LIVE_FND_STATE_ROOT / "private" / "mos_authority.sqlite3"
 
@@ -186,7 +186,7 @@ class MosProgramClosureTests(unittest.TestCase):
             items = value if isinstance(value, list) else [value]
             for item in items:
                 self.assertFalse(str(item).startswith("/srv/repo/"), f"{key}: {item}")
-                self.assertFalse(str(item).startswith("/srv/mycite-state/"), f"{key}: {item}")
+                self.assertFalse(str(item).startswith("/srv/webapps/mycite/"), f"{key}: {item}")
 
     @unittest.skip(
         "MOS closure drift — compatibility-keys assertion targets pre-E4 document keys "

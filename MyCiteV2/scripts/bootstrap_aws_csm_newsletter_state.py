@@ -212,7 +212,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Bootstrap canonical AWS-CSM newsletter state and retire newsletter-admin.")
     parser.add_argument(
         "--private-dir",
-        default="/srv/mycite-state/instances/fnd/private",
+        default="/srv/webapps/mycite/fnd/private",
         help="Portal private state root.",
     )
     parser.add_argument(

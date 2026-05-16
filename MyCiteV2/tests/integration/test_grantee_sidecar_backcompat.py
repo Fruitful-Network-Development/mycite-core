@@ -117,7 +117,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         # Smoke: the three production grantees load cleanly via the runtime
         # path. None of them currently has paypal/aws_ses/newsletter so they
         # round-trip through the schema without surfacing those keys.
-        production = Path("/srv/mycite-state/instances/fnd/private")
+        production = Path("/srv/webapps/mycite/fnd/private")
         if not (production / "utilities" / "tools" / "fnd-csm").exists():
             self.skipTest("production grantee directory not present")
         profiles = _load_grantee_profiles(production)

@@ -28,7 +28,7 @@ Examples:
 Notes:
   - The live portals run repo code directly from /srv/repo/mycite-core, so code and
     static asset changes usually need a restart plus a fresh build id rather than a copy.
-  - Tool package files live under /srv/mycite-state/instances/<instance>/private/utilities/tools.
+  - Tool package files live under /srv/webapps/mycite/<instance>/private/utilities/tools.
   - Safe package-only sync copies spec/collection/UI/docs files and intentionally skips
     profile/domain/newsletter state unless --include-tool-state is passed.
   - If systemctl restart is blocked by PolicyKit, the script falls back to signaling
@@ -229,7 +229,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 DEPLOYED_ROOT="${REPO_ROOT}/deployed/${INSTANCE}"
-LIVE_ROOT="/srv/mycite-state/instances/${INSTANCE}"
+LIVE_ROOT="/srv/webapps/mycite/${INSTANCE}"
 BUILD_ENV_FILE="/srv/compose/portals/v2_portal_build.env"
 SERVICE_NAME="$(portal_service_for_instance "$INSTANCE")"
 PORT="$(portal_port_for_instance "$INSTANCE")"

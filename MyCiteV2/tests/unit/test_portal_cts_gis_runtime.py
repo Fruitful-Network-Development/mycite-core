@@ -17,7 +17,7 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_s
 
 def _preferred_fnd_paths() -> tuple[Path, Path]:
     candidates = [
-        Path("/srv/mycite-state/instances/fnd"),
+        Path("/srv/webapps/mycite/fnd"),
         REPO_ROOT / "deployed" / "fnd",
     ]
     for root in candidates:
