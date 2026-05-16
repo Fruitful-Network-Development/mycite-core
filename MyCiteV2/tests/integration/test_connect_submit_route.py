@@ -194,6 +194,90 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["error"], "invalid_email")
 
+    # ------------------------------------------------------------------
+    # Form-encoded fallback (no-JS submit). The frontend form carries
+    # action="/__fnd/connect/submit" method="post", so a visitor with
+    # JavaScript disabled posts urlencoded fields instead of JSON.
+    # ------------------------------------------------------------------
+
+    def test_form_encoded_success_returns_html(self) -> None:
+        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
+            MosDatumNewsletterContactLogAdapter,
+        )
+
+        client, tmp = self._build_client()
+        with patch("boto3.client") as boto:
+            boto.return_value.send_email.return_value = {"MessageId": "test-msg-2"}
+            resp = client.post(
+                "/__fnd/connect/submit",
+                data={
+                    "email": "noscript@example.test",
+                    "message": "Hi from a browser with JS disabled.",
+                    "first_name": "Pat",
+                    "last_name": "Reader",
+                    "subject": "No-JS test",
+                },
+                base_url="http://fruitfulnetworkdevelopment.com",
+                headers={"Referer": "http://fruitfulnetworkdevelopment.com/contact.html"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        # HTML response, not JSON — that's the visible no-JS UX.
+        self.assertIn("text/html", resp.headers["Content-Type"])
+        body = resp.get_data(as_text=True)
+        self.assertIn("Message received", body)
+        self.assertIn("contact.html", body)  # link back to referrer
+        # Contact still persisted via the same mutation runtime as the JSON path.
+        adapter = MosDatumNewsletterContactLogAdapter(
+            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
+        )
+        row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
+        self.assertEqual(row["email"], "noscript@example.test")
+        self.assertEqual(row["source"], "connect_form")
+        self.assertEqual(row["forward_status"], "sent")
+
+    def test_form_encoded_missing_message_returns_html_400(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/connect/submit",
+            data={"email": "noscript@example.test"},
+            base_url="http://fruitfulnetworkdevelopment.com",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("text/html", resp.headers["Content-Type"])
+        body = resp.get_data(as_text=True)
+        self.assertIn("Could not send your message", body)
+        self.assertIn("Please include a message", body)
+
+    def test_form_encoded_invalid_email_returns_html_400(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/connect/submit",
+            data={"email": "not-an-email", "message": "Hi"},
+            base_url="http://fruitfulnetworkdevelopment.com",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("text/html", resp.headers["Content-Type"])
+        self.assertIn("Please enter a valid email", resp.get_data(as_text=True))
+
+    def test_accept_json_header_overrides_form_encoded(self) -> None:
+        """A form-encoded body with Accept: application/json gets JSON back.
+
+        Lets a JS client POST form-data (matching the HTML action form)
+        while still receiving a structured response.
+        """
+        client, _ = self._build_client()
+        with patch("boto3.client") as boto:
+            boto.return_value.send_email.return_value = {"MessageId": "test-msg-3"}
+            resp = client.post(
+                "/__fnd/connect/submit",
+                data={"email": "json@example.test", "message": "Hi"},
+                headers={"Accept": "application/json"},
+                base_url="http://fruitfulnetworkdevelopment.com",
+            )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("application/json", resp.headers["Content-Type"])
+        self.assertTrue(resp.get_json()["ok"])
+
 
 if __name__ == "__main__":
     unittest.main()
