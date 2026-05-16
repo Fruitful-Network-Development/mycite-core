@@ -7,7 +7,7 @@
   "selected_author_address": "dylan@fruitfulnetworkdevelopment.com",
   "selected_sender_profile_id": "aws-csm.fnd.dylan",
   "selected_sender_address": "dylan@fruitfulnetworkdevelopment.com",
-  "contact_log_path": "/srv/webapps/fruitfulnetworkdevelopment.com/contact/fruitfulnetworkdevelopment.com-contact_log.json",
+  "contact_log_path": "/srv/webapps/mycite/fnd/private/utilities/tools/aws-csm/newsletter/newsletter.fruitfulnetworkdevelopment.com.contacts.json",
   "delivery_mode": "aws_sqs_lambda_us_east_1",
   "aws_region": "us-east-1",
   "dispatch_queue_url": "https://sqs.us-east-1.amazonaws.com/065948377733/aws-cms-newsletter-dispatch",

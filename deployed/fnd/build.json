@@ -4,7 +4,7 @@
     "notes": [
       "State-owned anthology; phase-1 materialize never overwrites this file."
     ],
-    "path_hint": "/srv/mycite-state/instances/fnd/data/anthology.json",
+    "path_hint": "/srv/webapps/mycite/fnd/data/anthology.json",
     "sha256": ""
   },
   "hosted": {
@@ -385,7 +385,7 @@
         ]
       }
     },
-    "source": "/srv/mycite-state/instances/fnd/private/network/hosted.json"
+    "source": "/srv/webapps/mycite/fnd/private/network/hosted.json"
   },
   "meta": {
     "msn_id": "3-2-3-17-77-1-6-4-1-4",
@@ -446,7 +446,7 @@
       ],
       "tools_configuration": []
     },
-    "canonical_source": "/srv/mycite-state/instances/fnd/private/config.json",
+    "canonical_source": "/srv/webapps/mycite/fnd/private/config.json",
     "legacy_compat": [
       {
         "filename": "mycite-config-3-2-3-17-77-1-6-4-1-4.json",
@@ -502,7 +502,7 @@
           ],
           "tools_configuration": []
         },
-        "source": "/srv/mycite-state/instances/fnd/private/mycite-config-3-2-3-17-77-1-6-4-1-4.json"
+        "source": "/srv/webapps/mycite/fnd/private/mycite-config-3-2-3-17-77-1-6-4-1-4.json"
       }
     ]
   },
@@ -523,12 +523,12 @@
         "summary": "Brand profile for the FND portal workbench.",
         "title": "fruitful_network_development_llc"
       },
-      "source": "/srv/mycite-state/instances/fnd/public/fnd-3-2-3-17-77-1-6-4-1-4.json"
+      "source": "/srv/webapps/mycite/fnd/public/fnd-3-2-3-17-77-1-6-4-1-4.json"
     },
     "msn_card": {
       "filename": "msn-3-2-3-17-77-1-6-4-1-4.json",
       "payload": {},
-      "source": "/srv/mycite-state/instances/fnd/public/msn-3-2-3-17-77-1-6-4-1-4.json"
+      "source": "/srv/webapps/mycite/fnd/public/msn-3-2-3-17-77-1-6-4-1-4.json"
     }
   },
   "runtime_flavor": "fnd",
@@ -986,7 +986,7 @@
       "target": "private/utilities/vault/keypass_inventory.json"
     }
   ],
-  "state_root_hint": "/srv/mycite-state/instances/fnd",
+  "state_root_hint": "/srv/webapps/mycite/fnd",
   "tools": {
     "configuration": [],
     "core_system_surfaces": [

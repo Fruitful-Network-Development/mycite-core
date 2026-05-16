@@ -2433,9 +2433,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         try:
             year_month = received_at_utc[:7]
-            resolver = AnalyticsEventPathResolver(
-                webapps_root=host_config.webapps_root or Path("/srv/webapps"),
-            )
+            # Canonical analytics root: <private>/utilities/tools/analytics.
+            # The resolver falls back to MYCITE_ANALYTICS_ROOT env / default
+            # when no explicit root is provided, but we wire it explicitly
+            # from host_config so smoke tests can boot against a tempdir.
+            analytics_root = None
+            if host_config.private_dir is not None:
+                analytics_root = (
+                    Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
+                )
+            resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
             resolver.append_payload(
                 domain=domain, year_month=year_month, payload=event.to_dict()
             )
@@ -2457,19 +2464,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/analytics/refresh")
     def fnd_analytics_refresh() -> tuple[Any, int]:
+        from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+
         payload = _json_payload()
         domain = _normalize_domain(_as_text(payload.get("domain")))
         if not domain:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
-        if host_config.webapps_root is None:
-            return jsonify({"ok": False, "error": "webapps_root_not_configured"}), 500
         if host_config.authority_db_file is None:
             return jsonify({"ok": False, "error": "authority_db_not_configured"}), 500
 
-        events_dir = (
-            Path(host_config.webapps_root) / "clients" / domain / "analytics" / "events"
-        )
-        if not events_dir.exists() or not events_dir.is_dir():
+        analytics_root = None
+        if host_config.private_dir is not None:
+            analytics_root = (
+                Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
+            )
+        resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
+        if not resolver.iter_domain_event_files(domain):
             return jsonify({"ok": False, "error": "no_events_directory"}), 404
 
         try:
@@ -2490,7 +2500,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         try:
             counts, recent = _aggregate_for_domain(
-                webapps_root=Path(host_config.webapps_root),
+                resolver=resolver,
                 domain=domain,
                 window_months=window_months,
             )
