@@ -21,7 +21,7 @@ from MyCiteV2.packages.ports.datum_store import (
 
 _SUMMIT_DATA_ROOT_CANDIDATES = (
     REPO_ROOT / "deployed" / "fnd" / "data",
-    Path("/srv/mycite-state/instances/fnd/data"),
+    Path("/srv/webapps/mycite/fnd/data"),
 )
 SUMMIT_DATA_ROOT = next(
     (candidate for candidate in _SUMMIT_DATA_ROOT_CANDIDATES if candidate.exists() and candidate.is_dir()),

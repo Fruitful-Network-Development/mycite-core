@@ -6,7 +6,7 @@ target tenant, the script reports it and exits without writing.
 Usage::
 
     python -m MyCiteV2.scripts.bootstrap_fnd_csm_anchor \
-        --authority-db /srv/mycite-state/instances/fnd/private/mos_authority.sqlite3 \
+        --authority-db /srv/webapps/mycite/fnd/private/mos_authority.sqlite3 \
         --tenant-id fnd \
         --msn-id 3-2-3-17-77-1-6-4-1-4
 

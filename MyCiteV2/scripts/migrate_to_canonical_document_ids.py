@@ -14,7 +14,7 @@ version_hash changes. It does not mutate ``datum_document_semantics``.
 Usage::
 
     python -m MyCiteV2.scripts.migrate_to_canonical_document_ids \\
-        --db /srv/mycite-state/instances/fnd/private/mos_authority.sqlite3 \\
+        --db /srv/webapps/mycite/fnd/private/mos_authority.sqlite3 \\
         --msn-id 3-2-3-17-77-1-6-4-1-4
 """
 

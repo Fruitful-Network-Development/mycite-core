@@ -198,7 +198,7 @@ class TestPaypalApiHelpersAreMockable(unittest.TestCase):
 class TestNewsletterKnownDomainsResolution(unittest.TestCase):
     """The newsletter known-domains lookup must derive from the host config's
     private_dir (V2PortalHostConfig.private_dir / utilities/tools/newsletter-admin/),
-    not from a hardcoded /srv/mycite-state path. Phase 13d-prep refactor — the
+    not from a hardcoded /srv/webapps/mycite path. Phase 13d-prep refactor — the
     smoke tests will rely on this so they can boot the portal against a tempdir.
     """
 
