@@ -1,1 +1,0 @@
-"""Inert package scaffold."""
