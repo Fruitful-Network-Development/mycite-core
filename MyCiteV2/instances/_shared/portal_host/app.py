@@ -933,6 +933,70 @@ def _fnd_newsletter_request_field(field: str) -> str:
     return str(request.form.get(field) or "").strip()
 
 
+def _connect_response(
+    is_json_request: bool,
+    *,
+    ok: bool,
+    status: int,
+    **payload: Any,
+):
+    """Content-negotiate a Connect-form response.
+
+    JSON path: returns ``jsonify({"ok": …, **payload}), status`` exactly
+    as the shared connect.js client expects.
+
+    No-JS / form-encoded path: returns a tiny standalone HTML page with
+    the same status code, the success/error language users get from
+    connect.js, and a link back to the referring contact page. This is
+    what visitors with JavaScript disabled see after submitting the form
+    with the ``action="/__fnd/connect/submit" method="post"`` fallback.
+    """
+    body: dict[str, Any] = {"ok": ok}
+    body.update(payload)
+    if is_json_request:
+        return jsonify(body), status
+    referrer = request.referrer or "/"
+    if ok:
+        heading = "Message received — thank you!"
+        forward_status = payload.get("forward_status") or ""
+        if forward_status in {"pending", "failed"}:
+            sub = (
+                "We're still routing your message — we'll respond soon."
+            )
+        else:
+            sub = "We'll be in touch."
+    else:
+        heading = "Could not send your message"
+        error = payload.get("error") or "unknown_error"
+        sub = {
+            "invalid_email": "Please enter a valid email address and try again.",
+            "missing_message": "Please include a message and try again.",
+            "missing_domain": "We couldn't determine which site you're contacting. Please try again from a regular page link.",
+            "storage_error": "Our contact log couldn't be reached. Please try again in a few minutes.",
+        }.get(error, "An unexpected error occurred. Please try again.")
+    html = (
+        "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
+        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
+        "<title>" + ("Message sent" if ok else "Message not sent")
+        + "</title>"
+        "<style>"
+        "body{font-family:system-ui,-apple-system,sans-serif;"
+        "max-width:38rem;margin:4rem auto;padding:0 1.5rem;line-height:1.5;color:#1a1a1a;}"
+        "h1{font-size:1.5rem;margin:0 0 0.5rem;}"
+        "p{margin:0 0 1rem;}"
+        ".back{display:inline-block;margin-top:1rem;}"
+        "</style>"
+        "</head><body>"
+        f"<h1>{heading}</h1>"
+        f"<p>{sub}</p>"
+        f"<p class=\"back\"><a href=\"{referrer}\">&larr; Back</a></p>"
+        "</body></html>"
+    )
+    response = make_response(html, status)
+    response.headers["Content-Type"] = "text/html; charset=utf-8"
+    return response
+
+
 # ---------------------------------------------------------------------------
 # PayPal order peripheral helpers (peripheral donation routes only)
 # ---------------------------------------------------------------------------
@@ -1777,18 +1841,35 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """Public Connect-form endpoint. Same calling convention as
         ``/__fnd/newsletter/subscribe`` — domain is derived from the
         request.host, body carries the visitor fields + message.
+
+        Content negotiation: a JSON-body request gets a JSON response
+        (the path the shared connect.js takes). A form-encoded request
+        (the no-JS fallback path) gets an HTML response with a link back
+        to the referring page. This lets visitors with JavaScript
+        disabled still file a contact, with a real UX instead of raw
+        JSON painted on a blank page.
         """
+        is_json_request = request.is_json or "application/json" in (
+            request.headers.get("Accept") or ""
+        )
+
         domain = _normalize_domain(request.host)
         if not domain:
-            return jsonify({"ok": False, "error": "missing_domain"}), 400
+            return _connect_response(
+                is_json_request, ok=False, status=400, error="missing_domain"
+            )
 
         raw_email = _fnd_newsletter_request_field("email")
         email = _validate_email(raw_email)
         if not email:
-            return jsonify({"ok": False, "error": "invalid_email"}), 400
+            return _connect_response(
+                is_json_request, ok=False, status=400, error="invalid_email"
+            )
         message = _fnd_newsletter_request_field("message")
         if not message:
-            return jsonify({"ok": False, "error": "missing_message"}), 400
+            return _connect_response(
+                is_json_request, ok=False, status=400, error="missing_message"
+            )
         first_name = _fnd_newsletter_request_field("first_name")
         middle_name = _fnd_newsletter_request_field("middle_name")
         last_name = _fnd_newsletter_request_field("last_name")
@@ -1836,20 +1917,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 portal_instance_id=host_config.portal_instance_id,
             )
         except Exception:
-            return jsonify({"ok": False, "error": "storage_error", "forward_status": forward_status}), 500
+            return _connect_response(
+                is_json_request, ok=False, status=500,
+                error="storage_error", forward_status=forward_status,
+            )
 
         if not result.get("ok"):
-            return jsonify({"ok": False, "error": "storage_error", "forward_status": forward_status}), 500
-        return (
-            jsonify(
-                {
-                    "ok": True,
-                    "email": email,
-                    "subscribed": False,
-                    "forward_status": forward_status,
-                }
-            ),
-            200,
+            return _connect_response(
+                is_json_request, ok=False, status=500,
+                error="storage_error", forward_status=forward_status,
+            )
+        return _connect_response(
+            is_json_request, ok=True, status=200,
+            email=email, subscribed=False, forward_status=forward_status,
         )
 
     # ------------------------------------------------------------------
