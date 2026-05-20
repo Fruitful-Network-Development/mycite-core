@@ -3339,6 +3339,105 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "bandwidth_share_by_domain": bandwidth,
         }), 200
 
+    @app.get("/__fnd/bpw-jobs/list")
+    def fnd_bpw_jobs_list() -> tuple[Any, int]:
+        """Return the BPW job records (read from the operator tree at
+        /srv/webapps/mycite/fnd/private/utilities/tools/bpw-jobs/).
+        Scope-guarded: only the BPW grantee (or an unauthenticated
+        operator) may read; other grantees are 403."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
+            jobs_summary,
+            list_jobs,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            grantee_for_domain,
+            resolve_grantee_from_headers,
+        )
+
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            short = str(caller.get("short_name", "")).lower()
+            if short and short != "bpw":
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+
+        rows = list_jobs()
+        summary = jobs_summary(rows)
+        return jsonify({
+            "ok": True,
+            "summary": summary,
+            "jobs": rows,
+        }), 200
+
+    @app.get("/__fnd/tolling/snapshot")
+    def fnd_tolling_snapshot() -> tuple[Any, int]:
+        """Read the persisted tolling JSON for a grantee. This is what
+        the per-client `/dashboard/` fetches — no live AWS calls per
+        page-load. The JSON is refreshed by the operator on demand via
+        /__fnd/tolling/refresh."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            read_tolling_snapshot,
+            resolve_grantee_from_headers,
+            grantee_for_domain,
+        )
+
+        requested_msn = _as_text(request.args.get("grantee"))
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            caller_msn = _as_text(caller.get("msn_id"))
+            if requested_msn and requested_msn != caller_msn:
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+            if not requested_msn:
+                requested_msn = caller_msn
+        if not requested_msn:
+            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+
+        snapshot = read_tolling_snapshot(requested_msn)
+        return jsonify({"ok": True, **snapshot}), 200
+
+    @app.post("/__fnd/tolling/refresh")
+    def fnd_tolling_refresh() -> tuple[Any, int]:
+        """Operator action: compute the current-month tolling row for a
+        grantee from live AWS + nginx logs, upsert into the grantee's
+        tolling.<msn>.json. Operator-only: when oauth2-proxy headers
+        identify a non-operator caller, refuse."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            compute_tolling_row,
+            resolve_grantee_from_headers,
+            upsert_tolling_row,
+        )
+
+        requested_msn = _as_text(request.args.get("grantee"))
+        if not requested_msn:
+            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+        # If oauth2-proxy resolved a grantee (i.e. a logged-in grantee
+        # user) reject — refresh is operator-only. No headers = operator
+        # context (dev tooling, cron-triggered, etc.) — allow.
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+
+        period = _as_text(request.args.get("period"))
+        if not period:
+            period = datetime.now(UTC).date().strftime("%Y-%m")
+
+        try:
+            row = compute_tolling_row(
+                requested_msn, period, aws_peripheral=_aws_peripheral
+            )
+            snapshot = upsert_tolling_row(requested_msn, row)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:  # noqa: BLE001
+            _log.error("tolling_refresh_failed",
+                       extra={"grantee": requested_msn, "period": period, "err": str(exc)})
+            return jsonify({"ok": False, "error": "refresh_failed"}), 500
+
+        return jsonify({"ok": True, "row": row, "snapshot": snapshot}), 200
+
     @app.get("/__fnd/tolling/whoami")
     def fnd_tolling_whoami() -> tuple[Any, int]:
         """Resolve the caller's grantee identity.
