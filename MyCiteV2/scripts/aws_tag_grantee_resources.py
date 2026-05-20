@@ -96,13 +96,17 @@ GRANTEE_RESOURCES: dict[str, dict[str, list[str] | str | bool]] = {
         "label": "Trapp Family Farm",
         "route53_zones": ["Z07127663NGY0TH4ZZIEI"],  # trappfamilyfarm.com
     },
+    # BPW — Brock's Pressure Washing.
+    "3-2-3-17-77-3-6-5-1-9": {
+        "tenant": "bpw",
+        "label": "Brock's Pressure Washing",
+        "route53_zones": ["Z06717982X5JX84P87CIY"],  # brockspressurewashing.com
+    },
 }
 
 # Resources owned operationally by FND but for clients without their
-# own grantee profile yet (e.g. BPW). Tagged with FND + shared=true.
-FND_OPERATED_DOMAINS = {
-    "Z06717982X5JX84P87CIY": "brockspressurewashing.com",  # BPW: no grantee profile yet
-}
+# own grantee profile yet. Empty now that BPW has a profile.
+FND_OPERATED_DOMAINS: dict[str, str] = {}
 
 
 def _arn_for_route53_zone(zone_id: str) -> str:
