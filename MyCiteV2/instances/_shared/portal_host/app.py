@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -3201,6 +3201,148 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             receipt_path.name,
             as_attachment=True,
         )
+
+    # ------------------------------------------------------------------
+    # Tolling — per-grantee cost itemization. Consumed by the per-client
+    # /dashboard/ static surfaces (proxied same-origin from the client
+    # vhost to keep CORS off the critical path).
+    # ------------------------------------------------------------------
+
+    def _tolling_parse_date(value: str) -> date | None:
+        try:
+            return date.fromisoformat(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _tolling_default_window() -> tuple[date, date]:
+        today = datetime.now(UTC).date()
+        # AWS Cost Explorer convention: end-exclusive. Default to
+        # current month-to-date (start = first of month, end = today).
+        return today.replace(day=1), today
+
+    @app.get("/__fnd/tolling/itemize")
+    def fnd_tolling_itemize() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            bandwidth_share_for_grantee,
+            domains_for_grantee,
+            resolve_grantee_from_headers,
+        )
+        from MyCiteV2.packages.peripherals.aws.contracts import CostBreakdown
+
+        requested_msn = _as_text(request.args.get("grantee"))
+        from_raw = _as_text(request.args.get("from"))
+        to_raw = _as_text(request.args.get("to"))
+
+        # Scope guard: if oauth2-proxy headers are present, the caller
+        # must match the `?grantee=` argument. If no auth headers
+        # (operator tooling / development), allow any `?grantee=`.
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None:
+            caller_msn = _as_text(caller.get("msn_id"))
+            if requested_msn and requested_msn != caller_msn:
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+            if not requested_msn:
+                requested_msn = caller_msn
+
+        if not requested_msn:
+            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+
+        start_d = _tolling_parse_date(from_raw) if from_raw else None
+        end_d = _tolling_parse_date(to_raw) if to_raw else None
+        if start_d is None or end_d is None:
+            default_start, default_end = _tolling_default_window()
+            start_d = start_d or default_start
+            end_d = end_d or default_end
+
+        # Cost Explorer slice.
+        cost: CostBreakdown = _aws_peripheral.get_costs_by_grantee(
+            msn_id=requested_msn,
+            start=start_d.isoformat(),
+            end=end_d.isoformat(),
+        )
+
+        # Bandwidth share from nginx access logs (no MOS dependency).
+        bandwidth = bandwidth_share_for_grantee(
+            requested_msn, start_d, end_d
+        )
+
+        return jsonify({
+            "ok": True,
+            "grantee": {
+                "msn_id": requested_msn,
+                "domains": domains_for_grantee(requested_msn),
+            },
+            "period": {
+                "start": start_d.isoformat(),
+                "end": end_d.isoformat(),
+            },
+            "costs": cost,
+            "bandwidth_share": bandwidth,
+        }), 200
+
+    @app.get("/__fnd/tolling/overview")
+    def fnd_tolling_overview() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            bandwidth_share_by_domain,
+            load_grantee_directory,
+        )
+
+        from_raw = _as_text(request.args.get("from"))
+        to_raw = _as_text(request.args.get("to"))
+        start_d = _tolling_parse_date(from_raw) if from_raw else None
+        end_d = _tolling_parse_date(to_raw) if to_raw else None
+        if start_d is None or end_d is None:
+            default_start, default_end = _tolling_default_window()
+            start_d = start_d or default_start
+            end_d = end_d or default_end
+
+        overview = _aws_peripheral.get_costs_overview(
+            start=start_d.isoformat(), end=end_d.isoformat()
+        )
+        bandwidth = bandwidth_share_by_domain(start_d, end_d)
+        grantees = [
+            {
+                "msn_id": _as_text(p.get("msn_id")),
+                "short_name": _as_text(p.get("short_name")),
+                "label": _as_text(p.get("label")),
+                "domains": [str(d) for d in p.get("domains") or []],
+            }
+            for p in load_grantee_directory()
+        ]
+
+        return jsonify({
+            "ok": True,
+            "period": {
+                "start": start_d.isoformat(),
+                "end": end_d.isoformat(),
+            },
+            "grantees": grantees,
+            "costs_by_msn_id": overview,
+            "bandwidth_share_by_domain": bandwidth,
+        }), 200
+
+    @app.get("/__fnd/tolling/whoami")
+    def fnd_tolling_whoami() -> tuple[Any, int]:
+        """Resolve the caller's grantee identity from oauth2-proxy
+        headers. Used by the per-client dashboard JS to learn the
+        active grantee_id before fetching itemize. 200 with empty
+        grantee when unauthenticated."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            resolve_grantee_from_headers,
+        )
+
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            return jsonify({"ok": True, "grantee": None}), 200
+        return jsonify({
+            "ok": True,
+            "grantee": {
+                "msn_id": _as_text(caller.get("msn_id")),
+                "short_name": _as_text(caller.get("short_name")),
+                "label": _as_text(caller.get("label")),
+                "domains": [str(d) for d in caller.get("domains") or []],
+            },
+        }), 200
 
     return app
 
