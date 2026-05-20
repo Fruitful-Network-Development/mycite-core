@@ -339,8 +339,8 @@ def run_datum_workbench_mutation_action(
     if action == "discard":
         return _ok(action, {"stage_state": "discarded"})
     target_authority = _as_text(normalized.get("target_authority"))
-    if target_authority in _AWS_CSM_TARGET_AUTHORITIES:
-        return _run_aws_csm_mutation_action(
+    if target_authority in _NEWSLETTER_TARGET_AUTHORITIES:
+        return _run_newsletter_mutation_action(
             action=action,
             target_authority=target_authority,
             payload=normalized,
@@ -416,14 +416,14 @@ def run_datum_workbench_mutation_action(
     )
 
 
-_AWS_CSM_TARGET_AUTHORITIES = frozenset(
+_NEWSLETTER_TARGET_AUTHORITIES = frozenset(
     {
-        "aws_csm_newsletter_contact_log",
-        "aws_csm_newsletter_profile",
+        "newsletter_contact_log",
+        "newsletter_profile",
         "paypal_webhook",
     }
 )
-_AWS_CSM_OPERATIONS = frozenset(
+_NEWSLETTER_OPERATIONS = frozenset(
     {
         "upsert_subscriber",
         # Phase 16a: operator-side inline row edit for the newsletter
@@ -442,7 +442,7 @@ _AWS_CSM_OPERATIONS = frozenset(
 )
 
 
-def _run_aws_csm_mutation_action(
+def _run_newsletter_mutation_action(
     *,
     action: str,
     target_authority: str,
@@ -459,7 +459,7 @@ def _run_aws_csm_mutation_action(
     regardless of caller.
     """
     operation = _as_text(payload.get("operation"))
-    if operation not in _AWS_CSM_OPERATIONS:
+    if operation not in _NEWSLETTER_OPERATIONS:
         return _error(
             "unsupported_operation",
             f"Unsupported AWS-CSM mutation operation: {operation}",
@@ -486,7 +486,7 @@ def _run_aws_csm_mutation_action(
     tenant_id = _as_text(portal_instance_id) or "fnd"
 
     try:
-        result = _aws_csm_apply_or_preview(
+        result = _newsletter_apply_or_preview(
             target_authority=target_authority,
             operation=operation,
             payload=payload,
@@ -495,9 +495,9 @@ def _run_aws_csm_mutation_action(
             apply=(action == "apply"),
         )
     except ValueError as exc:
-        return _error("aws_csm_mutation_failed", str(exc))
+        return _error("aws_mutation_failed", str(exc))
     except Exception as exc:
-        return _error("aws_csm_mutation_error", str(exc), status_code=500)
+        return _error("aws_mutation_error", str(exc), status_code=500)
     return _ok(
         action,
         {
@@ -508,7 +508,7 @@ def _run_aws_csm_mutation_action(
     )
 
 
-def _aws_csm_apply_or_preview(
+def _newsletter_apply_or_preview(
     *,
     target_authority: str,
     operation: str,
@@ -529,7 +529,7 @@ def _aws_csm_apply_or_preview(
         MosDatumNewsletterContactLogAdapter,
     )
 
-    if target_authority == "aws_csm_newsletter_contact_log":
+    if target_authority == "newsletter_contact_log":
         domain = _as_text(payload.get("domain"))
         if not domain:
             raise ValueError("domain is required for newsletter contact log mutations")
@@ -565,7 +565,7 @@ def _aws_csm_apply_or_preview(
                 "contacts": [],
                 "dispatches": [],
             }
-            now_iso = _aws_csm_now_iso()
+            now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
             effective_signup_date = signup_date or today_date
             contacts = list(log.get("contacts") or [])
@@ -632,7 +632,7 @@ def _aws_csm_apply_or_preview(
             log = adapter.load_contact_log(domain=domain)
             if not log:
                 raise ValueError("contact_log_missing_for_domain")
-            now_iso = _aws_csm_now_iso()
+            now_iso = _now_iso()
             updates: dict[str, str] = {}
             for key in (
                 "first_name",
@@ -708,7 +708,7 @@ def _aws_csm_apply_or_preview(
                 "contacts": [],
                 "dispatches": [],
             }
-            now_iso = _aws_csm_now_iso()
+            now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
             contacts = list(log.get("contacts") or [])
             composed_name = " ".join(
@@ -783,7 +783,7 @@ def _aws_csm_apply_or_preview(
             log = adapter.load_contact_log(domain=domain)
             if not log:
                 raise ValueError("contact_log_missing_for_domain")
-            now_iso = _aws_csm_now_iso()
+            now_iso = _now_iso()
             matched = False
             for c in log.get("contacts") or []:
                 if _as_text(c.get("email")).lower() == email:
@@ -813,7 +813,7 @@ def _aws_csm_apply_or_preview(
             log = adapter.load_contact_log(domain=domain)
             if not log:
                 raise ValueError("contact_log_missing_for_domain")
-            now_iso = _aws_csm_now_iso()
+            now_iso = _now_iso()
             matched = False
             for c in log.get("contacts") or []:
                 if _as_text(c.get("email")).lower() != email:
@@ -863,7 +863,7 @@ def _aws_csm_apply_or_preview(
             }
         raise ValueError(f"unsupported_newsletter_contact_log_operation:{operation}")
 
-    if target_authority == "aws_csm_newsletter_profile":
+    if target_authority == "newsletter_profile":
         if operation == "assign_sender":
             domain = _as_text(payload.get("domain")).lower()
             sender = _as_text(payload.get("sender_address")).lower()
@@ -874,13 +874,13 @@ def _aws_csm_apply_or_preview(
             # When the sender-profile datum lands as part of a future
             # migration, swap this path.
             from MyCiteV2.packages.adapters.filesystem import (
-                FilesystemAwsCsmNewsletterStateAdapter,
+                FilesystemNewsletterStateAdapter,
             )
 
             private_dir = _as_text(payload.get("private_dir"))
             if not private_dir:
                 raise ValueError("private_dir is required for assign_sender")
-            fs_adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
+            fs_adapter = FilesystemNewsletterStateAdapter(private_dir)
             profile = dict(fs_adapter.load_profile(domain=domain) or {})
             profile["selected_sender_address"] = sender
             if apply:
@@ -919,7 +919,7 @@ def _aws_csm_apply_or_preview(
     raise ValueError(f"unsupported_target_authority:{target_authority}")
 
 
-def _aws_csm_now_iso() -> str:
+def _now_iso() -> str:
     from datetime import datetime
 
     return datetime.now(UTC).isoformat()

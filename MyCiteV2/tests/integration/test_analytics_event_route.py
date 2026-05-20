@@ -67,14 +67,10 @@ class AnalyticsEventRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json()["ok"])
         # NDJSON file landed where the resolver expects.
-        events_dir = (
-            tmp
-            / "webapps"
-            / "clients"
-            / "fruitfulnetworkdevelopment.com"
-            / "analytics"
-            / "events"
-        )
+        # Canonical analytics layout (post-Phase-18a): events under
+        # <private>/utilities/tools/analytics/ as
+        # analytics.<domain>.events.<YYYY-MM>.ndjson.
+        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
         files = list(events_dir.glob("*.ndjson"))
         self.assertEqual(len(files), 1)
         rows = files[0].read_text(encoding="utf-8").strip().splitlines()
@@ -126,14 +122,10 @@ class AnalyticsEventRouteTests(unittest.TestCase):
             headers={"Cookie": vid_cookie},
             base_url="http://fruitfulnetworkdevelopment.com",
         )
-        events_dir = (
-            tmp
-            / "webapps"
-            / "clients"
-            / "fruitfulnetworkdevelopment.com"
-            / "analytics"
-            / "events"
-        )
+        # Canonical analytics layout (post-Phase-18a): events under
+        # <private>/utilities/tools/analytics/ as
+        # analytics.<domain>.events.<YYYY-MM>.ndjson.
+        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
         rows = [
             json.loads(line)
             for line in next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").splitlines()
@@ -155,14 +147,10 @@ class AnalyticsEventRouteTests(unittest.TestCase):
                 "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
             },
         )
-        events_dir = (
-            tmp
-            / "webapps"
-            / "clients"
-            / "fruitfulnetworkdevelopment.com"
-            / "analytics"
-            / "events"
-        )
+        # Canonical analytics layout (post-Phase-18a): events under
+        # <private>/utilities/tools/analytics/ as
+        # analytics.<domain>.events.<YYYY-MM>.ndjson.
+        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
         row = json.loads(
             next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").splitlines()[0]
         )
@@ -209,14 +197,10 @@ class AnalyticsEventRouteTests(unittest.TestCase):
         # fresh each time, but the test client carries cookies
         # implicitly within a session so visitor_cookie_id_hash stays
         # stable).
-        events_dir = (
-            tmp
-            / "webapps"
-            / "clients"
-            / "fruitfulnetworkdevelopment.com"
-            / "analytics"
-            / "events"
-        )
+        # Canonical analytics layout (post-Phase-18a): events under
+        # <private>/utilities/tools/analytics/ as
+        # analytics.<domain>.events.<YYYY-MM>.ndjson.
+        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
         rows = next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").strip().splitlines()
         # 1 written, 2 deduped.
         self.assertEqual(len(rows), 1)

@@ -32,6 +32,14 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M12 20s5-4.3 5-9a5 5 0 1 0-10 0c0 4.7 5 9 5 9z"></path><circle cx="12" cy="11" r="1.8"></circle>' +
         "</svg>";
+    } else if (id === "agro_erp") {
+      svg =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M12 4c-2 3-2 6 0 9c2-3 2-6 0-9z"></path>' +
+        '<path d="M5 12c2 0 4 1 5 3"></path>' +
+        '<path d="M19 12c-2 0-4 1-5 3"></path>' +
+        '<path d="M12 13v7"></path>' +
+        "</svg>";
     } else {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
@@ -506,6 +514,212 @@
     });
   }
 
+  function renderModeTabs(ctx, workbenchMode) {
+    // Workbench three-mode tab strip. Hidden when the panel surface
+    // does not carry workbench_mode (i.e. legacy / non-workbench
+    // surfaces stay unaffected).
+    if (!workbenchMode || !Array.isArray(workbenchMode.tabs) || workbenchMode.tabs.length === 0) {
+      return "";
+    }
+    var html = '<nav class="ide-controlpanel__modeTabs" role="tablist">';
+    workbenchMode.tabs.forEach(function (tab, index) {
+      var classes = ["ide-controlpanel__modeTab"];
+      if (tab.active) classes.push("ide-controlpanel__modeTab--active");
+      if (!tab.available) classes.push("ide-controlpanel__modeTab--disabled");
+      html +=
+        '<button type="button" class="' + classes.join(" ") +
+        '" role="tab" aria-selected="' + (tab.active ? "true" : "false") + '"' +
+        (tab.available ? "" : " disabled") +
+        ' data-workbench-mode-index="' + String(index) + '">' +
+        ctx.escapeHtml(tab.label || tab.mode || "") +
+        "</button>";
+    });
+    html += "</nav>";
+    return html;
+  }
+
+  function renderDisclosureGroups(ctx, disclosureGroups) {
+    if (!Array.isArray(disclosureGroups) || disclosureGroups.length === 0) return "";
+    var html = '<div class="ide-controlpanel__disclosures">';
+    disclosureGroups.forEach(function (group) {
+      var expanded = group.expanded ? " open" : "";
+      html +=
+        '<details class="ide-controlpanel__disclosure"' + expanded + ">" +
+        '<summary class="ide-controlpanel__disclosureSummary">' +
+        ctx.escapeHtml(group.title || "") +
+        "</summary>" +
+        '<div class="ide-controlpanel__disclosureBody">';
+      // Nested groups (e.g. "Display options" wraps several nav groups).
+      (group.groups || []).forEach(function (nested) {
+        html +=
+          '<div class="ide-controlpanel__selectionGroup">' +
+          '<header class="ide-controlpanel__selectionGroupTitle">' +
+          ctx.escapeHtml(nested.title || "") +
+          "</header>" +
+          '<div class="ide-controlpanel__selectionPanel">';
+        (nested.entries || []).forEach(function (entry) {
+          html += renderEntry(entry, ctx.escapeHtml);
+        });
+        html += "</div></div>";
+      });
+      // Inspector-style context conditions.
+      if (Array.isArray(group.context_conditions) && group.context_conditions.length) {
+        html += '<div class="ide-controlpanel__contextRows">';
+        group.context_conditions.forEach(function (cond) {
+          html +=
+            '<div class="ide-controlpanel__contextRow">' +
+            '<span class="ide-controlpanel__contextKey">' +
+            ctx.escapeHtml(cond.label || "") +
+            ':</span><span class="ide-controlpanel__contextValue">' +
+            ctx.escapeHtml(cond.value || "—") +
+            "</span></div>";
+        });
+        html += "</div>";
+      }
+      html += "</div></details>";
+    });
+    html += "</div>";
+    return html;
+  }
+
+  function renderAuthorForms(ctx, workbenchMode) {
+    // Author-mode forms: a template-picker + name input for new
+    // documents, and a YAML textarea for new datums. The renderer
+    // builds vanilla HTML form controls; submission is handled by
+    // bindAuthorForms (POST stage → preview → apply).
+    if (!workbenchMode || workbenchMode.active !== "author") return "";
+    var forms = workbenchMode.author_forms || {};
+    var html = "";
+    var nsf = forms.new_source_document;
+    if (nsf) {
+      var templates = nsf.available_templates || [];
+      html +=
+        '<form class="ide-controlpanel__authorForm" data-author-form-kind="new_source_document">' +
+        '<header class="ide-controlpanel__selectionGroupTitle">+ New document</header>';
+      if (templates.length === 0) {
+        html +=
+          '<p class="ide-controlpanel__authorEmpty">No templates registered for this sandbox.</p>';
+      } else {
+        html += '<label class="ide-controlpanel__authorLabel">Template' +
+          '<select name="template_id" required>';
+        templates.forEach(function (t) {
+          html +=
+            '<option value="' + ctx.escapeHtml(t.template_id) + '">' +
+            ctx.escapeHtml(t.label || t.template_id) +
+            "</option>";
+        });
+        html += "</select></label>";
+        var nameInput = nsf.name_input || {};
+        html += '<label class="ide-controlpanel__authorLabel">Name' +
+          '<input type="text" name="document_name" required' +
+          ' pattern="' + ctx.escapeHtml(nameInput.pattern || "^[a-z][a-z0-9_]*$") + '"' +
+          ' maxlength="' + String(nameInput.max_length || 64) + '"' +
+          ' placeholder="' + ctx.escapeHtml(nameInput.placeholder || "") + '" />' +
+          "</label>";
+        html += '<button type="submit" class="ide-controlpanel__authorSubmit">Create document</button>';
+        html += '<p class="ide-controlpanel__authorStatus" data-author-form-status></p>';
+      }
+      html += "</form>";
+    }
+    var ndf = forms.new_datum;
+    if (ndf) {
+      var docId = ndf.document_id_default || "";
+      html +=
+        '<form class="ide-controlpanel__authorForm" data-author-form-kind="new_datum">' +
+        '<header class="ide-controlpanel__selectionGroupTitle">+ New datum</header>';
+      if (!docId) {
+        html +=
+          '<p class="ide-controlpanel__authorEmpty">Select a document first.</p>';
+      } else {
+        html += '<p class="ide-controlpanel__authorMeta">Document: <code>' +
+          ctx.escapeHtml(docId) + "</code></p>";
+        var rt = ndf.raw_payload_textarea || {};
+        html += '<label class="ide-controlpanel__authorLabel">' +
+          ctx.escapeHtml(rt.label || "Datum row (YAML 4-tuple)") +
+          '<textarea name="raw_payload" rows="6" required placeholder="' +
+          ctx.escapeHtml(rt.placeholder || "") + '"></textarea></label>';
+        html += '<button type="submit" class="ide-controlpanel__authorSubmit">Insert datum</button>';
+        html += '<p class="ide-controlpanel__authorStatus" data-author-form-status></p>';
+      }
+      html += "</form>";
+    }
+    return html;
+  }
+
+  function bindModeTabs(root, ctx, workbenchMode) {
+    if (!workbenchMode || !Array.isArray(workbenchMode.tabs)) return;
+    Array.prototype.forEach.call(
+      root.querySelectorAll("[data-workbench-mode-index]"),
+      function (node) {
+        node.addEventListener("click", function () {
+          var index = Number(node.getAttribute("data-workbench-mode-index"));
+          var tab = (workbenchMode.tabs || [])[index] || {};
+          if (!tab.available || tab.active) return;
+          if (tab.shell_request) ctx.loadShell(tab.shell_request);
+        });
+      }
+    );
+  }
+
+  function bindAuthorForms(root, ctx, workbenchMode) {
+    if (!workbenchMode || workbenchMode.active !== "author") return;
+    var forms = workbenchMode.author_forms || {};
+    Array.prototype.forEach.call(
+      root.querySelectorAll("[data-author-form-kind]"),
+      function (form) {
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var kind = form.getAttribute("data-author-form-kind");
+          var contract = kind === "new_source_document" ? forms.new_source_document : forms.new_datum;
+          if (!contract) return;
+          var statusEl = form.querySelector("[data-author-form-status]");
+          function setStatus(msg) { if (statusEl) statusEl.textContent = msg; }
+          var payload = {
+            target_authority: "datum_workbench",
+            sandbox_id: contract.sandbox_id,
+          };
+          if (kind === "new_source_document") {
+            payload.operation = "scaffold_datum";
+            payload.template_id = form.template_id.value;
+            payload.document_name = form.document_name.value;
+            payload.msn_id = contract.msn_id_default || "";
+          } else {
+            payload.operation = "insert_datum";
+            payload.document_id = contract.document_id_default;
+            payload.raw_payload = form.raw_payload.value;
+          }
+          var endpoints = [contract.endpoint_stage, contract.endpoint_preview, contract.endpoint_apply];
+          var labels = ["staging", "previewing", "applying"];
+          setStatus(labels[0] + "…");
+          var step = 0;
+          function nextStep(prev) {
+            if (step >= endpoints.length) {
+              setStatus("done. Reloading…");
+              setTimeout(function () { window.location.reload(); }, 500);
+              return;
+            }
+            var url = endpoints[step];
+            setStatus(labels[step] + "…");
+            fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(prev || payload),
+            }).then(function (res) {
+              if (!res.ok) throw new Error(labels[step] + " failed: " + res.status);
+              return res.json();
+            }).then(function (body) {
+              step += 1;
+              nextStep(body);
+            }).catch(function (err) {
+              setStatus("error: " + (err && err.message ? err.message : String(err)));
+            });
+          }
+          nextStep();
+        });
+      }
+    );
+  }
+
   function renderUnifiedDirectivePanel(ctx, root, region) {
     // Phase 5 (portal_tool_surface_contract.md): the unified NIMM-AITAS control
     // section is retired. Region payloads no longer carry nimm_aitas_control.
@@ -518,18 +732,30 @@
     var navigationGroups = region.navigation_groups || [];
     var actions = region.actions || [];
     var toolExtensions = region.tool_extensions || {};
+    var disclosureGroups = region.disclosure_groups || [];
+    var workbenchMode = region.workbench_mode || null;
 
     // Build HTML
     var html = '<section class="ide-controlpanel__section">';
 
-    // Portal Identity (compact row)
-    html +=
+    // Portal Identity (compact row) — appended with the workbench
+    // sandbox label when in three-mode workbench surfaces so the user
+    // sees "fnd · local — Agro-ERP" instead of just "fnd".
+    var identityHtml =
       '<div class="ide-controlpanel__identity">' +
       '<span class="ide-controlpanel__portalId">' +
       ctx.escapeHtml(portalIdentity.portal_instance_id || "") +
       "</span>" +
-      (portalIdentity.host_shape ? ' · ' + ctx.escapeHtml(portalIdentity.host_shape) : "") +
-      "</div>";
+      (portalIdentity.host_shape ? ' · ' + ctx.escapeHtml(portalIdentity.host_shape) : "");
+    if (workbenchMode && workbenchMode.sandbox_label) {
+      identityHtml += ' — <span class="ide-controlpanel__sandboxLabel">' +
+        ctx.escapeHtml(workbenchMode.sandbox_label) + "</span>";
+    }
+    identityHtml += "</div>";
+    html += identityHtml;
+
+    // Mode tabs (workbench surfaces only).
+    html += renderModeTabs(ctx, workbenchMode);
 
     // Context Conditions
     if (contextConditions.length) {
@@ -591,6 +817,14 @@
       html += "</div></div>";
     });
 
+    // Author-mode inline forms (rendered before disclosure groups so
+    // the user sees the create affordances at the top of Author mode).
+    html += renderAuthorForms(ctx, workbenchMode);
+
+    // Disclosure groups (Display options, Inspector). Rendered as
+    // <details> elements, collapsed by default.
+    html += renderDisclosureGroups(ctx, disclosureGroups);
+
     html += renderToolExtensions(ctx, toolExtensions);
 
     // Actions
@@ -626,6 +860,8 @@
     Array.prototype.forEach.call(root.querySelectorAll(".ide-controlpanel__link"), function (node, index) {
       bindSurfaceNavigation(node, flatEntries[index], ctx);
     });
+    bindModeTabs(root, ctx, workbenchMode);
+    bindAuthorForms(root, ctx, workbenchMode);
     // Phase 5: verb/nav-arrow bindings derived from nimm_aitas_control are
     // retired. The render block that emitted these data attributes is gone;
     // if a future region payload re-introduces them we'll wire them again.

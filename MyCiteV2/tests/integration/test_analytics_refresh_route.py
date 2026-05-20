@@ -35,10 +35,13 @@ if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
 
 
-def _seed_events(webapps_root: Path, domain: str, events: list[dict]) -> None:
-    events_dir = webapps_root / "clients" / domain / "analytics" / "events"
-    events_dir.mkdir(parents=True, exist_ok=True)
-    (events_dir / "2026-05.ndjson").write_text(
+def _seed_events(private_dir: Path, domain: str, events: list[dict]) -> None:
+    """Seed at canonical analytics_root layout (post-Phase-18a):
+    `<private>/utilities/tools/analytics/analytics.<domain>.events.<YYYY-MM>.ndjson`.
+    """
+    analytics_root = private_dir / "utilities" / "tools" / "analytics"
+    analytics_root.mkdir(parents=True, exist_ok=True)
+    (analytics_root / f"analytics.{domain}.events.2026-05.ndjson").write_text(
         "\n".join(json.dumps(e) for e in events),
         encoding="utf-8",
     )
@@ -70,7 +73,7 @@ class AnalyticsRefreshRouteTests(unittest.TestCase):
 
         client, tmp = self._build_client()
         _seed_events(
-            tmp / "webapps",
+            tmp / "private",
             "alpha.example.test",
             [
                 {"event_type": "page_view", "path": "/", "timestamp": "2026-05-01T00:00:00Z"},
@@ -101,7 +104,7 @@ class AnalyticsRefreshRouteTests(unittest.TestCase):
     def test_refresh_is_idempotent(self) -> None:
         client, tmp = self._build_client()
         _seed_events(
-            tmp / "webapps",
+            tmp / "private",
             "alpha.example.test",
             [{"event_type": "page_view", "path": "/", "timestamp": "2026-05-01T00:00:00Z"}],
         )

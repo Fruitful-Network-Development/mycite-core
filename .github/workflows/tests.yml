@@ -21,6 +21,33 @@ jobs:
       - name: Run ruff
         run: ruff check MyCiteV2/
 
+  no_disk_datum_docs:
+    # MOS authority enforcement gate. Per
+    # docs/contracts/mos_authority_enforcement.md, datum-document JSON/sqlite
+    # files must not be added under webapps/mycite/fnd/data/{system,sandbox,
+    # payloads/cache}/ or as parallel *.sqlite3 outside private/.
+    # Compiled UI surface payloads under data/payloads/compiled/ are exempt.
+    name: no on-disk datum documents
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for forbidden disk datum-doc additions
+        run: |
+          set -e
+          BASE="${{ github.event.pull_request.base.sha || 'origin/main' }}"
+          ADDED=$(git diff --name-only --diff-filter=AM "$BASE"...HEAD || true)
+          VIOLATIONS=$(echo "$ADDED" | grep -E '^webapps/mycite/fnd/(data/(system|sandbox|payloads/cache)/.*\.(json|bin|pre-repair|pre-compile.*)|(?!private/).*\.sqlite3)$' || true)
+          if [ -n "$VIOLATIONS" ]; then
+            echo "::error::Datum documents must live in MOS, not on disk. See docs/contracts/mos_authority_enforcement.md."
+            echo "Forbidden additions:"
+            echo "$VIOLATIONS"
+            exit 1
+          fi
+          echo "OK: no forbidden disk datum-doc additions."
+
   pytest:
     name: pytest (unit + integration + architecture)
     runs-on: ubuntu-latest

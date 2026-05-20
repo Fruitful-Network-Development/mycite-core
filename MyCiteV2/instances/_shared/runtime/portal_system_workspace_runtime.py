@@ -1394,6 +1394,8 @@ def build_unified_control_panel(
     workbench_state: dict[str, Any] | None = None,
     tool_extensions: dict[str, Any] | None = None,
     context_controls: list[dict[str, Any]] | None = None,
+    disclosure_groups: list[dict[str, Any]] | None = None,
+    workbench_mode: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the unified control panel following canonical contract v2.
 
@@ -1463,6 +1465,8 @@ def build_unified_control_panel(
             "actions": list(actions or []),
             "workbench_state": dict(workbench_state) if isinstance(workbench_state, dict) else None,
             "tool_extensions": extensions,
+            "disclosure_groups": list(disclosure_groups or []),
+            "workbench_mode": dict(workbench_mode) if isinstance(workbench_mode, dict) else None,
         },
         family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
         surface_id=surface_id,

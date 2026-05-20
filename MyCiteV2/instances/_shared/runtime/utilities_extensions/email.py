@@ -1,19 +1,15 @@
-"""ext_aws_email — AWS SES configuration + mailbox visibility.
+"""ext_email — AWS SES configuration + mailbox visibility (Email extension).
 
-Reads AWS-CSM tool profiles for every domain the active grantee owns
-and surfaces them alongside the grantee's ``aws_ses`` sub-config.
-When an authority DB is provided the profile + domain reads come from
-MOS via ``MosDatumAwsCsmProfileAdapter``; otherwise it falls back to
-the legacy filesystem store.
+Reads operator profiles via the AWS peripheral's `ProfileStore` and
+surfaces them alongside the grantee's ``aws_ses`` sub-config. Lists
+every mailbox across every domain the active grantee owns; per-mailbox
+domain is one column in the resulting table.
 
-Phase 16c: previously the ``profiles`` list was filtered to a single
-``identity.domain`` matching the operator-selected domain. CVCC owns
-both ``cuyahogavalleycountrysideconservancy.org`` and ``cvccboard.org``
-— the single-domain filter hid half of the grantee's mailboxes
-behind a hidden domain axis. The renderer now iterates over
-``grantee.domains`` and surfaces a flat ``profiles`` list with one
-``domain`` field per row so the operator can see + manage every
-mailbox in one table.
+Architecture: this extension imports only from the AWS peripheral
+(`peripherals.aws.ProfileStore`) and never reaches into another
+extension. Per-grantee profile state lives in JSON files under
+`deployed/<grantee>/private/utilities/tools/aws-csm/aws-csm.*.json`;
+no MOS authority is consulted.
 """
 
 from __future__ import annotations
@@ -21,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.filesystem import FilesystemAwsCsmToolProfileStore
+from MyCiteV2.packages.peripherals.aws import ProfileStore
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
 
@@ -58,50 +54,26 @@ def _build_email_extension_payload(
     if not grantee_domains or private_dir is None:
         return {"profiles": [], "domain": domain, "configuration": configuration}
 
-    mos_store: Any = None
-    if authority_db_file is not None:
-        try:
-            from MyCiteV2.packages.adapters.sql.aws_csm_profile_registry import (
-                MosDatumAwsCsmProfileAdapter,
-            )
-
-            mos_store = MosDatumAwsCsmProfileAdapter(
-                authority_db_file=authority_db_file,
-                tenant_id=portal_instance_id or "fnd",
-            )
-        except Exception:
-            mos_store = None
-
-    # Canonical AWS-CSM profile layout is
+    # Profiles live as JSON files at
     # ``<private>/utilities/tools/aws-csm/aws-csm.<scope>.<mailbox>.json``;
-    # the store globs ``aws-csm.*.json`` directly in its ``tool_root`` so
-    # we must point at the aws-csm subdirectory, not at ``private``.
-    aws_csm_root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
-    fs_store = FilesystemAwsCsmToolProfileStore(aws_csm_root)
+    # `ProfileStore` globs `aws-csm.*.json` under that root. No MOS.
+    tool_root = Path(private_dir) / "utilities" / "tools" / "aws-csm"
+    store = ProfileStore(root=tool_root)
 
     # The configuration block uses the active domain's record (when
     # available) so SES identity / region / SMTP creds shown above
     # reflect the operator's primary domain. The profiles list below
     # spans ALL of the grantee's domains.
     domain_record: dict[str, Any] = {}
-    try:
-        if mos_store is not None and domain:
-            mos_domain = mos_store.load_domain(domain=domain)
-            if mos_domain:
-                domain_record = _as_dict(mos_domain)
-        if not domain_record and domain:
-            domain_record = _as_dict(fs_store.load_domain(domain=domain))
-    except Exception:
-        domain_record = {}
+    if domain:
+        try:
+            domain_record = _as_dict(store.get_domain(domain))
+        except Exception:
+            domain_record = {}
 
     profiles: list[dict[str, Any]] = []
     try:
-        operator_source = (
-            mos_store.list_profiles() if mos_store is not None else fs_store.list_profiles()
-        )
-        # If MOS is empty (not yet seeded), fall back to filesystem.
-        if mos_store is not None and not operator_source:
-            operator_source = fs_store.list_profiles()
+        operator_source = store.list_profiles()
         for payload in operator_source:
             ident = _as_dict(payload.get("identity"))
             profile_domain = _as_text(ident.get("domain")).lower()
@@ -111,6 +83,8 @@ def _build_email_extension_payload(
             lifecycle = _as_text(
                 _as_dict(payload.get("workflow")).get("lifecycle_state")
             )
+            workflow = _as_dict(payload.get("workflow"))
+            inbox_target = _as_text(ident.get("operator_inbox_target"))
             profiles.append({
                 "profile_id": profile_id,
                 "domain": profile_domain,
@@ -122,6 +96,10 @@ def _build_email_extension_payload(
                     _as_dict(payload.get("inbound")).get("receive_state")
                 ),
                 "suspend_action": _suspend_action_for_profile(profile_id, lifecycle),
+                "resend_handoff_action": _resend_handoff_action_for_profile(
+                    profile_id, lifecycle, inbox_target
+                ),
+                "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
             })
         # Stable ordering: by domain, then mailbox local part — keeps
         # cvcc.admin / cvcc.finance / cvccboard.daniel / etc. grouped
@@ -164,6 +142,32 @@ def _suspend_action_for_profile(profile_id: str, lifecycle: str) -> dict[str, An
     }
 
 
+def _resend_handoff_action_for_profile(
+    profile_id: str, lifecycle: str, inbox_target: str
+) -> dict[str, Any]:
+    """Per-row "Resend handoff" button.
+
+    Visible only while the mailbox is still in draft / instruction_sent
+    state — i.e. lifecycle is empty or ``draft``. Operational and
+    suspended rows do not need a resend.
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    state = _as_text(lifecycle).lower()
+    if state in {"operational", "suspended"}:
+        return {}
+    target_label = _as_text(inbox_target) or "the configured inbox"
+    return {
+        "label": "Resend handoff",
+        "route": "/__fnd/email/admin/resend-handoff",
+        "schema": "mycite.v2.email.admin.resend_handoff.request.v1",
+        "payload": {"profile_id": profile_id},
+        "confirm": f"Resend handoff email for {profile_id} to {target_label}?",
+        "variant": "secondary",
+    }
+
+
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
@@ -174,4 +178,8 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-__all__ = ["_build_email_extension_payload", "_render_ext_aws_email"]
+__all__ = [
+    "_build_email_extension_payload",
+    "_render_ext_aws_email",
+    "_resend_handoff_action_for_profile",
+]

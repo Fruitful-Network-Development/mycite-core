@@ -7,8 +7,9 @@ The public Connect-form endpoint:
   - persists the visitor as an unsubscribed contact with
     source=connect_form, forward_status reflecting the SES outcome
 
-All SES interactions are mocked via boto3 so the test suite stays
-deterministic and offline.
+All SES interactions are mocked at the `AwsPeripheralCloudAdapter`
+boundary (the portal calls `_aws_peripheral.send_email` directly) so
+the test suite stays deterministic and offline.
 """
 
 from __future__ import annotations
@@ -45,7 +46,14 @@ def _seed_grantee(grantee_dir: Path, msn_id: str, domains: list, forward_to: str
     if forward_to:
         payload["connect"] = {"forward_to_email": forward_to}
     if ses_identity:
-        payload["aws_ses"] = {"identity": ses_identity, "region": "us-east-1"}
+        payload["aws_ses"] = {
+            "identity": ses_identity,
+            "region": "us-east-1",
+            "from_address": ses_identity,
+            "from_name": "FND Tests",
+            "configuration_set": "fnd-default",
+            "reply_to": ses_identity,
+        }
     (grantee_dir / f"grantee.fnd-msn.{msn_id}.json").write_text(
         json.dumps(payload), encoding="utf-8"
     )
@@ -101,8 +109,14 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         )
 
         client, tmp = self._build_client()
-        with patch("boto3.client") as boto:
-            boto.return_value.send_email.return_value = {"MessageId": "test-msg-1"}
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
+            send_email.return_value = {
+                "status": "sent",
+                "message_id": "test-msg-1",
+                "configuration_set": "fnd-default",
+            }
             resp = self._post_connect(
                 client,
                 first_name="Visitor",
@@ -116,18 +130,19 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         self.assertEqual(body["forward_status"], "sent")
         self.assertFalse(body["subscribed"])
 
-        # boto3.client called with the right service + region.
-        boto.assert_called_with("ses", region_name="us-east-1")
         # send_email called with the configured forward_to + reply-to set
-        # to the visitor's email.
-        call_kwargs = boto.return_value.send_email.call_args.kwargs
-        self.assertEqual(call_kwargs["Source"], "noreply@fruitfulnetworkdevelopment.com")
+        # to the visitor's email; configuration set carried via aws_ses_profile.
+        call_kwargs = send_email.call_args.kwargs
+        self.assertEqual(call_kwargs["to"], ["dylan@fruitfulnetworkdevelopment.com"])
+        self.assertEqual(call_kwargs["reply_to"], ["visitor@example.test"])
+        self.assertIn("Hello", call_kwargs["subject"])
         self.assertEqual(
-            call_kwargs["Destination"]["ToAddresses"],
-            ["dylan@fruitfulnetworkdevelopment.com"],
+            call_kwargs["aws_ses_profile"]["configuration_set"], "fnd-default"
         )
-        self.assertEqual(call_kwargs["ReplyToAddresses"], ["visitor@example.test"])
-        self.assertIn("Hello", call_kwargs["Message"]["Subject"]["Data"])
+        self.assertEqual(
+            call_kwargs["aws_ses_profile"]["identity"],
+            "noreply@fruitfulnetworkdevelopment.com",
+        )
 
         # Persisted as unsubscribed contact with source=connect_form.
         adapter = MosDatumNewsletterContactLogAdapter(
@@ -144,9 +159,19 @@ class ConnectSubmitRouteTests(unittest.TestCase):
             MosDatumNewsletterContactLogAdapter,
         )
 
+        from MyCiteV2.packages.peripherals.aws.contracts import SesSendError
+
         client, tmp = self._build_client()
-        with patch("boto3.client") as boto:
-            boto.return_value.send_email.side_effect = RuntimeError("SES timeout")
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
+            send_email.side_effect = SesSendError(
+                operation="send_email",
+                identity="noreply@fruitfulnetworkdevelopment.com",
+                reason="SES timeout",
+                aws_error_code="Throttling",
+                aws_request_id="req-test",
+            )
             resp = self._post_connect(client, message="Body")
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
@@ -164,10 +189,12 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         # Grantee has no connect.forward_to_email — submission should
         # still persist; forward_status=pending.
         client, _tmp = self._build_client(forward_to="", ses_identity="")
-        with patch("boto3.client") as boto:
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
             resp = self._post_connect(client, message="Body")
-        # boto3 must not have been called — forwarding is not configured.
-        boto.assert_not_called()
+        # peripheral must not have been called — forwarding is not configured.
+        send_email.assert_not_called()
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertEqual(body["forward_status"], "pending")
@@ -206,8 +233,14 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         )
 
         client, tmp = self._build_client()
-        with patch("boto3.client") as boto:
-            boto.return_value.send_email.return_value = {"MessageId": "test-msg-2"}
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
+            send_email.return_value = {
+                "status": "sent",
+                "message_id": "test-msg-2",
+                "configuration_set": "fnd-default",
+            }
             resp = client.post(
                 "/__fnd/connect/submit",
                 data={
@@ -218,14 +251,14 @@ class ConnectSubmitRouteTests(unittest.TestCase):
                     "subject": "No-JS test",
                 },
                 base_url="http://fruitfulnetworkdevelopment.com",
-                headers={"Referer": "http://fruitfulnetworkdevelopment.com/contact.html"},
+                headers={"Referer": "http://fruitfulnetworkdevelopment.com/contact"},
             )
         self.assertEqual(resp.status_code, 200)
         # HTML response, not JSON — that's the visible no-JS UX.
         self.assertIn("text/html", resp.headers["Content-Type"])
         body = resp.get_data(as_text=True)
         self.assertIn("Message received", body)
-        self.assertIn("contact.html", body)  # link back to referrer
+        self.assertIn("/contact", body)  # link back to referrer
         # Contact still persisted via the same mutation runtime as the JSON path.
         adapter = MosDatumNewsletterContactLogAdapter(
             authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
@@ -266,8 +299,14 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         while still receiving a structured response.
         """
         client, _ = self._build_client()
-        with patch("boto3.client") as boto:
-            boto.return_value.send_email.return_value = {"MessageId": "test-msg-3"}
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
+            send_email.return_value = {
+                "status": "sent",
+                "message_id": "test-msg-3",
+                "configuration_set": "fnd-default",
+            }
             resp = client.post(
                 "/__fnd/connect/submit",
                 data={"email": "json@example.test", "message": "Hi"},

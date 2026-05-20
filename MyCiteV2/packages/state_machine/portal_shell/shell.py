@@ -633,6 +633,7 @@ _TOOL_SURFACE_TO_SANDBOX_ID: dict[str, str] = {
     CTS_GIS_TOOL_SURFACE_ID: "cts_gis",
     FND_CSM_TOOL_SURFACE_ID: "fnd_csm",
     WORKBENCH_UI_TOOL_SURFACE_ID: "workbench_ui",
+    AGRO_ERP_TOOL_SURFACE_ID: "agro_erp",
 }
 
 
@@ -641,7 +642,7 @@ def sandbox_id_for_surface(surface_id: object) -> str:
 
     SYSTEM and non-tool surfaces map to ``"system"``. Tool surfaces map
     to their canonical underscore sandbox token (``"cts_gis"``,
-    ``"aws_csm"``, …) used in canonical document ids
+    ``"fnd_csm"``, …) used in canonical document ids
     (``lv.<msn>.<sandbox>.<name>.<hash>``).
     URL route slugs (``/tools/cts-gis``) are separate and remain hyphenated.
     """
@@ -1168,6 +1169,19 @@ def canonical_query_for_surface_query(
         row_id = _as_text(normalized.get("row"))
         if row_id:
             query["row"] = row_id
+        # Plan v2 keys: workbench mode (docs/datums/author), sandbox
+        # selection, and the currently-invoked visualization tool. These
+        # parameterise the unified workbench but were not yet known when
+        # the canonical-query whitelist was first authored.
+        mode = _as_text(normalized.get("mode")).lower()
+        if mode in {"docs", "datums", "author"}:
+            query["mode"] = mode
+        sandbox_filter = _as_text(normalized.get("sandbox_filter"))
+        if sandbox_filter:
+            query["sandbox_filter"] = sandbox_filter
+        tool = _as_text(normalized.get("tool"))
+        if tool:
+            query["tool"] = tool
         return query
     return {}
 
@@ -1524,6 +1538,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "fnd_csm"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         return "workbench_ui"
+    if normalized_surface_id == AGRO_ERP_TOOL_SURFACE_ID:
+        return "agro_erp"
     return "generic"
 
 
@@ -1614,6 +1630,7 @@ def build_shell_composition_payload(
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
     interface_panel: dict[str, Any] | None = None,
+    visualization_panel: dict[str, Any] | None = None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
@@ -1681,13 +1698,46 @@ def build_shell_composition_payload(
             "control_panel": dict(control_panel or {}),
             "workbench": workbench_region,
             "interface_panel": interface_panel_region,
+            # Visualization panel: tool-invoked viz surface rendered to
+            # the right of the workbench. Hidden when no tool is in
+            # surface_query.tool. See PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA.
+            "visualization_panel": _normalize_visualization_panel(visualization_panel),
         },
     }
     apply_surface_posture_to_composition(composition)
     return composition
 
 
+def _normalize_visualization_panel(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Build the canonical visualization_panel region payload.
+
+    Defaults to a hidden placeholder so the JS renderer can rely on the
+    key always being present. When ``payload`` is given, schema is
+    stamped and visibility defaults to True unless the caller explicitly
+    set visible=False.
+    """
+    if payload is None:
+        return {
+            "schema": PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA,
+            "visible": False,
+            "tool_id": "",
+            "tool_label": "",
+            "panel_payload": {},
+        }
+    region = dict(payload)
+    region.setdefault("schema", PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA)
+    region.setdefault("visible", True)
+    region.setdefault("tool_id", "")
+    region.setdefault("tool_label", "")
+    region.setdefault("panel_payload", {})
+    return region
+
+
 __all__ = [
+    "AGRO_ERP_SANDBOX_TOKEN",
+    "AGRO_ERP_TOOL_ENTRYPOINT_ID",
+    "AGRO_ERP_TOOL_ROUTE",
+    "AGRO_ERP_TOOL_SURFACE_ID",
     "ARCHETYPE_HYPHAE_RUDI",
     "ARCHETYPE_MSS_DOC",
     "ARCHETYPE_SAMRAS_FAMILY",
@@ -1711,11 +1761,13 @@ __all__ = [
     "PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
     "PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA",
+    "PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_WORKBENCH_SCHEMA",
     "PORTAL_SHELL_REQUEST_SCHEMA",
     "PORTAL_SHELL_STATE_SCHEMA",
     "PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA",
     "PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA",
+    "SANDBOX_DISPLAY_NAMES",
     "SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY",
     "SURFACE_POSTURE_PALETTE_TARGET",
     "SYSTEM_ACTIVITY_FILE_KEY",
@@ -1800,6 +1852,7 @@ __all__ = [
     "resolve_portal_shell_request",
     "resolve_portal_surface",
     "resolve_portal_tool_registry_entry",
+    "sandbox_display_name",
     "sandbox_id_for_file_key",
     "sandbox_id_for_surface",
     "segment_id_for_level",

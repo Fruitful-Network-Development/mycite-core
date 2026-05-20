@@ -9,6 +9,7 @@ PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA = "mycite.v2.portal.shell.region.activit
 PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA = "mycite.v2.portal.shell.region.control_panel.v1"
 PORTAL_SHELL_REGION_WORKBENCH_SCHEMA = "mycite.v2.portal.shell.region.workbench.v1"
 PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA = "mycite.v2.portal.shell.region.interface_panel.v1"
+PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA = "mycite.v2.portal.shell.region.visualization_panel.v1"
 PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA = "mycite.v2.portal.surface_catalog.entry.v1"
 PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 
@@ -30,6 +31,7 @@ UTILITIES_PERIPHERALS_SURFACE_ID = "utilities.peripherals"
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
 FND_CSM_TOOL_SURFACE_ID = "system.tools.fnd_csm"
 WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
+AGRO_ERP_TOOL_SURFACE_ID = "system.tools.agro_erp"
 
 # Canonical sandbox tokens (underscore form per
 # docs/contracts/datum_document_naming_taxonomy.md §"URL Slug vs
@@ -39,11 +41,37 @@ WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 CTS_GIS_SANDBOX_TOKEN = "cts_gis"
 FND_CSM_SANDBOX_TOKEN = "fnd_csm"
 WORKBENCH_UI_SANDBOX_TOKEN = "system"  # Workbench-UI is a system-sandbox reflective view
+AGRO_ERP_SANDBOX_TOKEN = "agro_erp"
+
+# Display names rendered in the workbench chrome instead of raw tokens.
+# Add an entry here when registering a new sandbox; the workbench falls
+# back to title-casing the token if no display name is registered.
+SANDBOX_DISPLAY_NAMES: dict[str, str] = {
+    WORKBENCH_UI_SANDBOX_TOKEN: "System",
+    AGRO_ERP_SANDBOX_TOKEN: "Agro-ERP",
+    CTS_GIS_SANDBOX_TOKEN: "CTS-GIS",
+    FND_CSM_SANDBOX_TOKEN: "FND-CSM",
+}
+
+def sandbox_display_name(token: str) -> str:
+    """Return the human-readable label for a sandbox token.
+
+    Falls back to title-casing the token (with underscores → spaces) so
+    new sandboxes have a sensible default without requiring the
+    SANDBOX_DISPLAY_NAMES map to be updated first.
+    """
+    if not token:
+        return ""
+    if token in SANDBOX_DISPLAY_NAMES:
+        return SANDBOX_DISPLAY_NAMES[token]
+    return token.replace("_", " ").title()
+
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
 FND_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_csm"
 WORKBENCH_UI_TOOL_ENTRYPOINT_ID = "portal.system.tools.workbench_ui"
+AGRO_ERP_TOOL_ENTRYPOINT_ID = "portal.system.tools.agro_erp"
 
 SYSTEM_ROOT_ROUTE = "/portal/system"
 NETWORK_ROOT_ROUTE = "/portal/network"
@@ -59,6 +87,7 @@ UTILITIES_PERIPHERALS_ROUTE = "/portal/utilities/peripherals"
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
 FND_CSM_TOOL_ROUTE = "/portal/system/tools/fnd-csm"
 WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
+AGRO_ERP_TOOL_ROUTE = "/portal/system/tools/agro-erp"
 
 SYSTEM_ANCHOR_FILE_KEY = "anthology"
 TOOL_ANCHOR_FILE_KEY = "anchor"
@@ -138,6 +167,7 @@ TOOL_SURFACE_IDS = frozenset(
         CTS_GIS_TOOL_SURFACE_ID,
         FND_CSM_TOOL_SURFACE_ID,
         WORKBENCH_UI_TOOL_SURFACE_ID,
+        AGRO_ERP_TOOL_SURFACE_ID,
     }
 )
 SYSTEM_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, *TOOL_SURFACE_IDS})

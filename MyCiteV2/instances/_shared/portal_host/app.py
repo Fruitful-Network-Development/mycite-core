@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import glob
 import json
+import logging
 import os
 import re
 import tempfile
@@ -13,6 +14,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("mycite.portal_host")
 
 try:
     from flask import Flask, abort, jsonify, make_response, redirect, render_template, request
@@ -44,7 +47,10 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     build_tool_exposure_policy,
 )
+from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAdapter
+from MyCiteV2.packages.peripherals.aws.contracts import SesSendError
 from MyCiteV2.packages.state_machine.portal_shell import (
+    AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
@@ -59,6 +65,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     build_portal_tool_registry_entries,
     requires_shell_state_machine,
 )
+
+_aws_peripheral = AwsPeripheralCloudAdapter()
 
 V2_PORTAL_HEALTH_SCHEMA = "mycite.v2.portal.health.v1"
 V2_PORTAL_ERROR_SCHEMA = "mycite.v2.portal.error.v1"
@@ -515,6 +523,7 @@ class V2PortalHostConfig:
 TOOL_SLUG_TO_SURFACE_ID = {
     "cts-gis": CTS_GIS_TOOL_SURFACE_ID,
     "workbench-ui": WORKBENCH_UI_TOOL_SURFACE_ID,
+    "agro-erp": AGRO_ERP_TOOL_SURFACE_ID,
 }
 
 
@@ -639,7 +648,18 @@ def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_
 
 
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
+    from MyCiteV2.packages.state_machine.portal_shell import (
+        SANDBOX_DISPLAY_NAMES,
+    )
     shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
+    sandbox_display_names = [
+        {
+            "token": token,
+            "label": label,
+            "writable": True,
+        }
+        for token, label in sorted(SANDBOX_DISPLAY_NAMES.items())
+    ]
     return render_template(
         "portal.html",
         portal_instance_id=host_config.portal_instance_id,
@@ -656,6 +676,7 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
         shell_loading_label="Loading portal shell…",
         shell_asset_manifest=shell_asset_manifest,
         logo_href="/portal/system",
+        sandbox_display_names=sandbox_display_names,
     )
 
 
@@ -804,37 +825,16 @@ def _legacy_deprecation_headers(target_authority: str, operation: str) -> dict[s
 def _newsletter_state_adapter(host_config: V2PortalHostConfig):
     """Return the live newsletter-state adapter.
 
-    Contact-log methods route through the MOS datum (v2 schema); profile
-    and secret methods stay on the legacy filesystem adapter via the
-    composite. Falls back to the pure filesystem adapter when no
-    authority DB is configured — but ONLY when
-    ``MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB`` is unset or "0". In
-    production this env var should be "1" so a missing authority DB
-    fails closed rather than silently routing reads to legacy JSON
-    (which would mask data drift between the two stores).
+    Newsletter state lives in JSON under
+    ``<private>/utilities/tools/newsletter/`` per the peripheral
+    architecture: extensions read grantee/extension JSON files, no MOS
+    authority is consulted.
     """
     from MyCiteV2.packages.adapters.filesystem import (
-        FilesystemAwsCsmNewsletterStateAdapter,
+        FilesystemNewsletterStateAdapter,
     )
 
-    if host_config.authority_db_file is None:
-        require_db = _as_text(os.environ.get("MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB")).lower()
-        if require_db in {"1", "true", "yes"}:
-            raise RuntimeError(
-                "MYCITE_V2_PORTAL_REQUIRE_AUTHORITY_DB is set, but "
-                "host_config.authority_db_file is None. Refusing to "
-                "fall back to the filesystem newsletter adapter."
-            )
-        return FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
-    from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-        CompositeAwsCsmNewsletterStateAdapter,
-    )
-
-    return CompositeAwsCsmNewsletterStateAdapter(
-        private_dir=host_config.private_dir,
-        authority_db_file=host_config.authority_db_file,
-        tenant_id=host_config.portal_instance_id or "fnd",
-    )
+    return FilesystemNewsletterStateAdapter(host_config.private_dir)
 
 
 def _load_contact_log(path: Path, *, domain: str) -> dict[str, Any]:
@@ -919,7 +919,7 @@ def _upsert_subscriber(
         current["unsubscribed_at"] = ""
         current["updated_at"] = now_iso
     by_email[email] = current
-    # Sort contacts ascending by email — consistent with AwsCsmNewsletterService.subscribe() line 298
+    # Sort contacts ascending by email — consistent with NewsletterService.subscribe() line 298
     contact_log["contacts"] = [by_email[k] for k in sorted(by_email.keys())]
     # dispatches array passes through unchanged
     return current
@@ -1041,9 +1041,224 @@ def _resolve_paypal_credentials(tenant_config: dict[str, Any]) -> tuple[str, str
 
 
 def _paypal_base_url(environment: str) -> str:
-    if _as_text(environment).lower() == "production":
+    # PaypalConfig only allows {"sandbox", "live"}; legacy callers may pass
+    # "production". Treat both live and production as the live endpoint.
+    if _as_text(environment).lower() in {"live", "production"}:
         return "https://api-m.paypal.com"
     return "https://api-m.sandbox.paypal.com"
+
+
+def _load_grantee_for_domain(private_dir: Path, domain: str) -> dict[str, Any] | None:
+    """Find the first grantee JSON whose domains list contains ``domain``.
+
+    Returns the parsed grantee dict (legacy shape, not the GranteeProfile
+    dataclass) or ``None`` if no grantee matches. Matching is case-insensitive.
+    """
+    if private_dir is None or not domain:
+        return None
+    domain_lower = _as_text(domain).lower()
+    if not domain_lower:
+        return None
+    try:
+        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
+            _load_grantee_profiles,
+        )
+
+        for grantee in _load_grantee_profiles(private_dir):
+            domains = [_as_text(d).lower() for d in (grantee.get("domains") or [])]
+            if domain_lower in domains:
+                return grantee
+    except Exception:
+        return None
+    return None
+
+
+def _resolve_paypal_credentials_for_domain(
+    private_dir: Path,
+    domain: str,
+    tenant_config: dict[str, Any],
+) -> tuple[str, str, str] | None:
+    """Return ``(client_id, client_secret, environment)`` resolved for a domain.
+
+    Precedence:
+      1. The grantee JSON whose ``domains`` list contains the request
+         domain. Wins iff both ``paypal.client_id`` and ``paypal.client_secret``
+         are non-empty. ``paypal.environment`` (sandbox|live) is returned alongside.
+      2. The env-var fallback resolved by ``_resolve_paypal_credentials``.
+         When this path is taken, environment is left empty so callers
+         keep falling back to the domain profile's declared environment.
+
+    Returns ``None`` when neither source supplies credentials. Callers map
+    that to HTTP 503 ``credentials_not_set``.
+    """
+    grantee = _load_grantee_for_domain(private_dir, domain)
+    if grantee:
+        paypal_cfg = grantee.get("paypal") if isinstance(grantee.get("paypal"), dict) else {}
+        client_id = _as_text(paypal_cfg.get("client_id"))
+        client_secret = _as_text(paypal_cfg.get("client_secret"))
+        if client_id and client_secret:
+            environment = _as_text(paypal_cfg.get("environment")) or "sandbox"
+            return (client_id, client_secret, environment)
+
+    env_credentials = _resolve_paypal_credentials(tenant_config)
+    if env_credentials is not None:
+        client_id, client_secret = env_credentials
+        return (client_id, client_secret, "")
+    return None
+
+
+_RECEIPT_DOCUMENT_PARENT = Path("/srv/webapps/clients/_shared/site-core/document")
+
+
+def _resolve_receipt_artifact(private_dir: Path, domain: str) -> Path | None:
+    """Resolve the receipt PDF for a domain or ``None`` if not configured.
+
+    Reads ``donation_defaults.receipt_artifact_path`` from the domain profile,
+    joins it under the fixed shared-document parent, and verifies the
+    resolved path stays within that parent and exists on disk. Any traversal
+    attempt or missing file collapses to ``None`` so callers can return 404
+    without leaking validation signal.
+    """
+    if private_dir is None or not domain:
+        return None
+    domain_profile = _load_domain_profile(private_dir, domain)
+    if not domain_profile:
+        return None
+    donation_defaults = domain_profile.get("donation_defaults")
+    if not isinstance(donation_defaults, dict):
+        return None
+    artifact_path = _as_text(donation_defaults.get("receipt_artifact_path"))
+    if not artifact_path:
+        return None
+    try:
+        parent = _RECEIPT_DOCUMENT_PARENT.resolve()
+        candidate = (parent / artifact_path).resolve()
+    except (OSError, ValueError):
+        return None
+    try:
+        candidate.relative_to(parent)
+    except ValueError:
+        return None
+    if not candidate.is_file():
+        return None
+    return candidate
+
+
+def _find_create_order_entry(orders_log: Path, order_id: str) -> dict[str, Any] | None:
+    """Locate the create_order log entry for a given order_id.
+
+    Scans ``orders.ndjson`` from newest to oldest and returns the first
+    matching entry (``event == "create_order"`` and matching ``order_id``).
+    Used by the capture handler to recover donor metadata persisted at
+    create-time so receipt emails go to the original donor, not whatever
+    address an attacker might supply in the capture payload.
+    """
+    if not order_id:
+        return None
+    try:
+        if not orders_log.exists():
+            return None
+        lines = orders_log.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    target = _as_text(order_id)
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if _as_text(entry.get("event")) != "create_order":
+            continue
+        if _as_text(entry.get("order_id")) == target:
+            return entry
+    return None
+
+
+def _send_donation_receipt_email(
+    *,
+    private_dir: Path,
+    domain: str,
+    donor_email: str,
+    donor_name: str,
+    amount: str,
+    currency_code: str,
+    capture_id: str,
+    receipt_path: Path,
+) -> str:
+    """Email the tax-exempt receipt PDF to the donor via SES send_raw_email.
+
+    Returns:
+      - ``"sent"`` on successful SES dispatch
+      - ``"skipped"`` when grantee.aws_ses is unconfigured or donor_email empty
+      - ``"failed"`` when SES raises (capture response is unaffected)
+    """
+    if not donor_email:
+        return "skipped"
+    grantee = _load_grantee_for_domain(private_dir, domain)
+    aws_cfg = grantee.get("aws_ses") if grantee and isinstance(grantee.get("aws_ses"), dict) else {}
+    ses_identity = _as_text(aws_cfg.get("identity"))
+    if not ses_identity:
+        return "skipped"
+
+    from email.message import EmailMessage
+
+    display_amount = f"{amount} {currency_code}".strip()
+    org_label = _as_text(grantee.get("label")) if grantee else ""
+    body_text = (
+        f"Thank you{(', ' + donor_name) if donor_name else ''}, for your"
+        f" {display_amount} contribution to {org_label or domain}.\n\n"
+        f"Capture ID: {capture_id}\n\n"
+        f"Attached is our blanket sales-tax-exempt certificate for your records.\n"
+        f"No goods or services were provided in exchange for this contribution.\n"
+    )
+    from_address = _as_text(aws_cfg.get("from_address")) or ses_identity
+    from_name = _as_text(aws_cfg.get("from_name"))
+    msg = EmailMessage()
+    msg["Subject"] = f"Donation receipt — {org_label or domain}"
+    msg["From"] = f'"{from_name}" <{from_address}>' if from_name else from_address
+    msg["To"] = donor_email
+    reply_to = _as_text(aws_cfg.get("reply_to"))
+    if reply_to:
+        msg["Reply-To"] = reply_to
+    msg.set_content(body_text)
+    try:
+        pdf_bytes = receipt_path.read_bytes()
+    except OSError as exc:
+        _log.error(
+            "donation_receipt_pdf_unreadable",
+            extra={"domain": domain, "capture_id": capture_id, "path": str(receipt_path), "err": str(exc)},
+        )
+        return "failed"
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=receipt_path.name,
+    )
+    try:
+        _aws_peripheral.send_raw_email(
+            aws_ses_profile=aws_cfg,
+            destinations=[donor_email],
+            raw_message_bytes=msg.as_bytes(),
+        )
+    except SesSendError as exc:
+        _log.error(
+            "donation_receipt_ses_failed",
+            extra={
+                "domain": domain,
+                "capture_id": capture_id,
+                "aws_error_code": exc.aws_error_code,
+                "aws_request_id": exc.aws_request_id,
+                "reason": exc.reason,
+            },
+        )
+        return "failed"
+    return "sent"
 
 
 def _get_paypal_access_token(client_id: str, client_secret: str, base_url: str) -> str:
@@ -1147,6 +1362,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # surface entry entirely.
         if tool_slug == "fnd-csm":
             return redirect("/portal/utilities/tool-exposure", code=302)
+        # Plan v2: the dedicated tool surfaces collapse into the unified
+        # workbench at /portal/system. Old bookmarks 302 to the new shape:
+        #   - workbench-ui → /portal/system (system sandbox)
+        #   - agro-erp     → /portal/system?sandbox=agro_erp
+        #   - cts-gis      → /portal/system?tool=cts_gis
+        if tool_slug == "workbench-ui":
+            return redirect("/portal/system", code=302)
+        if tool_slug == "agro-erp":
+            return redirect("/portal/system?sandbox=agro_erp", code=302)
+        if tool_slug == "cts-gis":
+            return redirect("/portal/system?tool=cts_gis", code=302)
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
         if surface_id is None:
             abort(404)
@@ -1566,7 +1792,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_newsletter_subscribe() -> tuple[Any, int]:
         """Public site-signup endpoint. Phase E.3 shim: validates the
         request shape then dispatches through the canonical mutation
-        runtime (target_authority=aws_csm_newsletter_contact_log,
+        runtime (target_authority=newsletter_contact_log,
         operation=upsert_subscriber).
         """
         domain = _normalize_domain(request.host)
@@ -1599,7 +1825,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "upsert_subscriber",
                     "domain": domain,
                     "email": email,
@@ -1621,7 +1847,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return (
             jsonify({"ok": True, "email": email, "subscribed": True}),
             200,
-            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "upsert_subscriber"),
+            _legacy_deprecation_headers("newsletter_contact_log", "upsert_subscriber"),
         )
 
     @app.post("/__fnd/newsletter/unsubscribe")
@@ -1647,13 +1873,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         # Validate HMAC token via service layer
         try:
-            from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
-                FilesystemAwsCsmNewsletterStateAdapter,
+            from MyCiteV2.packages.adapters.filesystem.newsletter_state import (
+                FilesystemNewsletterStateAdapter,
             )
-            from MyCiteV2.packages.modules.cross_domain.aws_csm_newsletter.payload_utils import (
+            from MyCiteV2.packages.modules.cross_domain.newsletter.payload_utils import (
                 render_unsubscribe_token as _render_unsubscribe_token,
             )
-            state_adapter = FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
+            state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
             signing_secret = state_adapter.runtime_secret_seed(secret_kind="signing_secret")
             expected = _render_unsubscribe_token(signing_secret, domain=domain, email=email)
             if token_value != expected:
@@ -1669,7 +1895,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "mark_unsubscribed",
                     "domain": domain,
                     "email": email,
@@ -1685,7 +1911,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return (
             jsonify({"ok": True, "email": email, "subscribed": False}),
             200,
-            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "mark_unsubscribed"),
+            _legacy_deprecation_headers("newsletter_contact_log", "mark_unsubscribed"),
         )
 
     @app.post("/__fnd/newsletter/dispatch-result")
@@ -1714,10 +1940,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         # Validate dispatch callback token
         try:
-            from MyCiteV2.packages.adapters.filesystem.aws_csm_newsletter_state import (
-                FilesystemAwsCsmNewsletterStateAdapter,
+            from MyCiteV2.packages.adapters.filesystem.newsletter_state import (
+                FilesystemNewsletterStateAdapter,
             )
-            state_adapter = FilesystemAwsCsmNewsletterStateAdapter(host_config.private_dir)
+            state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
             expected_token = state_adapter.runtime_secret_seed(secret_kind="dispatch_secret")
             if callback_token != expected_token:
                 return jsonify({"ok": False, "error": "invalid_callback_token"}), 403
@@ -1736,7 +1962,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "record_dispatch_result",
                     "domain": domain,
                     "email": email,
@@ -1758,7 +1984,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return (
             jsonify({"ok": True, "domain": domain, "dispatch_id": dispatch_id, "email": email, "status": status}),
             200,
-            _legacy_deprecation_headers("aws_csm_newsletter_contact_log", "record_dispatch_result"),
+            _legacy_deprecation_headers("newsletter_contact_log", "record_dispatch_result"),
         )
 
     # ------------------------------------------------------------------
@@ -1809,30 +2035,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         aws_cfg = grantee.get("aws_ses") if isinstance(grantee.get("aws_ses"), dict) else {}
         forward_to = _as_text(connect_cfg.get("forward_to_email"))
         ses_identity = _as_text(aws_cfg.get("identity"))
-        region = _as_text(aws_cfg.get("region")) or "us-east-1"
         if not forward_to or not ses_identity:
             return "pending"
+        display_subject = subject or f"Connect message from {visitor_email}"
+        body_text = (
+            f"From: {visitor_name or visitor_email} <{visitor_email}>\n"
+            f"Domain: {domain}\n"
+            f"Subject: {display_subject}\n\n"
+            f"{message}\n"
+        )
         try:
-            import boto3
-
-            client = boto3.client("ses", region_name=region)
-            display_subject = subject or f"Connect message from {visitor_email}"
-            body_text = (
-                f"From: {visitor_name or visitor_email} <{visitor_email}>\n"
-                f"Domain: {domain}\n"
-                f"Subject: {display_subject}\n\n"
-                f"{message}\n"
+            _aws_peripheral.send_email(
+                aws_ses_profile=aws_cfg,
+                to=[forward_to],
+                subject=f"[Connect] {display_subject}",
+                body_text=body_text,
+                reply_to=[visitor_email] if visitor_email else None,
             )
-            client.send_email(
-                Source=ses_identity,
-                Destination={"ToAddresses": [forward_to]},
-                ReplyToAddresses=[visitor_email] if visitor_email else [],
-                Message={
-                    "Subject": {"Data": f"[Connect] {display_subject}"},
-                    "Body": {"Text": {"Data": body_text}},
+        except SesSendError as exc:
+            _log.error(
+                "connect_forward_ses_failed",
+                extra={
+                    "domain": domain,
+                    "visitor_email": visitor_email,
+                    "aws_error_code": exc.aws_error_code,
+                    "aws_request_id": exc.aws_request_id,
+                    "reason": exc.reason,
                 },
             )
-        except Exception:
             return "failed"
         return "sent"
 
@@ -1900,7 +2130,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "submit_connect_form",
                     "domain": domain,
                     "email": email,
@@ -1945,7 +2175,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # from the same surface.
     #
     # All three dispatch through the canonical mutation runtime
-    # (target_authority="aws_csm_newsletter_contact_log") or, in the
+    # (target_authority="newsletter_contact_log") or, in the
     # case of set_sender, persist back to the grantee JSON via
     # save_grantee_profile.
 
@@ -1985,7 +2215,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "upsert_subscriber",
                     "domain": domain,
                     "email": email,
@@ -2033,7 +2263,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
 
         edit_payload: dict[str, Any] = {
-            "target_authority": "aws_csm_newsletter_contact_log",
+            "target_authority": "newsletter_contact_log",
             "operation": "edit_subscriber",
             "domain": domain,
             "email": email,
@@ -2111,7 +2341,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
-                    "target_authority": "aws_csm_newsletter_contact_log",
+                    "target_authority": "newsletter_contact_log",
                     "operation": "mark_unsubscribed",
                     "domain": domain,
                     "email": email,
@@ -2234,18 +2464,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
         try:
-            from MyCiteV2.packages.adapters.filesystem import (
-                FilesystemAwsCsmToolProfileStore,
-            )
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
         except Exception:
             return jsonify({"ok": False, "error": "module_load_failed"}), 500
 
-        aws_csm_root = (
-            Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
         )
-        store = FilesystemAwsCsmToolProfileStore(aws_csm_root)
         # The profile_id itself is a valid tenant_scope_id (matches
-        # identity.profile_id branch of _matches_tenant_scope), so we
+        # identity.profile_id branch of load_profile), so we
         # can scope reads + writes by it without knowing the tenant.
         current = store.load_profile(tenant_scope_id=profile_id, profile_id=profile_id)
         if current is None:
@@ -2270,6 +2497,133 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "ok": True,
                 "profile_id": profile_id,
                 "lifecycle_state": workflow["lifecycle_state"],
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
+    # FND Email admin route — resend handoff email (2026-05-18)
+    # ------------------------------------------------------------------
+    # Re-dispatches the SMTP-credentials handoff email for an operator
+    # mailbox that has not yet onboarded (lifecycle still ``draft`` and
+    # ``handoff_status == instruction_sent``). The send_handoff_email
+    # action is declared in the Nimm mutation contract, but the apply
+    # route (/portal/api/v2/mutations/<action>) only dispatches to
+    # cts_gis / datum_workbench target authorities today — so this
+    # sibling route gives the email-admin extension a direct entry
+    # point that matches the Suspend route's shape.
+
+    @app.post("/__fnd/email/admin/resend-handoff")
+    def fnd_email_admin_resend_handoff() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.adapters.event_transport import (
+                AwsEc2RoleOnboardingCloudAdapter,
+            )
+            from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception as exc:
+            return jsonify(
+                {"ok": False, "error": "module_load_failed", "detail": str(exc)}
+            ), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        adapter = AwsEc2RoleOnboardingCloudAdapter()
+        try:
+            result = adapter.send_handoff_email(current)
+        except (ValueError, RuntimeError) as exc:
+            return jsonify(
+                {"ok": False, "error": "send_failed", "detail": str(exc)}
+            ), 502
+        except Exception as exc:
+            return jsonify(
+                {"ok": False, "error": "send_failed", "detail": str(exc)}
+            ), 502
+
+        identity = dict(current.get("identity") or {})
+        workflow = dict(current.get("workflow") or {})
+        workflow["handoff_email_sent_to"] = _as_text(result.get("sent_to"))
+        workflow["handoff_email_message_id"] = _as_text(result.get("message_id"))
+        workflow["handoff_email_sent_at"] = _as_text(result.get("sent_at"))
+        workflow["handoff_template_version"] = _as_text(
+            result.get("template_version")
+        )
+        workflow["handoff_status"] = "instruction_sent"
+        next_payload = dict(current)
+        next_payload["workflow"] = workflow
+
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        if host_config.portal_audit_storage_file is not None:
+            try:
+                audit_adapter = FilesystemAuditLogAdapter(
+                    host_config.portal_audit_storage_file
+                )
+                from MyCiteV2.packages.ports.audit_log import AuditLogAppendRequest
+
+                audit_adapter.append_audit_record(
+                    AuditLogAppendRequest(
+                        record={
+                            "event_type": "portal.aws.send_handoff_email.accepted",
+                            "shell_verb": "portal.aws.send_handoff_email",
+                            "focus_subject": profile_id,
+                            "details": {
+                                "profile_id": profile_id,
+                                "tenant_scope_id": _as_text(
+                                    identity.get("tenant_id")
+                                )
+                                or profile_id,
+                                "send_as_email": _as_text(result.get("send_as"))
+                                or _as_text(identity.get("send_as_email")),
+                                "sent_to": _as_text(result.get("sent_to")),
+                                "message_id": _as_text(result.get("message_id")),
+                                "handoff_provider": _as_text(
+                                    identity.get("handoff_provider")
+                                ),
+                                "template_version": _as_text(
+                                    result.get("template_version")
+                                ),
+                            },
+                        }
+                    )
+                )
+            except Exception:
+                # Audit failure must not break the send; the profile
+                # JSON itself carries the handoff_email_* fields as a
+                # secondary durable record.
+                pass
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "message_id": _as_text(result.get("message_id")),
+                "sent_to": _as_text(result.get("sent_to")),
+                "sent_at": _as_text(result.get("sent_at")),
+                "template_version": _as_text(result.get("template_version")),
             }
         ), 200
 
@@ -2647,12 +3001,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
 
-        credentials = _resolve_paypal_credentials(tenant_config)
+        credentials = _resolve_paypal_credentials_for_domain(private_dir, domain, tenant_config)
         if credentials is None:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 
-        client_id, client_secret = credentials
-        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        client_id, client_secret, resolved_env = credentials
+        environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
         checkout_ctx = domain_profile.get("checkout_context", {})
         donation_defaults = domain_profile.get("donation_defaults", {})
@@ -2734,12 +3088,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if tenant_config is None:
             return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
 
-        credentials = _resolve_paypal_credentials(tenant_config)
+        credentials = _resolve_paypal_credentials_for_domain(private_dir, domain, tenant_config)
         if credentials is None:
             return jsonify({"ok": False, "error": "credentials_not_set"}), 503
 
-        client_id, client_secret = credentials
-        environment = _as_text(domain_profile.get("environment")) or "sandbox"
+        client_id, client_secret, resolved_env = credentials
+        environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
 
         try:
@@ -2778,8 +3132,75 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "timestamp_ms": int(_time.time() * 1000),
         })
 
-        return jsonify({"ok": True, "capture_id": capture_id, "status": status,
-                        "amount": capture_amount, "currency_code": currency_code}), 200
+        response: dict[str, Any] = {
+            "ok": True,
+            "capture_id": capture_id,
+            "status": status,
+            "amount": capture_amount,
+            "currency_code": currency_code,
+        }
+
+        # Receipt fulfillment (best-effort): when the capture is COMPLETED and
+        # the domain has a configured receipt artifact, expose a download URL
+        # and try to email the donor a copy. Email failures are logged but
+        # never fail the capture response.
+        if status.upper() == "COMPLETED":
+            receipt_path = _resolve_receipt_artifact(private_dir, domain)
+            if receipt_path is not None:
+                response["receipt_document_url"] = (
+                    f"/__fnd/donation/receipt-document?domain={urllib.parse.quote(domain, safe='')}"
+                )
+                create_entry = _find_create_order_entry(orders_log, order_id)
+                donor_email = _as_text(create_entry.get("donor_email")) if create_entry else ""
+                donor_name = _as_text(create_entry.get("donor_name")) if create_entry else ""
+                email_status = _send_donation_receipt_email(
+                    private_dir=private_dir,
+                    domain=domain,
+                    donor_email=donor_email,
+                    donor_name=donor_name,
+                    amount=capture_amount,
+                    currency_code=currency_code,
+                    capture_id=capture_id,
+                    receipt_path=receipt_path,
+                )
+                _append_to_ndjson(orders_log, {
+                    "event": "receipt_email",
+                    "order_id": order_id,
+                    "capture_id": capture_id,
+                    "domain": domain,
+                    "donor_email": donor_email,
+                    "status": email_status,
+                    "timestamp_ms": int(_time.time() * 1000),
+                })
+                response["receipt_email_status"] = email_status
+
+        return jsonify(response), 200
+
+    @app.get("/__fnd/donation/receipt-document")
+    def fnd_donation_receipt_document() -> Any:
+        """Serve the configured tax-exempt receipt PDF for a domain.
+
+        The artifact path is read from the domain profile's
+        ``donation_defaults.receipt_artifact_path`` and joined under the
+        fixed ``/srv/webapps/clients/_shared/site-core/document/`` parent.
+        Path-traversal attempts (``..``, absolute paths, symlink escape)
+        and unconfigured/missing files all collapse to 404 so the route
+        does not leak validation signal.
+        """
+        from flask import send_from_directory
+
+        domain = _normalize_domain(_as_text(request.args.get("domain")) or request.host)
+        if not domain:
+            abort(404)
+        private_dir = host_config.private_dir
+        receipt_path = _resolve_receipt_artifact(private_dir, domain)
+        if receipt_path is None:
+            abort(404)
+        return send_from_directory(
+            str(receipt_path.parent),
+            receipt_path.name,
+            as_attachment=True,
+        )
 
     return app
 

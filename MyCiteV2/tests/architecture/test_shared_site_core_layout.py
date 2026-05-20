@@ -138,7 +138,7 @@ class SiteSyncTargetsTests(unittest.TestCase):
             self.assertTrue((d / leaf).is_file(), f"{d / leaf} missing")
 
     def test_cvcc_has_synced_bundle(self) -> None:
-        d = self._frontend_for("cuyahogavalleycountrysideconservancy.org", "JS")
+        d = self._frontend_for("cuyahogavalleycountrysideconservancy.org", "js")
         for leaf in (
             "form-utils.js",
             "newsletter.js",

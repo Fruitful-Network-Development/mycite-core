@@ -4,6 +4,13 @@ Version: 1.0
 Date: 2026-05-11
 Reference implementation: FND-CSM (`portal_fnd_csm_runtime.py`)
 
+> **MOS-authority rule:** The "Data authority: MOS SQL authority
+> (SAMRAS) vs Filesystem peripheral data" distinction is bound by the
+> enforcement contract at
+> [`mos_authority_enforcement.md`](mos_authority_enforcement.md). Only
+> non-datum peripheral data (e.g. tool profiles, vault inventories) may
+> live on the filesystem; datum documents always live in MOS.
+
 ---
 
 ## Overview

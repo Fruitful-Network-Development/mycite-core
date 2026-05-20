@@ -92,12 +92,20 @@ class AwsSesConfig:
     identity: str = ""
     smtp_username: str = ""
     smtp_password: str = ""
+    from_address: str = ""
+    from_name: str = ""
+    configuration_set: str = ""
+    reply_to: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "region", _as_text(self.region))
         object.__setattr__(self, "identity", _validate_email(self.identity, field_label="aws_ses.identity"))
         object.__setattr__(self, "smtp_username", _as_text(self.smtp_username))
         object.__setattr__(self, "smtp_password", _as_text(self.smtp_password))
+        object.__setattr__(self, "from_address", _as_text(self.from_address))
+        object.__setattr__(self, "from_name", _as_text(self.from_name))
+        object.__setattr__(self, "configuration_set", _as_text(self.configuration_set))
+        object.__setattr__(self, "reply_to", _as_text(self.reply_to))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -105,6 +113,10 @@ class AwsSesConfig:
             "identity": self.identity,
             "smtp_username": self.smtp_username,
             "smtp_password": self.smtp_password,
+            "from_address": self.from_address,
+            "from_name": self.from_name,
+            "configuration_set": self.configuration_set,
+            "reply_to": self.reply_to,
         }
 
     @classmethod
@@ -115,6 +127,10 @@ class AwsSesConfig:
             identity=_as_text(data.get("identity")),
             smtp_username=_as_text(data.get("smtp_username")),
             smtp_password=_as_text(data.get("smtp_password")),
+            from_address=_as_text(data.get("from_address")),
+            from_name=_as_text(data.get("from_name")),
+            configuration_set=_as_text(data.get("configuration_set")),
+            reply_to=_as_text(data.get("reply_to")),
         )
 
 

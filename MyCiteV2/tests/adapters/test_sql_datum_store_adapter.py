@@ -195,11 +195,11 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             )
             self.assertEqual(datum_identity["local_references"], ["1-0-1"])
 
-    def test_catalog_projection_and_semantic_reads_use_documents_legacy_alias(self) -> None:
-        """``documents`` maps legacy catalog ids → canonical lv.*; semantics stay on legacy until migrated.
-
-        A single ``documents`` row per ``legacy_alias`` is enforced by SQLite (partial unique index).
-        Readers still resolve canonical ``document_id`` and ``read_datum_semantic_identity``.
+    def test_catalog_projection_does_not_bridge_via_legacy_alias(self) -> None:
+        """Post-2026-05-17 reconciliation: the legacy_alias dual-lookup is
+        retired. A semantics row keyed by a legacy ``sandbox:`` document_id
+        is NOT reachable through the canonical document_id's documents-table
+        legacy_alias bridge. See docs/contracts/mos_authority_enforcement.md.
         """
 
         with TemporaryDirectory() as temp_dir:
@@ -259,24 +259,16 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
                 )
                 connection.commit()
 
-            projected = adapter.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id="fnd")
-            )
-            self.assertEqual(len(projected.documents), 1)
-            self.assertEqual(
-                projected.documents[0].document_id,
-                f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
-            )
-            self.assertEqual(projected.documents[0].canonical_name, "address_nodes")
-
             datum_identity = adapter.read_datum_semantic_identity(
                 tenant_id="fnd",
                 document_id=f"lv.3-2-3-17-77-1-6-4-1-4.cts_gis.address_nodes.{expected_hash}",
                 datum_address="4-2-1",
             )
-            self.assertIsNotNone(datum_identity)
-            self.assertEqual(datum_identity["policy"], "mos.hyphae_chain_v1")
-            self.assertIn("4-2-1", (datum_identity["hyphae_chain"] or {}).get("addresses", []))
+            self.assertIsNone(
+                datum_identity,
+                "legacy_alias dual-lookup retired — lookup by canonical id when "
+                "content is keyed by legacy id must return None.",
+            )
 
     def test_apply_document_insert_shifts_rows_and_updates_references(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -436,7 +428,7 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
             self.assertEqual(updated_rows[3]["raw"][0][2], "1-0-3")
             self.assertEqual(result["persisted_version_hash"], result["version_hash_after"])
 
-    def test_read_datum_semantic_identity_bridges_canonical_through_documents_legacy_alias(self) -> None:
+    def test_read_datum_semantic_identity_does_not_bridge_canonical_through_documents_legacy_alias(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
             adapter = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
@@ -496,13 +488,14 @@ class SqlDatumStoreAdapterTests(unittest.TestCase):
                 )
                 connection.commit()
 
+            # Post-reconciliation: dual-lookup retired. Content keyed by
+            # legacy id is not reachable via canonical id.
             datum_identity = adapter.read_datum_semantic_identity(
                 tenant_id="fnd",
                 document_id=canonical_id,
                 datum_address="9-9-9",
             )
-            self.assertIsNotNone(datum_identity)
-            self.assertEqual(datum_identity["policy"], "mos.hyphae_chain_v1")
+            self.assertIsNone(datum_identity)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ create-order → capture-order round-trip with PayPal mocked at the
 ``_create_paypal_order`` / ``_capture_paypal_order`` boundary.
 
 This is the closest a CI-runnable smoke can get to the real
-production flow at https://cuyahogavalleycountrysideconservancy.org/donate.html
+production flow at https://cuyahogavalleycountrysideconservancy.org/donate
 without driving real PayPal sandbox traffic. No production HTTP is
 generated; PayPal is never hit.
 

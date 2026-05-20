@@ -1,5 +1,10 @@
 # SAMRAS Structural Model
 
+> **Companion contract:** SAMRAS encoding/decoding only. SAMRAS data
+> lives exclusively in MOS — see
+> [`mos_authority_enforcement.md`](mos_authority_enforcement.md) for the
+> binding storage-authority rule.
+
 ## Status
 
 Canonical

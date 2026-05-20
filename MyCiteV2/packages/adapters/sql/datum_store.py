@@ -817,29 +817,10 @@ class SqliteSystemDatumStoreAdapter(
                 (normalized_request.tenant_id, document_token),
             ).fetchone()
             if row is None:
-                # Phase E3 one-cycle compatibility: accept legacy_alias too.
-                vh_docs = _sql_norm_version_hash("d.version_hash")
-                vh_dds = _sql_norm_version_hash("dds.version_hash")
-                alias_row = connection.execute(
-                    f"""
-                    SELECT dds.policy, dds.version_hash, dds.canonical_payload_json
-                    FROM documents AS d
-                    JOIN datum_document_semantics AS dds
-                      ON dds.tenant_id = d.tenant_id
-                     AND (dds.document_id = d.document_id OR dds.document_id = d.legacy_alias)
-                    WHERE d.tenant_id = ?
-                      AND (d.document_id = ? OR d.legacy_alias = ?)
-                    ORDER BY
-                      CASE WHEN {vh_docs} = {vh_dds} THEN 0 ELSE 1 END,
-                      d.created_at DESC,
-                      d.id DESC
-                    LIMIT 1
-                    """,
-                    (normalized_request.tenant_id, document_token, document_token),
-                ).fetchone()
-                if alias_row is None:
-                    return None
-                row = alias_row
+                # Post-2026-05-17 reconciliation: every payload is keyed by
+                # canonical document_id. The legacy_alias dual-lookup was
+                # retired (see docs/contracts/mos_authority_enforcement.md).
+                return None
         return {
             "policy": row["policy"],
             "version_hash": row["version_hash"],
@@ -869,36 +850,7 @@ class SqliteSystemDatumStoreAdapter(
                 """,
                 (normalized_request.tenant_id, document_token, datum_token),
             ).fetchone()
-            if row is None:
-                vh_docs = _sql_norm_version_hash("d.version_hash")
-                vh_dds = _sql_norm_version_hash("dds.version_hash")
-                row = connection.execute(
-                    f"""
-                    SELECT drs.policy, drs.semantic_hash, drs.hyphae_hash, drs.hyphae_chain_json,
-                           drs.local_references_json, drs.warnings_json
-                    FROM documents AS d
-                    JOIN datum_document_semantics AS dds
-                      ON dds.tenant_id = d.tenant_id
-                     AND (dds.document_id = d.document_id OR dds.document_id = d.legacy_alias)
-                    JOIN datum_row_semantics AS drs
-                      ON drs.tenant_id = dds.tenant_id
-                     AND drs.document_id = dds.document_id
-                     AND drs.datum_address = ?
-                    WHERE d.tenant_id = ?
-                      AND (d.document_id = ? OR d.legacy_alias = ?)
-                    ORDER BY
-                      CASE WHEN {vh_docs} = {vh_dds} THEN 0 ELSE 1 END,
-                      d.created_at DESC,
-                      d.id DESC
-                    LIMIT 1
-                    """,
-                    (
-                        datum_token,
-                        normalized_request.tenant_id,
-                        document_token,
-                        document_token,
-                    ),
-                ).fetchone()
+            # Post-2026-05-17 reconciliation: legacy_alias dual-lookup retired.
         if row is None:
             return None
         return {

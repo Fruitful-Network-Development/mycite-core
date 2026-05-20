@@ -23,7 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.filesystem import FilesystemAwsCsmNewsletterStateAdapter
+from MyCiteV2.packages.adapters.filesystem import FilesystemNewsletterStateAdapter
 from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
     build_form_component_frame,
 )
@@ -55,7 +55,7 @@ def _build_add_subscriber_form(domain: str) -> dict[str, Any]:
             "payload": {"domain": domain},
         },
         submit_label="Add subscriber",
-        target_authority="aws_csm_newsletter_contact_log",
+        target_authority="newsletter_contact_log",
     )
 
 
@@ -172,19 +172,11 @@ def _build_newsletter_extension_payload(
     contacts: list[dict[str, Any]] = []
     current_sender = ""
     try:
-        adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
-        if authority_db_file is not None:
-            from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-                MosDatumNewsletterContactLogAdapter,
-            )
-
-            mos_adapter = MosDatumNewsletterContactLogAdapter(
-                authority_db_file=authority_db_file,
-                tenant_id=portal_instance_id or "fnd",
-            )
-            contacts_payload = _as_dict(mos_adapter.load_contact_log(domain=domain))
-        else:
-            contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
+        adapter = FilesystemNewsletterStateAdapter(private_dir)
+        # Newsletter contact state lives in JSON under
+        # `<private>/utilities/tools/newsletter/`; no MOS authority is
+        # consulted (extensions read grantee/extension JSON files only).
+        contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
         raw_contacts = _as_list(contacts_payload.get("contacts"))
         contacts = []
         for c in raw_contacts:

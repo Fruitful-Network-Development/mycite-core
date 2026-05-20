@@ -389,6 +389,51 @@
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
+    renderVisualizationPanel(composition);
+  }
+
+  function renderVisualizationPanel(composition) {
+    // Plan v2: viz panel is the right-side surface that a workbench tool
+    // (e.g. CTS-GIS map) paints into. The Python side emits the region
+    // with visible=false when no tool is requested.
+    var region = (composition && composition.regions && composition.regions.visualization_panel) || {};
+    var aside = qs("#portalVisualizationPanel");
+    var splitter = document.querySelector(".ide-splitter--visualization-panel");
+    var title = qs("#portalVisualizationPanelTitle");
+    var content = qs("#portalVisualizationPanelContent");
+    if (!aside || !content) return;
+    var visible = !!region.visible && !!region.tool_id;
+    if (!visible) {
+      aside.setAttribute("hidden", "hidden");
+      aside.setAttribute("aria-hidden", "true");
+      aside.classList.add("is-collapsed");
+      if (splitter) splitter.setAttribute("hidden", "hidden");
+      content.innerHTML = "";
+      return;
+    }
+    aside.removeAttribute("hidden");
+    aside.setAttribute("aria-hidden", "false");
+    aside.classList.remove("is-collapsed");
+    if (splitter) splitter.removeAttribute("hidden");
+    if (title) title.textContent = region.tool_label || region.tool_id;
+    var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var fn = renderers[region.tool_id];
+    if (typeof fn === "function") {
+      try {
+        fn(region.panel_payload || {}, content);
+      } catch (err) {
+        content.innerHTML =
+          '<p class="ide-visualizationPanel__error">Tool render failed: ' +
+          escapeHtml(err && err.message ? err.message : String(err)) +
+          "</p>";
+      }
+    } else {
+      content.innerHTML =
+        '<p class="ide-visualizationPanel__empty">' +
+        'No client renderer registered for tool <code>' +
+        escapeHtml(region.tool_id) +
+        "</code>.</p>";
+    }
   }
 
   function syncHistory(envelope, historyPayload, options) {
@@ -693,7 +738,99 @@
 
   setBootState("core_loaded");
   bindShellChromeEvents();
+  bindVisualizationPanelClose();
+  bindSandboxSelector();
+  mountMenubarToolPalette();
   window.addEventListener("popstate", onPopState);
+
+  function bindVisualizationPanelClose() {
+    // Closing the viz panel clears surface_query.tool and re-loads the
+    // shell at the current surface — the panel is hidden purely as a
+    // function of the (absent) tool query parameter.
+    document.addEventListener("click", function (event) {
+      var btn = event.target && event.target.closest && event.target.closest("[data-visualization-panel-close]");
+      if (!btn) return;
+      var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
+      if (!request) return;
+      var next = cloneRequest(request);
+      if (next.surface_query && typeof next.surface_query === "object") {
+        delete next.surface_query.tool;
+      }
+      loadShell(next).catch(function () {});
+    });
+  }
+
+  function bindSandboxSelector() {
+    var select = qs("[data-sandbox-selector]");
+    if (!select) return;
+    var sandboxes = Array.isArray(window.__MYCITE_V2_SANDBOXES) ? window.__MYCITE_V2_SANDBOXES : [];
+    if (!sandboxes.length) {
+      select.setAttribute("hidden", "hidden");
+      return;
+    }
+    // Populate options.
+    select.innerHTML = sandboxes
+      .map(function (s) {
+        return '<option value="' + escapeHtml(s.token) + '">' + escapeHtml(s.label) + "</option>";
+      })
+      .join("");
+    // Seed from URL ?sandbox=... if present, else default to system.
+    var urlSandbox = "";
+    try {
+      urlSandbox = new URLSearchParams(window.location.search).get("sandbox") || "";
+    } catch (e) {}
+    if (urlSandbox) select.value = urlSandbox;
+
+    select.addEventListener("change", function () {
+      var token = select.value;
+      var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
+      if (!request) return;
+      var next = cloneRequest(request);
+      next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
+      next.surface_query.sandbox_filter = token;
+      // Switching sandbox always returns the user to Docs mode and clears
+      // any selected document/row that belonged to the old sandbox.
+      delete next.surface_query.document;
+      delete next.surface_query.row;
+      delete next.surface_query.mode;
+      loadShell(next).catch(function () {});
+    });
+  }
+
+  function mountMenubarToolPalette() {
+    var mount = qs("[data-tool-palette-mount]");
+    if (!mount) return;
+    if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return;
+    // The palette dispatches a tool by re-loading the current shell
+    // request with surface_query.tool=<tool_id> set, which the workbench
+    // runtime turns into a visualization panel via the tool registry.
+    window.PortalToolPalette.mount(mount, {
+      tenantId: (BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd",
+      documentId: "",
+      datumAddress: "",
+      onDispatch: function (item) {
+        var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
+        if (!request) return;
+        var next = cloneRequest(request);
+        next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
+        next.surface_query.tool = item.tool_id || "";
+        loadShell(next).catch(function () {});
+        // Hide the results popover after dispatch.
+        var list = mount.querySelector("[data-palette-list]");
+        if (list) list.setAttribute("hidden", "hidden");
+      },
+    });
+    // Show/hide the results popover on focus + blur of the input.
+    var input = mount.querySelector("[data-palette-input]");
+    var list = mount.querySelector("[data-palette-list]");
+    if (input && list) {
+      input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
+      input.addEventListener("blur", function () {
+        // Defer to allow click on a result to register before hiding.
+        setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
+      });
+    }
+  }
 
   var bootstrapRequest = readBootstrapRequest();
   if (!bootstrapRequest) {

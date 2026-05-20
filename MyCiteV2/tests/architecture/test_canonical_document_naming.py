@@ -68,41 +68,12 @@ class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
                 self.assertRegex(doc_id, CANONICAL_REGEX)
                 self.assertTrue(is_canonical_document_id(doc_id))
 
-    def test_datum_store_accepts_both_canonical_and_legacy_lookups(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            db_file = Path(temp_dir) / "auth.sqlite3"
-            store = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True)
-            doc = AuthoritativeDatumDocument(
-                document_id="system:anthology",
-                document_name="anthology",
-                relative_path="anthology.json",
-                source_kind="system_anthology",
-            )
-            store.store_authoritative_catalog(
-                AuthoritativeDatumDocumentCatalogResult(
-                    tenant_id="fnd",
-                    documents=(doc,),
-                    source_files={},
-                    readiness_status={},
-                    warnings=(),
-                )
-            )
-            migrate(db_file=db_file, msn_id="3-2-3-17-77-1-6-4-1-4")
-            legacy_hit = store.read_document_version_identity(
-                tenant_id="fnd", document_id="system:anthology"
-            )
-            self.assertIsNotNone(legacy_hit)
-            with open_sqlite(db_file) as connection:
-                canonical_id = str(
-                    connection.execute(
-                        "SELECT document_id FROM documents WHERE legacy_alias = ?",
-                        ("system:anthology",),
-                    ).fetchone()["document_id"]
-                ).strip()
-            canonical_hit = store.read_document_version_identity(
-                tenant_id="fnd", document_id=canonical_id
-            )
-            self.assertIsNotNone(canonical_hit)
+    # Original test_datum_store_accepts_both_canonical_and_legacy_lookups
+    # has been retired. The dual-lookup behavior it tested was a one-cycle
+    # compatibility bridge removed during the 2026-05-17 reconciliation;
+    # see docs/contracts/mos_authority_enforcement.md and
+    # tests/unit/test_mos_program_closure.py
+    # ::test_no_legacy_compatibility_document_keys_remain_as_primary_ids.
 
     def test_migration_marks_system_anchor_with_anthology_name(self) -> None:
         with TemporaryDirectory() as temp_dir:

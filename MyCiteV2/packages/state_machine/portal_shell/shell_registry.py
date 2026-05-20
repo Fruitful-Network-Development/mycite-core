@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     from .shell import PortalToolRegistryEntry
 
 from .shell_schemas import (
+    AGRO_ERP_TOOL_ENTRYPOINT_ID,
+    AGRO_ERP_TOOL_ROUTE,
+    AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
@@ -144,6 +147,15 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             page_owner="system",
             tool_id="workbench_ui",
         ),
+        PortalSurfaceCatalogEntry(
+            surface_id=AGRO_ERP_TOOL_SURFACE_ID,
+            label="Agro-ERP",
+            route=AGRO_ERP_TOOL_ROUTE,
+            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_kind="tool_surface",
+            page_owner="system",
+            tool_id="agro_erp",
+        ),
     )
 
 
@@ -173,6 +185,26 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             # extensions over filesystem grantee JSON.
             manipulates_datum_kinds=("sandbox_source",),
             summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
+        ),
+        PortalToolRegistryEntry(
+            tool_id="agro_erp",
+            label="Agro-ERP",
+            surface_id=AGRO_ERP_TOOL_SURFACE_ID,
+            entrypoint_id=AGRO_ERP_TOOL_ENTRYPOINT_ID,
+            route=AGRO_ERP_TOOL_ROUTE,
+            tool_kind=TOOL_KIND_GENERAL,
+            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
+            read_write_posture="write",
+            required_capabilities=("datum_recognition",),
+            default_workbench_visible=True,
+            # Plain datum-workbench surface (no spatial projection). Eligible
+            # only for documents whose archetype is the agro_erp taxonomy row,
+            # so cts_gis / samras_family documents don't accidentally pick up
+            # agro_erp in the palette. See
+            # docs/contracts/agro_erp_workbench_contract.md.
+            applies_to_archetype=("agro_erp_taxonomy_row",),
+            manipulates_datum_kinds=("sandbox_source",),
+            summary="Agro-ERP taxonomy and source-document workbench (MOS-backed).",
         ),
         PortalToolRegistryEntry(
             tool_id="workbench_ui",
