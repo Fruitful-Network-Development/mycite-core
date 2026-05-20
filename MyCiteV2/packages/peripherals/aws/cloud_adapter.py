@@ -697,6 +697,61 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             granularity=granularity,
         )
 
+    # Usage-type-groups that scale with shared-instance egress. AWS
+    # splits transfer-out spend across multiple groups (public
+    # internet, inter-region, CloudFront origin pulls); we sum them
+    # for per-tenant attribution. Inter-AZ + transfer-in are
+    # deliberately excluded — they don't track grantee traffic.
+    _DATA_TRANSFER_OUT_GROUPS = (
+        "EC2: Data Transfer - Internet (Out)",
+        "EC2: Data Transfer - Region to Region (Out)",
+        "EC2: Data Transfer - CloudFront (Out)",
+        "S3: Data Transfer - Internet (Out)",
+        "S3: Data Transfer - Region to Region (Out)",
+    )
+
+    def get_data_transfer_out_cost(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> dict[str, str]:
+        """Total Data-Transfer-Out spend across the account in the window.
+
+        Returns `{currency, amount}` (decimal-as-string). Used by the
+        tolling extension to multiply by each grantee's nginx-byte
+        share so bandwidth becomes a dollar figure on dashboards.
+
+        Sums across the egress usage-type groups in
+        `_DATA_TRANSFER_OUT_GROUPS`. AWS free tier covers up to ~100GB/mo
+        for many of these, so on low-traffic deployments the total is
+        legitimately near-zero; the dashboard renders that as
+        "negligible" rather than "$0.00".
+        """
+        client = self._client("ce", region="us-east-1")
+        response = client.get_cost_and_usage(
+            TimePeriod={"Start": start, "End": end},
+            Granularity=granularity,
+            Metrics=["UnblendedCost"],
+            Filter={
+                "Dimensions": {
+                    "Key": "USAGE_TYPE_GROUP",
+                    "Values": list(self._DATA_TRANSFER_OUT_GROUPS),
+                }
+            },
+        )
+        total = 0.0
+        currency = ""
+        for result in response.get("ResultsByTime", []) or []:
+            metric = (result.get("Total") or {}).get("UnblendedCost") or {}
+            currency = currency or str(metric.get("Unit", ""))
+            try:
+                total += float(metric.get("Amount", "0"))
+            except ValueError:
+                continue
+        return {"currency": currency, "amount": f"{total:.10f}"}
+
     def get_costs_overview(
         self,
         *,

@@ -3266,6 +3266,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             requested_msn, start_d, end_d
         )
 
+        # Bandwidth dollar attribution: multiply this grantee's share
+        # by the account-wide EC2 DataTransfer-Out spend for the same
+        # window. Approximates per-tenant egress cost on the shared
+        # instance.
+        dt = _aws_peripheral.get_data_transfer_out_cost(
+            start=start_d.isoformat(), end=end_d.isoformat()
+        )
+        try:
+            dt_amount = float(dt.get("amount", "0"))
+        except ValueError:
+            dt_amount = 0.0
+        bandwidth_cost = {
+            "currency": dt.get("currency", ""),
+            "amount": f"{dt_amount * float(bandwidth.get('share') or 0):.10f}",
+            "account_total": dt.get("amount", "0"),
+        }
+
         return jsonify({
             "ok": True,
             "grantee": {
@@ -3278,6 +3295,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
             "costs": cost,
             "bandwidth_share": bandwidth,
+            "bandwidth_cost": bandwidth_cost,
         }), 200
 
     @app.get("/__fnd/tolling/overview")
@@ -3323,15 +3341,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/__fnd/tolling/whoami")
     def fnd_tolling_whoami() -> tuple[Any, int]:
-        """Resolve the caller's grantee identity from oauth2-proxy
-        headers. Used by the per-client dashboard JS to learn the
-        active grantee_id before fetching itemize. 200 with empty
-        grantee when unauthenticated."""
+        """Resolve the caller's grantee identity.
+
+        Resolution order:
+          1. oauth2-proxy headers (X-Auth-Request-Grantee / Email) —
+             once Keycloak is wired, this is the authoritative path.
+          2. Request host — the per-client `/dashboard/` lives at the
+             grantee's own domain, so request.host identifies the
+             owning grantee. Used during the no-auth dev preview.
+        Returns 200 with `grantee: null` only when neither resolves.
+        """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            grantee_for_domain,
             resolve_grantee_from_headers,
         )
 
         caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
         if caller is None:
             return jsonify({"ok": True, "grantee": None}), 200
         return jsonify({

@@ -90,6 +90,29 @@ def domains_for_grantee(
     return []
 
 
+def grantee_for_domain(
+    domain: str,
+    fnd_csm_root: str | Path = _DEFAULT_FND_CSM_ROOT,
+) -> dict[str, Any] | None:
+    """Resolve the grantee profile that owns `domain` (case-insensitive).
+
+    Used by the dashboard `whoami` route when no oauth2-proxy header is
+    present — the per-client `/dashboard/` lives at the client's own
+    domain, so request.host tells us which grantee owns the dashboard.
+    Once Keycloak auth is wired, headers take precedence.
+    """
+    if not domain:
+        return None
+    target = domain.lower()
+    # Strip optional port (e.g. ":6101" on local dev).
+    target = target.split(":", 1)[0]
+    for profile in load_grantee_directory(fnd_csm_root):
+        owned = [str(d).lower() for d in profile.get("domains") or []]
+        if target in owned:
+            return profile
+    return None
+
+
 # ---------------------------------------------------------------------
 # Bandwidth share from nginx access logs
 # ---------------------------------------------------------------------
