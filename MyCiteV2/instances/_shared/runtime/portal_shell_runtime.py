@@ -26,6 +26,7 @@ from MyCiteV2.packages.adapters.sql import (
 )
 from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
+    AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
@@ -33,6 +34,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
+    SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_SURFACE_IDS,
     TRANSITION_FOCUS_FILE,
@@ -190,7 +192,7 @@ def _sql_runtime_error_for_surface(
             code="sql_portal_authority_missing",
             message="The MOS SQL authority database is missing the portal authority snapshot for this scope.",
         )
-    if surface_id in {SYSTEM_ROOT_SURFACE_ID, WORKBENCH_UI_TOOL_SURFACE_ID}:
+    if surface_id in {SYSTEM_ROOT_SURFACE_ID, WORKBENCH_UI_TOOL_SURFACE_ID, AGRO_ERP_TOOL_SURFACE_ID}:
         datum_store = SqliteSystemDatumStoreAdapter(authority_path)
         if not datum_store.has_authoritative_catalog(portal_instance_id) or not datum_store.has_system_workbench(portal_instance_id):
             return build_portal_runtime_error(
@@ -275,9 +277,13 @@ def _activity_items(
     shell_state: PortalShellState | None,
 ) -> list[dict[str, Any]]:
     dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
+    # Plan v2: only Network + Utilities live in the activity-nav list.
+    # The portal logo at the top of the activity bar (portal.html) is
+    # the System entry — making "three slots: logo + network + utilities"
+    # the canonical chrome. Tools (CTS-GIS map, etc.) are invoked from
+    # the menubar search and paint into the workbench's visualization
+    # panel rather than owning their own activity-bar slot.
     visible_surface_ids = [
-        CTS_GIS_TOOL_SURFACE_ID,
-        FND_CSM_TOOL_SURFACE_ID,
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
     ]
@@ -945,27 +951,73 @@ def _surface_payload_for_tools(tool_rows: list[dict[str, Any]]) -> dict[str, Any
 
 
 def _surface_payload_for_peripherals() -> dict[str, Any]:
-    """Stub landing for peripherals + keypass vault. Replaces the
-    ``utilities.integrations`` surface (which "didn't do anything").
-    Implementation arrives in a follow-up phase.
+    """Live landing for peripherals.
+
+    The AWS peripheral (`MyCiteV2.packages.peripherals.aws`) is queried
+    per-domain for the active grantee; each domain's status becomes a
+    card. Keypass vault and TLS health are still placeholders — they
+    are independent peripherals not yet implemented.
+
+    Best-effort: failures inside the peripheral are caught and surfaced
+    as note text rather than raising; the Utilities surface should
+    never 500 because of a degraded AWS state.
     """
+    aws_cards: list[dict[str, Any]] = []
+    aws_notes: list[str] = []
+    try:
+        from MyCiteV2.packages.peripherals.aws import (
+            AwsPeripheralCloudAdapter,
+            ProfileStore,
+        )
+
+        store = ProfileStore()
+        adapter = AwsPeripheralCloudAdapter(profile_store=store)
+        for domain in store.domains():
+            try:
+                status = adapter.describe_domain_status(domain)
+                summary = []
+                if status["ses_identity_verified"]:
+                    summary.append("SES verified")
+                if status["dkim_verified"]:
+                    summary.append("DKIM verified")
+                if status["mx_present"]:
+                    summary.append("MX")
+                if status["spf_present"]:
+                    summary.append("SPF")
+                if status["dmarc_present"]:
+                    summary.append("DMARC")
+                if status["receipt_rule_present"]:
+                    summary.append("receipt rule")
+                if not summary:
+                    summary.append("(not configured)")
+                aws_cards.append(
+                    {
+                        "label": f"AWS · {domain}",
+                        "value": " / ".join(summary),
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                aws_notes.append(f"{domain}: error: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        aws_notes.append(f"aws peripheral unavailable: {exc}")
+
+    cards: list[dict[str, Any]] = list(aws_cards) + [
+        {"label": "Keypass vault", "value": "Pending"},
+        {"label": "TLS / cert health", "value": "Pending"},
+    ]
+    notes: list[str] = list(aws_notes) + [
+        "AWS peripheral status from peripherals.aws.describe_domain_status.",
+        "Keypass + TLS surfaces are independent peripherals not yet implemented.",
+        "Operational integration readiness is also reported by /portal/healthz "
+        "(authority_db, static_files_present, shell_asset_manifest).",
+    ]
     return {
         "schema": surface_schema_for_surface(UTILITIES_PERIPHERALS_SURFACE_ID),
         "kind": "peripherals",
         "title": "Peripherals",
-        "subtitle": (
-            "Keypass vault, peripheral integrations, and operator hardware. "
-            "Implementation pending."
-        ),
-        "cards": [
-            {"label": "Keypass vault", "value": "Coming soon"},
-            {"label": "Peripheral integrations", "value": "Coming soon"},
-            {"label": "TLS / cert health", "value": "Coming soon"},
-        ],
-        "notes": [
-            "Operational integration readiness is reported by /portal/healthz "
-            "(authority_db, static_files_present, shell_asset_manifest)."
-        ],
+        "subtitle": "AWS peripheral status by domain, plus pending Keypass and TLS surfaces.",
+        "cards": cards,
+        "notes": notes,
     }
 
 
@@ -1159,6 +1211,30 @@ def _build_workbench_ui_tool_bundle(
     )
 
 
+def _build_agro_erp_tool_bundle(
+    *,
+    portal_scope: PortalScope,
+    portal_domain: str,
+    shell_state: PortalShellState | None,
+    authority_db_file: str | Path | None,
+    tool_rows: list[dict[str, Any]],
+    surface_query: dict[str, str] | None,
+    **_: Any,
+) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_agro_erp_runtime import (
+        build_portal_agro_erp_surface_bundle,
+    )
+
+    return build_portal_agro_erp_surface_bundle(
+        portal_scope=portal_scope,
+        portal_domain=portal_domain,
+        shell_state=shell_state,
+        authority_db_file=authority_db_file,
+        tool_rows=tool_rows,
+        surface_query=surface_query,
+    )
+
+
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
     CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
     # FND_CSM_TOOL_SURFACE_ID dispatcher removed in Phase 13a — the surface
@@ -1166,11 +1242,13 @@ _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
     # been dropped. The `build_portal_fnd_csm_surface_bundle` it called is
     # also gone from portal_fnd_csm_runtime.py.
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
+    AGRO_ERP_TOOL_SURFACE_ID: _build_agro_erp_tool_bundle,
 }
 
 _RUNTIME_OWNED_TOOL_SURFACE_IDS = frozenset(
     {
         WORKBENCH_UI_TOOL_SURFACE_ID,
+        AGRO_ERP_TOOL_SURFACE_ID,
     }
 )
 
@@ -1255,27 +1333,40 @@ def _bundle_for_surface(
         authority_mode=authority_mode,
     )
     if selection_surface_id == SYSTEM_ROOT_SURFACE_ID:
+        # Plan v2: /portal/system delegates to the unified workbench so
+        # the system page = the portal database view, parameterised by
+        # the menubar sandbox selector. Default sandbox is "system" (the
+        # reflective corpus-wide view). The workbench builder already
+        # consumes surface_query.{sandbox_filter, mode, tool, document,
+        # row}, so the system root needs no extra wiring beyond
+        # delegation.
+        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+            build_portal_workbench_ui_bundle,
+        )
         canonical_state = canonicalize_portal_shell_state(
             shell_state,
             active_surface_id=SYSTEM_ROOT_SURFACE_ID,
             portal_scope=portal_scope,
             seed_anchor_file=shell_state is None,
         )
-        workspace_bundle = build_system_workspace_bundle(
+        bundle = build_portal_workbench_ui_bundle(
             portal_scope=portal_scope,
             portal_domain=portal_domain,
             shell_state=canonical_state,
-            data_dir=data_dir,
-            public_dir=public_dir,
-            audit_storage_file=audit_storage_file,
-            tool_rows=tool_rows,
             authority_db_file=authority_db_file,
-            authority_mode=authority_mode,
+            tool_rows=tool_rows,
+            surface_query=surface_query,
         )
-        workspace_bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
-        workspace_bundle["read_write_posture"] = "read-only"
-        workspace_bundle["tool_rows"] = tool_rows
-        return workspace_bundle
+        # The workbench bundle stamps WORKBENCH_UI identifiers on the
+        # surface_payload; rewrite them for the SYSTEM root so
+        # downstream consumers (envelope schema asserts, JS routing)
+        # still see system-root identity.
+        payload = bundle.setdefault("surface_payload", {})
+        payload["kind"] = "system_workspace"
+        bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
+        bundle["route"] = SYSTEM_ROOT_ROUTE
+        bundle["tool_rows"] = tool_rows
+        return bundle
     if selection_surface_id in _TOOL_SURFACE_BUNDLE_BUILDERS:
         bundle = _tool_bundle_for_surface(
             surface_id=selection_surface_id,
@@ -1483,6 +1574,7 @@ def run_portal_shell_entry(
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
         interface_panel=bundle.get("interface_panel"),
+        visualization_panel=bundle.get("visualization_panel"),
         shell_state=composition_shell_state,
         control_panel_collapsed=bool(
             composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
@@ -1641,6 +1733,7 @@ def run_system_profile_basics_action(
         control_panel=workspace_bundle["control_panel"],
         workbench=workspace_bundle["workbench"],
         interface_panel=workspace_bundle.get("interface_panel"),
+        visualization_panel=workspace_bundle.get("visualization_panel"),
         shell_state=selection.shell_state,
     )
     return build_portal_runtime_envelope(

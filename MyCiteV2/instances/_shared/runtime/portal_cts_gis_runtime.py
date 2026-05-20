@@ -31,7 +31,8 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_configured,
     tool_exposure_enabled,
 )
-from MyCiteV2.packages.adapters.filesystem import FilesystemSystemDatumStoreAdapter
+# NOTE: FilesystemSystemDatumStoreAdapter is intentionally NOT imported. The
+# runtime is MOS-only per docs/contracts/mos_authority_enforcement.md.
 from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.structures.samras import (
     InvalidSamrasStructure,
@@ -134,7 +135,9 @@ _CANONICAL_TOOL_PUBLIC_ID = "cts_gis"
 _CANONICAL_TOOL_SLUG = "cts-gis"
 _CANONICAL_TOOL_ANCHOR_PATTERN = "tool.*.cts-gis.json"
 _LEGACY_DOCUMENT_PREFIX = "sandbox:" + ("map" + "s") + ":"
-_DATUM_STORE_BY_DATA_DIR: dict[str, FilesystemSystemDatumStoreAdapter] = {}
+# _DATUM_STORE_BY_DATA_DIR cache removed — filesystem-backed datum store
+# is no longer used at runtime. The MOS authority is the sole source of
+# truth per docs/contracts/mos_authority_enforcement.md.
 _DATUM_STORE_BY_AUTHORITY_DB: dict[str, SqliteSystemDatumStoreAdapter] = {}
 # Workbench projection cache: keyed by (db_file_str, tenant_id) → (db_mtime_ns, bundle_dict)
 _WORKBENCH_PROJECTION_CACHE: dict[tuple[str, str], tuple[int, dict]] = {}
@@ -389,19 +392,6 @@ def _path_or_none(path: str | Path | None) -> Path | None:
     return Path(path)
 
 
-def _datum_store_for_data_dir(data_dir: str | Path | None) -> FilesystemSystemDatumStoreAdapter | None:
-    root = _path_or_none(data_dir)
-    if root is None:
-        return None
-    cache_key = str(root.resolve())
-    cached = _DATUM_STORE_BY_DATA_DIR.get(cache_key)
-    if cached is not None:
-        return cached
-    store = FilesystemSystemDatumStoreAdapter(root)
-    _DATUM_STORE_BY_DATA_DIR[cache_key] = store
-    return store
-
-
 def _datum_store_for_authority_db(
     authority_db_file: str | Path | None,
 ) -> SqliteSystemDatumStoreAdapter | None:
@@ -419,13 +409,14 @@ def _datum_store_for_authority_db(
 
 def _runtime_datum_store(
     *,
-    data_dir: str | Path | None,
+    data_dir: str | Path | None,  # noqa: ARG001 — kept for ABI; ignored
     authority_db_file: str | Path | None,
-) -> SqliteSystemDatumStoreAdapter | FilesystemSystemDatumStoreAdapter | None:
-    authority_store = _datum_store_for_authority_db(authority_db_file)
-    if authority_store is not None:
-        return authority_store
-    return _datum_store_for_data_dir(data_dir)
+) -> SqliteSystemDatumStoreAdapter | None:
+    # MOS-only per docs/contracts/mos_authority_enforcement.md. The
+    # data_dir parameter is retained in the signature for backward
+    # compatibility with callers but is no longer consulted; the
+    # filesystem-backed datum store has been retired from runtime.
+    return _datum_store_for_authority_db(authority_db_file)
 
 
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
@@ -1109,56 +1100,19 @@ def _cts_gis_private_tool_root(private_dir: str | Path | None) -> Path | None:
     return candidate
 
 
-def _cts_gis_data_tool_root(data_dir: str | Path | None) -> Path | None:
-    root = _path_or_none(data_dir)
-    if root is None:
-        return None
-    candidate = root / "sandbox" / _CANONICAL_TOOL_SLUG
-    if candidate.exists() and candidate.is_dir():
-        return candidate
-    return candidate
-
-
-def _cts_gis_source_path(data_dir: str | Path | None, *, document_name: str) -> Path | None:
-    tool_root = _cts_gis_data_tool_root(data_dir)
-    if tool_root is None:
-        return None
-    token = _as_text(document_name)
-    if not token:
-        return None
-    source_root = tool_root / "sources"
-    direct = source_root / token
-    if direct.exists() and direct.is_file():
-        return direct
-    precinct = source_root / "precincts" / token
-    if precinct.exists() and precinct.is_file():
-        return precinct
-    return direct
+# Disk-glob helpers (_cts_gis_data_tool_root, _cts_gis_source_path,
+# _cts_gis_tool_anchor_path) were retired. Per
+# docs/contracts/mos_authority_enforcement.md the runtime is MOS-only;
+# the readiness diagnostic in _build_source_evidence now reports
+# `exists=False` for the legacy disk paths because those paths have been
+# archived to /srv/agentic/evidence/. Existing downstream logic handles
+# the absent case gracefully (degrades to `samras_seed_missing`).
 
 
 def _split_row_source(payload: dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload.get("datum_addressing_abstraction_space"), dict):
         return dict(payload.get("datum_addressing_abstraction_space") or {})
     return dict(payload)
-
-
-def _cts_gis_tool_anchor_path(data_dir: str | Path | None) -> Path | None:
-    tool_root = _cts_gis_data_tool_root(data_dir)
-    if tool_root is None:
-        return None
-    patterns = (_CANONICAL_TOOL_ANCHOR_PATTERN,)
-    candidates: list[Path] = []
-    for pattern in patterns:
-        candidates.extend(sorted(tool_root.glob(pattern)))
-    deduped: list[Path] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(candidate)
-    return deduped[0] if deduped else None
 
 
 def _anchor_member_files(anchor_payload: dict[str, Any]) -> list[str]:
@@ -1234,17 +1188,18 @@ def _build_source_evidence(
     supporting_document_name = _as_text(supporting_document.get("document_name")) or _DEFAULT_SUPPORTING_DOCUMENT_NAME
     corpus_prefix = _cts_gis_corpus_prefix(supporting_document_name)
     private_tool_root = _cts_gis_private_tool_root(private_dir)
-    _cts_gis_data_tool_root(data_dir)
+    # MOS-only runtime: disk-based tool-anchor/source/cache paths are retired
+    # (see docs/contracts/mos_authority_enforcement.md). _evidence_path_payload
+    # below returns exists=False for each None path, and downstream readiness
+    # logic degrades gracefully to `samras_seed_missing` when the legacy disk
+    # artifacts are absent.
     spec_path = None if private_tool_root is None else private_tool_root / "spec.json"
-    tool_anchor_path = _cts_gis_tool_anchor_path(data_dir)
-    tool_anchor_payload = _safe_json_object(tool_anchor_path)
-    member_files = _anchor_member_files(tool_anchor_payload)
-    source_path = _cts_gis_source_path(data_dir, document_name=supporting_document_name)
-    payload_cache_root = None if data_dir is None else Path(data_dir) / "payloads" / "cache"
-    registrar_path = None if payload_cache_root is None or not corpus_prefix else payload_cache_root / f"{corpus_prefix}.registrar.json"
-    administrative_cache_path = (
-        None if payload_cache_root is None or not corpus_prefix else payload_cache_root / f"{corpus_prefix}.msn-administrative.json"
-    )
+    tool_anchor_path: Path | None = None
+    tool_anchor_payload: dict[str, Any] = {}
+    member_files: list[str] = []
+    source_path: Path | None = None
+    registrar_path: Path | None = None
+    administrative_cache_path: Path | None = None
 
     tool_spec = _evidence_path_payload(spec_path, canonical_tool_id=_CANONICAL_TOOL_PUBLIC_ID)
     tool_anchor = _evidence_path_payload(tool_anchor_path)
@@ -1259,7 +1214,7 @@ def _build_source_evidence(
     administrative_payload_cache = _evidence_path_payload(administrative_cache_path)
     if administrative_payload_cache["payload"]:
         administrative_payload_cache["payload_id"] = _as_text(administrative_payload_cache["payload"].get("payload_id"))
-    sos_voterid_path = _cts_gis_source_path(data_dir, document_name="sc.3-2-3-17-77-1-6-4-1-4.sos_voterid.json")
+    sos_voterid_path: Path | None = None  # MOS-only: see note above
     sos_voterid_source = _evidence_path_payload(sos_voterid_path)
     sos_voterid_source["document_name"] = "sc.3-2-3-17-77-1-6-4-1-4.sos_voterid.json"
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
@@ -1437,7 +1392,7 @@ def _strict_projection_context_differs(
 def _read_live_service_surface(
     *,
     portal_scope: PortalScope,
-    datum_store: SqliteSystemDatumStoreAdapter | FilesystemSystemDatumStoreAdapter | None,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
     requested_tool_state: dict[str, Any],
     request_payload: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -3833,7 +3788,7 @@ def _service_surface_from_compiled_artifact(artifact: dict[str, Any]) -> dict[st
 def _hydrate_compiled_workbench_documents(
     *,
     service_surface: dict[str, Any],
-    datum_store: SqliteSystemDatumStoreAdapter | FilesystemSystemDatumStoreAdapter | None,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
     tenant_id: str,
 ) -> None:
     """Populate workbench documents for compiled-only service surfaces.

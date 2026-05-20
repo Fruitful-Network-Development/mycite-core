@@ -13,7 +13,7 @@ drives Chromium at it to:
      smoke doesn't require a fully-bootstrapped MOS authority db).
 
 This is the closest a CI-runnable smoke can get to the real production
-flow at https://trappfamilyfarm.com/newsletter.html without driving
+flow at https://trappfamilyfarm.com/newsletter without driving
 production traffic. No production HTTP is generated.
 
 Runtime
@@ -187,7 +187,7 @@ class TffNewsletterSmokeTests(unittest.TestCase):
             self.assertEqual(len(captured_calls), 1, f"calls={captured_calls!r}")
             action, payload, _kwargs = captured_calls[0]
             self.assertEqual(action, "apply")
-            self.assertEqual(payload["target_authority"], "aws_csm_newsletter_contact_log")
+            self.assertEqual(payload["target_authority"], "newsletter_contact_log")
             self.assertEqual(payload["operation"], "upsert_subscriber")
             self.assertEqual(payload["domain"], _TFF_DOMAIN)
             self.assertEqual(payload["email"], "subscriber@example.test")

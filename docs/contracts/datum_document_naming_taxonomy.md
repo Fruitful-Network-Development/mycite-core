@@ -184,6 +184,13 @@ The MOS authority database (`mos_authority.sqlite3`) is the single runtime sourc
 truth for datum document materialization and naming. The `documents` table is the
 canonical index.
 
+The full enforcement contract (allowed/forbidden filesystem usage, the
+enforcement test chain, the legacy_alias retirement schedule, and the
+sandbox-add procedure) is defined in
+[`mos_authority_enforcement.md`](mos_authority_enforcement.md) — that
+document is the single binding source for this rule. The taxonomy below
+keeps only the naming-shape concerns.
+
 `/srv/repo/hippo` is **historical evidence only**. It is not imported by MyCiteV2 at
 runtime, it is not a materialization authority for MOS, and it must not influence
 document naming, sandbox token resolution, or workbench rendering decisions.

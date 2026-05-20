@@ -159,11 +159,15 @@ class AnalyticsDataSourceTests(unittest.TestCase):
     def test_data_source_kind_pending_when_no_events(self) -> None:
         # Phase 18c: insights derive on-demand from the raw NDJSON
         # log; the renderer returns ``kind=pending`` + a notice when
-        # no events exist yet for the domain.
+        # no events exist yet for the domain. The canonical layout
+        # (post-Phase-18a migration) puts the domain in the *filename*
+        # — `analytics.<domain>.events.<YYYY-MM>.ndjson` — under the
+        # flat analytics_root, so events_dir is just the root path,
+        # not a per-domain subdir.
         out = _build_analytics_extension_payload("example.org", "/nonexistent")
         ds = out["data_source"]
         self.assertEqual(ds["kind"], "pending")
-        self.assertIn("example.org", ds["events_dir"])
+        self.assertEqual(ds["events_dir"], "/nonexistent")
         self.assertIn("notice", out)
         self.assertIn("event", out["notice"].lower())
 

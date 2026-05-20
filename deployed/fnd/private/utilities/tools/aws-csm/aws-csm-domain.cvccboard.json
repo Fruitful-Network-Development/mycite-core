@@ -1,5 +1,5 @@
 {
-  "schema": "mycite.service_tool.aws_csm.domain.v1",
+  "schema": "mycite.service_tool.aws.domain.v2",
   "identity": {
     "tenant_id": "cvccboard",
     "domain": "cvccboard.org",
@@ -65,7 +65,7 @@
     "role_arn": "arn:aws:iam::065948377733:role/EC2-AWSCMS-Admin"
   },
   "readiness": {
-    "schema": "mycite.service_tool.aws_csm.domain_readiness.v1",
+    "schema": "mycite.service_tool.aws.domain_readiness.v2",
     "state": "ready_for_mailboxes",
     "summary": "Domain onboarding is ready for mailbox creation.",
     "blockers": [],

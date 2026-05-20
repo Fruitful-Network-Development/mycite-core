@@ -1420,137 +1420,441 @@
       .join("");
   }
 
-  function renderWorkbenchSummary(workspace) {
-    var selectedDocument = asObject(workspace.selected_document);
-    var selectedRow = asObject(workspace.selected_row);
-    var query = asObject(workspace.query);
-    return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Current Lens</h3>' +
-      '<dl class="v2-surface-dl">' +
-      "<dt>document</dt><dd><strong>" +
-      escapeHtml(selectedDocument.canonical_name || selectedDocument.document_name || selectedDocument.document_id || "—") +
-      "</strong></dd>" +
-      "<dt>version</dt><dd><strong>" +
-      escapeHtml(selectedDocument.version_hash || "—") +
-      "</strong></dd>" +
-      "<dt>row</dt><dd><strong>" +
-      escapeHtml(selectedRow.datum_address || "—") +
-      "</strong></dd>" +
-      "<dt>group</dt><dd><strong>" +
-      escapeHtml(query.group || workspace.datum_grid.group_mode || "flat") +
-      "</strong></dd>" +
-      "<dt>lens</dt><dd><strong>" +
-      escapeHtml(query.workbench_lens || workspace.datum_grid.lens || "interpreted") +
-      "</strong></dd>" +
-      "<dt>source</dt><dd><strong>" +
-      escapeHtml(query.source || workspace.source_visibility || "show") +
-      "</strong></dd>" +
-      "<dt>overlay</dt><dd><strong>" +
-      escapeHtml(query.overlay || workspace.overlay_visibility || "show") +
-      "</strong></dd>" +
-      "</dl></section>"
+  // ------------------------------------------------------------------
+  // Trifecta workbench layout (Portal-Workbench-Trifecta-Layout-2026-05-18)
+  // Three regions:
+  //   1. Sandbox toggle bar (top)
+  //   2. Slim document column with "+" affordance (left)
+  //   3. Datum document editor (right)
+  // ------------------------------------------------------------------
+
+  function activeSandboxToken(region) {
+    var fromRegion = asText(
+      asObject(asObject(region).document_collection).sandbox_id
     );
+    if (fromRegion) return fromRegion;
+    try {
+      var fromUrl = new URLSearchParams(window.location.search).get("sandbox");
+      if (fromUrl) return asText(fromUrl);
+    } catch (_) {}
+    return "system";
   }
 
-  function renderWorkbenchNavigation(workspace) {
-    var navigation = asObject(workspace.navigation);
-    var buttons = [];
-    [
-      ["previous_document", "Previous Document"],
-      ["next_document", "Next Document"],
-      ["previous_row", "Previous Row"],
-      ["next_row", "Next Row"],
-    ].forEach(function (entry) {
-      var item = asObject(navigation[entry[0]]);
-      if (!item.shell_request) return;
-      buttons.push(
-        '<button class="v2-workbenchUi__navButton" type="button" data-workbench-nav-key="' +
-          escapeHtml(entry[0]) +
-          '">' +
-          escapeHtml(entry[1]) +
-          '<small>' +
-          escapeHtml(item.label || item.id || "—") +
-          "</small></button>"
-      );
+  function availableSandboxes() {
+    var globals = Array.isArray(window.__MYCITE_V2_SANDBOXES)
+      ? window.__MYCITE_V2_SANDBOXES
+      : [];
+    return globals.map(function (s) {
+      return {
+        token: asText(s.token),
+        label: asText(s.label) || asText(s.token),
+        writable: !!s.writable,
+      };
     });
-    if (!buttons.length) return "";
-    return (
-      '<section class="v2-card" style="margin-top:12px"><h3>Navigation</h3><div class="v2-workbenchUi__navButtons">' +
-      buttons.join("") +
-      "</div></section>"
-    );
   }
 
-  function renderWorkbenchSurface(surfacePayload) {
-    var workspace = asObject(surfacePayload.workspace);
-    var documentTable = asObject(workspace.document_table);
-    var datumGrid = asObject(workspace.datum_grid);
-    var groups = asList(datumGrid.groups);
-    var layers = asList(datumGrid.layers);
-    var lens = asText(datumGrid.lens) || "interpreted";
-    var sourceVisibility = asText(workspace.source_visibility) || "show";
-    var offset = 0;
-    var groupHtml = groups
-      .map(function (group) {
-        var html = renderDatumGroup(asObject(group), lens, offset);
-        offset += asList(asObject(group).items).length;
-        return html;
+  function renderSandboxToggleBar(activeToken) {
+    var sandboxes = availableSandboxes();
+    if (!sandboxes.length) {
+      return (
+        '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
+        '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
+        '<button type="button" class="v2-workbenchUi__sandboxToggle is-active" disabled aria-pressed="true">' +
+        escapeHtml(activeToken || "system") +
+        "</button></header>"
+      );
+    }
+    var buttons = sandboxes
+      .map(function (s) {
+        var isActive = s.token === activeToken;
+        return (
+          '<button type="button" class="v2-workbenchUi__sandboxToggle' +
+          (isActive ? " is-active" : "") +
+          '" data-sandbox-toggle data-sandbox-token="' +
+          escapeHtml(s.token) +
+          '" aria-pressed="' +
+          (isActive ? "true" : "false") +
+          '">' +
+          escapeHtml(s.label) +
+          "</button>"
+        );
       })
       .join("");
-    var matrixHtml = renderDatumMatrix(layers);
-    var flatRows = asList(datumGrid.rows);
     return (
-      renderCards(surfacePayload.cards || []) +
-      renderWorkbenchSummary(workspace) +
-      '<div class="v2-workbenchUi__layout">' +
-      '<section class="v2-card v2-workbenchUi__pane"><div class="v2-workbenchUi__paneHeader"><h3>Document Table</h3><p>Read-only authoritative documents keyed by SQL version identity.</p></div>' +
-      '<div class="v2-tableWrap v2-workbenchUi__tableWrap">' +
-      '<table class="v2-table v2-workbenchUiTable"><thead class="v2-workbenchUi__stickyHeader"><tr>' +
-      "<th>Document</th>" +
-      (sourceVisibility === "hide" ? "" : "<th>Source</th>") +
-      "<th>Version</th><th>Rows</th><th>Action</th>" +
-      "</tr></thead><tbody>" +
-      renderDocumentRows(asList(documentTable.rows), sourceVisibility) +
-      "</tbody></table></div></section>" +
-      '<section class="v2-card v2-workbenchUi__pane"><div class="v2-workbenchUi__paneHeader"><h3>Datum Grid</h3><p>' +
-      escapeHtml(
-        lens === "raw"
-          ? "Canonical datum rows rendered through the raw payload lens."
-          : "Spreadsheet-like interpreted rows for the selected authoritative document."
-      ) +
-      "</p></div>" +
-      (asText(datumGrid.group_mode) === "layer_value_group_iteration" && layers.length
-        ? matrixHtml
-        : groups.length
-        ? groupHtml
-        : '<div class="v2-tableWrap v2-workbenchUi__tableWrap"><table class="v2-table v2-workbenchUiTable"><thead class="v2-workbenchUi__stickyHeader"><tr><th>Datum</th><th>' +
-          escapeHtml(lens === "raw" ? "Raw Payload" : "Interpreted Row") +
-          "</th><th>Identity</th><th>Action</th></tr></thead><tbody>" +
-          renderDatumRows(flatRows, { lens: lens, offset: 0 }) +
-          "</tbody></table></div>") +
-      "</section></div>" +
-      renderWorkbenchNavigation(workspace) +
-      renderNotes(surfacePayload.notes || [])
+      '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
+      '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
+      buttons +
+      "</header>"
     );
   }
 
-  function bindWorkbenchNavigation(ctx, target, workspace) {
+  function renderDocumentColumnItem(row, index) {
+    var label = stripJsonSuffix(
+      row.document_name || row.label || row.document_id || "—"
+    );
+    var rowCount = String(row.row_count || 0);
+    var versionShort = asText(row.version_hash_short);
+    return (
+      '<li class="v2-workbenchUi__docItem' +
+      (row.selected ? " is-selected" : "") +
+      '" tabindex="0" data-workbench-document-index="' +
+      String(index) +
+      '" data-doc-id="' +
+      escapeHtml(row.document_id || "") +
+      '" title="' +
+      escapeHtml(row.document_id || label) +
+      '">' +
+      '<span class="v2-workbenchUi__docName">' +
+      escapeHtml(shortDocumentLabel(label) || label || "—") +
+      "</span>" +
+      '<span class="v2-workbenchUi__docMeta">' +
+      escapeHtml(rowCount + " rows" + (versionShort ? " · " + versionShort : "")) +
+      "</span></li>"
+    );
+  }
+
+  function renderDocumentColumn(workspace, surfacePayload) {
+    var documentTable = asObject(workspace.document_table);
+    var rows = asList(documentTable.rows);
+    var newForm = asObject(surfacePayload.new_source_document_form);
+    var templates = asList(newForm.available_templates);
+    var addButton =
+      '<button type="button" class="v2-workbenchUi__addBtn" data-action="open-new-document" title="Create datum document" aria-label="Create datum document">+</button>';
+    var templatesNotice = templates.length
+      ? ""
+      : '<small class="v2-workbenchUi__formStatus" data-role="templates-warning">No templates registered for this sandbox — registration required before create.</small>';
+    var formHtml =
+      '<form class="v2-workbenchUi__newDocForm" data-form="new-document" hidden>' +
+      '<input name="document_name" type="text" placeholder="datum_document_name" ' +
+      'pattern="^[a-z][a-z0-9_]*$" maxlength="64" required autocomplete="off" />' +
+      (templates.length > 1
+        ? '<select name="template_id" data-role="template-select">' +
+          templates
+            .map(function (t) {
+              t = asObject(t);
+              return (
+                '<option value="' + escapeHtml(asText(t.template_id)) + '">' +
+                escapeHtml(asText(t.label) || asText(t.template_id)) +
+                "</option>"
+              );
+            })
+            .join("") +
+          "</select>"
+        : "") +
+      '<div class="v2-workbenchUi__newDocActions">' +
+      '<button type="submit" class="v2-workbenchUi__primary"' +
+      (templates.length ? "" : " disabled") +
+      ">Create</button>" +
+      '<button type="button" data-action="cancel-new-document">Cancel</button>' +
+      "</div>" +
+      templatesNotice +
+      '<small class="v2-workbenchUi__formStatus" data-role="status" hidden></small>' +
+      "</form>";
+    var itemsHtml = rows.length
+      ? '<ul class="v2-workbenchUi__docList">' +
+        rows.map(renderDocumentColumnItem).join("") +
+        "</ul>"
+      : '<p class="v2-workbenchUi__empty">No datum documents in this sandbox yet.</p>';
+    return (
+      '<aside class="v2-workbenchUi__docColumn" data-region="document-column">' +
+      '<header class="v2-workbenchUi__docColumnHeader">' +
+      "<h3>Documents</h3>" +
+      addButton +
+      "</header>" +
+      formHtml +
+      itemsHtml +
+      "</aside>"
+    );
+  }
+
+  function derivePrimaryKeyPath(raw) {
+    if (!Array.isArray(raw) || raw.length < 2) return "";
+    var second = raw[1];
+    if (Array.isArray(second)) return "labels.0";
+    if (second && typeof second === "object") {
+      var keys = Object.keys(second);
+      if (keys.length) return "magnitudes." + keys[0];
+    }
+    return "";
+  }
+
+  function renderDocumentEditorRow(row, index) {
+    var primary = row.display_value || row.labels || row.primary_value_token || "";
+    var addr = row.datum_address || "";
+    var rawJson = row.raw_json || (row.raw != null ? JSON.stringify(row.raw) : "");
+    var primaryKeyPath = row.primary_key_path || "";
+    if (!primaryKeyPath) {
+      try {
+        primaryKeyPath = derivePrimaryKeyPath(row.raw != null ? row.raw : JSON.parse(rawJson || "null"));
+      } catch (e) {
+        primaryKeyPath = "";
+      }
+    }
+    return (
+      '<tr class="v2-workbenchUi__editorRow' +
+      (row.selected ? " is-selected" : "") +
+      '" data-row-index="' +
+      String(index) +
+      '" data-row-edit-mode="quick" data-datum-address="' +
+      escapeHtml(addr) +
+      '" data-row-raw="' +
+      escapeHtml(rawJson) +
+      '" data-row-primary-key="' +
+      escapeHtml(primaryKeyPath) +
+      '">' +
+      '<td class="v2-workbenchUi__editorAddr">' +
+      escapeHtml(addr || "—") +
+      "</td>" +
+      '<td class="v2-workbenchUi__editorValue">' +
+      '<div class="v2-workbenchUi__editorQuick">' +
+      '<input type="text" data-field="primary_value" data-original-value="' +
+      escapeHtml(primary) +
+      '" value="' +
+      escapeHtml(primary) +
+      '" />' +
+      "</div>" +
+      '<div class="v2-workbenchUi__editorRaw" hidden>' +
+      '<textarea data-field="raw_payload" data-original-value="' +
+      escapeHtml(rawJson) +
+      '" rows="3">' +
+      escapeHtml(rawJson) +
+      "</textarea>" +
+      "</div>" +
+      (row.display_summary
+        ? '<div class="v2-workbenchUi__editorSummary">' +
+          escapeHtml(row.display_summary) +
+          "</div>"
+        : "") +
+      "</td>" +
+      '<td class="v2-workbenchUi__editorActions">' +
+      '<button type="button" data-action="toggle-raw" title="Toggle raw JSON edit">Raw</button>' +
+      '<button type="button" data-action="save-row" class="v2-workbenchUi__primary" disabled>Save</button>' +
+      '<button type="button" data-action="discard-row" disabled>Discard</button>' +
+      '<small class="v2-workbenchUi__editorRowStatus" data-role="row-status"></small>' +
+      "</td>" +
+      "</tr>"
+    );
+  }
+
+  function flattenDatumGridForEditor(datumGrid) {
+    var layers = asList(datumGrid.layers);
+    if (layers.length) {
+      var matrixRows = [];
+      layers.forEach(function (layer) {
+        asList(asObject(layer).value_groups).forEach(function (valueGroup) {
+          asList(asObject(valueGroup).cells).forEach(function (row) {
+            matrixRows.push(row);
+          });
+        });
+      });
+      if (matrixRows.length) return matrixRows;
+    }
+    var groups = asList(datumGrid.groups);
+    if (groups.length) {
+      var out = [];
+      groups.forEach(function (group) {
+        asList(asObject(group).items).forEach(function (row) {
+          out.push(row);
+        });
+      });
+      return out;
+    }
+    return asList(datumGrid.rows);
+  }
+
+  function computeNextAddress(addresses, defLayer, defGroup) {
+    var maxIter = 0;
+    addresses.forEach(function (a) {
+      var m = /^(\d+)-(\d+)-(\d+)$/.exec(a);
+      if (!m) return;
+      if (parseInt(m[1], 10) === defLayer && parseInt(m[2], 10) === defGroup) {
+        var it = parseInt(m[3], 10);
+        if (it > maxIter) maxIter = it;
+      }
+    });
+    return String(defLayer) + "-" + String(defGroup) + "-" + String(maxIter + 1);
+  }
+
+  function renderDatumComposer(workspace, surfacePayload) {
+    var newDatumForm = asObject(surfacePayload.new_datum_form);
+    var docId = asText(newDatumForm.document_id_default);
+    if (!asText(newDatumForm.sandbox_id) || !docId) {
+      return (
+        '<section class="v2-workbenchUi__composer" data-region="datum-composer" data-empty="true">' +
+        '<small>Select a datum document to compose new datums.</small>' +
+        "</section>"
+      );
+    }
+    var datumGrid = asObject(workspace.datum_grid);
+    var existingRows = flattenDatumGridForEditor(datumGrid);
+    var existingAddrs = existingRows
+      .map(function (r) { return asText(asObject(r).datum_address); })
+      .filter(Boolean);
+    var composer = asObject(newDatumForm.composer);
+    var defaultLayer = 4;
+    var defaultGroup = 2;
+    if (existingAddrs.length) {
+      var firstParse = /^(\d+)-(\d+)-/.exec(existingAddrs[existingAddrs.length - 1]);
+      if (firstParse) {
+        defaultLayer = parseInt(firstParse[1], 10);
+        defaultGroup = parseInt(firstParse[2], 10);
+      }
+    }
+    var nextHint = computeNextAddress(existingAddrs, defaultLayer, defaultGroup);
+    var datalistOptions = existingAddrs
+      .map(function (a) {
+        return '<option value="' + escapeHtml(a) + '"></option>';
+      })
+      .join("");
+    var refRelDefault = asText(composer.default_relation_for_reference_list) || "~";
+    return (
+      '<section class="v2-workbenchUi__composer" data-region="datum-composer" data-mode="tuple"' +
+      ' data-default-layer="' + String(defaultLayer) + '"' +
+      ' data-default-group="' + String(defaultGroup) + '"' +
+      ' data-ref-rel-default="' + escapeHtml(refRelDefault) + '">' +
+      '<header class="v2-workbenchUi__composerHeader">' +
+      "<strong>Compose new datum</strong>" +
+      '<label>Mode <select data-composer-mode>' +
+      '<option value="tuple">Tuple datum</option>' +
+      '<option value="reference_list">Reference list (value group 0)</option>' +
+      "</select></label>" +
+      '<label>Address <input type="text" data-composer-address ' +
+      'placeholder="next: ' + escapeHtml(nextHint) + '" ' +
+      'pattern="^\\d+-\\d+-\\d+$" /></label>' +
+      "</header>" +
+      '<fieldset class="v2-workbenchUi__composerSection" data-composer-tuples>' +
+      "<legend>Triples (relation + object)</legend>" +
+      '<div class="v2-workbenchUi__composerTupleRow">' +
+      '<label>Rel <input type="text" data-composer-tuple-rel placeholder="rf.3-1-1 / ~ / …" /></label>' +
+      '<label>Obj <input type="text" list="composer-refs-datalist" data-composer-tuple-obj placeholder="object ref" /></label>' +
+      '<button type="button" data-composer-tuple-remove title="Remove tuple">×</button>' +
+      "</div>" +
+      '<button type="button" data-composer-tuple-add>+ Add tuple</button>' +
+      "</fieldset>" +
+      '<datalist id="composer-refs-datalist">' + datalistOptions + "</datalist>" +
+      '<fieldset class="v2-workbenchUi__composerSection" data-composer-magnitudes>' +
+      "<legend>Magnitudes (optional)</legend>" +
+      '<div class="v2-workbenchUi__composerMagRow">' +
+      '<label>Name <input type="text" data-composer-mag-name placeholder="e.g. common_name" /></label>' +
+      '<label>Value <input type="text" data-composer-mag-value placeholder="value" /></label>' +
+      '<button type="button" data-composer-mag-remove title="Remove magnitude">×</button>' +
+      "</div>" +
+      '<button type="button" data-composer-mag-add>+ Add magnitude</button>' +
+      "</fieldset>" +
+      '<footer class="v2-workbenchUi__composerFooter">' +
+      '<label>Label <input type="text" data-composer-label placeholder="optional row label" /></label>' +
+      '<button type="button" data-composer-create class="v2-workbenchUi__primary">Create</button>' +
+      '<button type="button" data-composer-reset>Reset</button>' +
+      '<output data-composer-status></output>' +
+      "</footer>" +
+      "</section>"
+    );
+  }
+
+  function renderDocumentEditor(workspace, surfacePayload, region) {
+    var selectedDocument = asObject(workspace.selected_document);
+    var datumGrid = asObject(workspace.datum_grid);
+    var lens = asText(datumGrid.lens) || "interpreted";
+    var docLabel = stripJsonSuffix(
+      selectedDocument.canonical_name ||
+        selectedDocument.document_name ||
+        selectedDocument.document_id ||
+        ""
+    );
+    var docId = asText(selectedDocument.document_id);
+    if (!docId) {
+      return (
+        '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
+        '<header class="v2-workbenchUi__editorHeader"><h3>Editor</h3></header>' +
+        renderDatumComposer(workspace, surfacePayload) +
+        '<p class="v2-workbenchUi__empty">Select a datum document on the left to begin editing.</p>' +
+        "</main>"
+      );
+    }
+    var rows = flattenDatumGridForEditor(datumGrid);
+    var bodyHtml = rows.length
+      ? '<div class="v2-tableWrap"><table class="v2-table v2-workbenchUi__editorTable">' +
+        '<thead><tr><th class="v2-workbenchUi__editorAddr">Datum</th><th>' +
+        escapeHtml(lens === "raw" ? "Raw Payload" : "Interpreted Value") +
+        '</th><th class="v2-workbenchUi__editorActions">Actions</th></tr></thead><tbody>' +
+        rows
+          .map(function (row, i) {
+            return renderDocumentEditorRow(row, i);
+          })
+          .join("") +
+        "</tbody></table></div>"
+      : '<p class="v2-workbenchUi__empty">This document has no datum rows yet.</p>';
+    return (
+      '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
+      '<header class="v2-workbenchUi__editorHeader">' +
+      "<h3>" +
+      escapeHtml(shortDocumentLabel(docLabel) || docLabel || docId) +
+      "</h3>" +
+      "<small>" +
+      escapeHtml(docId) +
+      "</small></header>" +
+      renderDatumComposer(workspace, surfacePayload) +
+      bodyHtml +
+      "</main>"
+    );
+  }
+
+  function renderWorkbenchSurface(surfacePayload, region) {
+    var workspace = asObject(surfacePayload.workspace);
+    var activeToken = activeSandboxToken(region);
+    return (
+      '<div class="v2-workbenchUi__trifecta" data-region="workbench-trifecta">' +
+      renderSandboxToggleBar(activeToken) +
+      '<div class="v2-workbenchUi__columns">' +
+      renderDocumentColumn(workspace, surfacePayload) +
+      renderDocumentEditor(workspace, surfacePayload, region) +
+      "</div></div>"
+    );
+  }
+
+  function bindSandboxToggleBar(ctx, target) {
+    Array.prototype.forEach.call(
+      target.querySelectorAll("[data-sandbox-toggle][data-sandbox-token]"),
+      function (button) {
+        button.addEventListener("click", function () {
+          if (button.classList.contains("is-active")) return;
+          var token = button.getAttribute("data-sandbox-token") || "";
+          if (!token || typeof ctx.loadShell !== "function") return;
+          var envelope = ctx.getEnvelope && ctx.getEnvelope();
+          var surfaceId = (envelope && envelope.surface_id) || "";
+          var nextQuery = Object.assign(
+            {},
+            (envelope && envelope.surface_query) || {}
+          );
+          nextQuery.sandbox_filter = token;
+          delete nextQuery.document;
+          delete nextQuery.row;
+          delete nextQuery.mode;
+          ctx.loadShell({
+            schema: "mycite.v2.portal.shell.request.v1",
+            requested_surface_id: surfaceId,
+            surface_query: nextQuery,
+          });
+        });
+      }
+    );
+  }
+
+  function bindDocumentColumn(ctx, target, workspace, surfacePayload) {
     var documents = asList(asObject(workspace.document_table).rows);
-    var datumRows = flattenDatumRows(workspace);
-    var navigation = asObject(workspace.navigation);
 
     function loadRequest(request) {
       if (!request || typeof ctx.loadShell !== "function") return;
       ctx.loadShell(request);
     }
 
-    function bindSelectableRows(selector, attrName, items) {
-      Array.prototype.forEach.call(target.querySelectorAll(selector), function (node) {
-        var index = Number(node.getAttribute(attrName));
-        if (Number.isNaN(index) || index < 0 || index >= items.length) return;
-        var item = items[index] || {};
-        node.addEventListener("click", function (event) {
-          if (event.target && event.target.closest && event.target.closest("button")) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll("li[data-workbench-document-index]"),
+      function (node) {
+        var index = Number(node.getAttribute("data-workbench-document-index"));
+        if (Number.isNaN(index) || index < 0 || index >= documents.length) return;
+        var item = documents[index] || {};
+        node.addEventListener("click", function () {
           loadRequest(item.shell_request);
         });
         node.addEventListener("keydown", function (event) {
@@ -1559,44 +1863,577 @@
             loadRequest(item.shell_request);
             return;
           }
-          if (event.key === "ArrowDown" && index + 1 < items.length) {
+          if (event.key === "ArrowDown" && index + 1 < documents.length) {
             event.preventDefault();
-            loadRequest((items[index + 1] || {}).shell_request);
+            loadRequest((documents[index + 1] || {}).shell_request);
             return;
           }
           if (event.key === "ArrowUp" && index - 1 >= 0) {
             event.preventDefault();
-            loadRequest((items[index - 1] || {}).shell_request);
+            loadRequest((documents[index - 1] || {}).shell_request);
           }
         });
+      }
+    );
+
+    var newForm = asObject(surfacePayload.new_source_document_form);
+    if (!asText(newForm.sandbox_id)) return;
+    var openBtn = target.querySelector('[data-action="open-new-document"]');
+    var form = target.querySelector('form[data-form="new-document"]');
+    var cancelBtn = target.querySelector('[data-action="cancel-new-document"]');
+    var statusEl = form && form.querySelector('[data-role="status"]');
+    if (!openBtn || !form) return;
+
+    function showForm() {
+      form.hidden = false;
+      var input = form.querySelector('input[name="document_name"]');
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+      if (statusEl) {
+        statusEl.hidden = true;
+        statusEl.textContent = "";
+      }
+    }
+    function hideForm() {
+      form.hidden = true;
+    }
+    function setStatus(msg) {
+      if (!statusEl) return;
+      statusEl.hidden = !msg;
+      statusEl.textContent = msg || "";
+    }
+
+    openBtn.addEventListener("click", showForm);
+    if (cancelBtn) cancelBtn.addEventListener("click", hideForm);
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var input = form.querySelector('input[name="document_name"]');
+      var documentName = input ? asText(input.value) : "";
+      if (!documentName) {
+        setStatus("Name is required.");
+        return;
+      }
+      if (input && !input.checkValidity()) {
+        setStatus("Use lowercase letters, digits, underscores; start with a letter.");
+        return;
+      }
+      var templates = asList(newForm.available_templates);
+      if (!templates.length) {
+        setStatus("No templates registered for this sandbox.");
+        return;
+      }
+      var templateSelect = form.querySelector('[data-role="template-select"]');
+      var templateId = templateSelect
+        ? asText(templateSelect.value)
+        : asText(asObject(templates[0]).template_id);
+      if (!templateId) {
+        setStatus("Select a template.");
+        return;
+      }
+      var submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      setStatus("Creating…");
+
+      var body = {
+        schema: "mycite.v2.portal.mutations.stage.request.v1",
+        target_authority: asText(newForm.target_authority) || "datum_workbench",
+        sandbox_id: asText(newForm.sandbox_id),
+        msn_id: asText(newForm.msn_id_default),
+        document_name: documentName,
+        canonical_name: documentName,
+        template_id: templateId,
+        operation: asText(newForm.operation) || "scaffold_datum",
+      };
+
+      stageThenApply(
+        body,
+        asText(newForm.endpoint_stage),
+        asText(newForm.endpoint_apply)
+      )
+        .then(function (applied) {
+          setStatus("");
+          hideForm();
+          var newDocId = asText(
+            (applied && applied.preview && applied.preview.document_id) ||
+              (applied && applied.document_id) ||
+              (applied && applied.applied_document_id) ||
+              ""
+          );
+          var envelope = ctx.getEnvelope && ctx.getEnvelope();
+          var nextQuery = Object.assign(
+            {},
+            (envelope && envelope.surface_query) || {}
+          );
+          if (newDocId) {
+            nextQuery.document = newDocId;
+            nextQuery.mode = "datums";
+          }
+          ctx.loadShell({
+            schema: "mycite.v2.portal.shell.request.v1",
+            requested_surface_id: (envelope && envelope.surface_id) || "",
+            surface_query: nextQuery,
+          });
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          setStatus(asText(err && err.message) || "Create failed.");
+        });
+    });
+  }
+
+  function stageThenApply(body, stageEndpoint, applyEndpoint) {
+    stageEndpoint = stageEndpoint || "/portal/api/v2/mutations/stage";
+    applyEndpoint = applyEndpoint || "/portal/api/v2/mutations/apply";
+    function readResponse(r) {
+      return r.json().then(
+        function (j) { return { status: r.status, body: j }; },
+        function () { return { status: r.status, body: {} }; }
+      );
+    }
+    function fail(stage, out) {
+      var detail =
+        (out.body && out.body.error && (out.body.error.message || out.body.error)) ||
+        (out.body && (out.body.detail || out.body.message)) ||
+        "HTTP " + out.status;
+      throw new Error(stage + " failed: " + detail);
+    }
+    return fetch(stageEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      credentials: "same-origin",
+    })
+      .then(readResponse)
+      .then(function (out) {
+        if (out.status < 200 || out.status >= 300 || (out.body && out.body.ok === false)) {
+          fail("stage", out);
+        }
+        return fetch(applyEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          credentials: "same-origin",
+        });
+      })
+      .then(readResponse)
+      .then(function (out) {
+        if (out.status < 200 || out.status >= 300 || (out.body && out.body.ok === false)) {
+          fail("apply", out);
+        }
+        return out.body || {};
+      });
+  }
+
+  function applyPrimaryPatch(rawJson, primaryKeyPath, newValue) {
+    var raw;
+    try {
+      raw = JSON.parse(rawJson || "null");
+    } catch (e) {
+      throw new Error("Row's raw payload is not parseable JSON — use Raw mode.");
+    }
+    if (!Array.isArray(raw) || raw.length < 2) {
+      throw new Error("Row's raw shape is not [triple, second] — use Raw mode.");
+    }
+    var second = raw[1];
+    var path = primaryKeyPath || "labels.0";
+    var dot = path.indexOf(".");
+    var prefix = dot >= 0 ? path.slice(0, dot) : path;
+    var key = dot >= 0 ? path.slice(dot + 1) : "";
+    if (prefix === "labels") {
+      if (!Array.isArray(second)) {
+        throw new Error("Row's labels slot is not a list — use Raw mode.");
+      }
+      var idx = parseInt(key, 10);
+      if (isNaN(idx) || idx < 0) idx = 0;
+      while (second.length <= idx) second.push("");
+      second[idx] = newValue;
+    } else if (prefix === "magnitudes") {
+      if (!second || typeof second !== "object" || Array.isArray(second)) {
+        throw new Error("Row's magnitudes slot is not a dict — use Raw mode.");
+      }
+      if (!key) {
+        throw new Error("Primary magnitude key missing — use Raw mode.");
+      }
+      second[key] = newValue;
+    } else {
+      throw new Error("Unknown primary key path '" + prefix + "' — use Raw mode.");
+    }
+    return raw;
+  }
+
+  function bindDocumentEditor(ctx, target, workspace, surfacePayload) {
+    var newDatumForm = asObject(surfacePayload.new_datum_form);
+    var stageEndpoint = asText(newDatumForm.endpoint_stage) || "/portal/api/v2/mutations/stage";
+    var applyEndpoint = asText(newDatumForm.endpoint_apply) || "/portal/api/v2/mutations/apply";
+    var sandboxId = asText(newDatumForm.sandbox_id);
+    var documentId = asText(newDatumForm.document_id_default);
+    var targetAuthority = asText(newDatumForm.target_authority) || "datum_workbench";
+
+    function rowQuickInput(rowEl) {
+      return rowEl.querySelector('.v2-workbenchUi__editorQuick input[data-field="primary_value"]');
+    }
+    function rowRawTextarea(rowEl) {
+      return rowEl.querySelector('.v2-workbenchUi__editorRaw textarea[data-field="raw_payload"]');
+    }
+    function rowQuickContainer(rowEl) {
+      return rowEl.querySelector('.v2-workbenchUi__editorQuick');
+    }
+    function rowRawContainer(rowEl) {
+      return rowEl.querySelector('.v2-workbenchUi__editorRaw');
+    }
+    function setRowStatus(rowEl, text, state) {
+      var el = rowEl.querySelector('[data-role="row-status"]');
+      if (!el) return;
+      el.textContent = text || "";
+      if (state) el.setAttribute("data-state", state);
+      else el.removeAttribute("data-state");
+    }
+    function getMode(rowEl) {
+      return rowEl.getAttribute("data-row-edit-mode") || "quick";
+    }
+    function setMode(rowEl, mode) {
+      rowEl.setAttribute("data-row-edit-mode", mode);
+      var quick = rowQuickContainer(rowEl);
+      var raw = rowRawContainer(rowEl);
+      if (quick) quick.hidden = mode !== "quick";
+      if (raw) raw.hidden = mode !== "raw";
+    }
+    function updateDirty(rowEl) {
+      var mode = getMode(rowEl);
+      var saveBtn = rowEl.querySelector('[data-action="save-row"]');
+      var discardBtn = rowEl.querySelector('[data-action="discard-row"]');
+      var dirty = false;
+      if (mode === "quick") {
+        var input = rowQuickInput(rowEl);
+        if (input) dirty = input.value !== (input.getAttribute("data-original-value") || "");
+      } else {
+        var textarea = rowRawTextarea(rowEl);
+        if (textarea) dirty = textarea.value !== (textarea.getAttribute("data-original-value") || "");
+      }
+      if (saveBtn) saveBtn.disabled = !dirty;
+      if (discardBtn) discardBtn.disabled = !dirty;
+    }
+
+    function saveRow(rowEl) {
+      var address = rowEl.getAttribute("data-datum-address") || "";
+      if (!address) {
+        setRowStatus(rowEl, "Missing datum address.", "error");
+        return;
+      }
+      if (!sandboxId || !documentId) {
+        setRowStatus(rowEl, "Editor is missing sandbox or document context.", "error");
+        return;
+      }
+      var mode = getMode(rowEl);
+      var payloadText;
+      try {
+        if (mode === "raw") {
+          var textarea = rowRawTextarea(rowEl);
+          payloadText = textarea ? textarea.value : "";
+          JSON.parse(payloadText);  // throw if invalid JSON before staging
+        } else {
+          var input = rowQuickInput(rowEl);
+          var quickValue = input ? input.value : "";
+          var originalRawJson = rowEl.getAttribute("data-row-raw") || "";
+          var primaryKeyPath = rowEl.getAttribute("data-row-primary-key") || "";
+          var patched = applyPrimaryPatch(originalRawJson, primaryKeyPath, quickValue);
+          payloadText = JSON.stringify(patched);
+        }
+      } catch (err) {
+        setRowStatus(rowEl, String(err && err.message ? err.message : err), "error");
+        return;
+      }
+      var saveBtn = rowEl.querySelector('[data-action="save-row"]');
+      var discardBtn = rowEl.querySelector('[data-action="discard-row"]');
+      if (saveBtn) saveBtn.disabled = true;
+      if (discardBtn) discardBtn.disabled = true;
+      setRowStatus(rowEl, "Saving…", "");
+      var body = {
+        schema: "mycite.v2.portal.mutations.stage.request.v1",
+        target_authority: targetAuthority,
+        sandbox_id: sandboxId,
+        document_id: documentId,
+        datum_address: address,
+        operation: "update_row_raw",
+        payload_text: payloadText,
+      };
+      stageThenApply(body, stageEndpoint, applyEndpoint)
+        .then(function () {
+          setRowStatus(rowEl, "Saved.", "ok");
+          var envelope = ctx.getEnvelope && ctx.getEnvelope();
+          if (envelope) {
+            ctx.loadShell({
+              schema: "mycite.v2.portal.shell.request.v1",
+              requested_surface_id: envelope.surface_id,
+              surface_query: envelope.surface_query || {},
+            });
+          }
+        })
+        .catch(function (err) {
+          setRowStatus(rowEl, String(err && err.message ? err.message : err), "error");
+          if (saveBtn) saveBtn.disabled = false;
+          if (discardBtn) discardBtn.disabled = false;
+        });
+    }
+
+    function discardRow(rowEl) {
+      var input = rowQuickInput(rowEl);
+      if (input) input.value = input.getAttribute("data-original-value") || "";
+      var textarea = rowRawTextarea(rowEl);
+      if (textarea) textarea.value = textarea.getAttribute("data-original-value") || "";
+      updateDirty(rowEl);
+      setRowStatus(rowEl, "", "");
+    }
+
+    Array.prototype.forEach.call(
+      target.querySelectorAll("tr.v2-workbenchUi__editorRow"),
+      function (rowEl) {
+        var input = rowQuickInput(rowEl);
+        if (input) {
+          input.addEventListener("input", function () {
+            updateDirty(rowEl);
+          });
+        }
+        var textarea = rowRawTextarea(rowEl);
+        if (textarea) {
+          textarea.addEventListener("input", function () {
+            updateDirty(rowEl);
+          });
+        }
+        var toggleBtn = rowEl.querySelector('[data-action="toggle-raw"]');
+        if (toggleBtn) {
+          toggleBtn.addEventListener("click", function () {
+            var nextMode = getMode(rowEl) === "raw" ? "quick" : "raw";
+            setMode(rowEl, nextMode);
+            updateDirty(rowEl);
+          });
+        }
+        var saveBtn = rowEl.querySelector('[data-action="save-row"]');
+        if (saveBtn) {
+          saveBtn.addEventListener("click", function () {
+            saveRow(rowEl);
+          });
+        }
+        var discardBtn = rowEl.querySelector('[data-action="discard-row"]');
+        if (discardBtn) {
+          discardBtn.addEventListener("click", function () {
+            discardRow(rowEl);
+          });
+        }
+      }
+    );
+  }
+
+  function bindDatumComposer(ctx, target, workspace, surfacePayload) {
+    var composerEl = target.querySelector('[data-region="datum-composer"]');
+    if (!composerEl) return;
+    if (composerEl.getAttribute("data-empty") === "true") return;
+    var newDatumForm = asObject(surfacePayload.new_datum_form);
+    var sandboxId = asText(newDatumForm.sandbox_id);
+    var documentId = asText(newDatumForm.document_id_default);
+    var stageEndpoint = asText(newDatumForm.endpoint_stage) || "/portal/api/v2/mutations/stage";
+    var applyEndpoint = asText(newDatumForm.endpoint_apply) || "/portal/api/v2/mutations/apply";
+    var targetAuthority = asText(newDatumForm.target_authority) || "datum_workbench";
+    var operation = asText(newDatumForm.operation) || "insert_datum";
+    var modeSelect = composerEl.querySelector('[data-composer-mode]');
+    var addrInput = composerEl.querySelector('[data-composer-address]');
+    var tuplesEl = composerEl.querySelector('[data-composer-tuples]');
+    var magsEl = composerEl.querySelector('[data-composer-magnitudes]');
+    var labelInput = composerEl.querySelector('[data-composer-label]');
+    var statusEl = composerEl.querySelector('[data-composer-status]');
+    var createBtn = composerEl.querySelector('[data-composer-create]');
+    var resetBtn = composerEl.querySelector('[data-composer-reset]');
+    var defaultLayer = parseInt(composerEl.getAttribute("data-default-layer") || "4", 10);
+    var defaultGroup = parseInt(composerEl.getAttribute("data-default-group") || "2", 10);
+    var refRelDefault = composerEl.getAttribute("data-ref-rel-default") || "~";
+
+    function existingAddresses() {
+      var grid = asObject(workspace.datum_grid);
+      return flattenDatumGridForEditor(grid)
+        .map(function (r) { return asText(asObject(r).datum_address); })
+        .filter(Boolean);
+    }
+    function setStatus(text, state) {
+      if (!statusEl) return;
+      statusEl.textContent = text || "";
+      if (state) statusEl.setAttribute("data-state", state);
+      else statusEl.removeAttribute("data-state");
+    }
+    function refreshAddressPlaceholder() {
+      var mode = modeSelect ? modeSelect.value : "tuple";
+      var layer = mode === "reference_list" ? 0 : defaultLayer;
+      var group = mode === "reference_list" ? 0 : defaultGroup;
+      var hint = computeNextAddress(existingAddresses(), layer, group);
+      if (addrInput) addrInput.placeholder = "next: " + hint;
+    }
+    function applyMode(mode) {
+      composerEl.setAttribute("data-mode", mode);
+      if (magsEl) magsEl.hidden = mode === "reference_list";
+      if (mode === "reference_list") {
+        Array.prototype.forEach.call(
+          composerEl.querySelectorAll('[data-composer-tuple-rel]'),
+          function (i) { if (!i.value) i.value = refRelDefault; }
+        );
+      }
+      refreshAddressPlaceholder();
+    }
+    if (modeSelect) {
+      modeSelect.addEventListener("change", function () {
+        applyMode(modeSelect.value);
+      });
+    }
+    refreshAddressPlaceholder();
+
+    composerEl.addEventListener("click", function (event) {
+      var t = event.target;
+      if (!t) return;
+      if (t.matches('[data-composer-tuple-add]')) {
+        event.preventDefault();
+        var row = document.createElement("div");
+        row.className = "v2-workbenchUi__composerTupleRow";
+        row.innerHTML =
+          '<label>Rel <input type="text" data-composer-tuple-rel placeholder="rf.3-1-1 / ~ / …" /></label>' +
+          '<label>Obj <input type="text" list="composer-refs-datalist" data-composer-tuple-obj placeholder="object ref" /></label>' +
+          '<button type="button" data-composer-tuple-remove title="Remove tuple">×</button>';
+        if (modeSelect && modeSelect.value === "reference_list") {
+          row.querySelector('[data-composer-tuple-rel]').value = refRelDefault;
+        }
+        t.parentNode.insertBefore(row, t);
+      } else if (t.matches('[data-composer-tuple-remove]')) {
+        event.preventDefault();
+        var rows = composerEl.querySelectorAll('.v2-workbenchUi__composerTupleRow');
+        if (rows.length > 1 && t.parentNode) t.parentNode.parentNode.removeChild(t.parentNode);
+      } else if (t.matches('[data-composer-mag-add]')) {
+        event.preventDefault();
+        var mrow = document.createElement("div");
+        mrow.className = "v2-workbenchUi__composerMagRow";
+        mrow.innerHTML =
+          '<label>Name <input type="text" data-composer-mag-name placeholder="e.g. common_name" /></label>' +
+          '<label>Value <input type="text" data-composer-mag-value placeholder="value" /></label>' +
+          '<button type="button" data-composer-mag-remove title="Remove magnitude">×</button>';
+        t.parentNode.insertBefore(mrow, t);
+      } else if (t.matches('[data-composer-mag-remove]')) {
+        event.preventDefault();
+        if (t.parentNode && t.parentNode.parentNode) {
+          t.parentNode.parentNode.removeChild(t.parentNode);
+        }
+      }
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener("click", function () {
+        Array.prototype.forEach.call(
+          composerEl.querySelectorAll('input'),
+          function (i) { i.value = ""; }
+        );
+        var trows = composerEl.querySelectorAll('.v2-workbenchUi__composerTupleRow');
+        for (var i = trows.length - 1; i > 0; i--) {
+          trows[i].parentNode.removeChild(trows[i]);
+        }
+        var mrows = composerEl.querySelectorAll('.v2-workbenchUi__composerMagRow');
+        for (var j = mrows.length - 1; j > 0; j--) {
+          mrows[j].parentNode.removeChild(mrows[j]);
+        }
+        applyMode(modeSelect ? modeSelect.value : "tuple");
+        setStatus("");
       });
     }
 
-    Array.prototype.forEach.call(target.querySelectorAll("button[data-workbench-document-index]"), function (button) {
-      button.addEventListener("click", function () {
-        var index = Number(button.getAttribute("data-workbench-document-index"));
-        if (Number.isNaN(index) || index < 0 || index >= documents.length) return;
-        loadRequest((documents[index] || {}).shell_request);
+    if (createBtn) {
+      createBtn.addEventListener("click", function () {
+        var mode = modeSelect ? modeSelect.value : "tuple";
+        var typedAddr = addrInput ? addrInput.value.trim() : "";
+        var addrPlaceholder = addrInput ? addrInput.placeholder || "" : "";
+        var address = typedAddr || addrPlaceholder.replace(/^next:\s*/, "");
+        if (!/^\d+-\d+-\d+$/.test(address)) {
+          setStatus("Address must be in the form layer-group-iteration (e.g. 4-2-3).", "error");
+          return;
+        }
+        var tuples = [];
+        Array.prototype.forEach.call(
+          composerEl.querySelectorAll('.v2-workbenchUi__composerTupleRow'),
+          function (row) {
+            var rel = ((row.querySelector('[data-composer-tuple-rel]') || {}).value || "").trim();
+            var obj = ((row.querySelector('[data-composer-tuple-obj]') || {}).value || "").trim();
+            if (rel || obj) tuples.push([rel, obj]);
+          }
+        );
+        if (!tuples.length) {
+          setStatus("At least one tuple is required.", "error");
+          return;
+        }
+        var labelText = labelInput ? labelInput.value.trim() : "";
+        var secondPart;
+        if (mode === "reference_list") {
+          secondPart = labelText ? [labelText] : [];
+        } else {
+          var mags = {};
+          Array.prototype.forEach.call(
+            composerEl.querySelectorAll('.v2-workbenchUi__composerMagRow'),
+            function (row) {
+              var n = ((row.querySelector('[data-composer-mag-name]') || {}).value || "").trim();
+              var v = ((row.querySelector('[data-composer-mag-value]') || {}).value || "").trim();
+              if (n) mags[n] = v;
+            }
+          );
+          var magKeys = Object.keys(mags);
+          if (magKeys.length) {
+            secondPart = mags;
+          } else if (labelText) {
+            secondPart = [labelText];
+          } else {
+            secondPart = [];
+          }
+        }
+        var firstPart = [address];
+        tuples.forEach(function (pair) {
+          firstPart.push(pair[0], pair[1]);
+        });
+        var raw = [firstPart, secondPart];
+        createBtn.disabled = true;
+        setStatus("Creating " + address + "…", "");
+        var body = {
+          schema: "mycite.v2.portal.mutations.stage.request.v1",
+          target_authority: targetAuthority,
+          sandbox_id: sandboxId,
+          document_id: documentId,
+          datum_address: address,
+          target_address: address,
+          operation: operation,
+          payload_text: JSON.stringify(raw),
+        };
+        stageThenApply(body, stageEndpoint, applyEndpoint)
+          .then(function () {
+            setStatus("Created " + address + ".", "ok");
+            var envelope = ctx.getEnvelope && ctx.getEnvelope();
+            if (envelope) {
+              var nextQuery = Object.assign({}, envelope.surface_query || {});
+              nextQuery.document = documentId;
+              ctx.loadShell({
+                schema: "mycite.v2.portal.shell.request.v1",
+                requested_surface_id: envelope.surface_id,
+                surface_query: nextQuery,
+              });
+            } else {
+              createBtn.disabled = false;
+            }
+          })
+          .catch(function (err) {
+            setStatus(String(err && err.message ? err.message : err), "error");
+            createBtn.disabled = false;
+          });
       });
-    });
+    }
+  }
 
-    Array.prototype.forEach.call(target.querySelectorAll("button[data-workbench-row-index]"), function (button) {
-      button.addEventListener("click", function () {
-        var index = Number(button.getAttribute("data-workbench-row-index"));
-        if (Number.isNaN(index) || index < 0 || index >= datumRows.length) return;
-        loadRequest((datumRows[index] || {}).shell_request);
-      });
-    });
-
-    Array.prototype.forEach.call(target.querySelectorAll("[data-workbench-nav-key]"), function (button) {
-      button.addEventListener("click", function () {
-        var key = button.getAttribute("data-workbench-nav-key") || "";
-        loadRequest(asObject(navigation[key]).shell_request);
-      });
-    });
-
-    bindSelectableRows("tr[data-workbench-document-index]", "data-workbench-document-index", documents);
-    bindSelectableRows("tr[data-workbench-row-index]", "data-workbench-row-index", datumRows);
+  function bindWorkbenchNavigation(ctx, target, workspace, surfacePayload, region) {
+    bindSandboxToggleBar(ctx, target);
+    bindDocumentColumn(ctx, target, workspace, surfacePayload || {});
+    bindDatumComposer(ctx, target, workspace, surfacePayload || {});
+    bindDocumentEditor(ctx, target, workspace, surfacePayload || {});
   }
 
   function renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec) {
@@ -1698,10 +2535,16 @@
           title: region.title || "Workbench UI",
           hasContent: true,
         }),
-        renderWorkbenchSurface(surfacePayload)
+        renderWorkbenchSurface(surfacePayload, region)
       )
     ) {
-      bindWorkbenchNavigation(ctx, target, asObject(surfacePayload.workspace));
+      bindWorkbenchNavigation(
+        ctx,
+        target,
+        asObject(surfacePayload.workspace),
+        surfacePayload,
+        region
+      );
     }
   }
 

@@ -141,11 +141,15 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 tenant_id="fnd",
             )
 
+            # Post-three-mode refactor: explicitly request Datums mode so
+            # this test exercises the inspector-disclosure path. Docs mode
+            # is now the default landing (covered by other tests).
             envelope = run_portal_shell_entry(
                 {
                     "schema": "mycite.v2.portal.shell.request.v1",
                     "requested_surface_id": "system.tools.workbench_ui",
                     "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition"]},
+                    "surface_query": {"mode": "datums"},
                 },
                 portal_instance_id="fnd",
                 portal_domain="fruitfulnetworkdevelopment.com",
@@ -168,16 +172,38 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 self.assertNotIn(key, envelope["canonical_query"])
 
             control_panel = envelope["shell_composition"]["regions"]["control_panel"]
-            workbench_ui_labels = [
+            # Post-three-mode refactor: context_conditions is slim — only
+            # Document + Selected Row (when applicable) live at the top
+            # level. Version, Row Identity, Resolved Lens, and view-state
+            # mirrors moved into the Datums-mode "Inspector" disclosure
+            # group; the canonical chrome should no longer surface them
+            # unconditionally.
+            top_labels = [
                 item["label"]
                 for item in control_panel.get("context_conditions") or []
-                if item.get("label") in {"Document", "Version", "Selected Row", "Row Identity", "Resolved Lens", "Document Sort"}
+                if item.get("label") in {"Document", "Selected Row"}
             ]
-            self.assertEqual(
-                workbench_ui_labels,
-                ["Document", "Version", "Selected Row", "Row Identity", "Resolved Lens", "Document Sort"],
-            )
-            self.assertEqual(control_panel["surface_label"], "WORKBENCH UI")
+            self.assertEqual(top_labels, ["Document", "Selected Row"])
+
+            inspector_groups = [
+                group
+                for group in control_panel.get("disclosure_groups") or []
+                if group.get("title") == "Inspector"
+            ]
+            self.assertEqual(len(inspector_groups), 1, "Datums-mode renders an Inspector disclosure")
+            inspector_labels = {
+                cond.get("label")
+                for cond in (inspector_groups[0].get("context_conditions") or [])
+            }
+            for expected_label in {"Version", "Row Identity", "Resolved Lens", "Document Sort"}:
+                self.assertIn(expected_label, inspector_labels)
+
+            self.assertEqual(control_panel["surface_label"], "SYSTEM")
+            mode_payload = control_panel.get("workbench_mode") or {}
+            self.assertEqual(mode_payload.get("active"), "datums")
+            self.assertEqual(mode_payload.get("sandbox_id"), "system")
+            tab_modes = {tab.get("mode"): tab.get("active") for tab in mode_payload.get("tabs") or []}
+            self.assertEqual(tab_modes, {"docs": False, "datums": True, "author": False})
 
             workspace = envelope["surface_payload"]["workspace"]
             self.assertEqual(workspace["query"]["document"], envelope["canonical_query"]["document"])

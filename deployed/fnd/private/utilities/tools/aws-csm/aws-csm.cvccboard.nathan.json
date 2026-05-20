@@ -1,5 +1,5 @@
 {
-  "schema": "mycite.service_tool.aws_csm.profile.v1",
+  "schema": "mycite.service_tool.aws.profile.v2",
   "identity": {
     "profile_id": "aws-csm.cvccboard.nathan",
     "tenant_id": "cvccboard",
@@ -45,7 +45,7 @@
     "last_checked_at": "2026-04-23T22:41:00+00:00"
   },
   "workflow": {
-    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+    "schema": "mycite.service_tool.aws.onboarding.v2",
     "flow": "mailbox_send_as",
     "initiated": true,
     "initiated_at": "2026-04-23T22:39:59+00:00",

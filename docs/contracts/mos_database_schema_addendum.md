@@ -1,5 +1,9 @@
 # MOS Database Schema Addendum
 
+> **Companion contract:** schema only. The runtime-authority rule and
+> its enforcement chain live at
+> [`mos_authority_enforcement.md`](mos_authority_enforcement.md).
+
 ## Purpose
 
 This addendum extends the schema proposed in `mycelial_ontological_schema.md` with

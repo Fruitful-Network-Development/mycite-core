@@ -1,5 +1,5 @@
 {
-  "schema": "mycite.service_tool.aws_csm.profile.v1",
+  "schema": "mycite.service_tool.aws.profile.v2",
   "identity": {
     "profile_id": "aws-csm.tff.technicalContact",
     "tenant_id": "tff",
@@ -41,7 +41,7 @@
     "last_checked_at": "2026-04-06T03:13:35.223816+00:00"
   },
   "workflow": {
-    "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+    "schema": "mycite.service_tool.aws.onboarding.v2",
     "flow": "mailbox_send_as",
     "initiated": true,
     "initiated_at": "2026-04-04T22:49:54.566453+00:00",

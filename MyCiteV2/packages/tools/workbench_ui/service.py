@@ -537,7 +537,20 @@ class WorkbenchUiReadService:
             default=WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY,
         )
 
+        sandbox_filter = _as_text(query.get("sandbox_filter"))
         documents = list(catalog.documents)
+        if sandbox_filter:
+            # Per-tool sandbox scoping (added 2026-05-17 for the Agro-ERP
+            # workbench surface). Documents are kept when the canonical
+            # document_id segment ``.{sandbox}.`` matches the requested
+            # sandbox token. Tools that need to show the entire tenant
+            # corpus (Workbench-UI) leave sandbox_filter unset.
+            marker = f".{sandbox_filter}."
+            documents = [
+                document
+                for document in documents
+                if marker in _as_text(document.document_id)
+            ]
         document_rows = [
             self._build_document_entry(tenant_id=portal_instance_id, document=document)
             for document in documents
@@ -688,7 +701,7 @@ class WorkbenchUiReadService:
             "Row filtering indexes hyphae_hash, semantic identity, resolved lens, and row semantic fields.",
             "Hyphae identity comes from SQL semantic persistence; family and lens resolution remain presentation-only.",
             "Grouped datum views preserve canonical structural ordering within each section.",
-            "No mutation controls are exposed on this surface.",
+            "Mutation slots (new-document / new-datum forms) are emitted by the workbench runtime when the resolved sandbox is writable; this read service itself stays read-only.",
         ]
 
         interface_panel_sections = [

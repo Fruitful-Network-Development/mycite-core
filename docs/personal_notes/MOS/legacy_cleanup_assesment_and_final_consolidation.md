@@ -22,7 +22,7 @@ This prompt ensures you search for and remove obsolete legacy code, archive supe
 >      • a required host‑bound exception (CTS/GIS, FND DCM/EBI, network read‑model) as documented in the closure plan; or
 >      • obsolete MOS code relating to retired “filesystem” or “shadow” authority. Remove or refactor the obsolete code so that only the documented exception surfaces depend on files.
 > 2. **Personal notes disposition:** Based on the crosswalk, archive or delete any personal notes marked `superseded` or `source‑only` if you no longer need them. Update `docs/audits/reports/mos_personal_notes_to_canon_crosswalk_2026-04-21.md` to reflect which files were removed or archived.
-> *  Harden `workbench_ui` only. Do not widen shared-engine NIMM/AITAS canon. Do not reopen migration or SQL-only authority work.
+> *  Harden `workbench_ui` only. Do not widen shared-engine NIMM/AITAS canon. Do not reopen migration or SQL-only authority work. (The binding enforcement contract lives at [`docs/contracts/mos_authority_enforcement.md`](../../contracts/mos_authority_enforcement.md); this note is historical.)
 > * Treat the surface as the canonical **datum-file workbench** for the SYSTEM anchor file and related authoritative documents.
 > * Keep it shell-attached, script-backed, read-only, additive-only, and utilitarian.
 > 3. **Documentation sweep:** Re‑scan all markdown and YAML files to ensure no stale references remain to the retired master‑plan basename, `filesystem` authority, or pending MOS cut‑over work. Update or remove wording as needed so that all docs reflect the completed SQL‑only paradigm.

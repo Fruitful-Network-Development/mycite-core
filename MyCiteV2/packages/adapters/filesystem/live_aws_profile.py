@@ -17,7 +17,10 @@ from MyCiteV2.packages.ports.aws_read_only_status import (
     AwsReadOnlyStatusSource,
 )
 
-LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
+LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws.profile.v2"
+# Back-compat: accept v1 reads; writers always emit v2.
+_LEGACY_LIVE_AWS_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.profile.v1"
+_ACCEPTED_PROFILE_SCHEMAS = frozenset({LIVE_AWS_PROFILE_SCHEMA, _LEGACY_LIVE_AWS_PROFILE_SCHEMA})
 
 
 def _as_text(value: object) -> str:
@@ -97,7 +100,7 @@ def is_live_aws_profile_file(storage_file: str | Path | None) -> bool:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return False
-    return isinstance(payload, dict) and _as_text(payload.get("schema")) == LIVE_AWS_PROFILE_SCHEMA
+    return isinstance(payload, dict) and _as_text(payload.get("schema")) in _ACCEPTED_PROFILE_SCHEMAS
 
 
 class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort):
@@ -167,7 +170,7 @@ class FilesystemLiveAwsProfileAdapter(AwsReadOnlyStatusPort, AwsNarrowWritePort)
         payload = json.loads(self._storage_file.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError("live aws profile payload must be a dict")
-        if _as_text(payload.get("schema")) != LIVE_AWS_PROFILE_SCHEMA:
+        if _as_text(payload.get("schema")) not in _ACCEPTED_PROFILE_SCHEMAS:
             return None
         return payload
 

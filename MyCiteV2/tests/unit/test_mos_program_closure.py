@@ -34,134 +34,149 @@ class MosProgramClosureTests(unittest.TestCase):
             self.skipTest(f"live FND authority db not present: {LIVE_FND_DB_FILE}")
         return LIVE_FND_DB_FILE
 
-    @unittest.skip(
-        "MOS closure counts have drifted: live FND authority DB carries ~117 documents "
-        "where the snapshot expected ~406. The CTS-GIS perf-batch + E3→E4 migration work "
-        "is rewriting the catalog shape; reauthor with current counts (or pivot to "
-        "structural invariants) when E4 lands."
-    )
-    def test_fnd_authority_db_matches_closure_counts(self) -> None:
+    # Required invariant. The 2026-05-17 MOS reconciliation cleared the
+    # phantom + orphan + legacy-form drift; this test must remain green.
+    def test_mos_documents_index_is_internally_consistent(self) -> None:
+        """Every documents row has a matching datum_document_semantics payload,
+        and every datum_document_semantics row has a corresponding documents
+        index entry. No phantom docs, no orphan content.
+
+        Replaces the previous hard-coded counts test. Currently expected to
+        FAIL: agro_erp+fnd_ebi+system are clean, but cts_gis has ~287 phantom
+        index rows with no payload, and fnd_csm has ~25 orphan payloads with
+        no index. See audit_report.md §1.6.
+        """
         db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
         try:
             connection.row_factory = sqlite3.Row
-            queries = {
-                "document_semantics_count": "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd'",
-                "row_semantics_count": "SELECT COUNT(*) AS count FROM datum_row_semantics WHERE tenant_id = 'fnd'",
-                "catalog_snapshots_count": "SELECT COUNT(*) AS count FROM authoritative_catalog_snapshots WHERE tenant_id = 'fnd'",
-                "system_workbench_count": "SELECT COUNT(*) AS count FROM system_workbench_snapshots WHERE tenant_id = 'fnd'",
-                "publication_summary_count": "SELECT COUNT(*) AS count FROM publication_summary_snapshots WHERE tenant_id = 'fnd'",
-                "portal_authority_count": "SELECT COUNT(*) AS count FROM portal_authority_snapshots WHERE scope_id = 'fnd'",
-                "directive_snapshot_count": "SELECT COUNT(*) AS count FROM directive_context_snapshots WHERE portal_instance_id = 'fnd'",
-                "directive_event_count": "SELECT COUNT(*) AS count FROM directive_context_events WHERE portal_instance_id = 'fnd'",
-            }
-            counts = {name: int(connection.execute(query).fetchone()["count"]) for name, query in queries.items()}
-            self.assertEqual(counts["document_semantics_count"], 409)
-            self.assertEqual(counts["row_semantics_count"], 3133)
-            self.assertEqual(counts["catalog_snapshots_count"], 1)
-            self.assertEqual(counts["system_workbench_count"], 1)
-            self.assertEqual(counts["publication_summary_count"], 1)
-            self.assertEqual(counts["portal_authority_count"], 1)
-            self.assertEqual(counts["directive_snapshot_count"], 0)
-            self.assertEqual(counts["directive_event_count"], 0)
-        finally:
-            connection.close()
-
-    @unittest.skip(
-        "MOS closure drift — sibling: live FND DB keyspace + filesystem corpus rebuilt "
-        "into canonical lv./stl./cptr. taxonomy. The cross-source equivalence check is "
-        "still valid in principle; reauthor when E4 settles."
-    )
-    def test_fnd_authority_db_matches_filesystem_authoritative_corpus(self) -> None:
-        data_dir = self._require_live_fnd_data_dir()
-        db_file = self._require_live_fnd_db()
-
-        filesystem_catalog = FilesystemSystemDatumStoreAdapter(data_dir).read_authoritative_datum_documents(
-            AuthoritativeDatumDocumentRequest(tenant_id="fnd")
-        )
-        filesystem_counts = {
-            document.document_id: int(document.row_count)
-            for document in filesystem_catalog.documents
-        }
-
-        connection = sqlite3.connect(db_file)
-        try:
-            connection.row_factory = sqlite3.Row
-            sql_counts = {
-                row["document_id"]: int(row["row_count"])
+            index_ids = {
+                row["document_id"]
                 for row in connection.execute(
-                    """
-                    SELECT document_id, COUNT(*) AS row_count
-                    FROM datum_row_semantics
-                    WHERE tenant_id = 'fnd'
-                    GROUP BY document_id
-                    """
+                    "SELECT document_id FROM documents WHERE tenant_id = 'fnd'"
                 )
             }
-
-            self.assertEqual(filesystem_counts, sql_counts)
-
-            filesystem_cts = {
-                document_id: row_count
-                for document_id, row_count in filesystem_counts.items()
-                if document_id.startswith("sandbox:cts_gis:")
+            semantic_ids = {
+                row["document_id"]
+                for row in connection.execute(
+                    "SELECT document_id FROM datum_document_semantics WHERE tenant_id = 'fnd'"
+                )
             }
-            sql_cts = {
-                document_id: row_count
-                for document_id, row_count in sql_counts.items()
-                if document_id.startswith("sandbox:cts_gis:")
+            phantoms = index_ids - semantic_ids
+            orphans = semantic_ids - index_ids
+            self.assertEqual(phantoms, set(), f"{len(phantoms)} phantom index rows")
+            self.assertEqual(orphans, set(), f"{len(orphans)} orphan semantic payloads")
+            # Structural shape: every sandbox has at least one anchor
+            anchor_sandboxes = {
+                row["sandbox"]
+                for row in connection.execute(
+                    "SELECT DISTINCT sandbox FROM documents WHERE tenant_id = 'fnd' AND is_anchor = 1"
+                )
             }
-
-            self.assertEqual(filesystem_cts, sql_cts)
-            self.assertEqual(len(filesystem_counts), 409)
-            self.assertEqual(sum(filesystem_counts.values()), 3133)
-            self.assertEqual(len(filesystem_cts), 406)
-            self.assertEqual(sum(filesystem_cts.values()), 2233)
+            all_sandboxes = {
+                row["sandbox"]
+                for row in connection.execute(
+                    "SELECT DISTINCT sandbox FROM documents WHERE tenant_id = 'fnd'"
+                )
+            }
+            self.assertEqual(
+                anchor_sandboxes,
+                all_sandboxes,
+                f"sandboxes without an anchor: {all_sandboxes - anchor_sandboxes}",
+            )
         finally:
             connection.close()
 
-    @unittest.skip(
-        "MOS closure drift — CTS-GIS row-graph cardinality changed during the perf "
-        "batch + E3→E4 work. Reauthor with current counts when E4 settles."
-    )
-    def test_cts_gis_row_graph_integrity_is_clean_in_live_authority_db(self) -> None:
+    # Required invariant. Disk archival landed 2026-05-17; this test must remain green.
+    def test_no_orphan_filesystem_datum_documents_under_fnd_data(self) -> None:
+        """Inverted from the original FS↔MOS equivalence test. After the
+        2026-05-05 MOS migration MOS is the sole datum authority; no
+        canonical datum-doc JSON should remain on disk under
+        ``data/{system,sandbox,payloads/cache}/``. Files matching the
+        datum-doc shapes are forbidden; compiled UI payloads under
+        ``data/payloads/compiled/`` are exempt.
+
+        Currently expected to FAIL: ~141 on-disk datum-doc artifacts
+        still present (see audit_report.md §1.1). Goes GREEN after
+        Phase 7 archival.
+        """
+        data_dir = self._require_live_fnd_data_dir()
+        forbidden_dirs = ["system", "sandbox", "payloads/cache"]
+        forbidden_prefixes = ("lv.", "sc.", "cptr.", "stl.", "rf.", "tool.")
+        forbidden_specific = {"anthology.json", "system_log.json"}
+        violations: list[str] = []
+        for forbidden_dir in forbidden_dirs:
+            root = data_dir / forbidden_dir
+            if not root.exists():
+                continue
+            for path in root.rglob("*"):
+                if not path.is_file():
+                    continue
+                if path.suffix not in {".json", ".bin"}:
+                    continue
+                name = path.name
+                if name in forbidden_specific or any(name.startswith(p) for p in forbidden_prefixes):
+                    violations.append(str(path.relative_to(data_dir)))
+        self.assertEqual(
+            violations,
+            [],
+            f"{len(violations)} on-disk datum-doc artifacts (first 5: {violations[:5]})",
+        )
+
+    def test_row_graph_referential_integrity_is_clean_for_every_canonical_document(self) -> None:
+        """Sandbox-agnostic referential integrity. For every canonical
+        ``lv.*`` document in MOS:
+
+        - every row has non-empty semantic_hash and hyphae_hash
+        - warnings_json is empty
+        - every local_references target is a peer datum_address within the
+          same document
+
+        Replaces the cts_gis-specific cardinality test (which had hard-coded
+        counts and only walked legacy-form ``sandbox:cts_gis:*`` IDs).
+        """
         db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
         try:
             connection.row_factory = sqlite3.Row
-
             row_addresses_by_document: dict[str, set[str]] = {}
             for row in connection.execute(
                 """
                 SELECT document_id, datum_address
                 FROM datum_row_semantics
-                WHERE tenant_id = 'fnd' AND document_id LIKE 'sandbox:cts_gis:%'
+                WHERE tenant_id = 'fnd' AND document_id LIKE 'lv.%'
                 """
             ):
                 row_addresses_by_document.setdefault(row["document_id"], set()).add(row["datum_address"])
-
-            total_rows = 0
+            failures: list[str] = []
             for row in connection.execute(
                 """
                 SELECT document_id, datum_address, semantic_hash, hyphae_hash, local_references_json, warnings_json
                 FROM datum_row_semantics
-                WHERE tenant_id = 'fnd' AND document_id LIKE 'sandbox:cts_gis:%'
+                WHERE tenant_id = 'fnd' AND document_id LIKE 'lv.%'
                 """
             ):
-                total_rows += 1
-                self.assertTrue(row["semantic_hash"], row["datum_address"])
-                self.assertTrue(row["hyphae_hash"], row["datum_address"])
+                if not row["semantic_hash"]:
+                    failures.append(f"{row['document_id']}:{row['datum_address']} missing semantic_hash")
+                    continue
+                if not row["hyphae_hash"]:
+                    failures.append(f"{row['document_id']}:{row['datum_address']} missing hyphae_hash")
+                    continue
                 warnings = json.loads(row["warnings_json"] or "[]")
+                if warnings:
+                    failures.append(f"{row['document_id']}:{row['datum_address']} has warnings={warnings}")
+                    continue
                 local_references = json.loads(row["local_references_json"] or "[]")
-                self.assertEqual(warnings, [], row["datum_address"])
-                known_rows = row_addresses_by_document[row["document_id"]]
+                known_rows = row_addresses_by_document.get(row["document_id"], set())
                 for reference in local_references:
-                    self.assertIn(reference, known_rows, f"{row['document_id']}:{row['datum_address']} -> {reference}")
-
-            self.assertEqual(len(row_addresses_by_document), 406)
-            self.assertEqual(total_rows, 2233)
+                    if reference not in known_rows:
+                        failures.append(
+                            f"{row['document_id']}:{row['datum_address']} dangling ref -> {reference}"
+                        )
+                        break
         finally:
             connection.close()
+        self.assertEqual(failures, [], f"{len(failures)} ref-integrity violations (first 5: {failures[:5]})")
 
     def test_fnd_authoritative_catalog_snapshot_uses_data_dir_relative_paths(self) -> None:
         db_file = self._require_live_fnd_db()
@@ -188,56 +203,71 @@ class MosProgramClosureTests(unittest.TestCase):
                 self.assertFalse(str(item).startswith("/srv/repo/"), f"{key}: {item}")
                 self.assertFalse(str(item).startswith("/srv/webapps/mycite/"), f"{key}: {item}")
 
-    @unittest.skip(
-        "MOS closure drift — compatibility-keys assertion targets pre-E4 document keys "
-        "that have migrated. Reauthor with current key shape when E4 settles."
-    )
-    def test_fnd_live_authority_explicitly_remains_on_compatibility_document_keys(self) -> None:
+    # Required invariant. After 2026-05-17 reconciliation no row in
+    # datum_*_semantics uses legacy `sandbox:`/`system:` primary IDs.
+    def test_no_legacy_compatibility_document_keys_remain_as_primary_ids(self) -> None:
+        """Inverted from the original. After the one-cycle compatibility
+        window closes (2026-06-05 per
+        cts_gis_legacy_alias_retirement_timeline.md), the live FND DB must
+        carry ZERO ``sandbox:%`` or ``system:%`` form document_ids as the
+        primary key of ``datum_document_semantics`` or
+        ``datum_row_semantics``. Only canonical ``lv.``/``stl.``/``cptr.``
+        IDs are allowed.
+
+        Currently expected to FAIL: 117 cts_gis docs still carry
+        ``sandbox:cts_gis:%`` primary keys in datum_row_semantics. Goes
+        GREEN after the MOS internal rekey + legacy_alias drop.
+        """
         db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
         try:
             connection.row_factory = sqlite3.Row
-            counts = {
-                "sandbox_docs": int(
-                    connection.execute(
-                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'sandbox:%'"
-                    ).fetchone()["count"]
-                ),
-                "system_docs": int(
-                    connection.execute(
-                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id = 'system:anthology'"
-                    ).fetchone()["count"]
-                ),
-                "lv_docs": int(
-                    connection.execute(
-                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'lv.%'"
-                    ).fetchone()["count"]
-                ),
-                "stl_docs": int(
-                    connection.execute(
-                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'stl.%'"
-                    ).fetchone()["count"]
-                ),
-                "cptr_docs": int(
-                    connection.execute(
-                        "SELECT COUNT(*) AS count FROM datum_document_semantics WHERE tenant_id = 'fnd' AND document_id LIKE 'cptr.%'"
-                    ).fetchone()["count"]
-                ),
-            }
+            legacy_in_semantics = int(
+                connection.execute(
+                    "SELECT COUNT(DISTINCT document_id) AS count "
+                    "FROM datum_document_semantics "
+                    "WHERE tenant_id = 'fnd' AND (document_id LIKE 'sandbox:%' OR document_id LIKE 'system:%')"
+                ).fetchone()["count"]
+            )
+            legacy_in_rows = int(
+                connection.execute(
+                    "SELECT COUNT(DISTINCT document_id) AS count "
+                    "FROM datum_row_semantics "
+                    "WHERE tenant_id = 'fnd' AND (document_id LIKE 'sandbox:%' OR document_id LIKE 'system:%')"
+                ).fetchone()["count"]
+            )
         finally:
             connection.close()
+        self.assertEqual(legacy_in_semantics, 0, "datum_document_semantics still uses legacy primary IDs")
+        self.assertEqual(legacy_in_rows, 0, "datum_row_semantics still uses legacy primary IDs")
 
-        self.assertEqual(counts["sandbox_docs"], 408)
-        self.assertEqual(counts["system_docs"], 1)
-        self.assertEqual(counts["lv_docs"], 0)
-        self.assertEqual(counts["stl_docs"], 0)
-        self.assertEqual(counts["cptr_docs"], 0)
+    def test_required_authority_contracts_exist(self) -> None:
+        """Positive-whitelist replacement for the closure-checklist enumerator.
+        The old test failed any time a new markdown landed under
+        docs/audits or docs/plans without being added to the YAML. This
+        replacement asserts only that the SHORT, FIXED list of binding
+        authority contracts continues to exist on disk and contains the
+        canonical MOS-authority statement. New docs may be added freely.
+        """
+        required_paths = [
+            "docs/contracts/datum_document_naming_taxonomy.md",
+            "docs/contracts/cts_gis_legacy_alias_retirement_timeline.md",
+            "docs/contracts/mos_database_schema_addendum.md",
+            "docs/contracts/samras_structural_model.md",
+        ]
+        for rel in required_paths:
+            path = REPO_ROOT / rel
+            self.assertTrue(path.exists(), f"required contract missing: {rel}")
+        taxonomy = _read_text(REPO_ROOT / "docs" / "contracts" / "datum_document_naming_taxonomy.md")
+        normalized = re.sub(r"\s+", " ", taxonomy)
+        self.assertIn("MOS authority database", normalized)
+        self.assertIn("single runtime source of truth", normalized)
 
     @unittest.skip(
-        "Closure checklist drift: new audit/plan markdowns landed under docs/ without "
-        "being added to the closure-checklist YAML. Either backfill the checklist or "
-        "drop this enumerator-style invariant in favor of a positive whitelist of "
-        "files the checklist must reference."
+        "Original enumerator-style closure-checklist test. Replaced by "
+        "test_required_authority_contracts_exist (positive whitelist). "
+        "Kept skipped as a historical artifact for one cycle then to be "
+        "deleted entirely; see audit_report.md §1.4."
     )
     def test_closure_checklist_covers_every_plan_and_report_artifact(self) -> None:
         checklist_path = REPO_ROOT / "docs" / "audits" / "reports" / "mos_program_closure_audit_checklist_2026-04-21.md"

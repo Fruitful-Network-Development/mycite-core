@@ -48,7 +48,7 @@ def _seed_profile(
 ) -> Path:
     aws_csm_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        "schema": "mycite.service_tool.aws_csm.profile.v1",
+        "schema": "mycite.service_tool.aws.profile.v2",
         "identity": {
             "profile_id": profile_id,
             "tenant_id": tenant_id,
@@ -63,7 +63,7 @@ def _seed_profile(
             "send_as_email": f"{mailbox}@{domain}",
         },
         "workflow": {
-            "schema": "mycite.service_tool.aws_csm.onboarding.v1",
+            "schema": "mycite.service_tool.aws.onboarding.v2",
             "flow": "mailbox_send_as",
             "lifecycle_state": lifecycle_state,
         },

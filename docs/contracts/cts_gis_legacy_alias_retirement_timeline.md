@@ -2,6 +2,11 @@
 
 This document defines retirement timing for legacy CTS-GIS request aliases and compatibility fields.
 
+The companion timeline for the `documents.legacy_alias` *column* (the
+2026-05-05 MOS migration's one-cycle dual-lookup) is at
+[`mos_authority_enforcement.md` — Legacy alias retirement schedule](mos_authority_enforcement.md#legacy-alias-retirement-schedule).
+Cutover deadline: **2026-06-05**.
+
 ## Scope
 
 Legacy aliases covered:

@@ -77,7 +77,7 @@ def cts_gis_runtime_action_kind(action: object) -> str:
     return CTS_GIS_CANONICAL_ACTIONS.get(action_name, action_name)
 
 
-def aws_csm_lifecycle_action(action_kind: object) -> str:
+def aws_lifecycle_action(action_kind: object) -> str:
     return AWS_CSM_ACTION_LIFECYCLE.get(_as_text(action_kind).lower(), "apply")
 
 

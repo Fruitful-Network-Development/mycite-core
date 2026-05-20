@@ -1,0 +1,55 @@
+{
+  "schema": "mycite.service_tool.aws.profile.v2",
+  "identity": {
+    "profile_id": "aws-csm.bpw.brock",
+    "tenant_id": "bpw",
+    "domain": "brockspressurewashing.com",
+    "region": "us-east-1",
+    "mailbox_local_part": "brock",
+    "role": "operator",
+    "single_user_msn_id": "",
+    "single_user_email": "dylancarsonmontgomery@gmail.com",
+    "operator_inbox_target": "dylancarsonmontgomery@gmail.com",
+    "send_as_email": "brock@brockspressurewashing.com"
+  },
+  "smtp": {
+    "host": "email-smtp.us-east-1.amazonaws.com",
+    "port": "587",
+    "username": "",
+    "credentials_source": "operator_managed",
+    "credentials_secret_name": "aws-cms/smtp/bpw.brock",
+    "credentials_secret_state": "missing",
+    "send_as_email": "brock@brockspressurewashing.com",
+    "local_part": "brock",
+    "forward_to_email": "dylancarsonmontgomery@gmail.com",
+    "forwarding_status": "active"
+  },
+  "verification": {
+    "status": "not_started",
+    "code": "",
+    "link": "",
+    "email_received_at": "",
+    "verified_at": "",
+    "portal_state": ""
+  },
+  "provider": {
+    "gmail_send_as_status": "not_started",
+    "aws_ses_identity_status": "verified",
+    "last_checked_at": "2026-05-19T08:23:00.000000+00:00"
+  },
+  "workflow": {
+    "initiated": false,
+    "initiated_at": ""
+  },
+  "inbound": {
+    "receive_routing_target": "dylancarsonmontgomery@gmail.com",
+    "receive_state": "active",
+    "receive_verified": false,
+    "legacy_forwarder_dependency": false,
+    "latest_message_sender": "",
+    "latest_message_subject": "",
+    "latest_message_captured_at": "",
+    "latest_message_s3_key": "",
+    "latest_message_s3_uri": ""
+  }
+}

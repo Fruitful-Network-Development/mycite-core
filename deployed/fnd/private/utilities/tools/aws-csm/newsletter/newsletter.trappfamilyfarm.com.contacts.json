@@ -1,5 +1,5 @@
 {
-  "schema": "mycite.service_tool.aws_csm.newsletter_contact_log.v1",
+  "schema": "mycite.service_tool.newsletter.contact_log.v2",
   "domain": "trappfamilyfarm.com",
   "contacts": [
     {

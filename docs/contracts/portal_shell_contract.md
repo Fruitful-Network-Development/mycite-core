@@ -1,5 +1,10 @@
 # Portal Shell Contract
 
+> **MOS-authority rule:** Datum-document materialization and naming
+> follow the single binding contract at
+> [`mos_authority_enforcement.md`](mos_authority_enforcement.md). The
+> shell never reads datum content from the filesystem.
+
 The repository owns one neutral portal shell contract.
 
 Canonical public entry: `/portal` -> `/portal/system`

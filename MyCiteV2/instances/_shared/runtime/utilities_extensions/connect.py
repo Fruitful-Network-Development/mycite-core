@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.filesystem import FilesystemAwsCsmNewsletterStateAdapter
+from MyCiteV2.packages.adapters.filesystem import FilesystemNewsletterStateAdapter
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link
 
@@ -53,7 +53,7 @@ def _build_connect_extension_payload(
 
     contacts: list[dict[str, Any]] = []
     try:
-        adapter = FilesystemAwsCsmNewsletterStateAdapter(private_dir)
+        adapter = FilesystemNewsletterStateAdapter(private_dir)
         if authority_db_file is not None:
             from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
                 MosDatumNewsletterContactLogAdapter,

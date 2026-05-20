@@ -62,15 +62,20 @@
     data-interface-panel-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
-      <nav class="ide-menubar__menu" aria-label="Application menu">
-        <span>File</span>
-        <span>Edit</span>
-        <span>Selection</span>
-        <span>View</span>
-        <span>Go</span>
-        <span>Run</span>
-        <span>Terminal</span>
-        <span>Help</span>
+      <nav class="ide-menubar__toolSearch" aria-label="Tool search" data-tool-palette-mount>
+        <input
+          type="search"
+          class="ide-menubar__toolSearchInput"
+          data-palette-input
+          placeholder="Search tools…"
+          autocomplete="off"
+          aria-label="Search tools"
+        />
+        <div
+          class="ide-menubar__toolSearchResults portal-tool-palette__results"
+          data-palette-list
+          hidden
+        ></div>
       </nav>
       <div class="ide-menubar__center" aria-label="Page label">
         <span class="ide-menubar__pageTitle">MyCite</span>
@@ -208,9 +213,45 @@
           ></div>
         </section>
       </aside>
+
+      <button type="button" class="ide-splitter ide-splitter--visualization-panel" data-splitter="visualization-panel" aria-label="Resize visualization panel" hidden></button>
+
+      <aside
+        id="portalVisualizationPanel"
+        class="ide-visualizationPanel is-collapsed"
+        data-shell-region="visualization-panel"
+        aria-label="Visualization panel"
+        aria-hidden="true"
+        hidden
+      >
+        <header class="ide-visualizationPanel__header">
+          <div>
+            <div class="ide-visualizationPanel__kicker">Tool</div>
+            <div id="portalVisualizationPanelTitle" class="ide-visualizationPanel__title">—</div>
+          </div>
+          <button
+            type="button"
+            class="ide-visualizationPanel__close"
+            data-visualization-panel-close
+            aria-label="Close visualization panel"
+            title="Close tool"
+          >×</button>
+        </header>
+        <section
+          id="portalVisualizationPanelContent"
+          class="ide-visualizationPanel__content"
+          data-visualization-panel-scroll-root="true"
+        ></section>
+      </aside>
     </div>
   </div>
 
+  <script>
+    // Plan v2 globals consumed by v2_portal_shell_core.js for the
+    // sandbox selector + menubar tool palette.
+    window.__MYCITE_V2_SANDBOXES = {{ sandbox_display_names | tojson }};
+    window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  </script>
   <script src="{{ shell_asset_manifest['scripts']['portal_js']['url'] }}" defer></script>
   <script src="{{ shell_asset_manifest['scripts']['shell_entry']['url'] }}" defer></script>
 </body>

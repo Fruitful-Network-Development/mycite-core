@@ -1,0 +1,76 @@
+template_id: product_profile
+schema: mycite.v2.datum.agro_erp.product_profile.v1
+sandbox: agro_erp
+archetype: agro_erp_product_profile_row
+description: >
+  Product-profile source for the agro_erp sandbox. Each repeating row in
+  value-group 2 (layer 4) names one product offered or tracked by the
+  business: a SKU, a display name, an optional taxonomy reference into
+  the agro_erp txa, an optional unit-of-sale, and a free-text
+  description. The product_name is bound to the ``title-babelette``
+  (rf.3-1-2) in the anchor and follows the same 512-bit ASCII binary
+  companion convention as the taxonomy template. The taxonomy_address
+  is bound to ``SAMRAS-babelette-txa_id`` (rf.3-1-1) and links each
+  product into the agro_erp taxonomy. SKU, unit_of_sale, and
+  description are carried as plain trimmed strings in the row's
+  interpreted-form list until the anchor is extended with dedicated
+  babelettes (tracked as a deferred follow-up).
+
+# Header rows (layer 0). Sandbox-bound metadata is stamped once at
+# scaffold time so every materialised document carries it for audit.
+header_rows:
+  - address: "0-0-1"
+    field: schema
+    raw: "mycite.v2.datum.agro_erp.product_profile.v1"
+  - address: "0-0-2"
+    field: sandbox
+    raw: "agro_erp"
+  - address: "0-0-3"
+    field: msn_id
+    raw: "{{msn_id}}"
+  - address: "0-0-4"
+    field: updated_at
+    raw: "{{updated_at}}"
+
+# Repeating archetype: every row in layer 4 (value-group 2 iteration)
+# is one product entry. The 4-tuple shape is
+#   [[<self-addr>, "rf.3-1-1", <taxonomy_address>, "rf.3-1-2", <product_name_binary>],
+#    [<product_sku>, <product_name>, <unit_of_sale>, <description>]]
+# where:
+#   - rf.3-1-1 = SAMRAS-babelette-txa_id (the anchor's taxonomy node
+#     address space) — populated when the product maps to a taxonomy
+#     node; left empty for unclassified products.
+#   - <taxonomy_address> = hyphen-form numeric path into the agro_erp
+#     txa (e.g. "1-1-3-3-5-2"). Optional.
+#   - rf.3-1-2 = title-babelette (niu-baciloid-256-64).
+#   - <product_name_binary> = the product_name encoded as 8 bits per
+#     character, right-padded with zeros to 512 bits. Auto-composed.
+#   - <product_sku> = stable product identifier (e.g. "SKU-1024").
+#   - <product_name> = human-readable display name.
+#   - <unit_of_sale> = e.g. "each", "lb", "case-of-12". Optional.
+#   - <description> = free-text marketing description. Optional.
+repeating_archetype:
+  layer: 4
+  value_group: 2
+  value_group_reference_design:
+    product_sku:
+      magnitude_kind: trimmed_string
+      required: true
+    product_name:
+      magnitude_kind: trimmed_string
+      required: true
+      rf_anchor: "rf.3-1-2"
+      binary_companion:
+        field: product_name_binary
+        magnitude_kind: ascii_binary_512
+        auto_composed: true
+    taxonomy_address:
+      magnitude_kind: trimmed_string
+      required: false
+      rf_anchor: "rf.3-1-1"
+    unit_of_sale:
+      magnitude_kind: trimmed_string
+      required: false
+    description:
+      magnitude_kind: trimmed_string
+      required: false

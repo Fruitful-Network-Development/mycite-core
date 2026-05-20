@@ -1,5 +1,9 @@
 # Route Model
 
+> **MOS-authority rule:** All routes that read datum documents do so via
+> the MOS authority database, never the filesystem. See
+> [`mos_authority_enforcement.md`](mos_authority_enforcement.md).
+
 Canonical visible routes:
 
 - `/portal`

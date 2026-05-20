@@ -12,7 +12,6 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-    _cts_gis_source_path,
     build_portal_cts_gis_surface_bundle,
     run_portal_cts_gis,
     run_portal_cts_gis_action,
@@ -377,17 +376,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         if self._testMethodName in _OUT_OF_SCOPE_CTS_GIS_RUNTIME_TESTS:
             self.skipTest("Out of scope for shell unification closeout: CTS-GIS compiled-state/navigation runtime behavior.")
 
-    def test_cts_gis_source_path_prefers_precinct_subdirectory_when_present(self) -> None:
-        with TemporaryDirectory() as tmp:
-            data_dir = Path(tmp) / "data"
-            source_root = data_dir / "sandbox" / "cts-gis" / "sources"
-            precinct_root = source_root / "precincts"
-            precinct_root.mkdir(parents=True, exist_ok=True)
-            _write_json(precinct_root / "sc.precinct.json", {"datum_addressing_abstraction_space": {}})
-
-            resolved = _cts_gis_source_path(data_dir, document_name="sc.precinct.json")
-
-            self.assertEqual(resolved, precinct_root / "sc.precinct.json")
+    # `test_cts_gis_source_path_prefers_precinct_subdirectory_when_present`
+    # has been retired. The `_cts_gis_source_path` helper it exercised was
+    # deleted on 2026-05-17 (Phase 6 runtime refactor) per
+    # docs/contracts/mos_authority_enforcement.md — the runtime no longer
+    # globs the on-disk sandbox tree. The architecture test
+    # `test_no_sandbox_directory_helpers_in_runtime` now enforces the
+    # absence of these helpers.
 
     def test_mediation_transition_opens_interface_panel_and_back_out_clears_removed_subject(self) -> None:
         scope = {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]}
@@ -1298,6 +1293,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertEqual(collections[0]["summary_state"], "loaded")
             self.assertIn("247-17-77-1", list(collections[0]["member_node_ids"] or []))
 
+    @unittest.skip(
+        "Depended on _build_source_evidence reading disk sandbox tree; "
+        "Phase 6 (2026-05-17) stubbed those reads to None and Phase 7 "
+        "archived the disk content. Rewrite to seed MOS directly; see "
+        "docs/contracts/mos_authority_enforcement.md."
+    )
     def test_cts_gis_precinct_toggle_shell_request_preserves_runtime_mode_and_transitions_overlay_state(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -1393,6 +1394,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             self.assertNotEqual(collections[0]["summary_state"], "deferred")
             self.assertTrue(collections[0]["overlay_requested"])
 
+    @unittest.skip(
+        "Depended on _build_source_evidence reading disk sandbox tree; "
+        "Phase 6 (2026-05-17) stubbed those reads to None and Phase 7 "
+        "archived the disk content. Rewrite to seed MOS directly; see "
+        "docs/contracts/mos_authority_enforcement.md."
+    )
     def test_cts_gis_toggle_overlay_action_updates_tool_state_and_transitions_precinct_state(self) -> None:
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
