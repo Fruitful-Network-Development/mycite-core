@@ -18,11 +18,13 @@ from typing import Any
 from ._normalize import as_text, normalized_domain, normalized_email
 from .contracts import (
     AwsPeripheralPort,
+    CostBreakdown,
     DomainStatus,
     ForwardingRoutesSyncResult,
     ProfileReadiness,
     SesSendError,
     SesSendResult,
+    TagOperationResult,
 )
 from .profile_store import ProfileStore, iter_profile_recipient_targets
 
@@ -597,6 +599,154 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             message_id=str(response.get("MessageId", "")),
             configuration_set=configuration_set,
         )
+
+    # ------------------------------------------------------------------
+    # Tagging + cost attribution (tolling extension prerequisites)
+
+    def tag_resource(
+        self,
+        *,
+        arns: list[str],
+        tags: dict[str, str],
+    ) -> TagOperationResult:
+        if not arns:
+            return TagOperationResult(ok=True, tagged_arns=[], failed_arns=[])
+        if not tags:
+            return TagOperationResult(ok=False, tagged_arns=[], failed_arns=[
+                {"arn": arn, "error_code": "EmptyTags",
+                 "error_message": "tags dict was empty"} for arn in arns
+            ])
+        # ResourceGroupsTagging API is region-scoped — call in the region
+        # the resources live. For cross-region resources (route53 is
+        # global, s3 buckets carry their own region) callers should
+        # split ARNs by region and call once per region.
+        client = self._client("resourcegroupstaggingapi")
+        response = client.tag_resources(ResourceARNList=arns, Tags=tags)
+        failed_map = response.get("FailedResourcesMap") or {}
+        failed = [
+            {
+                "arn": arn,
+                "error_code": str(detail.get("ErrorCode", "")),
+                "error_message": str(detail.get("ErrorMessage", "")),
+            }
+            for arn, detail in failed_map.items()
+        ]
+        tagged = [arn for arn in arns if arn not in failed_map]
+        return TagOperationResult(
+            ok=not failed,
+            tagged_arns=tagged,
+            failed_arns=failed,
+        )
+
+    @staticmethod
+    def _parse_cost_response_by_service(group: dict[str, Any]) -> tuple[str, str, dict[str, str]]:
+        """Extract (currency, grand_total, by_service) from a Cost
+        Explorer GroupBy=SERVICE result."""
+        currency = ""
+        services: dict[str, str] = {}
+        total = 0.0
+        for entry in group.get("Groups", []) or []:
+            keys = entry.get("Keys") or []
+            metric = (entry.get("Metrics") or {}).get("UnblendedCost") or {}
+            amount = str(metric.get("Amount", "0"))
+            currency = currency or str(metric.get("Unit", ""))
+            if keys:
+                services[keys[0]] = amount
+            try:
+                total += float(amount)
+            except ValueError:
+                pass
+        return currency, f"{total:.10f}", services
+
+    def get_costs_by_grantee(
+        self,
+        *,
+        msn_id: str,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> CostBreakdown:
+        # Cost Explorer is a global service hosted in us-east-1.
+        client = self._client("ce", region="us-east-1")
+        response = client.get_cost_and_usage(
+            TimePeriod={"Start": start, "End": end},
+            Granularity=granularity,
+            Metrics=["UnblendedCost"],
+            Filter={"Tags": {"Key": "msn_id", "Values": [msn_id]}},
+            GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+        )
+        # GetCostAndUsage returns ResultsByTime[] when granularity is
+        # DAILY/MONTHLY; we sum across periods into a single breakdown.
+        currency = ""
+        by_service: dict[str, float] = {}
+        for result in response.get("ResultsByTime", []) or []:
+            cur, _, services = self._parse_cost_response_by_service(result)
+            currency = currency or cur
+            for svc, amount in services.items():
+                try:
+                    by_service[svc] = by_service.get(svc, 0.0) + float(amount)
+                except ValueError:
+                    continue
+        grand = sum(by_service.values())
+        return CostBreakdown(
+            currency=currency,
+            grand_total=f"{grand:.10f}",
+            by_service={k: f"{v:.10f}" for k, v in by_service.items()},
+            period_start=start,
+            period_end=end,
+            granularity=granularity,
+        )
+
+    def get_costs_overview(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> dict[str, CostBreakdown]:
+        client = self._client("ce", region="us-east-1")
+        response = client.get_cost_and_usage(
+            TimePeriod={"Start": start, "End": end},
+            Granularity=granularity,
+            Metrics=["UnblendedCost"],
+            GroupBy=[
+                {"Type": "TAG", "Key": "msn_id"},
+                {"Type": "DIMENSION", "Key": "SERVICE"},
+            ],
+        )
+        # Two-dimensional grouping: Keys are [tag_value, service_name]
+        # where tag_value may be "msn_id$<value>" or "msn_id$" (untagged).
+        agg: dict[str, dict[str, float]] = {}
+        currency = ""
+        for result in response.get("ResultsByTime", []) or []:
+            for entry in result.get("Groups", []) or []:
+                keys = entry.get("Keys") or []
+                if len(keys) < 2:
+                    continue
+                tag_key = keys[0]
+                msn_value = tag_key.split("$", 1)[1] if "$" in tag_key else ""
+                service = keys[1]
+                metric = (entry.get("Metrics") or {}).get("UnblendedCost") or {}
+                currency = currency or str(metric.get("Unit", ""))
+                try:
+                    amount = float(metric.get("Amount", "0"))
+                except ValueError:
+                    amount = 0.0
+                agg.setdefault(msn_value, {})[service] = (
+                    agg.get(msn_value, {}).get(service, 0.0) + amount
+                )
+        out: dict[str, CostBreakdown] = {}
+        for msn_value, services in agg.items():
+            grand = sum(services.values())
+            out[msn_value] = CostBreakdown(
+                currency=currency,
+                grand_total=f"{grand:.10f}",
+                by_service={k: f"{v:.10f}" for k, v in services.items()},
+                period_start=start,
+                period_end=end,
+                granularity=granularity,
+            )
+        return out
 
 
 __all__ = ["AwsPeripheralCloudAdapter"]

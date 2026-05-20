@@ -54,6 +54,30 @@ class SesSendResult(TypedDict):
     configuration_set: str
 
 
+class CostBreakdown(TypedDict):
+    """Per-grantee or per-account cost slice over a date range.
+
+    `by_service` keys are AWS service names as returned by Cost Explorer
+    (e.g. "Amazon Simple Email Service", "Amazon Route 53").
+    `currency` and `grand_total` reflect the SUM of UnblendedCost across
+    `by_service`. `period` is a (start, end) tuple of ISO dates.
+    """
+    currency: str
+    grand_total: str            # decimal-as-string, exact AWS format
+    by_service: dict[str, str]  # service_name -> decimal-as-string
+    period_start: str           # ISO date
+    period_end: str             # ISO date
+    granularity: str            # "DAILY" | "MONTHLY"
+
+
+class TagOperationResult(TypedDict):
+    """Result of a tagging call. `failed_arns` carries any ARN that the
+    API rejected (per-resource failures don't fail the whole call)."""
+    ok: bool
+    tagged_arns: list[str]
+    failed_arns: list[dict[str, str]]  # [{arn, error_code, error_message}]
+
+
 class SesSendError(RuntimeError):
     """Raised when SES rejects a send call. Carries enough fields to log
     the failure without re-querying AWS."""
@@ -140,12 +164,59 @@ class AwsPeripheralPort(Protocol):
     ) -> SesSendResult:
         ...
 
+    # ---- Tagging + cost attribution (tolling extension surface) -------
+
+    def tag_resource(
+        self,
+        *,
+        arns: list[str],
+        tags: dict[str, str],
+    ) -> TagOperationResult:
+        """Apply a set of tags to one or more AWS resource ARNs.
+
+        Backed by the Resource Groups Tagging API. Idempotent — running
+        with the same arns + tags is a no-op. Per-resource failures are
+        reported in the result rather than raising, so callers can
+        process partial successes.
+        """
+        ...
+
+    def get_costs_by_grantee(
+        self,
+        *,
+        msn_id: str,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> CostBreakdown:
+        """Cost Explorer GetCostAndUsage filtered by Tag:msn_id, grouped
+        by SERVICE. `start`/`end` are ISO dates; range is half-open
+        per AWS convention. Returns the grantee's full cost slice for
+        the period — caller adds bandwidth-share attribution from
+        nginx access logs separately."""
+        ...
+
+    def get_costs_overview(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> dict[str, CostBreakdown]:
+        """Same Cost Explorer query grouped by Tag:msn_id — returns
+        every tagged grantee's cost slice in one round trip. Result
+        keys are msn_id values; an empty string key holds the
+        un-tagged remainder."""
+        ...
+
 
 __all__ = [
     "AwsPeripheralPort",
+    "CostBreakdown",
     "DomainStatus",
     "ForwardingRoutesSyncResult",
     "ProfileReadiness",
     "SesSendError",
     "SesSendResult",
+    "TagOperationResult",
 ]
