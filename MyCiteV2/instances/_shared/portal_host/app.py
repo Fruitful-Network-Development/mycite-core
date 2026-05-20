@@ -3339,6 +3339,302 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "bandwidth_share_by_domain": bandwidth,
         }), 200
 
+    @app.get("/__fnd/analytics/summary")
+    def fnd_analytics_summary() -> tuple[Any, int]:
+        """Per-grantee analytics rollup for the dashboard Analytics tab.
+
+        Reads the per-domain NDJSON event logs at
+        /srv/webapps/mycite/fnd/private/utilities/tools/analytics/
+        analytics.<domain>.events.<YYYY-MM>.ndjson, filters by the
+        requested window + non-bot, and returns total events, unique
+        visitors, and top pages. Window is half-open: [from, to).
+        """
+        from datetime import date as _date
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+            grantee_for_domain,
+            resolve_grantee_from_headers,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+
+        requested_msn = _as_text(request.args.get("grantee"))
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            caller_msn = _as_text(caller.get("msn_id"))
+            if requested_msn and requested_msn != caller_msn:
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+            if not requested_msn:
+                requested_msn = caller_msn
+        if not requested_msn:
+            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+
+        from_raw = _as_text(request.args.get("from"))
+        to_raw = _as_text(request.args.get("to"))
+        today = datetime.now(UTC).date()
+        try:
+            start_d = _date.fromisoformat(from_raw) if from_raw else today.replace(day=1)
+        except ValueError:
+            return jsonify({"ok": False, "error": "bad_from"}), 400
+        try:
+            end_d = _date.fromisoformat(to_raw) if to_raw else today
+        except ValueError:
+            return jsonify({"ok": False, "error": "bad_to"}), 400
+
+        domains = domains_for_grantee(requested_msn)
+        analytics_root = Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
+
+        # NDJSON files are sharded by month — load every month that
+        # overlaps the window.
+        from itertools import product
+        months: list[str] = []
+        y, m = start_d.year, start_d.month
+        while (y, m) <= (end_d.year, end_d.month):
+            months.append(f"{y:04d}-{m:02d}")
+            m += 1
+            if m > 12:
+                m, y = 1, y + 1
+
+        total_events = 0
+        bot_events = 0
+        unique_visitors: set[str] = set()
+        page_counts: dict[str, int] = {}
+        referrer_counts: dict[str, int] = {}
+        event_type_counts: dict[str, int] = {}
+
+        for domain, month in product(domains, months):
+            path = analytics_root / f"analytics.{domain}.events.{month}.ndjson"
+            if not path.exists():
+                continue
+            try:
+                fh = path.open("r", encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            with fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except ValueError:
+                        continue
+                    occurred = _as_text(event.get("occurred_at_utc"))[:10]
+                    if occurred < start_d.isoformat() or occurred >= end_d.isoformat():
+                        continue
+                    total_events += 1
+                    if event.get("is_bot"):
+                        bot_events += 1
+                        continue
+                    visitor = _as_text(event.get("visitor_cookie_id_hash"))
+                    if visitor:
+                        unique_visitors.add(visitor)
+                    page = _as_text(event.get("page_path")) or "/"
+                    page_counts[page] = page_counts.get(page, 0) + 1
+                    et = _as_text(event.get("event_type")) or "(unknown)"
+                    event_type_counts[et] = event_type_counts.get(et, 0) + 1
+                    ref = _as_text(event.get("referrer_domain"))
+                    if ref:
+                        referrer_counts[ref] = referrer_counts.get(ref, 0) + 1
+
+        def _top(d: dict[str, int], n: int = 10) -> list[dict[str, int | str]]:
+            return [{"key": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:n]]
+
+        return jsonify({
+            "ok": True,
+            "grantee": {"msn_id": requested_msn, "domains": domains},
+            "period": {
+                "start": start_d.isoformat(),
+                "end": end_d.isoformat(),
+            },
+            "summary": {
+                "total_events": total_events,
+                "human_events": total_events - bot_events,
+                "bot_events": bot_events,
+                "unique_visitors": len(unique_visitors),
+                "event_types": event_type_counts,
+            },
+            "top_pages": _top(page_counts, 10),
+            "top_referrers": _top(referrer_counts, 10),
+        }), 200
+
+    @app.get("/__fnd/newsletter/contacts")
+    def fnd_newsletter_contacts() -> tuple[Any, int]:
+        """Read-only contact list for a grantee's first domain. Used
+        by the grantee dashboard's Contacts tab; scope-guarded so
+        only the owning grantee (or unauthenticated operator) sees it.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+            grantee_for_domain,
+            resolve_grantee_from_headers,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+
+        requested_msn = _as_text(request.args.get("grantee"))
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            caller_msn = _as_text(caller.get("msn_id"))
+            if requested_msn and requested_msn != caller_msn:
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+            if not requested_msn:
+                requested_msn = caller_msn
+        if not requested_msn:
+            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+
+        domains = domains_for_grantee(requested_msn)
+        contacts_root = Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm" / "newsletter"
+        contacts: list[dict[str, Any]] = []
+        for d in domains:
+            path = contacts_root / f"newsletter.{d}.contacts.json"
+            if not path.exists():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            for c in data.get("contacts") or []:
+                contacts.append({**c, "_domain": d})
+        contacts.sort(key=lambda c: str(c.get("email", "")))
+        active = sum(1 for c in contacts if c.get("subscribed"))
+        return jsonify({
+            "ok": True,
+            "grantee": {
+                "msn_id": requested_msn,
+                "domains": domains,
+            },
+            "summary": {
+                "total": len(contacts),
+                "active": active,
+                "unsubscribed": len(contacts) - active,
+            },
+            "contacts": contacts,
+        }), 200
+
+    @app.post("/__fnd/newsletter/inbound-capture")
+    def fnd_newsletter_inbound_capture() -> tuple[Any, int]:
+        """Endpoint the `newsletter-inbound-capture` Lambda calls when
+        SES captures an email to a configured `news@<domain>` address.
+
+        Flow:
+          1. Lambda extracts {domain, sender, recipient, subject,
+             ses_message_id, s3_uri, captured_at} from the SES event
+             + computes an HMAC over them with the per-tenant secret
+             from Secrets Manager. Signs the payload + POSTs here with
+             the signature in the `X-Newsletter-Inbound-Signature`
+             header (and in the body, for convenience).
+          2. We pull the per-tenant SUBMITTER ALLOWLIST from the
+             grantee newsletter profile (`allowed_submitters` list,
+             or the existing `selected_author_address` as a fallback)
+             and reject 403 if the sender isn't on it.
+          3. We hand off to NewsletterService.process_inbound_capture,
+             which re-validates the signature, reads the S3 object,
+             extracts the MIME body, and enqueues one SQS message per
+             active contact (each with its own unsubscribe URL+token).
+        """
+        from MyCiteV2.packages.adapters.event_transport import (
+            NewsletterCloudAdapter,
+        )
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
+        )
+        from MyCiteV2.packages.modules.cross_domain.newsletter import (
+            NewsletterService,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+
+        body = _json_payload()
+        signature = (
+            _as_text(request.headers.get("X-Newsletter-Inbound-Signature"))
+            or _as_text(body.get("signature"))
+        )
+        domain = _as_text(body.get("domain")).lower()
+        sender = _as_text(body.get("sender")).lower()
+        recipient = _as_text(body.get("recipient")).lower()
+        ses_message_id = _as_text(body.get("ses_message_id"))
+        s3_uri = _as_text(body.get("s3_uri"))
+        subject = _as_text(body.get("subject"))
+        captured_at = _as_text(body.get("captured_at"))
+
+        if not all([signature, domain, sender, recipient, ses_message_id, s3_uri, captured_at]):
+            return jsonify({"ok": False, "error": "missing_fields"}), 400
+
+        # Submitter allowlist. The per-domain newsletter profile
+        # carries `allowed_submitters` (list of normalized emails).
+        # When set, it is THE canonical list — the author identity is
+        # not implicitly allowed (the "who can send FROM" identity is
+        # different from "who can SUBMIT TO news@"). When the field is
+        # absent we fall back to `selected_author_address` for
+        # backward-compat with any flow that authored via the SES
+        # identity directly.
+        state = FilesystemNewsletterStateAdapter(Path(host_config.private_dir))
+        profile = state.load_profile(domain=domain) or {}
+        explicit_allowlist = [
+            _as_text(e).lower()
+            for e in (profile.get("allowed_submitters") or [])
+            if _as_text(e)
+        ]
+        if explicit_allowlist:
+            allowed = set(explicit_allowlist)
+        else:
+            author = _as_text(profile.get("selected_author_address")).lower()
+            allowed = {author} if author else set()
+        if not allowed:
+            _log.warning(
+                "newsletter_inbound_no_allowlist",
+                extra={"domain": domain, "sender": sender},
+            )
+            return jsonify({"ok": False, "error": "no_allowlist_configured"}), 403
+        if sender not in allowed:
+            _log.warning(
+                "newsletter_inbound_blocked_sender",
+                extra={"domain": domain, "sender": sender, "allowed": sorted(allowed)},
+            )
+            return jsonify({"ok": False, "error": "sender_not_allowed"}), 403
+
+        # Hand off to the canonical processor (it re-validates the
+        # signature against Secrets Manager; we don't trust the local
+        # check alone).
+        tenant_id = _as_text(host_config.portal_instance_id) or "fnd"
+        service = NewsletterService(
+            state, NewsletterCloudAdapter(), tenant_id=tenant_id
+        )
+        callback_base = f"https://{domain}/__fnd/newsletter"
+        try:
+            result = service.process_inbound_capture(
+                signature=signature,
+                domain=domain,
+                ses_message_id=ses_message_id,
+                s3_uri=s3_uri,
+                sender=sender,
+                recipient=recipient,
+                subject=subject,
+                captured_at=captured_at,
+                dispatcher_callback_url=f"{callback_base}/dispatch-result",
+                inbound_callback_url=f"{callback_base}/inbound-capture",
+            )
+        except PermissionError as exc:
+            _log.warning("newsletter_inbound_bad_signature",
+                         extra={"domain": domain, "err": str(exc)})
+            return jsonify({"ok": False, "error": "bad_signature"}), 403
+        except LookupError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except Exception as exc:  # noqa: BLE001
+            _log.error("newsletter_inbound_dispatch_failed",
+                       extra={"domain": domain, "err": str(exc)})
+            return jsonify({"ok": False, "error": "dispatch_failed"}), 500
+
+        return jsonify({"ok": True, **result}), 200
+
     @app.get("/__fnd/bpw-jobs/list")
     def fnd_bpw_jobs_list() -> tuple[Any, int]:
         """Return the BPW job records (read from the operator tree at
