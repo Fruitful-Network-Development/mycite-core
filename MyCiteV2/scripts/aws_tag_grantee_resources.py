@@ -18,11 +18,14 @@ USAGE
 
 PREREQUISITES
 -------------
-- IAM role must allow `tag:TagResources` on the target resources
-  (covered by the `AWSCMSCostExplorerAndSns` policy).
-- After this script runs successfully, activate `msn_id` and `tenant`
-  cost-allocation tags in the AWS Billing Console (manual UI step).
-  Wait ~24h for Cost Explorer to backfill the dimension before querying.
+- IAM role must allow `tag:TagResources` on the target resources and
+  `ce:ListCostAllocationTags` + `ce:UpdateCostAllocationTagsStatus` on
+  Cost Explorer (covered by the `AWSCMSCostExplorerAndSns` policy).
+- Run `--apply --activate-tags` (or `--activate-tags` standalone after
+  a prior tagging pass) to activate `msn_id`, `tenant`, and `shared`
+  as billing cost-allocation tags. Activation is account-level and
+  idempotent. Wait ~24h for Cost Explorer to backfill the dimension
+  before querying.
 
 EDITING THIS SCRIPT
 -------------------
@@ -63,6 +66,8 @@ from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAd
 AWS_ACCOUNT = "065948377733"
 SES_REGION = "us-east-1"
 EC2_INSTANCE = "i-046f5861584b180c8"
+
+COST_ALLOCATION_TAG_KEYS = ("msn_id", "tenant", "shared")
 
 GRANTEE_RESOURCES: dict[str, dict[str, list[str] | str | bool]] = {
     # FND — the operator. Owns the shared infra.
@@ -169,6 +174,61 @@ def build_plan() -> list[tuple[str, dict[str, str]]]:
     return plan
 
 
+def activate_cost_allocation_tags(
+    adapter: AwsPeripheralCloudAdapter,
+    *,
+    dry_run: bool,
+    keys: tuple[str, ...] = COST_ALLOCATION_TAG_KEYS,
+) -> dict[str, str]:
+    """Activate `keys` as cost-allocation tags in the AWS billing layer.
+
+    Idempotent. Reads current status via `ce:ListCostAllocationTags` and
+    only calls `ce:UpdateCostAllocationTagsStatus` for keys whose status
+    is currently "Inactive" (i.e. tagged on resources but not yet
+    activated for billing slicing). Cost Explorer is a global service
+    pinned to us-east-1.
+
+    Returns a mapping `{key: prior_status}` for the keys that were
+    activated by this call. An empty dict means everything was already
+    Active (or, in `--dry-run`, means activation would be a no-op).
+    """
+    ce = adapter._client("ce", region="us-east-1")  # noqa: SLF001 — adapter shared client cache
+    statuses: dict[str, str] = {}
+    paginator_token: str | None = None
+    while True:
+        kwargs: dict[str, object] = {"MaxResults": 100}
+        if paginator_token:
+            kwargs["NextToken"] = paginator_token
+        resp = ce.list_cost_allocation_tags(**kwargs)
+        for tag in resp.get("CostAllocationTags", []):
+            statuses[str(tag.get("TagKey"))] = str(tag.get("Status"))
+        paginator_token = resp.get("NextToken")
+        if not paginator_token:
+            break
+
+    to_activate = [k for k in keys if statuses.get(k) != "Active"]
+    changed: dict[str, str] = {k: statuses.get(k, "Unknown") for k in to_activate}
+
+    if not to_activate:
+        print("activate-tags: all keys already Active "
+              f"({', '.join(keys)})")
+        return changed
+
+    print("activate-tags: pending "
+          + ", ".join(f"{k} ({statuses.get(k, 'Unknown')} -> Active)"
+                      for k in to_activate))
+    if dry_run:
+        return changed
+
+    ce.update_cost_allocation_tags_status(
+        CostAllocationTagsStatus=[
+            {"TagKey": k, "Status": "Active"} for k in to_activate
+        ],
+    )
+    print("activate-tags: activated " + ", ".join(to_activate))
+    return changed
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -177,11 +237,20 @@ def main(argv: list[str]) -> int:
                      help="Print the tagging plan and exit. No AWS calls.")
     grp.add_argument("--apply", action="store_true",
                      help="Apply the tagging plan.")
+    parser.add_argument("--activate-tags", action="store_true",
+                        help="Also activate msn_id/tenant/shared as cost-allocation "
+                             "tags after tagging. Idempotent. Requires "
+                             "ce:UpdateCostAllocationTagsStatus on the caller.")
     args = parser.parse_args(argv)
 
     plan = build_plan()
     if not plan:
         print("nothing to tag", file=sys.stderr)
+        # Still allow --activate-tags as a standalone follow-up after a
+        # prior tagging pass.
+        if args.activate_tags:
+            adapter = AwsPeripheralCloudAdapter()
+            activate_cost_allocation_tags(adapter, dry_run=args.dry_run)
         return 0
 
     if args.dry_run:
@@ -190,6 +259,9 @@ def main(argv: list[str]) -> int:
             print(f"  {arn}")
             for k, v in sorted(tags.items()):
                 print(f"      {k} = {v}")
+        if args.activate_tags:
+            adapter = AwsPeripheralCloudAdapter()
+            activate_cost_allocation_tags(adapter, dry_run=True)
         return 0
 
     # --apply
@@ -206,6 +278,10 @@ def main(argv: list[str]) -> int:
                     f"      code={failed['error_code']} msg={failed['error_message']}",
                     file=sys.stderr,
                 )
+
+    if args.activate_tags:
+        activate_cost_allocation_tags(adapter, dry_run=False)
+
     return 0 if overall_ok else 1
 
 
