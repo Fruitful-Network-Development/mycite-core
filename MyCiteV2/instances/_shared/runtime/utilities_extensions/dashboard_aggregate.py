@@ -350,6 +350,37 @@ def build_email_dashboard(
                     forward_map.append({"alias": alias, "send_as_email": dest})
     forward_map.sort(key=lambda r: r["alias"])
 
+    # Allowed submitters — per-domain newsletter-admin profiles carry
+    # `allowed_submitters` (the list authorized to email news@<domain>).
+    # Falls back to `selected_author_address` so the grantee always sees
+    # *something* — that matches the runtime behavior in app.py's
+    # inbound-capture allowlist resolution.
+    newsletter_admin_root = private_dir / "utilities" / "tools" / "newsletter-admin"
+    allowed_submitters: list[dict[str, Any]] = []
+    if newsletter_admin_root.exists():
+        for d in domains:
+            path = newsletter_admin_root / f"newsletter-admin.{d}.json"
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            explicit = [
+                _as_text(e).lower()
+                for e in (data.get("allowed_submitters") or [])
+                if _as_text(e)
+            ]
+            entries = explicit or (
+                [_as_text(data.get("selected_author_address")).lower()]
+                if _as_text(data.get("selected_author_address")) else []
+            )
+            for email in entries:
+                allowed_submitters.append({
+                    "email": email,
+                    "domain": d,
+                    "source": "allowed_submitters" if explicit else "selected_author_address",
+                })
+    allowed_submitters.sort(key=lambda r: (r["domain"], r["email"]))
+
     # Sender identity — pull from grantee.aws_ses + live SES status.
     aws_ses = profile.get("aws_ses") or {}
     sender_address = _as_text(aws_ses.get("from_address") or aws_ses.get("identity"))
@@ -407,6 +438,7 @@ def build_email_dashboard(
         },
         "dispatches":    dispatches,
         "forward_map":   forward_map,
+        "allowed_submitters": allowed_submitters,
         "deliverability": deliverability,
     }
 
