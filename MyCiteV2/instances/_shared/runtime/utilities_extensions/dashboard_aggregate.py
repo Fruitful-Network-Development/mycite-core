@@ -130,7 +130,11 @@ def _live_analytics_counts(
                     except ValueError:
                         continue
                     occurred = _as_text(event.get("occurred_at_utc"))[:10]
-                    if occurred < start_d.isoformat() or occurred >= end_d.isoformat():
+                    # Inclusive on both ends — see analytics_summary
+                    # route for the rationale (dashboard MTD/7d/30d
+                    # presets set `to` to today; users expect today to
+                    # count).
+                    if occurred < start_d.isoformat() or occurred > end_d.isoformat():
                         continue
                     total_events += 1
                     if event.get("is_bot"):

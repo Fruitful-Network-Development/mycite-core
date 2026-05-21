@@ -3379,7 +3379,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     except ValueError:
                         continue
                     occurred = _as_text(event.get("occurred_at_utc"))[:10]
-                    if occurred < start_d.isoformat() or occurred >= end_d.isoformat():
+                    # Inclusive on both ends: the dashboard's MTD/7d/30d
+                    # presets set `to` to today, and a user reading
+                    # "through 2026-05-21" expects 2026-05-21 events to
+                    # count. Cost-side routes still use half-open per
+                    # AWS Cost Explorer convention; the divergence is
+                    # intentional.
+                    if occurred < start_d.isoformat() or occurred > end_d.isoformat():
                         continue
                     total_events += 1
                     if event.get("is_bot"):
