@@ -63,9 +63,13 @@ from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAd
 # grantees per use, not per-resource).
 # ---------------------------------------------------------------------
 
-AWS_ACCOUNT = "065948377733"
-SES_REGION = "us-east-1"
-EC2_INSTANCE = "i-046f5861584b180c8"
+import os as _os
+
+# Environment-overridable so the script can target staging / other
+# accounts without an edit. Defaults are FND's production account.
+AWS_ACCOUNT = _os.environ.get("MYCITE_AWS_ACCOUNT", "065948377733")
+SES_REGION = _os.environ.get("MYCITE_SES_REGION", "us-east-1")
+EC2_INSTANCE = _os.environ.get("MYCITE_EC2_INSTANCE", "i-046f5861584b180c8")
 
 COST_ALLOCATION_TAG_KEYS = ("msn_id", "tenant", "shared")
 

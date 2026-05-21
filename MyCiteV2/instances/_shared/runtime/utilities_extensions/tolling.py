@@ -29,6 +29,7 @@ from __future__ import annotations
 import glob
 import json
 import re
+import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -49,6 +50,22 @@ _DEFAULT_FND_CSM_ROOT = Path(
     "/srv/webapps/mycite/fnd/private/utilities/tools/fnd-csm"
 )
 
+# Per-process caches. Grantee profiles and bandwidth-share both back
+# every dashboard request and are derived from disk; without caching,
+# the same JSON globs + log walks happen 4-8x per page load. A short
+# TTL keeps operator-driven edits visible within ~1 minute.
+_CACHE_TTL_SECONDS = 60.0
+_GRANTEE_DIRECTORY_CACHE: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_BANDWIDTH_SHARE_CACHE: dict[
+    tuple[str, str, str], tuple[float, dict[str, dict[str, Any]]]
+] = {}
+
+
+def clear_caches() -> None:
+    """Drop all module caches. For tests and operator-triggered refresh."""
+    _GRANTEE_DIRECTORY_CACHE.clear()
+    _BANDWIDTH_SHARE_CACHE.clear()
+
 
 # ---------------------------------------------------------------------
 # Grantee profile lookup (no MOS dependency — JSON files only)
@@ -64,6 +81,11 @@ def load_grantee_directory(
     silently; this is a read surface, not a validation surface.
     """
     root = Path(fnd_csm_root)
+    key = str(root)
+    now = time.monotonic()
+    cached = _GRANTEE_DIRECTORY_CACHE.get(key)
+    if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
+        return cached[1]
     out: list[dict[str, Any]] = []
     for path in sorted(glob.glob(str(root / "grantee.*.json"))):
         try:
@@ -72,6 +94,7 @@ def load_grantee_directory(
             continue
         if isinstance(data, dict):
             out.append(data)
+    _GRANTEE_DIRECTORY_CACHE[key] = (now, out)
     return out
 
 
@@ -168,6 +191,13 @@ def bandwidth_share_by_domain(
     Window is half-open: includes `start`, excludes `end` — matches
     AWS Cost Explorer convention.
     """
+    root = Path(analytics_root)
+    cache_key = (str(root), start.isoformat(), end.isoformat())
+    now = time.monotonic()
+    cached = _BANDWIDTH_SHARE_CACHE.get(cache_key)
+    if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
+        return cached[1]
+
     # Treat the date bounds as UTC midnight, matching how nginx logs
     # tag entries with offset-aware timestamps (we don't shift, we
     # compare to the same instant in time across timezones).
@@ -175,7 +205,6 @@ def bandwidth_share_by_domain(
     start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
     end_dt = datetime.combine(end, datetime.min.time(), tzinfo=timezone.utc)
 
-    root = Path(analytics_root)
     if not root.exists():
         return {}
 
@@ -190,10 +219,36 @@ def bandwidth_share_by_domain(
 
     total = sum(raw.values())
     if total == 0:
-        return {d: {"bytes_sent": 0, "share": 0.0} for d in raw}
+        result = {d: {"bytes_sent": 0, "share": 0.0} for d in raw}
+    else:
+        result = {
+            d: {"bytes_sent": b, "share": b / total}
+            for d, b in raw.items()
+        }
+    _BANDWIDTH_SHARE_CACHE[cache_key] = (now, result)
+    return result
+
+
+def compute_bandwidth_cost(
+    bandwidth: dict[str, Any],
+    dt_cost: dict[str, Any],
+) -> dict[str, Any]:
+    """Attribute account-wide EC2 DataTransfer-Out spend to this grantee
+    by multiplying its bandwidth share against the account total.
+
+    Returns the components callers want; each caller formats the
+    `amount_value` float to its own precision before serializing.
+    """
+    try:
+        dt_amount = float(dt_cost.get("amount", "0") or 0)
+    except (TypeError, ValueError):
+        dt_amount = 0.0
+    share = float(bandwidth.get("share") or 0)
     return {
-        d: {"bytes_sent": b, "share": b / total}
-        for d, b in raw.items()
+        "share": share,
+        "amount_value": dt_amount * share,
+        "currency": dt_cost.get("currency", "") or "",
+        "account_total": dt_cost.get("amount", "0") or "0",
     }
 
 
@@ -476,12 +531,9 @@ def compute_tolling_row(
     other_aws_cost = grand - ses_cost - domain_fees - s3_cost
     if other_aws_cost < 0:
         other_aws_cost = 0.0
-    bw_share = float(bandwidth.get("share") or 0)
-    try:
-        dt_total = float(dt.get("amount") or 0)
-    except ValueError:
-        dt_total = 0.0
-    bandwidth_cost = dt_total * bw_share
+    attribution = compute_bandwidth_cost(bandwidth, dt)
+    bw_share = attribution["share"]
+    bandwidth_cost = attribution["amount_value"]
     subtotal = ses_cost + domain_fees + s3_cost + other_aws_cost + bandwidth_cost
 
     return {
