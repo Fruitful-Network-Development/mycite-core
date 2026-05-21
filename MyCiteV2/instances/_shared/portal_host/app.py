@@ -3586,6 +3586,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         return jsonify({"ok": True, **result}), 200
 
+    def _bpw_scope_guard() -> tuple[Any, int] | None:
+        """Allow BPW grantee + unauthenticated operator; reject other
+        grantees with 403. Returns None on pass, error response on
+        fail. Shared by every /__fnd/bpw-jobs/* route below."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            grantee_for_domain,
+            resolve_grantee_from_headers,
+        )
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            short = str(caller.get("short_name", "")).lower()
+            if short and short != "bpw":
+                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+        return None
+
     @app.get("/__fnd/bpw-jobs/list")
     def fnd_bpw_jobs_list() -> tuple[Any, int]:
         """Return the BPW job records (read from the operator tree at
@@ -3596,18 +3613,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             jobs_summary,
             list_jobs,
         )
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
-            grantee_for_domain,
-            resolve_grantee_from_headers,
-        )
-
-        caller = resolve_grantee_from_headers(request.headers)
-        if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
-        if caller is not None:
-            short = str(caller.get("short_name", "")).lower()
-            if short and short != "bpw":
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
+        err = _bpw_scope_guard()
+        if err:
+            return err
 
         rows = list_jobs()
         summary = jobs_summary(rows)
@@ -3616,6 +3624,58 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "summary": summary,
             "jobs": rows,
         }), 200
+
+    @app.get("/__fnd/bpw-jobs/analytics")
+    def fnd_bpw_jobs_analytics() -> tuple[Any, int]:
+        """Richer analytics aggregations for the dashboard Job
+        Analytics section: revenue-by-month, lead-source / status /
+        tag-type breakdowns, per-service price distribution with
+        quartiles + Tukey fences."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
+            jobs_analytics,
+            list_jobs,
+        )
+        err = _bpw_scope_guard()
+        if err:
+            return err
+        return jsonify({"ok": True, **jobs_analytics(list_jobs())}), 200
+
+    @app.post("/__fnd/bpw-jobs/save")
+    def fnd_bpw_jobs_save() -> tuple[Any, int]:
+        """Create or update a BPW job record. Payload shape matches
+        the on-disk YAML (job / customer / home / tags / pricing /
+        notes); missing fields are filled with sensible defaults
+        (auto-assigned id, today's date, status=booked)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
+            save_job,
+        )
+        err = _bpw_scope_guard()
+        if err:
+            return err
+        body = _json_payload()
+        if not isinstance(body, dict) or not body:
+            return jsonify({"ok": False, "error": "missing_payload"}), 400
+        try:
+            saved = save_job(body)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except Exception as exc:  # noqa: BLE001
+            _log.error("bpw_jobs_save_failed", extra={"err": str(exc)})
+            return jsonify({"ok": False, "error": "save_failed"}), 500
+        return jsonify({"ok": True, "job": saved}), 200
+
+    @app.delete("/__fnd/bpw-jobs/<job_id>")
+    def fnd_bpw_jobs_delete(job_id: str) -> tuple[Any, int]:
+        """Remove a BPW job record by `job.id`."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
+            delete_job,
+        )
+        err = _bpw_scope_guard()
+        if err:
+            return err
+        if not delete_job(job_id):
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        return jsonify({"ok": True, "id": job_id}), 200
 
     @app.get("/__fnd/tolling/snapshot")
     def fnd_tolling_snapshot() -> tuple[Any, int]:
