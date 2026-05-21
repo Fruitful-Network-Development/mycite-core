@@ -3206,53 +3206,27 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # Tolling — per-grantee cost itemization. Consumed by the per-client
     # /dashboard/ static surfaces (proxied same-origin from the client
     # vhost to keep CORS off the critical path).
+    #
+    # Scope-guard + period helpers (`_resolve_grantee_scope`,
+    # `_parse_period_args`) are defined further down where the
+    # grantee-summary route lives; all routes in this block use them.
     # ------------------------------------------------------------------
-
-    def _tolling_parse_date(value: str) -> date | None:
-        try:
-            return date.fromisoformat(value)
-        except (TypeError, ValueError):
-            return None
-
-    def _tolling_default_window() -> tuple[date, date]:
-        today = datetime.now(UTC).date()
-        # AWS Cost Explorer convention: end-exclusive. Default to
-        # current month-to-date (start = first of month, end = today).
-        return today.replace(day=1), today
 
     @app.get("/__fnd/tolling/itemize")
     def fnd_tolling_itemize() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             bandwidth_share_for_grantee,
+            compute_bandwidth_cost,
             domains_for_grantee,
-            resolve_grantee_from_headers,
         )
         from MyCiteV2.packages.peripherals.aws.contracts import CostBreakdown
 
-        requested_msn = _as_text(request.args.get("grantee"))
-        from_raw = _as_text(request.args.get("from"))
-        to_raw = _as_text(request.args.get("to"))
-
-        # Scope guard: if oauth2-proxy headers are present, the caller
-        # must match the `?grantee=` argument. If no auth headers
-        # (operator tooling / development), allow any `?grantee=`.
-        caller = resolve_grantee_from_headers(request.headers)
-        if caller is not None:
-            caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
-            if not requested_msn:
-                requested_msn = caller_msn
-
-        if not requested_msn:
-            return jsonify({"ok": False, "error": "missing_grantee"}), 400
-
-        start_d = _tolling_parse_date(from_raw) if from_raw else None
-        end_d = _tolling_parse_date(to_raw) if to_raw else None
-        if start_d is None or end_d is None:
-            default_start, default_end = _tolling_default_window()
-            start_d = start_d or default_start
-            end_d = end_d or default_end
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        start_d, end_d, err = _parse_period_args()
+        if err:
+            return err
 
         # Cost Explorer slice.
         cost: CostBreakdown = _aws_peripheral.get_costs_by_grantee(
@@ -3266,21 +3240,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             requested_msn, start_d, end_d
         )
 
-        # Bandwidth dollar attribution: multiply this grantee's share
-        # by the account-wide EC2 DataTransfer-Out spend for the same
-        # window. Approximates per-tenant egress cost on the shared
-        # instance.
+        # Bandwidth dollar attribution: account-wide EC2
+        # DataTransfer-Out spend × this grantee's share. Approximates
+        # per-tenant egress cost on the shared instance.
         dt = _aws_peripheral.get_data_transfer_out_cost(
             start=start_d.isoformat(), end=end_d.isoformat()
         )
-        try:
-            dt_amount = float(dt.get("amount", "0"))
-        except ValueError:
-            dt_amount = 0.0
+        attribution = compute_bandwidth_cost(bandwidth, dt)
         bandwidth_cost = {
-            "currency": dt.get("currency", ""),
-            "amount": f"{dt_amount * float(bandwidth.get('share') or 0):.10f}",
-            "account_total": dt.get("amount", "0"),
+            "currency": attribution["currency"],
+            "amount": f"{attribution['amount_value']:.10f}",
+            "account_total": attribution["account_total"],
         }
 
         return jsonify({
@@ -3305,14 +3275,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             load_grantee_directory,
         )
 
-        from_raw = _as_text(request.args.get("from"))
-        to_raw = _as_text(request.args.get("to"))
-        start_d = _tolling_parse_date(from_raw) if from_raw else None
-        end_d = _tolling_parse_date(to_raw) if to_raw else None
-        if start_d is None or end_d is None:
-            default_start, default_end = _tolling_default_window()
-            start_d = start_d or default_start
-            end_d = end_d or default_end
+        start_d, end_d, err = _parse_period_args()
+        if err:
+            return err
 
         overview = _aws_peripheral.get_costs_overview(
             start=start_d.isoformat(), end=end_d.isoformat()
@@ -3339,6 +3304,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "bandwidth_share_by_domain": bandwidth,
         }), 200
 
+    # Module-scoped TTL cache for analytics summaries. Parsing the
+    # NDJSON shards is the per-request bottleneck (a year of events on
+    # a couple of domains is 10s of MB); cache the materialized
+    # response so concurrent tab loads + tab-switch reloads share work.
+    _ANALYTICS_SUMMARY_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
+    _ANALYTICS_SUMMARY_TTL = 60.0
+
     @app.get("/__fnd/analytics/summary")
     def fnd_analytics_summary() -> tuple[Any, int]:
         """Per-grantee analytics rollup for the dashboard Analytics tab.
@@ -3349,54 +3321,40 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         requested window + non-bot, and returns total events, unique
         visitors, and top pages. Window is half-open: [from, to).
         """
-        from datetime import date as _date
+        import time as _time
+        from itertools import product
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
-            grantee_for_domain,
-            resolve_grantee_from_headers,
         )
 
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "no_private_dir"}), 500
 
-        requested_msn = _as_text(request.args.get("grantee"))
-        caller = resolve_grantee_from_headers(request.headers)
-        if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
-        if caller is not None:
-            caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
-            if not requested_msn:
-                requested_msn = caller_msn
-        if not requested_msn:
-            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        start_d, end_d, err = _parse_period_args()
+        if err:
+            return err
 
-        from_raw = _as_text(request.args.get("from"))
-        to_raw = _as_text(request.args.get("to"))
-        today = datetime.now(UTC).date()
-        try:
-            start_d = _date.fromisoformat(from_raw) if from_raw else today.replace(day=1)
-        except ValueError:
-            return jsonify({"ok": False, "error": "bad_from"}), 400
-        try:
-            end_d = _date.fromisoformat(to_raw) if to_raw else today
-        except ValueError:
-            return jsonify({"ok": False, "error": "bad_to"}), 400
+        cache_key = (requested_msn, start_d.isoformat(), end_d.isoformat())
+        now = _time.monotonic()
+        cached = _ANALYTICS_SUMMARY_CACHE.get(cache_key)
+        if cached is not None and now - cached[0] < _ANALYTICS_SUMMARY_TTL:
+            return jsonify(cached[1]), 200
 
         domains = domains_for_grantee(requested_msn)
         analytics_root = Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
 
-        # NDJSON files are sharded by month — load every month that
-        # overlaps the window.
-        from itertools import product
+        # NDJSON shards are one file per (domain, YYYY-MM). Enumerate
+        # every month that overlaps the requested window.
         months: list[str] = []
-        y, m = start_d.year, start_d.month
-        while (y, m) <= (end_d.year, end_d.month):
-            months.append(f"{y:04d}-{m:02d}")
-            m += 1
-            if m > 12:
-                m, y = 1, y + 1
+        cursor = start_d.replace(day=1)
+        while cursor <= end_d:
+            months.append(cursor.strftime("%Y-%m"))
+            year, month = cursor.year, cursor.month
+            cursor = cursor.replace(year=year + 1, month=1) if month == 12 \
+                else cursor.replace(month=month + 1)
 
         total_events = 0
         bot_events = 0
@@ -3407,8 +3365,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         for domain, month in product(domains, months):
             path = analytics_root / f"analytics.{domain}.events.{month}.ndjson"
-            if not path.exists():
-                continue
             try:
                 fh = path.open("r", encoding="utf-8", errors="replace")
             except OSError:
@@ -3443,7 +3399,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         def _top(d: dict[str, int], n: int = 10) -> list[dict[str, int | str]]:
             return [{"key": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:n]]
 
-        return jsonify({
+        payload = {
             "ok": True,
             "grantee": {"msn_id": requested_msn, "domains": domains},
             "period": {
@@ -3459,7 +3415,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
             "top_pages": _top(page_counts, 10),
             "top_referrers": _top(referrer_counts, 10),
-        }), 200
+        }
+        _ANALYTICS_SUMMARY_CACHE[cache_key] = (now, payload)
+        return jsonify(payload), 200
 
     @app.get("/__fnd/newsletter/contacts")
     def fnd_newsletter_contacts() -> tuple[Any, int]:
@@ -3469,33 +3427,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
-            grantee_for_domain,
-            resolve_grantee_from_headers,
         )
 
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "no_private_dir"}), 500
 
-        requested_msn = _as_text(request.args.get("grantee"))
-        caller = resolve_grantee_from_headers(request.headers)
-        if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
-        if caller is not None:
-            caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
-            if not requested_msn:
-                requested_msn = caller_msn
-        if not requested_msn:
-            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
 
         domains = domains_for_grantee(requested_msn)
         contacts_root = Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm" / "newsletter"
         contacts: list[dict[str, Any]] = []
         for d in domains:
             path = contacts_root / f"newsletter.{d}.contacts.json"
-            if not path.exists():
-                continue
             try:
                 data = json.loads(path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
@@ -3674,22 +3619,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         /__fnd/tolling/refresh."""
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             read_tolling_snapshot,
-            resolve_grantee_from_headers,
-            grantee_for_domain,
         )
 
-        requested_msn = _as_text(request.args.get("grantee"))
-        caller = resolve_grantee_from_headers(request.headers)
-        if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
-        if caller is not None:
-            caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
-            if not requested_msn:
-                requested_msn = caller_msn
-        if not requested_msn:
-            return jsonify({"ok": False, "error": "missing_grantee"}), 400
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
 
         snapshot = read_tolling_snapshot(requested_msn)
         return jsonify({"ok": True, **snapshot}), 200
@@ -3765,6 +3699,97 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "domains": [str(d) for d in caller.get("domains") or []],
             },
         }), 200
+
+    def _resolve_grantee_scope() -> tuple[str, tuple[Any, int] | None]:
+        """Resolve the requested grantee msn against the caller's scope.
+        Returns (msn_id, None) on success, ("", error_response) otherwise.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            grantee_for_domain,
+            resolve_grantee_from_headers,
+        )
+        requested_msn = _as_text(request.args.get("grantee"))
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is None:
+            caller = grantee_for_domain(_normalize_domain(request.host))
+        if caller is not None:
+            caller_msn = _as_text(caller.get("msn_id"))
+            if requested_msn and requested_msn != caller_msn:
+                return "", (jsonify({"ok": False, "error": "scope_mismatch"}), 403)
+            if not requested_msn:
+                requested_msn = caller_msn
+        if not requested_msn:
+            return "", (jsonify({"ok": False, "error": "missing_grantee"}), 400)
+        return requested_msn, None
+
+    def _parse_period_args() -> tuple[Any, Any, tuple[Any, int] | None]:
+        """Parse ?from= / ?to= ISO dates, default to MTD.
+        Returns (start, end, None) or (None, None, error_response).
+        """
+        from datetime import date as _date
+        from_raw = _as_text(request.args.get("from"))
+        to_raw = _as_text(request.args.get("to"))
+        try:
+            today = datetime.now(UTC).date()
+            start_d = _date.fromisoformat(from_raw) if from_raw else today.replace(day=1)
+            end_d = _date.fromisoformat(to_raw) if to_raw else today
+        except ValueError:
+            return None, None, (jsonify({"ok": False, "error": "bad_period"}), 400)
+        return start_d, end_d, None
+
+    @app.get("/__fnd/grantee/summary")
+    def fnd_grantee_summary() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
+            build_grantee_summary,
+        )
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        start_d, end_d, err = _parse_period_args()
+        if err:
+            return err
+        payload = build_grantee_summary(
+            msn_id=msn,
+            period=(start_d, end_d),
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+            aws_peripheral=_aws_peripheral,
+            private_dir=Path(host_config.private_dir),
+        )
+        return jsonify({"ok": True, **payload}), 200
+
+    @app.get("/__fnd/email/dashboard")
+    def fnd_email_dashboard() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
+            build_email_dashboard,
+        )
+        from MyCiteV2.packages.adapters.sql.fnd_email_deliverability import (
+            MosDatumEmailDeliverabilityAdapter,
+        )
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        if host_config.authority_db_file is None:
+            return jsonify({"ok": False, "error": "no_authority_db"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        start_d, end_d, err = _parse_period_args()
+        if err:
+            return err
+        deliverability_adapter = MosDatumEmailDeliverabilityAdapter(
+            authority_db_file=host_config.authority_db_file,
+            tenant_id=host_config.portal_instance_id or "fnd",
+        )
+        payload = build_email_dashboard(
+            msn_id=msn,
+            period=(start_d, end_d),
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+            private_dir=Path(host_config.private_dir),
+            deliverability_adapter=deliverability_adapter,
+            aws_peripheral=_aws_peripheral,
+        )
+        return jsonify({"ok": True, **payload}), 200
 
     return app
 

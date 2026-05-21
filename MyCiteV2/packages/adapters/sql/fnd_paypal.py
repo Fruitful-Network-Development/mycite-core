@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql._common import _as_int, _as_text, _domain_token
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
@@ -46,21 +47,6 @@ DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 ORDERS_NAME_PREFIX = "fnd_paypal_orders_"
 WEBHOOK_NAME_PREFIX = "fnd_paypal_webhook_"
 ORDERS_MAX_PER_DOMAIN = 100
-
-
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
-def _as_int(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _domain_token(domain: str) -> str:
-    return _as_text(domain).lower().replace(".", "_").replace("-", "_")
 
 
 def _msn_token(msn_id: str) -> str:

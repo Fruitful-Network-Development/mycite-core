@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql._common import _as_int, _as_text, _domain_token
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
@@ -41,21 +42,6 @@ DEFAULT_TENANT_ID = "fnd"
 DEFAULT_MSN_ID = "3-2-3-17-77-1-6-4-1-4"
 CANONICAL_NAME_PREFIX = "fnd_analytics_summary_"
 MAX_RECENT_EVENTS = 20
-
-
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
-def _as_int(value: object) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
-
-
-def _domain_token(domain: str) -> str:
-    return _as_text(domain).lower().replace(".", "_").replace("-", "_")
 
 
 def _canonical_name_for(domain: str) -> str:
