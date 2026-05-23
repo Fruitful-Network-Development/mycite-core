@@ -2706,6 +2706,95 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         ), 200
 
     # ------------------------------------------------------------------
+    # C3 — DMARC policy ramp (advisory by default; guarded apply)
+    # ------------------------------------------------------------------
+    # Reads the current _dmarc TXT, checks MAIL-FROM-live + alignment +
+    # dwell preconditions (active-task guardrail G-1: never ramp past
+    # p=none without MAIL FROM live + >=7d + >=95% alignment, never skip a
+    # rung, never jump straight to p=reject), and:
+    #   * default (no confirm): returns the advisory — current rung,
+    #     proposed next rung, and any blockers. Touches nothing.
+    #   * confirm=true AND allowed: UPSERTs the next rung's TXT record.
+    #
+    # alignment_pct + days_at_current have no automated source yet (the
+    # DMARC aggregate-report parser is future work), so the operator
+    # passes them in the request when they have the data from the SES /
+    # mailbox-provider console. Absent → the ramp is blocked, which is
+    # the safe default.
+    @app.post("/__fnd/email/admin/dmarc-ramp")
+    def fnd_email_admin_dmarc_ramp() -> tuple[Any, int]:
+        payload = _json_payload()
+        domain = _normalize_domain(_as_text(payload.get("domain")))
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        confirm = bool(payload.get("confirm"))
+        alignment_pct = payload.get("alignment_pct")
+        days_at_current = payload.get("days_at_current")
+        try:
+            alignment_pct = float(alignment_pct) if alignment_pct is not None else None
+        except (TypeError, ValueError):
+            alignment_pct = None
+        try:
+            days_at_current = int(days_at_current) if days_at_current is not None else None
+        except (TypeError, ValueError):
+            days_at_current = None
+
+        try:
+            from MyCiteV2.packages.peripherals.aws.dmarc_ramp import compute_dmarc_ramp
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        current = _aws_peripheral.get_dmarc_policy(domain)
+        if not current.get("ok"):
+            return jsonify({"ok": False, "error": current.get("error", "read_failed")}), 404
+
+        # MAIL FROM live? Read the SES identity's MAIL FROM status.
+        mail_from_live = False
+        try:
+            ses = _aws_peripheral._client("ses")  # noqa: SLF001 — shared client cache
+            mf = ses.get_identity_mail_from_domain_attributes(Identities=[domain])
+            status = (
+                mf.get("MailFromDomainAttributes", {})
+                .get(domain, {})
+                .get("MailFromDomainStatus", "")
+            )
+            mail_from_live = status == "Success"
+        except Exception:  # noqa: BLE001
+            mail_from_live = False
+
+        decision = compute_dmarc_ramp(
+            current_tags=current.get("tags") or {},
+            mail_from_live=mail_from_live,
+            alignment_pct=alignment_pct,
+            days_at_current=days_at_current,
+        )
+
+        if not confirm or not decision["allowed"]:
+            # Advisory only — never mutate without confirm AND allowed.
+            return jsonify(
+                {
+                    "ok": True,
+                    "applied": False,
+                    "domain": domain,
+                    "mail_from_live": mail_from_live,
+                    "decision": decision,
+                }
+            ), 200
+
+        apply_result = _aws_peripheral.apply_dmarc_policy(
+            domain, decision["proposed_record"], dry_run=False
+        )
+        return jsonify(
+            {
+                "ok": bool(apply_result.get("ok")),
+                "applied": bool(apply_result.get("ok")),
+                "domain": domain,
+                "decision": decision,
+                "apply_result": apply_result,
+            }
+        ), (200 if apply_result.get("ok") else 502)
+
+    # ------------------------------------------------------------------
     # A3 — RFC 8058 one-click unsubscribe for transactional onboarding mail
     # ------------------------------------------------------------------
     # Every nudge (resend-handoff, send-reminder) emitted by the portal
