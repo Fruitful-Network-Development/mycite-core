@@ -518,6 +518,32 @@
     );
   }
 
+  // B3 — overlay badge config. Each state from the server's AwsEvidence
+  // payload maps to a glyph + a CSS modifier class + a hover-tooltip
+  // prefix. Unknown states fall through to the dim "no data" appearance.
+  var OVERLAY_BADGE_BY_STATE = {
+    confirmed:    { glyph: "✓",  cls: "is-confirmed",    tip: "AWS confirms" },
+    auto_advance: { glyph: "↑",  cls: "is-autoadvance",  tip: "AWS evidence advances this step" },
+    drift:        { glyph: "⚠",  cls: "is-drift",        tip: "Flag says complete but AWS has no evidence" },
+    absent:       { glyph: "·",  cls: "is-absent",       tip: "No AWS evidence yet" },
+    error:        { glyph: "?",  cls: "is-error",        tip: "Probe failed" }
+  };
+
+  function renderOverlayBadge(evidence) {
+    var e = asObject(evidence);
+    var state = asText(e.state);
+    if (!state) return "";
+    var spec = OVERLAY_BADGE_BY_STATE[state] || OVERLAY_BADGE_BY_STATE.absent;
+    var detail = asText(e.detail);
+    var title = spec.tip + (detail ? ": " + detail : "");
+    return (
+      '<span class="v2-overlayBadge v2-overlayBadge--' +
+      escapeHtml(spec.cls) + '" title="' + escapeHtml(title) + '">' +
+      escapeHtml(spec.glyph) +
+      '</span>'
+    );
+  }
+
   function renderOnboardingProgressCell(progress) {
     var p = asObject(progress);
     var total = Number(p.steps_total) || 0;
@@ -527,6 +553,14 @@
     var nextLabel = asText(nextStep.label);
     var title = done + " of " + total + " complete";
     if (nextLabel) title += " · next: " + nextLabel;
+    // B3 — overlay badges per probed step. Server emits aws_evidence as a
+    // dict keyed by step name; we render one badge per present key. Steps
+    // with no probe (1, 3, 5) are absent from the dict and render nothing.
+    var evidence = asObject(p.aws_evidence);
+    var badges = "";
+    ["ses_identity_ready", "handoff_acked", "inbound_verified"].forEach(function (k) {
+      if (evidence[k]) badges += renderOverlayBadge(evidence[k]);
+    });
     // Use semantic <progress> so screen readers + CSS-less rendering still
     // convey the value. value/max are integers; the visible % label sits
     // below so a glance reads the same number assistive tech announces.
@@ -537,7 +571,9 @@
       '" max="100">' + pct + '%</progress>' +
       '<span class="v2-mailboxes__progressLabel">' + pct + '%' +
       (total ? ' (' + done + '/' + total + ')' : '') +
-      '</span></td>'
+      '</span>' +
+      (badges ? '<span class="v2-mailboxes__overlayBadges">' + badges + '</span>' : "") +
+      '</td>'
     );
   }
 
@@ -745,29 +781,51 @@
     );
   }
 
+  // B3 — what AWS source each step is verifiable against. Keyed by the
+  // step's `key` field (server-side _ONBOARDING_STEPS). Steps without
+  // a probe show "—". Surfaced as the legend table's "Live evidence"
+  // column so the operator knows which steps the overlay badges reflect.
+  var STEP_KEY_TO_LIVE_EVIDENCE_SOURCE = {
+    profile_created:    "—",
+    ses_identity_ready: "SES VerificationStatus",
+    handoff_sent:       "—",
+    handoff_acked:      "CloudWatch AWS/SES Send (per identity)",
+    inbound_configured: "—",
+    inbound_verified:   "S3 inbound/<domain>/ objects"
+  };
+
   function renderOnboardingLegendTable(legend) {
     // 2026-05-23: static reference table above the Mailboxes table.
     // Explains what each step in the per-row "X of 6" progress bar
     // actually means so the operator doesn't have to read JSON to
     // interpret a partial score. Rows are static (server emits the
     // same six rows for every grantee) — no actions, no edit cell.
+    //
+    // B3 (2026-05-23): adds a "Live evidence" column documenting which
+    // AWS data source the overlay badge for each step is computed from
+    // (— for steps without a live probe).
     var rowList = asList(legend);
     if (!rowList.length) return "";
     var columns = [
       { key: "step", label: "#" },
       { key: "stage", label: "Stage" },
       { key: "meaning", label: "What it means" },
+      { key: "_live", label: "Live evidence" },
     ];
     return (
       '<section class="v2-extensionCard__table v2-extensionCard__onboardingLegend">' +
       "<h4>Onboarding stages</h4>" +
-      '<p class="v2-extensionCard__summary">Each mailbox’s progress bar advances through these six stages in order.</p>' +
+      '<p class="v2-extensionCard__summary">Each mailbox’s progress bar advances through these six stages in order. The right column shows which AWS data source the live-evidence badge on a row reflects.</p>' +
       '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
       columns.map(function (c) { return "<th>" + escapeHtml(asText(c.label)) + "</th>"; }).join("") +
       "</tr></thead><tbody>" +
       rowList.map(function (row) {
         var r = asObject(row);
+        var live = STEP_KEY_TO_LIVE_EVIDENCE_SOURCE[asText(r.key)] || "—";
         return "<tr>" + columns.map(function (c) {
+          if (c.key === "_live") {
+            return "<td>" + escapeHtml(live) + "</td>";
+          }
           return "<td>" + escapeHtml(asText(r[c.key])) + "</td>";
         }).join("") + "</tr>";
       }).join("") +

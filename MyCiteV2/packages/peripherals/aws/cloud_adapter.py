@@ -201,6 +201,183 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         return self.confirmation_evidence_satisfied(profile)
 
     # ------------------------------------------------------------------
+    # B1 — Activity-based onboarding-overlay probes
+    # ------------------------------------------------------------------
+    # Each probe returns the AwsEvidence triple (state, detail, observed_at)
+    # the email-extension renderer overlays onto the per-step progress bar.
+    #
+    # State semantics:
+    #   "confirmed"    — AWS evidence agrees the step is complete
+    #   "drift"        — declared complete (JSON flag) but AWS has no evidence
+    #   "auto_advance" — AWS evidence positive, JSON flag still unset
+    #   "absent"       — neither side has evidence
+    #   "error"        — probe failed; detail carries the exception message
+    #
+    # Probes do NOT cache themselves; the caller wraps with ProbeCache.
+    # They DO use the existing _client cache so repeated calls in the
+    # same request reuse the boto3 client.
+
+    def probe_ses_identity_aws_evidence(
+        self,
+        send_as_email: str,
+        *,
+        declared_verified: bool = False,
+    ) -> dict[str, Any]:
+        """Step 2 overlay — query SES for the identity's verification status.
+
+        Compares the live SES verdict to the profile JSON's
+        provider.aws_ses_identity_status flag and returns the right
+        overlay state. Identity addresses (email-level) are checked via
+        get_identity_verification_attributes — the same call the existing
+        describe_profile_readiness uses for domain identities.
+        """
+        from datetime import datetime, timezone
+        observed_at = datetime.now(timezone.utc).isoformat()
+        token = as_text(send_as_email).strip().lower()
+        if not token:
+            return {"state": "error", "detail": "send_as_email empty", "observed_at": observed_at}
+        try:
+            ses = self._client("ses")
+            attrs = ses.get_identity_verification_attributes(Identities=[token])
+            vstatus = (
+                attrs.get("VerificationAttributes", {})
+                .get(token, {})
+                .get("VerificationStatus", "")
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "state": "error",
+                "detail": f"ses_get_identity_verification_attributes: {exc}",
+                "observed_at": observed_at,
+            }
+        aws_verified = (vstatus == "Success")
+        if aws_verified and declared_verified:
+            state = "confirmed"
+            detail = "SES VerificationStatus=Success; flag agrees"
+        elif aws_verified and not declared_verified:
+            state = "auto_advance"
+            detail = "SES VerificationStatus=Success; JSON flag not yet set"
+        elif not aws_verified and declared_verified:
+            state = "drift"
+            detail = f"flag says verified; SES VerificationStatus={vstatus or 'absent'}"
+        else:
+            state = "absent"
+            detail = f"SES VerificationStatus={vstatus or 'absent'}"
+        return {"state": state, "detail": detail, "observed_at": observed_at}
+
+    def probe_operator_sends_aws_evidence(
+        self,
+        send_as_email: str,
+        *,
+        declared_operational: bool = False,
+        lookback_days: int = 7,
+    ) -> dict[str, Any]:
+        """Step 4 overlay — CloudWatch AWS/SES Send metric for this identity.
+
+        A non-zero send count over the lookback window means the operator
+        actually used the mailbox (sent at least one message via SES SMTP
+        or send_email under this identity). Any portal-generated handoff /
+        reminder send is excluded because the portal uses a different From
+        identity (FND default), not the per-grantee identity.
+
+        Requires cloudwatch:GetMetricStatistics on the EC2 role. Without
+        that grant (it ships in AWSCMSCloudWatchMetricsRead.json from
+        Wave A1) the probe returns state=error.
+        """
+        from datetime import datetime, timedelta, timezone
+        observed_at = datetime.now(timezone.utc).isoformat()
+        token = as_text(send_as_email).strip().lower()
+        if not token:
+            return {"state": "error", "detail": "send_as_email empty", "observed_at": observed_at}
+        try:
+            cw = self._client("cloudwatch")
+            now = datetime.now(timezone.utc)
+            start_time = now - timedelta(days=max(1, lookback_days))
+            response = cw.get_metric_statistics(
+                Namespace="AWS/SES",
+                MetricName="Send",
+                Dimensions=[{"Name": "ses:source-address", "Value": token}],
+                StartTime=start_time,
+                EndTime=now,
+                Period=86400,
+                Statistics=["Sum"],
+            )
+            total = sum(
+                float(dp.get("Sum") or 0) for dp in response.get("Datapoints", [])
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "state": "error",
+                "detail": f"cloudwatch_get_metric_statistics: {exc}",
+                "observed_at": observed_at,
+            }
+        sent_count = int(total)
+        any_sends = sent_count > 0
+        if any_sends and declared_operational:
+            state = "confirmed"
+            detail = f"{sent_count} sends in last {lookback_days}d; flag agrees"
+        elif any_sends and not declared_operational:
+            state = "auto_advance"
+            detail = f"{sent_count} sends in last {lookback_days}d; lifecycle not yet operational"
+        elif (not any_sends) and declared_operational:
+            state = "drift"
+            detail = f"lifecycle=operational; 0 sends in last {lookback_days}d"
+        else:
+            state = "absent"
+            detail = f"0 sends in last {lookback_days}d"
+        return {"state": state, "detail": detail, "observed_at": observed_at}
+
+    def probe_inbound_verified_aws_evidence(
+        self,
+        domain: str,
+        *,
+        declared_verified: bool = False,
+        bucket: str = "ses-inbound-fnd-mail",
+        prefix_template: str = "inbound/{domain}/",
+    ) -> dict[str, Any]:
+        """Step 6 overlay — check the SES inbound S3 bucket for any object
+        captured for this domain.
+
+        At least one S3 object under inbound/<domain>/ means SES received +
+        wrote an inbound message — proof the inbound rule fired end-to-end.
+        Doesn't check the forwarder Lambda separately (a successful forward
+        implies the S3 write succeeded; if the S3 write failed, the
+        forwarder would never have been invoked).
+        """
+        from datetime import datetime, timezone
+        observed_at = datetime.now(timezone.utc).isoformat()
+        token = normalized_domain(domain)
+        if not token:
+            return {"state": "error", "detail": "invalid_domain", "observed_at": observed_at}
+        prefix = prefix_template.format(domain=token).lstrip("/")
+        try:
+            s3 = self._client("s3")
+            response = s3.list_objects_v2(
+                Bucket=bucket, Prefix=prefix, MaxKeys=1
+            )
+            key_count = int(response.get("KeyCount") or 0)
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "state": "error",
+                "detail": f"s3_list_objects_v2: {exc}",
+                "observed_at": observed_at,
+            }
+        any_inbound = key_count > 0
+        if any_inbound and declared_verified:
+            state = "confirmed"
+            detail = f"inbound S3 objects present at s3://{bucket}/{prefix}"
+        elif any_inbound and not declared_verified:
+            state = "auto_advance"
+            detail = f"inbound S3 objects present; JSON flag not yet set"
+        elif (not any_inbound) and declared_verified:
+            state = "drift"
+            detail = f"flag says verified; no S3 objects under {prefix}"
+        else:
+            state = "absent"
+            detail = f"no inbound S3 objects under {prefix}"
+        return {"state": state, "detail": detail, "observed_at": observed_at}
+
+    # ------------------------------------------------------------------
     # Method 3: describe_domain_status
 
     def describe_domain_status(self, domain: str) -> DomainStatus:
