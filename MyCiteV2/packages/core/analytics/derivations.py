@@ -14,7 +14,7 @@ path-sequence enumeration, conversion funnels, etc.).
 from __future__ import annotations
 
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
 from pathlib import Path
 from typing import Any
@@ -556,11 +556,413 @@ def detect_vpn_geo_jumps(
     return flagged
 
 
+# ---------------------------------------------------------------------
+# Schema-v3 / JSON Analytics Log Vision derivations.
+# Six pure functions that map the existing event stream onto the
+# remaining vision retrieval operations.
+# ---------------------------------------------------------------------
+
+DEFAULT_CONVERSION_EVENT_TYPES: tuple[str, ...] = (
+    "form_submit",
+    "outbound_click",
+    "download",
+)
+
+DEFAULT_INTENT_PATHS: tuple[str, ...] = (
+    "/pricing",
+    "/contact",
+    "/donate",
+    "/subscribe",
+    "/book",
+)
+
+DEFAULT_INTEREST_CATEGORIES: dict[str, tuple[str, ...]] = {
+    "services": ("/services", "/work", "/what-we-do"),
+    "pricing": ("/pricing", "/rates", "/quote"),
+    "contact": ("/contact", "/connect", "/get-in-touch"),
+    "about": ("/about", "/who-we-are", "/team"),
+    "blog": ("/blog", "/news", "/articles"),
+    "support": ("/support", "/help", "/faq"),
+    "donate": ("/donate", "/give", "/support-us"),
+    "home": ("/", "/home", "/index"),
+}
+
+
+def visitor_summary(
+    events: Iterable[dict[str, Any]],
+    visitor_cookie_id_hash: str,
+    *,
+    conversion_event_types: tuple[str, ...] = DEFAULT_CONVERSION_EVENT_TYPES,
+) -> dict[str, Any]:
+    """Roll one visitor's events into the vision's "Get visitor
+    summary" shape. Returns a dict whose keys mirror the field names
+    in the vision (first_seen_at, last_seen_at, ..., conversion_count).
+    """
+    target = visitor_cookie_id_hash or ""
+    visitor_events = sorted(
+        (e for e in events if (e.get("visitor_cookie_id_hash") or "") == target),
+        key=lambda e: e.get("occurred_at_utc") or "",
+    )
+    if not visitor_events:
+        return {
+            "visitor_cookie_id_hash": target,
+            "first_seen_at": "",
+            "last_seen_at": "",
+            "visit_count": 0,
+            "session_count": 0,
+            "total_events": 0,
+            "total_active_time_ms": 0,
+            "first_landing_page": "",
+            "last_seen_page": "",
+            "primary_origin_type": "",
+            "primary_device": "",
+            "bot_status": "unknown",
+            "vpn_or_geo_jump_status": "unknown",
+            "conversion_count": 0,
+        }
+
+    sessions_seen: set[str] = set()
+    origin_counter: Counter[str] = Counter()
+    device_counter: Counter[str] = Counter()
+    prefix_set: set[str] = set()
+    total_active = 0
+    conversion_count = 0
+    bot_any = False
+    bot_all = True
+    for ev in visitor_events:
+        sid = ev.get("session_id") or ""
+        if sid:
+            sessions_seen.add(sid)
+        origin = (ev.get("origin_type") or classify_origin(
+            ev.get("referrer_domain") or "", ev.get("utm_source") or ""
+        ))
+        if origin:
+            origin_counter[origin] += 1
+        device = ev.get("device_type") or ""
+        if device:
+            device_counter[device] += 1
+        prefix = ev.get("ip_prefix") or ""
+        if prefix:
+            prefix_set.add(prefix)
+        total_active += int(ev.get("active_time_ms") or 0)
+        if ev.get("event_type") in conversion_event_types:
+            conversion_count += 1
+        if ev.get("is_bot"):
+            bot_any = True
+        else:
+            bot_all = False
+
+    first = visitor_events[0]
+    last = visitor_events[-1]
+    primary_origin = origin_counter.most_common(1)[0][0] if origin_counter else ""
+    primary_device = device_counter.most_common(1)[0][0] if device_counter else ""
+    if bot_all:
+        bot_status = "bot"
+    elif bot_any:
+        bot_status = "mixed"
+    else:
+        bot_status = "human"
+    if len(prefix_set) > 1:
+        vpn_status = "multi_prefix"
+    elif len(prefix_set) == 1:
+        vpn_status = "single_prefix"
+    else:
+        vpn_status = "unknown"
+
+    return {
+        "visitor_cookie_id_hash": target,
+        "first_seen_at": first.get("occurred_at_utc") or "",
+        "last_seen_at": last.get("occurred_at_utc") or "",
+        "visit_count": len(sessions_seen),
+        "session_count": len(sessions_seen),
+        "total_events": len(visitor_events),
+        "total_active_time_ms": total_active,
+        "first_landing_page": first.get("page_path") or "",
+        "last_seen_page": last.get("page_path") or "",
+        "primary_origin_type": primary_origin,
+        "primary_device": primary_device,
+        "bot_status": bot_status,
+        "vpn_or_geo_jump_status": vpn_status,
+        "conversion_count": conversion_count,
+    }
+
+
+def visitor_interest_profile(
+    events: Iterable[dict[str, Any]],
+    visitor_cookie_id_hash: str,
+    *,
+    category_map: dict[str, tuple[str, ...]] | None = None,
+    top_k_pages: int = 5,
+) -> dict[str, Any]:
+    """Roll a visitor's page-view events into category buckets. The
+    map is path-substring → category (case-insensitive). Returns the
+    bucket histogram, the visitor's top pages, and a coarse intent
+    tier derived from the dominant category.
+    """
+    cmap = category_map or DEFAULT_INTEREST_CATEGORIES
+    target = visitor_cookie_id_hash or ""
+    page_counter: Counter[str] = Counter()
+    category_counter: Counter[str] = Counter()
+    total_views = 0
+    for ev in events:
+        if (ev.get("visitor_cookie_id_hash") or "") != target:
+            continue
+        if ev.get("event_type") != "page_view":
+            continue
+        path = (ev.get("page_path") or "").lower()
+        if not path:
+            continue
+        page_counter[path] += 1
+        total_views += 1
+        for category, needles in cmap.items():
+            if any(path.startswith(n.lower()) or n.lower() in path for n in needles):
+                category_counter[category] += 1
+                break  # one path → one category, first hit wins
+
+    if total_views == 0:
+        return {
+            "visitor_cookie_id_hash": target,
+            "categories": {},
+            "top_pages": [],
+            "total_page_views": 0,
+            "intent_tier": "none",
+        }
+
+    categories = {
+        name: {
+            "hits": count,
+            "pct_of_views": round(100 * count / total_views, 2),
+        }
+        for name, count in category_counter.most_common()
+    }
+    intent_tier = "browsing"
+    if {"pricing", "contact", "donate"} & set(category_counter):
+        intent_tier = "high"
+    elif "services" in category_counter:
+        intent_tier = "research"
+
+    return {
+        "visitor_cookie_id_hash": target,
+        "categories": categories,
+        "top_pages": [
+            {"page_path": p, "view_count": c}
+            for p, c in page_counter.most_common(top_k_pages)
+        ],
+        "total_page_views": total_views,
+        "intent_tier": intent_tier,
+    }
+
+
+def abandoned_intent_sessions(
+    sessions: Iterable[dict[str, Any]],
+    *,
+    intent_paths: tuple[str, ...] = DEFAULT_INTENT_PATHS,
+    conversion_event_types: tuple[str, ...] = DEFAULT_CONVERSION_EVENT_TYPES,
+    min_active_ms: int = 5_000,
+) -> list[dict[str, Any]]:
+    """Sessions where the visitor reached an intent page but did not
+    convert. Returns a list ordered most-recent-first; entries contain
+    enough context for the operator to decide whether to follow up.
+    """
+    needles = tuple(p.lower() for p in intent_paths)
+    out: list[dict[str, Any]] = []
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        if session.get("active_time_ms", 0) < min_active_ms:
+            continue
+        entry = (session.get("entry_page") or "").lower()
+        exit_p = (session.get("exit_page") or "").lower()
+        visited_intent = [n for n in needles if n in entry or n in exit_p]
+        if not visited_intent:
+            continue
+        event_types = set(session.get("event_types") or [])
+        if event_types & set(conversion_event_types):
+            continue  # converted — not abandoned
+        out.append(
+            {
+                "visitor_cookie_id_hash": session.get("visitor_cookie_id_hash") or "",
+                "session_id": session.get("session_id") or "",
+                "started_at_utc": session.get("started_at_utc") or "",
+                "duration_ms": session.get("duration_ms") or 0,
+                "active_time_ms": session.get("active_time_ms") or 0,
+                "entry_page": session.get("entry_page") or "",
+                "exit_page": session.get("exit_page") or "",
+                "visited_intent_pages": sorted(set(visited_intent)),
+                "referrer_domain": session.get("referrer_domain") or "",
+                "origin_type": session.get("origin_type") or "",
+            }
+        )
+    out.sort(key=lambda s: s.get("started_at_utc") or "", reverse=True)
+    return out
+
+
+def dead_end_pages(
+    sessions: Iterable[dict[str, Any]],
+    *,
+    min_entries: int = 5,
+    single_page_rate_threshold: float = 0.6,
+    top_k: int = 10,
+) -> list[dict[str, Any]]:
+    """Entry pages whose sessions disproportionately bounce — entry
+    and exit are the same page. The output field
+    ``single_page_session_rate`` names exactly what the function
+    measures (it is *not* a generalized "exit rate" — those would
+    require event-level data, not just session start/end). Uses
+    session-level entry/exit signals — caller should pass sessionized
+    data.
+    """
+    by_entry: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"entries": 0, "same_page_exits": 0, "active_time_total_ms": 0, "active_samples": 0}
+    )
+    for session in sessions:
+        if session.get("is_bot"):
+            continue
+        entry = session.get("entry_page") or ""
+        exit_p = session.get("exit_page") or ""
+        if not entry:
+            continue
+        bucket = by_entry[entry]
+        bucket["entries"] += 1
+        active = int(session.get("active_time_ms") or 0)
+        if active:
+            bucket["active_time_total_ms"] += active
+            bucket["active_samples"] += 1
+        if exit_p == entry:
+            bucket["same_page_exits"] += 1
+    rows: list[dict[str, Any]] = []
+    for page, bucket in by_entry.items():
+        if bucket["entries"] < min_entries:
+            continue
+        rate = bucket["same_page_exits"] / bucket["entries"]
+        if rate < single_page_rate_threshold:
+            continue
+        rows.append(
+            {
+                "page_path": page,
+                "entry_count": bucket["entries"],
+                "single_page_session_rate": round(rate, 3),
+                "average_active_time_ms": (
+                    bucket["active_time_total_ms"] // bucket["active_samples"]
+                    if bucket["active_samples"]
+                    else 0
+                ),
+            }
+        )
+    rows.sort(
+        key=lambda r: (r["single_page_session_rate"], r["entry_count"]),
+        reverse=True,
+    )
+    return rows[:top_k]
+
+
+def conversion_assisting_pages(
+    events: Iterable[dict[str, Any]],
+    *,
+    conversion_event_types: tuple[str, ...] = DEFAULT_CONVERSION_EVENT_TYPES,
+    lookback: int = 5,
+    top_k: int = 10,
+) -> list[dict[str, Any]]:
+    """Pages that frequently appear in the ``lookback`` events before
+    a conversion. Returns a ranked list of (page_path, assist_count).
+    """
+    by_session: dict[tuple[str, str], list[dict[str, Any]]] = defaultdict(list)
+    for ev in events:
+        if ev.get("is_bot"):
+            continue
+        key = (
+            ev.get("visitor_cookie_id_hash") or "",
+            ev.get("session_id") or "",
+        )
+        by_session[key].append(ev)
+    assist_counter: Counter[str] = Counter()
+    for evs in by_session.values():
+        evs.sort(key=lambda e: e.get("occurred_at_utc") or "")
+        for i, ev in enumerate(evs):
+            if ev.get("event_type") not in conversion_event_types:
+                continue
+            window = evs[max(0, i - lookback) : i]
+            seen: set[str] = set()
+            for prior in window:
+                if prior.get("event_type") != "page_view":
+                    continue
+                path = prior.get("page_path") or ""
+                if path and path not in seen:
+                    assist_counter[path] += 1
+                    seen.add(path)
+    rows = [
+        {"page_path": p, "assist_count": c}
+        for p, c in assist_counter.most_common(top_k)
+    ]
+    return rows
+
+
+def traffic_origin_classification(
+    events: Iterable[dict[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Aggregate sessions by origin_type bucket (uses
+    ``classify_origin`` for events that didn't carry an explicit
+    origin_type). Returns a dict keyed by origin token with sub-counts.
+
+    NDJSON files are append-order, which is usually but not always
+    chronological — server retries / out-of-order delivery can flip
+    two adjacent rows. Sort by occurred_at_utc up-front so the
+    "first event per session" we lock the origin to is the actual
+    chronological first, not the first arrived.
+    """
+    events = sorted(events, key=lambda e: e.get("occurred_at_utc") or "")
+    by_session: dict[tuple[str, str], dict[str, Any]] = {}
+    for ev in events:
+        if ev.get("is_bot"):
+            continue
+        key = (
+            ev.get("visitor_cookie_id_hash") or "",
+            ev.get("session_id") or "",
+        )
+        if key in by_session:
+            continue
+        origin = ev.get("origin_type") or classify_origin(
+            ev.get("referrer_domain") or "", ev.get("utm_source") or ""
+        )
+        by_session[key] = {
+            "origin_type": origin or "unknown",
+            "visitor": key[0],
+            "active_time_ms": int(ev.get("active_time_ms") or 0),
+        }
+    aggregates: dict[str, dict[str, Any]] = defaultdict(
+        lambda: {"sessions": 0, "visitors": set(), "active_time_total_ms": 0}
+    )
+    for info in by_session.values():
+        bucket = aggregates[info["origin_type"]]
+        bucket["sessions"] += 1
+        if info["visitor"]:
+            bucket["visitors"].add(info["visitor"])
+        bucket["active_time_total_ms"] += info["active_time_ms"]
+    return {
+        origin: {
+            "sessions": bucket["sessions"],
+            "unique_visitors": len(bucket["visitors"]),
+            "average_active_time_ms": (
+                bucket["active_time_total_ms"] // bucket["sessions"]
+                if bucket["sessions"]
+                else 0
+            ),
+        }
+        for origin, bucket in aggregates.items()
+    }
+
+
 __all__ = [
+    "DEFAULT_CONVERSION_EVENT_TYPES",
     "DEFAULT_INACTIVITY_GAP_MS",
+    "DEFAULT_INTENT_PATHS",
+    "DEFAULT_INTEREST_CATEGORIES",
+    "abandoned_intent_sessions",
     "classify_origin",
+    "conversion_assisting_pages",
     "count_repeat_visitors",
     "count_visitors",
+    "dead_end_pages",
     "detect_vpn_geo_jumps",
     "filter_bots",
     "find_common_paths",
@@ -572,4 +974,7 @@ __all__ = [
     "sessionize",
     "top_entry_pages",
     "top_exit_pages",
+    "traffic_origin_classification",
+    "visitor_interest_profile",
+    "visitor_summary",
 ]

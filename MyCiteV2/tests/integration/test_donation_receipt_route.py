@@ -324,15 +324,24 @@ class TestCaptureOrderReceiptUrl(unittest.TestCase):
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class TestDonateHtmlReceiptInjection(unittest.TestCase):
-    """Static-HTML assertion that donate.html carries the receipt-link
-    injection JS branch. This is the visitor-side companion to the
-    server-side ``receipt_document_url`` response field — without this
-    JS the user never sees a download link even if the server emits one.
+    """donate.html must (a) carry the receipt-details placeholder that
+    the JS overwrites with capture details, and (b) load the canonical
+    donate.js extension that owns the receipt-link injection branch.
+
+    Phase 17e moved the receipt-link rendering logic out of inline JS
+    on the page and into ``mycite-extensions/donate.js`` so every site
+    using ``data-mycite-donate`` gets the same behavior. The string
+    ``data.receipt_document_url`` accordingly now lives in donate.js,
+    not in donate.html — this test asserts the donate.js load + the
+    DOM contract, and a companion check inspects donate.js itself.
     """
 
     DONATE_HTML = Path(
         "/srv/webapps/clients/cuyahogavalleycountrysideconservancy.org/"
         "frontend/donate.html"
+    )
+    DONATE_JS = Path(
+        "/srv/webapps/clients/_shared/site-core/js/extensions/donate.js"
     )
 
     @unittest.skipUnless(
@@ -342,14 +351,25 @@ class TestDonateHtmlReceiptInjection(unittest.TestCase):
         ).exists(),
         "CVCC donate.html not present in this environment",
     )
-    def test_donate_html_has_receipt_download_branch(self) -> None:
+    def test_donate_html_loads_donate_js_and_has_receipt_anchor(self) -> None:
         html = self.DONATE_HTML.read_text(encoding="utf-8")
-        # Server-side response field name lives in the JS.
-        self.assertIn("data.receipt_document_url", html)
-        # The injected anchor id used to dedupe on retries.
-        self.assertIn("receipt-download-link", html)
+        # The canonical donate.js extension is loaded.
+        self.assertIn("mycite-extensions/donate.js", html)
         # The placeholder element the JS replaces with capture details.
         self.assertIn('id="receipt-details"', html)
+
+    @unittest.skipUnless(
+        Path(
+            "/srv/webapps/clients/_shared/site-core/js/extensions/donate.js"
+        ).exists(),
+        "donate.js extension not present in this environment",
+    )
+    def test_donate_js_implements_receipt_download_branch(self) -> None:
+        js = self.DONATE_JS.read_text(encoding="utf-8")
+        # Server-side response field name + the injected anchor id are
+        # owned by donate.js, not the per-site donate.html.
+        self.assertIn("data.receipt_document_url", js)
+        self.assertIn("receipt-download-link", js)
 
 
 if __name__ == "__main__":

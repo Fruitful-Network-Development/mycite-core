@@ -12,9 +12,10 @@ the canonical raw NDJSON log (Phase 18a) via the pure functions in
   * Common page-path sequences
 
 The read is bounded to the current + previous month's NDJSON files
-to keep per-request latency tight. The legacy MOS summary datum
-is retained as a fast-path cache for the 4-bucket count + recent
-events (so old refresh-button flows keep working).
+to keep per-request latency tight. No MOS-side persistence exists
+for analytics any more (the MosDatumAnalyticsSummaryAdapter was
+retired 2026-05; see docs/contracts/analytics_event_schema.md).
+Refresh just bumps the in-memory summary cache generation token.
 """
 
 from __future__ import annotations
@@ -154,6 +155,77 @@ def _build_analytics_extension_payload(
     high_intent_count = len(derivations.high_intent_sessions(sessions))
     vpn_flags = derivations.detect_vpn_geo_jumps(humans)
 
+    # Schema-v3 / JSON Analytics Log Vision additions.
+    abandoned = derivations.abandoned_intent_sessions(sessions)
+    dead_ends = derivations.dead_end_pages(sessions)
+    assists = derivations.conversion_assisting_pages(humans)
+    origin_distribution = derivations.traffic_origin_classification(humans)
+
+    # Top-10 visitor summaries by total active time. Built one visitor
+    # at a time over the de-duplicated set; cheaper than O(visitors^2)
+    # because each derivation pass is linear over the event list.
+    visitor_tokens: list[str] = []
+    seen_tokens: set[str] = set()
+    for ev in humans:
+        token = ev.get("visitor_cookie_id_hash") or ""
+        if token and token not in seen_tokens:
+            seen_tokens.add(token)
+            visitor_tokens.append(token)
+    visitor_summaries = [
+        derivations.visitor_summary(humans, vt) for vt in visitor_tokens
+    ]
+    visitor_summaries.sort(
+        key=lambda v: v.get("total_active_time_ms") or 0, reverse=True
+    )
+    visitor_summary_top10 = visitor_summaries[:10]
+
+    # Interest profile rolled up across all visitors: union the
+    # per-visitor category counters into one site-wide histogram.
+    interest_counts: Counter = Counter()
+    interest_total_views = 0
+    for vt in visitor_tokens:
+        prof = derivations.visitor_interest_profile(humans, vt)
+        for cat, info in (prof.get("categories") or {}).items():
+            interest_counts[cat] += info.get("hits", 0)
+        interest_total_views += prof.get("total_page_views", 0)
+    interest_profile_categories = (
+        [
+            {
+                "category": cat,
+                "hits": hits,
+                "pct_of_views": round(100 * hits / interest_total_views, 2)
+                if interest_total_views
+                else 0.0,
+            }
+            for cat, hits in interest_counts.most_common()
+        ]
+        if interest_total_views
+        else []
+    )
+
+    # Quality-flags triage histogram over the whole sample.
+    quality_flag_counts: Counter = Counter()
+    for ev in events:
+        for token in ev.get("quality_flags") or []:
+            quality_flag_counts[token] += 1
+    debugging_triage_buckets = [
+        {"flag": flag, "count": count}
+        for flag, count in quality_flag_counts.most_common()
+    ]
+
+    # Bot separation: counts split by classifier outcome.
+    bot_class_counts: Counter = Counter()
+    for ev in bots:
+        bot_class_counts[ev.get("bot_class") or "unclassified"] += 1
+    bot_separation = {
+        "human_events": len(humans),
+        "bot_events": len(bots),
+        "bot_class_breakdown": [
+            {"bot_class": k, "count": v}
+            for k, v in bot_class_counts.most_common()
+        ],
+    }
+
     # Suppress the unused authority_db / instance_id args for now —
     # the on-demand derivation path doesn't need MOS data. The
     # caller's existing context still passes them through.
@@ -179,6 +251,18 @@ def _build_analytics_extension_payload(
         "top_entry_pages": top_entry_pages,
         "top_exit_pages": top_exit_pages_,
         "common_paths": common_paths_rows,
+        # Schema-v3 / JSON Analytics Log Vision additions.
+        "visitor_summary_top10": visitor_summary_top10,
+        "interest_profile_categories": interest_profile_categories,
+        "abandoned_intent_sessions": {
+            "count": len(abandoned),
+            "sample": abandoned[:10],
+        },
+        "dead_end_pages": dead_ends,
+        "conversion_assisting_pages": assists,
+        "origin_type_distribution": origin_distribution,
+        "bot_separation": bot_separation,
+        "debugging_triage_buckets": debugging_triage_buckets,
         "source": "raw_events",
         "data_source": data_source,
         "refresh_action": _refresh_action(domain),

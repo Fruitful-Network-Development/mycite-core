@@ -151,8 +151,11 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
         self.assertFalse(row["subscribed"])
         self.assertEqual(row["source"], "connect_form")
-        self.assertEqual(row["subject"], "Hello")
         self.assertEqual(row["forward_status"], "sent")
+        # Contacts are identity-only — the message body lives on the SES
+        # email, not on the contact record.
+        self.assertNotIn("subject", row)
+        self.assertNotIn("message", row)
 
     def test_ses_failure_persists_with_failed_status(self) -> None:
         from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (

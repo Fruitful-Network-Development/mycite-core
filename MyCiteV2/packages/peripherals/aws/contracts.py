@@ -78,6 +78,23 @@ class TagOperationResult(TypedDict):
     failed_arns: list[dict[str, str]]  # [{arn, error_code, error_message}]
 
 
+class CostLineItem(TypedDict):
+    """One row in a Cost Explorer GroupBy response.
+
+    `keys` is the tuple of group-dimension values (e.g. ("Amazon Elastic
+    Compute Cloud - Compute", "BoxUsage:t3.medium")) — order matches the
+    `group_by` argument. `amount` is UnblendedCost as decimal-string.
+    `usage_quantity` + `usage_unit` are populated when the underlying
+    line has a UsageQuantity metric (compute hours, GB-month, requests);
+    otherwise both are empty strings.
+    """
+    keys: tuple[str, ...]
+    amount: str
+    currency: str
+    usage_quantity: str
+    usage_unit: str
+
+
 class SesSendError(RuntimeError):
     """Raised when SES rejects a send call. Carries enough fields to log
     the failure without re-querying AWS."""
@@ -209,10 +226,68 @@ class AwsPeripheralPort(Protocol):
         un-tagged remainder."""
         ...
 
+    def get_costs_breakdown(
+        self,
+        *,
+        start: str,
+        end: str,
+        group_by: tuple[str, ...] = ("SERVICE", "USAGE_TYPE"),
+        tag_filter: dict[str, list[str]] | None = None,
+        service_filter: list[str] | None = None,
+        granularity: str = "MONTHLY",
+    ) -> list[CostLineItem]:
+        """Fine-grained Cost Explorer breakdown.
+
+        `group_by` accepts up to 2 entries (CE limit). Each entry is
+        either a DIMENSION name (SERVICE, USAGE_TYPE, REGION, …) or the
+        literal string ``"TAG:<key>"`` to group by a tag value.
+
+        `tag_filter` is a `{Key, Values}` dict that becomes a CE
+        ``Filter.Tags`` clause when set. `service_filter` constrains
+        to specific SERVICE dimension values.
+
+        Returns one `CostLineItem` per non-empty group, summed across
+        the time window. Also returns the line's UsageQuantity when AWS
+        emits one (compute hours, GB-month, requests). Used by the
+        tolling ledger to itemize every billable line.
+        """
+        ...
+
+    def get_untagged_residue(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> CostBreakdown:
+        """The slice of account cost that no `msn_id` tag attributed.
+
+        Wraps `get_costs_overview` and returns the breakdown registered
+        under the empty-string key. Surfaced by the tolling ledger as
+        its own `residue` line item rather than being silently absorbed
+        into FND."""
+        ...
+
+    def get_route53_registrar_renewal_lines(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> list[CostLineItem]:
+        """One row per domain-registration renewal posted in the window.
+
+        Filters Cost Explorer by SERVICE=`Amazon Registrar`, grouped by
+        SERVICE+USAGE_TYPE so each domain's renewal surfaces separately.
+        Amortization (1/12 per month for annual renewals) is computed
+        downstream in the tolling extension, not here."""
+        ...
+
 
 __all__ = [
     "AwsPeripheralPort",
     "CostBreakdown",
+    "CostLineItem",
     "DomainStatus",
     "ForwardingRoutesSyncResult",
     "ProfileReadiness",

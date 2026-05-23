@@ -71,7 +71,25 @@ AWS_ACCOUNT = _os.environ.get("MYCITE_AWS_ACCOUNT", "065948377733")
 SES_REGION = _os.environ.get("MYCITE_SES_REGION", "us-east-1")
 EC2_INSTANCE = _os.environ.get("MYCITE_EC2_INSTANCE", "i-046f5861584b180c8")
 
-COST_ALLOCATION_TAG_KEYS = ("msn_id", "tenant", "shared")
+COST_ALLOCATION_TAG_KEYS = ("msn_id", "tenant", "shared", "cost_pool")
+
+# Cost pools enumerate how shared infrastructure should be billed across
+# grantees. `cost_pool` is a tag emitted on every `shared=true` resource;
+# the tolling extension's billing-rules layer chooses the per-pool split
+# (absorb_fnd / by_bandwidth_share / equal).
+#
+# - fnd_operator: shared infra operated by FND for itself + clients.
+#   Lambdas, S3 inbound bucket, EC2 host, EBS volumes, CloudWatch log
+#   groups. Default rule: absorb_fnd (FND eats the cost; clients see
+#   only direct attribution + a derived bandwidth share).
+#
+# - clients_server: reserved for a future second EC2 hosting only client
+#   sites. No resources tagged into it today. When that server lands,
+#   add its ARNs to the FND grantee's shared_* lists with
+#   `shared_cost_pool = COST_POOL_CLIENTS_SERVER`. The tolling rule for
+#   that pool defaults to `by_bandwidth_share`.
+COST_POOL_FND_OPERATOR = "fnd_operator"
+COST_POOL_CLIENTS_SERVER = "clients_server"
 
 GRANTEE_RESOURCES: dict[str, dict[str, list[str] | str | bool]] = {
     # FND — the operator. Owns the shared infra.
@@ -81,14 +99,27 @@ GRANTEE_RESOURCES: dict[str, dict[str, list[str] | str | bool]] = {
         "route53_zones": ["Z0820667F5GC4U3JXL9V"],  # fruitfulnetworkdevelopment.com
         "ses_configuration_sets": ["fnd-default"],
         "ses_identities": ["fruitfulnetworkdevelopment.com"],
-        # Shared infrastructure — tagged with FND + shared=true.
+        # Shared infrastructure — tagged with FND + shared=true +
+        # cost_pool=fnd_operator. Cost-attribution rule decided downstream
+        # in tolling_billing_rules.json.
+        "shared_cost_pool": COST_POOL_FND_OPERATOR,
         "shared_lambdas": [
             "ses-forwarder",
             "newsletter-dispatcher",
             "newsletter-inbound-capture",
         ],
+        "shared_log_groups": [
+            "/aws/lambda/ses-forwarder",
+            "/aws/lambda/newsletter-dispatcher",
+            "/aws/lambda/newsletter-inbound-capture",
+        ],
         "shared_s3_buckets": ["ses-inbound-fnd-mail"],
         "shared_ec2_instances": [EC2_INSTANCE],
+        # Dynamic discovery: every EBS volume in the account belongs to
+        # this single-host setup. The tag-API (tag:GetResources) is
+        # already granted by AWSCMSCostExplorerAndSns. When the second
+        # EC2 lands, swap this for an explicit volume-id list.
+        "shared_ebs_dynamic": True,
     },
     # CVCC — 501(c)(3) conservancy.
     "3-2-3-17-77-3-6-1-1-2": {
@@ -145,6 +176,39 @@ def _arn_for_ec2_instance(instance_id: str) -> str:
     return f"arn:aws:ec2:{SES_REGION}:{AWS_ACCOUNT}:instance/{instance_id}"
 
 
+def _arn_for_log_group(name: str) -> str:
+    # CloudWatch Logs ARN form: arn:aws:logs:region:account:log-group:NAME
+    return f"arn:aws:logs:{SES_REGION}:{AWS_ACCOUNT}:log-group:{name}"
+
+
+def _discover_shared_ebs_volumes() -> list[str]:
+    """Return ARNs of all EBS volumes in the account.
+
+    Uses the Resource Groups Tagging API (tag:GetResources, granted by
+    AWSCMSCostExplorerAndSns) so no ec2:DescribeInstances is needed.
+    Single-host setup today, so every volume belongs to the FND-operator
+    pool. When a second EC2 lands, replace this dynamic call with explicit
+    per-server volume lists in GRANTEE_RESOURCES.
+    """
+    import boto3
+    client = boto3.client("resourcegroupstaggingapi", region_name=SES_REGION)
+    arns: list[str] = []
+    token: str | None = None
+    while True:
+        kwargs: dict[str, object] = {"ResourceTypeFilters": ["ec2:volume"]}
+        if token:
+            kwargs["PaginationToken"] = token
+        resp = client.get_resources(**kwargs)
+        for entry in resp.get("ResourceTagMappingList", []):
+            arn = entry.get("ResourceARN")
+            if arn:
+                arns.append(str(arn))
+        token = resp.get("PaginationToken") or None
+        if not token:
+            break
+    return arns
+
+
 def build_plan() -> list[tuple[str, dict[str, str]]]:
     """Return a list of (arn, tags) pairs to apply."""
     plan: list[tuple[str, dict[str, str]]] = []
@@ -159,15 +223,23 @@ def build_plan() -> list[tuple[str, dict[str, str]]]:
         for ident in cfg.get("ses_identities", []) or []:
             plan.append((_arn_for_ses_identity(str(ident)), dict(base_tags)))
         # Shared resources — tag with the grantee that operates them
-        # (FND today) plus `shared=true` so cost-allocation reports can
-        # filter them out of per-tenant slicing if needed.
+        # (FND today) plus `shared=true` + `cost_pool=<pool>` so the
+        # tolling rules engine can split cost across grantees per-pool.
         shared_tags = {**base_tags, "shared": "true"}
+        pool = cfg.get("shared_cost_pool")
+        if pool:
+            shared_tags["cost_pool"] = str(pool)
         for fn in cfg.get("shared_lambdas", []) or []:
             plan.append((_arn_for_lambda(str(fn)), dict(shared_tags)))
+        for lg in cfg.get("shared_log_groups", []) or []:
+            plan.append((_arn_for_log_group(str(lg)), dict(shared_tags)))
         for bucket in cfg.get("shared_s3_buckets", []) or []:
             plan.append((_arn_for_s3_bucket(str(bucket)), dict(shared_tags)))
         for inst in cfg.get("shared_ec2_instances", []) or []:
             plan.append((_arn_for_ec2_instance(str(inst)), dict(shared_tags)))
+        if cfg.get("shared_ebs_dynamic"):
+            for arn in _discover_shared_ebs_volumes():
+                plan.append((arn, dict(shared_tags)))
     # FND-operated domains that don't yet have their own grantee profile.
     for zone_id, domain_name in FND_OPERATED_DOMAINS.items():
         plan.append((
@@ -210,12 +282,25 @@ def activate_cost_allocation_tags(
         if not paginator_token:
             break
 
-    to_activate = [k for k in keys if statuses.get(k) != "Active"]
+    # AWS only allows activating keys that already appear in
+    # CostAllocationTags (i.e. that have surfaced from the tagged
+    # resources — up to 24h propagation lag for a brand-new key).
+    # Activating an unknown key raises ValidationException, so split
+    # the candidates: activate the surfaced-but-Inactive ones now,
+    # report the unsurfaced ones as pending propagation.
+    surfaced = [k for k in keys if k in statuses]
+    not_surfaced = [k for k in keys if k not in statuses]
+    to_activate = [k for k in surfaced if statuses.get(k) != "Active"]
     changed: dict[str, str] = {k: statuses.get(k, "Unknown") for k in to_activate}
 
+    if not_surfaced:
+        print("activate-tags: pending AWS propagation (re-run later): "
+              + ", ".join(not_surfaced))
+
     if not to_activate:
-        print("activate-tags: all keys already Active "
-              f"({', '.join(keys)})")
+        if surfaced:
+            print("activate-tags: all surfaced keys already Active "
+                  f"({', '.join(surfaced)})")
         return changed
 
     print("activate-tags: pending "
@@ -242,8 +327,8 @@ def main(argv: list[str]) -> int:
     grp.add_argument("--apply", action="store_true",
                      help="Apply the tagging plan.")
     parser.add_argument("--activate-tags", action="store_true",
-                        help="Also activate msn_id/tenant/shared as cost-allocation "
-                             "tags after tagging. Idempotent. Requires "
+                        help="Also activate msn_id/tenant/shared/cost_pool as cost-"
+                             "allocation tags after tagging. Idempotent. Requires "
                              "ce:UpdateCostAllocationTagsStatus on the caller.")
     args = parser.parse_args(argv)
 

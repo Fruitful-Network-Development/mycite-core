@@ -17,9 +17,99 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from datetime import datetime, timedelta, timezone
+
 from MyCiteV2.packages.peripherals.aws import ProfileStore
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
+
+# Onboarding sequence used both for the per-row progress bar and for the
+# Send-reminder gate. Each entry is (key, label, predicate) — predicate
+# returns True when the step is complete.
+_ONBOARDING_STEPS: tuple[tuple[str, str], ...] = (
+    ("profile_created",     "Profile created"),
+    ("ses_identity_ready",  "SES identity verified"),
+    ("handoff_sent",        "Handoff email sent"),
+    ("handoff_acked",       "Operator confirmed credentials"),
+    ("inbound_configured",  "Inbound forwarding configured"),
+    ("inbound_verified",    "Inbound verified end-to-end"),
+)
+
+_REMINDER_COOLDOWN = timedelta(hours=24)
+
+
+def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
+    """Derive an onboarding-progress summary from a profile JSON payload.
+
+    Returns ``{steps_total, steps_done, percent, completed, next_step}`` where
+    ``completed`` is the ordered list of step keys that are done and
+    ``next_step`` is the first incomplete (key, label) pair, or ``None`` if
+    every step is satisfied.
+    """
+    workflow = _as_dict(payload.get("workflow"))
+    provider = _as_dict(payload.get("provider"))
+    inbound = _as_dict(payload.get("inbound"))
+
+    lifecycle_state = _as_text(workflow.get("lifecycle_state")).lower()
+
+    proof: dict[str, bool] = {
+        "profile_created": bool(workflow.get("initiated")) or bool(workflow.get("initiated_at")),
+        "ses_identity_ready": _as_text(provider.get("aws_ses_identity_status")).lower() == "verified",
+        "handoff_sent": bool(_as_text(workflow.get("handoff_email_sent_at"))),
+        "handoff_acked": lifecycle_state == "operational" or bool(workflow.get("is_mailbox_operational")),
+        "inbound_configured": _as_text(inbound.get("receive_state")).lower() == "receive_configured",
+        "inbound_verified": bool(inbound.get("receive_verified")),
+    }
+
+    completed: list[str] = []
+    next_step: dict[str, str] | None = None
+    for key, label in _ONBOARDING_STEPS:
+        if proof.get(key):
+            completed.append(key)
+        elif next_step is None:
+            next_step = {"key": key, "label": label}
+
+    total = len(_ONBOARDING_STEPS)
+    done = len(completed)
+    return {
+        "steps_total": total,
+        "steps_done": done,
+        "percent": int(round(done * 100 / total)) if total else 0,
+        "completed": completed,
+        "next_step": next_step,
+    }
+
+
+def _parse_iso_ts(value: str) -> datetime | None:
+    txt = _as_text(value)
+    if not txt:
+        return None
+    # Accept trailing 'Z' as UTC indicator (Python <3.11 fromisoformat doesn't).
+    if txt.endswith("Z"):
+        txt = txt[:-1] + "+00:00"
+    try:
+        ts = datetime.fromisoformat(txt)
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
+def _reminder_cooldown_remaining(workflow: dict[str, Any]) -> timedelta | None:
+    """Return time remaining in the 24h reminder cooldown, or None if elapsed.
+
+    Used both by the per-row button gate (UI) and by the POST route (server)
+    so a user can't bypass the cooldown by hand-rolling a request.
+    """
+    last = _parse_iso_ts(_as_text(workflow.get("reminder_sent_at")))
+    if last is None:
+        return None
+    now = datetime.now(timezone.utc)
+    elapsed = now - last
+    if elapsed >= _REMINDER_COOLDOWN:
+        return None
+    return _REMINDER_COOLDOWN - elapsed
 
 
 def _build_email_extension_payload(
@@ -85,6 +175,7 @@ def _build_email_extension_payload(
             )
             workflow = _as_dict(payload.get("workflow"))
             inbox_target = _as_text(ident.get("operator_inbox_target"))
+            progress = _onboarding_progress(payload)
             profiles.append({
                 "profile_id": profile_id,
                 "domain": profile_domain,
@@ -95,11 +186,16 @@ def _build_email_extension_payload(
                 "inbound": _as_text(
                     _as_dict(payload.get("inbound")).get("receive_state")
                 ),
+                "onboarding_progress": progress,
                 "suspend_action": _suspend_action_for_profile(profile_id, lifecycle),
                 "resend_handoff_action": _resend_handoff_action_for_profile(
                     profile_id, lifecycle, inbox_target
                 ),
+                "send_reminder_action": _send_reminder_action_for_profile(
+                    profile_id, lifecycle, inbox_target, workflow, progress
+                ),
                 "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
+                "reminder_sent_at": _as_text(workflow.get("reminder_sent_at")),
             })
         # Stable ordering: by domain, then mailbox local part — keeps
         # cvcc.admin / cvcc.finance / cvccboard.daniel / etc. grouped
@@ -168,6 +264,63 @@ def _resend_handoff_action_for_profile(
     }
 
 
+def _send_reminder_action_for_profile(
+    profile_id: str,
+    lifecycle: str,
+    inbox_target: str,
+    workflow: dict[str, Any],
+    progress: dict[str, Any],
+) -> dict[str, Any]:
+    """Per-row "Send onboarding reminder" button.
+
+    Distinct from "Resend handoff": resend-handoff re-sends the SMTP
+    credentials package. A reminder is a polite nudge — no credentials —
+    for mailboxes where the handoff was already sent but the operator
+    hasn't completed the next step yet.
+
+    Gates:
+      - handoff_email_sent_at must be non-empty (no handoff, no reminder)
+      - lifecycle must not be operational / suspended
+      - the onboarding sequence must still have a next_step
+      - if a reminder was sent within the last 24h, return the button in a
+        disabled state with the remaining cooldown so the operator sees the
+        cooldown without trial-clicking
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    state = _as_text(lifecycle).lower()
+    if state in {"operational", "suspended"}:
+        return {}
+    if not _as_text(workflow.get("handoff_email_sent_at")):
+        return {}
+    if not progress.get("next_step"):
+        return {}
+
+    target_label = _as_text(inbox_target) or "the configured inbox"
+    next_step_label = (progress.get("next_step") or {}).get("label") or "the next step"
+
+    base = {
+        "label": "Send reminder",
+        "route": "/__fnd/email/admin/send-reminder",
+        "schema": "mycite.v2.email.admin.send_reminder.request.v1",
+        "payload": {"profile_id": profile_id},
+        "confirm": (
+            f"Send onboarding reminder for {profile_id} to {target_label}? "
+            f"It will nudge them to complete: {next_step_label}."
+        ),
+        "variant": "secondary",
+    }
+
+    cooldown = _reminder_cooldown_remaining(workflow)
+    if cooldown is not None:
+        hours = max(1, int(round(cooldown.total_seconds() / 3600)))
+        base["disabled"] = True
+        base["label"] = f"Sent recently ({hours}h cooldown)"
+        base["confirm"] = None
+    return base
+
+
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
@@ -180,6 +333,9 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "_build_email_extension_payload",
+    "_onboarding_progress",
     "_render_ext_aws_email",
     "_resend_handoff_action_for_profile",
+    "_send_reminder_action_for_profile",
+    "_reminder_cooldown_remaining",
 ]

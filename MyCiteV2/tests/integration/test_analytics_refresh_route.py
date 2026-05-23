@@ -1,25 +1,24 @@
-"""Phase 14d.4 — Analytics refresh route contract pins.
+"""Contract pins for POST /__fnd/analytics/refresh.
 
-``POST /__fnd/analytics/refresh`` re-runs the per-domain aggregation
-that normally happens in ``sync_fnd_analytics_summary`` and persists
-the result through ``MosDatumAnalyticsSummaryAdapter`` so the
-Analytics extension card on ``/portal/utilities/extensions`` can
-show fresh numbers without waiting for the scheduled sync.
+Post-2026-05 the route no longer persists anything to MOS. The legacy
+MosDatumAnalyticsSummaryAdapter is retired (see
+``docs/contracts/analytics_event_schema.md``). The route now just
+invalidates the in-memory cache that fronts ``/__fnd/analytics/summary``
+so the next call recomputes from the canonical NDJSON event log.
 
 These tests pin:
-
-  * Success path: feeds two NDJSON events into the webapps tree,
-    POSTs to /__fnd/analytics/refresh, expects the MOS summary
-    datum to land with the right counts.
-  * Idempotency: calling refresh twice yields the same counts.
+  * Success path: refresh returns ok=true + an invalidated count.
   * 400 on missing domain.
   * 404 when the events directory doesn't exist for the domain.
+  * No write to mos_authority.sqlite3 happens (the documents/datum_*
+    tables remain unchanged across a refresh call).
 """
 
 from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -36,148 +35,147 @@ if FLASK_AVAILABLE:
 
 
 def _seed_events(private_dir: Path, domain: str, events: list[dict]) -> None:
-    """Seed at canonical analytics_root layout (post-Phase-18a):
+    """Seed at canonical analytics_root layout:
     `<private>/utilities/tools/analytics/analytics.<domain>.events.<YYYY-MM>.ndjson`.
     """
-    analytics_root = private_dir / "utilities" / "tools" / "analytics"
-    analytics_root.mkdir(parents=True, exist_ok=True)
-    (analytics_root / f"analytics.{domain}.events.2026-05.ndjson").write_text(
-        "\n".join(json.dumps(e) for e in events),
-        encoding="utf-8",
-    )
+    events_dir = private_dir / "utilities" / "tools" / "analytics"
+    events_dir.mkdir(parents=True, exist_ok=True)
+    by_month: dict[str, list[dict]] = {}
+    for ev in events:
+        month = (ev.get("occurred_at_utc") or "")[:7]
+        by_month.setdefault(month, []).append(ev)
+    for month, rows in by_month.items():
+        path = events_dir / f"analytics.{domain}.events.{month}.ndjson"
+        with path.open("a", encoding="utf-8") as fh:
+            for row in rows:
+                fh.write(json.dumps(row) + "\n")
 
 
-@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+def _build_minimal_mos_db(path: Path) -> None:
+    """Create a stand-in mos_authority.sqlite3 with the schema columns
+    the route guard checks. Tests assert this DB is unchanged after a
+    refresh."""
+    con = sqlite3.connect(path)
+    try:
+        con.executescript(
+            """
+            CREATE TABLE documents (
+                id INTEGER PRIMARY KEY,
+                tenant_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                prefix TEXT NOT NULL,
+                msn_id TEXT NOT NULL,
+                sandbox TEXT,
+                name TEXT NOT NULL,
+                version_hash TEXT NOT NULL,
+                is_anchor INTEGER NOT NULL DEFAULT 0,
+                origin TEXT NOT NULL DEFAULT 'local',
+                legacy_alias TEXT,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE datum_document_semantics (document_id TEXT PRIMARY KEY);
+            CREATE TABLE datum_row_semantics (id INTEGER PRIMARY KEY, document_id TEXT);
+            """
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def _table_counts(path: Path) -> tuple[int, int, int]:
+    con = sqlite3.connect(path)
+    try:
+        c1 = con.execute("SELECT COUNT(*) FROM documents").fetchone()[0]
+        c2 = con.execute("SELECT COUNT(*) FROM datum_document_semantics").fetchone()[0]
+        c3 = con.execute("SELECT COUNT(*) FROM datum_row_semantics").fetchone()[0]
+        return c1, c2, c3
+    finally:
+        con.close()
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "flask not installed")
 class AnalyticsRefreshRouteTests(unittest.TestCase):
-    def _build_client(self):
-        tmp = Path(tempfile.mkdtemp(prefix="phase14d4_analytics_refresh_"))
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="analytics_refresh_"))
         for sub in ("public", "private", "data", "webapps"):
-            (tmp / sub).mkdir()
-        authority_db = tmp / "authority.sqlite3"
-        authority_db.touch()
-        config = V2PortalHostConfig(
-            portal_instance_id="fnd",
-            public_dir=tmp / "public",
-            private_dir=tmp / "private",
-            data_dir=tmp / "data",
-            portal_domain="example.test",
-            webapps_root=tmp / "webapps",
-            authority_db_file=authority_db,
-        )
-        return create_app(config).test_client(), tmp
+            (self.tmp / sub).mkdir(parents=True, exist_ok=True)
+        self.private_dir = self.tmp / "private"
+        self.authority_db = self.private_dir / "mos_authority.sqlite3"
+        _build_minimal_mos_db(self.authority_db)
 
-    def test_refresh_trigger_writes_summary_datum(self) -> None:
-        from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
-            MosDatumAnalyticsSummaryAdapter,
-        )
-
-        client, tmp = self._build_client()
+        self.domain = "example.test"
         _seed_events(
-            tmp / "private",
-            "alpha.example.test",
+            self.private_dir,
+            self.domain,
             [
-                {"event_type": "page_view", "path": "/", "timestamp": "2026-05-01T00:00:00Z"},
-                {"event_type": "page_view", "path": "/about", "timestamp": "2026-05-02T00:00:00Z"},
-                {"event_type": "form_submit", "path": "/contact", "timestamp": "2026-05-03T00:00:00Z"},
+                {
+                    "event_type": "page_view",
+                    "occurred_at_utc": "2026-05-22T12:00:00Z",
+                    "session_id": "sid-1",
+                    "page_path": "/",
+                    "visitor_cookie_id_hash": "hashA",
+                    "is_bot": False,
+                },
             ],
         )
-        resp = client.post(
+
+        cfg = V2PortalHostConfig(
+            portal_instance_id="fnd",
+            public_dir=self.tmp / "public",
+            private_dir=self.private_dir,
+            data_dir=self.tmp / "data",
+            portal_domain="example.test",
+            webapps_root=self.tmp / "webapps",
+            authority_db_file=self.authority_db,
+        )
+        self.app = create_app(cfg)
+        self.client = self.app.test_client()
+
+    def test_refresh_success_bumps_cache_generation(self) -> None:
+        resp = self.client.post(
             "/__fnd/analytics/refresh",
-            data=json.dumps({"domain": "alpha.example.test"}),
-            content_type="application/json",
+            json={"domain": self.domain},
         )
         self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
         body = resp.get_json()
         self.assertTrue(body["ok"])
-        self.assertEqual(body["counts"]["page_view"], 2)
-        self.assertEqual(body["counts"]["form_submit"], 1)
-        self.assertEqual(body["recent_events_captured"], 3)
+        self.assertEqual(body["domain"], self.domain)
+        self.assertTrue(body.get("cache_generation_bumped"))
+        # The token file should now exist and have a recent mtime.
+        gen_path = self.private_dir / "utilities" / "tools" / "analytics" / ".cache_gen"
+        self.assertTrue(gen_path.exists(), "cache-gen file should be created on refresh")
 
-        # Sanity: the MOS adapter can now load what the refresh wrote.
-        adapter = MosDatumAnalyticsSummaryAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
-        cached = adapter.load_summary(domain="alpha.example.test")
-        self.assertIsNotNone(cached)
-        self.assertEqual(cached["summary"]["page_view"], 2)
-
-    def test_refresh_is_idempotent(self) -> None:
-        client, tmp = self._build_client()
-        _seed_events(
-            tmp / "private",
-            "alpha.example.test",
-            [{"event_type": "page_view", "path": "/", "timestamp": "2026-05-01T00:00:00Z"}],
-        )
-        first = client.post(
-            "/__fnd/analytics/refresh",
-            data=json.dumps({"domain": "alpha.example.test"}),
-            content_type="application/json",
-        )
-        second = client.post(
-            "/__fnd/analytics/refresh",
-            data=json.dumps({"domain": "alpha.example.test"}),
-            content_type="application/json",
-        )
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(first.get_json()["counts"], second.get_json()["counts"])
-
-    def test_refresh_rejects_missing_domain(self) -> None:
-        client, _ = self._build_client()
-        resp = client.post(
-            "/__fnd/analytics/refresh",
-            data=json.dumps({}),
-            content_type="application/json",
-        )
+    def test_refresh_missing_domain_returns_400(self) -> None:
+        resp = self.client.post("/__fnd/analytics/refresh", json={})
         self.assertEqual(resp.status_code, 400)
-        self.assertEqual(resp.get_json()["error"], "missing_domain")
+        body = resp.get_json()
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["error"], "missing_domain")
 
-    def test_refresh_rejects_domain_without_events_dir(self) -> None:
-        client, _ = self._build_client()
-        resp = client.post(
+    def test_refresh_no_events_dir_returns_404(self) -> None:
+        resp = self.client.post(
             "/__fnd/analytics/refresh",
-            data=json.dumps({"domain": "no-events.example.test"}),
-            content_type="application/json",
+            json={"domain": "no-such-domain.test"},
         )
         self.assertEqual(resp.status_code, 404)
-        self.assertEqual(resp.get_json()["error"], "no_events_directory")
+        body = resp.get_json()
+        self.assertFalse(body["ok"])
+        self.assertEqual(body["error"], "no_events_directory")
 
-
-class AnalyticsExtensionPayloadRefreshActionTests(unittest.TestCase):
-    """The analytics extension payload must carry a ``refresh_action``
-    so the JS renderer can wire the Refresh button.
-    """
-
-    def test_pending_payload_has_refresh_action(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.analytics import (
-            _build_analytics_extension_payload,
+    def test_refresh_does_not_write_to_mos(self) -> None:
+        before = _table_counts(self.authority_db)
+        resp = self.client.post(
+            "/__fnd/analytics/refresh",
+            json={"domain": self.domain},
         )
-
-        tmp = Path(tempfile.mkdtemp(prefix="phase14d4_pending_"))
-        payload = _build_analytics_extension_payload(
-            domain="alpha.example.test",
-            webapps_root=tmp,
-            authority_db_file=None,
+        self.assertEqual(resp.status_code, 200)
+        after = _table_counts(self.authority_db)
+        self.assertEqual(
+            before,
+            after,
+            "refresh must not mutate the MOS authority DB — the legacy "
+            "summary adapter is retired.",
         )
-        self.assertEqual(payload["data_source"]["kind"], "pending")
-        self.assertEqual(payload["refresh_action"]["route"], "/__fnd/analytics/refresh")
-        self.assertEqual(payload["refresh_action"]["payload"]["domain"], "alpha.example.test")
-
-    def test_payload_emits_top_paths_from_rank_pages_by_attention(self) -> None:
-        # Phase 18c: the ``_top_paths`` helper that summarised recent_
-        # events was replaced by derivations.rank_pages_by_attention,
-        # which computes from the full event set + filters bots.
-        from MyCiteV2.packages.core.analytics import derivations
-
-        events = [
-            {"event_type": "page_view", "page_path": "/", "visitor_cookie_id_hash": "a", "is_bot": False},
-            {"event_type": "page_view", "page_path": "/", "visitor_cookie_id_hash": "b", "is_bot": False},
-            {"event_type": "page_view", "page_path": "/about", "visitor_cookie_id_hash": "c", "is_bot": False},
-        ]
-        rows = derivations.rank_pages_by_attention(events)
-        self.assertEqual(rows[0]["page_path"], "/")
-        self.assertEqual(rows[0]["view_count"], 2)
-        self.assertEqual(rows[1]["page_path"], "/about")
 
 
 if __name__ == "__main__":

@@ -641,11 +641,9 @@ def _newsletter_apply_or_preview(
                 "phone",
                 "zip",
                 "signup_date",
-                # Phase 17a: subject / message / forward_status are
-                # editable too — operator can fix typos in the message
-                # or mark forward_status=sent after a manual retry.
-                "subject",
-                "message",
+                # forward_status remains editable so operators can mark
+                # a record sent after a manual retry. subject/message
+                # are not stored on contacts.
                 "forward_status",
             ):
                 if key in payload:
@@ -684,13 +682,15 @@ def _newsletter_apply_or_preview(
                 "updated_fields": list(updates.keys()),
             }
         if operation == "submit_connect_form":
-            # Phase 17a: a website visitor used the Connect form. Land
-            # the contact as an UNSUBSCRIBED row with source=
-            # connect_form + subject + message + forward_status (set
-            # by the /__fnd/connect/submit endpoint after the SES send
-            # attempt). Re-submissions overwrite the message but
-            # preserve the existing subscribed state — a visitor who
-            # was already a newsletter subscriber stays subscribed.
+            # A website visitor used the Connect form. Land the contact
+            # as an UNSUBSCRIBED identity row with source=connect_form
+            # + forward_status (set by the /__fnd/connect/submit
+            # endpoint after the SES send attempt). The message body
+            # is not stored on the contact — it lives on the SES email
+            # itself. Re-submissions update identity fields and the
+            # latest forward_status, but preserve the existing
+            # subscribed state — a visitor who was already a newsletter
+            # subscriber stays subscribed.
             email = _as_text(payload.get("email")).lower()
             if not email:
                 raise ValueError("email is required for submit_connect_form")
@@ -699,8 +699,6 @@ def _newsletter_apply_or_preview(
             last_name = _as_text(payload.get("last_name"))
             phone = _as_text(payload.get("phone"))
             zip_code = _as_text(payload.get("zip"))
-            subject = _as_text(payload.get("subject"))
-            message = _as_text(payload.get("message"))
             forward_status = _as_text(payload.get("forward_status"))
             log = adapter.load_contact_log(domain=domain) or {
                 "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
@@ -731,8 +729,6 @@ def _newsletter_apply_or_preview(
                         c["phone"] = phone
                     if zip_code:
                         c["zip"] = zip_code
-                    c["subject"] = subject
-                    c["message"] = message
                     c["forward_status"] = forward_status
                     c["source"] = "connect_form"
                     if not _as_text(c.get("signup_date")):
@@ -750,8 +746,6 @@ def _newsletter_apply_or_preview(
                         "last_name": last_name,
                         "phone": phone,
                         "zip": zip_code,
-                        "subject": subject,
-                        "message": message,
                         "forward_status": forward_status,
                         "signup_date": today_date,
                         # Connect submissions land UNSUBSCRIBED. The

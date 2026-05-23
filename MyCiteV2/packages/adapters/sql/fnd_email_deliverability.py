@@ -10,7 +10,7 @@ honest "not wired yet" state instead of pretending zeros are real.
 Canonical name: ``fnd_email_deliverability_<domain_token>``
 Schema:         ``mycite.v2.datum.fnd.email.deliverability.v1``
 
-Document layout (parallels fnd_analytics_summary):
+Document layout (typical FND tenant adapter):
 
 * Layer 0 headers — ``schema``, ``domain``, ``computed_at``,
   ``send_count``, ``delivery_count``, ``bounce_count``,

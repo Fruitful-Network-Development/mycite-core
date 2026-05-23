@@ -36,6 +36,23 @@ The filesystem is allowed only for these specific roles:
    JSON staging files prepared as input to a per-sandbox `bootstrap_*.py`
    ingestion script. Once ingested into MOS, the staging file ceases to
    carry authority.
+4. **Append-only observation logs.** Per-extension event NDJSON files
+   under `<private>/utilities/tools/<extension>/`. Each row is a
+   factual observation produced by a public collector or a server-side
+   probe; the file is **monotone-append** (no row is ever rewritten in
+   place). Derived insights are computed on demand by pure functions
+   in the corresponding `packages.core.<extension>.derivations`
+   module; insights themselves are never persisted as authoritative.
+   Current canonical instance:
+   `<private>/utilities/tools/analytics/analytics.<domain>.events.<YYYY-MM>.ndjson`
+   (contract: `analytics_event_schema.md`). Retention: 365 days online
+   + cold archive at `<private>/utilities/tools/<extension>/archive/`.
+
+   Observation logs are **not** datum documents and **must not** be
+   mirrored into `mos_authority.sqlite3` as a fast-path cache. The
+   `MosDatumAnalyticsSummaryAdapter` was retired in 2026-05; future
+   summary-mirror adapters are explicitly forbidden — derivations
+   recompute on demand from the canonical NDJSON or not at all.
 
 ## Forbidden filesystem usage
 
