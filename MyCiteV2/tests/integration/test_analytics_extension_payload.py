@@ -25,8 +25,11 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions.analytics import (
 
 
 def _v2_row(**overrides):
+    # Helper name is historical — produces a row at the *current*
+    # schema (v3 as of 2026-05). v3 readers happily ingest v2 rows
+    # too; the fixture just keeps parity with the producer.
     base = {
-        "schema": "mycite.v2.analytics.event.v2",
+        "schema": "mycite.v2.analytics.event.v3",
         "event_id": "evt-1",
         "received_at_utc": "2026-05-15T00:00:01Z",
         "site_id": "fnd",

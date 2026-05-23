@@ -24,8 +24,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-EVENT_SCHEMA = "mycite.v2.analytics.event.v2"
-COLLECTOR_VERSION = "fnd-analytics/2.0"
+EVENT_SCHEMA = "mycite.v2.analytics.event.v3"
+COLLECTOR_VERSION = "fnd-analytics/3.0"
+
+CLOCK_SKEW_TOLERANCE_MS = 60_000
 
 KNOWN_EVENT_TYPES = frozenset(
     {
@@ -111,6 +113,81 @@ def coarse_ip_prefix(ip: str) -> str:
     return f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
 
 
+def _iso_to_epoch_ms(iso_string: str) -> int | None:
+    """Best-effort ISO-8601 → epoch ms.
+
+    Returns ``None`` when the input is empty or fails to parse — that
+    way callers can distinguish a *genuine* epoch-zero timestamp
+    (1970-01-01T00:00:00Z, which legitimately maps to 0 ms) from a
+    parse failure. The two used to collapse onto 0, which silently
+    broke the clock_skew quality flag.
+    """
+    token = _as_text(iso_string)
+    if not token:
+        return None
+    try:
+        from datetime import datetime as _dt
+
+        token_normalised = token.replace("Z", "+00:00")
+        return int(_dt.fromisoformat(token_normalised).timestamp() * 1000)
+    except (ValueError, TypeError):
+        return None
+
+
+def compute_quality_flags(
+    body: dict[str, Any],
+    *,
+    received_at_utc: str,
+    visitor_cookie_id_hash: str,
+) -> tuple[str, ...]:
+    """Server-stamped evidence tokens describing the event row's
+    quality. Each token names a *signal*, not a conclusion. See
+    ``docs/contracts/analytics_event_schema.md`` for the full token
+    glossary.
+    """
+    flags: list[str] = []
+
+    occurred_ms = _iso_to_epoch_ms(_as_text(body.get("occurred_at_utc")))
+    received_ms = _iso_to_epoch_ms(received_at_utc)
+    if occurred_ms is not None and received_ms is not None:
+        if abs(received_ms - occurred_ms) > CLOCK_SKEW_TOLERANCE_MS:
+            flags.append("clock_skew")
+
+    referrer_url = _as_text(body.get("referrer_url"))
+    referrer_domain = _as_text(body.get("referrer_domain"))
+    if referrer_url and not referrer_domain:
+        flags.append("no_referrer_parse")
+
+    page_url = _as_text(body.get("page_url"))
+    if page_url:
+        try:
+            from urllib.parse import urlparse as _urlparse
+
+            parsed = _urlparse(page_url)
+            if not parsed.scheme or not parsed.netloc:
+                flags.append("malformed_url")
+        except Exception:
+            flags.append("malformed_url")
+
+    event_type = _as_text(body.get("event_type"))
+    active = _as_int(body.get("active_time_ms"))
+    previous_path = _as_text(body.get("previous_page_path"))
+    page_path = _as_text(body.get("page_path"))
+    if (
+        event_type in {"heartbeat", "page_view"}
+        and active == 0
+        and previous_path
+        and page_path
+        and previous_path != page_path
+    ):
+        flags.append("zero_active_time_with_navigation")
+
+    if not visitor_cookie_id_hash:
+        flags.append("missing_identifier")
+
+    return tuple(flags)
+
+
 def _new_event_id() -> str:
     """ULID-shaped 26-char identifier. k-sortable by timestamp
     prefix so the NDJSON files stay roughly chronological even if a
@@ -175,6 +252,11 @@ class RawEvent:
     do_not_track: bool = False
     properties: dict[str, Any] = field(default_factory=dict)
 
+    # v3 additions
+    page_url: str = ""
+    os_name: str = ""
+    quality_flags: tuple[str, ...] = ()
+
     @classmethod
     def from_request(
         cls,
@@ -210,6 +292,13 @@ class RawEvent:
 
         is_bot, bot_class, bot_evidence = classify_user_agent(user_agent)
 
+        visitor_cookie_id_hash = salted_hash(visitor_cookie, salt=salt)
+        quality_flags = compute_quality_flags(
+            body,
+            received_at_utc=received_at_utc,
+            visitor_cookie_id_hash=visitor_cookie_id_hash,
+        )
+
         properties_raw = body.get("properties")
         properties: dict[str, Any] = {}
         if isinstance(properties_raw, dict):
@@ -228,7 +317,7 @@ class RawEvent:
             site_id=_as_text(site_id) or _as_text(domain),
             domain=_as_text(domain).lower(),
             environment=_as_text(environment) or "prod",
-            visitor_cookie_id_hash=salted_hash(visitor_cookie, salt=salt),
+            visitor_cookie_id_hash=visitor_cookie_id_hash,
             ip_hash=salted_hash(remote_addr, salt=salt),
             ip_prefix=coarse_ip_prefix(remote_addr),
             is_bot=is_bot,
@@ -263,6 +352,9 @@ class RawEvent:
             language=_bounded(_as_text(body.get("language"))),
             do_not_track=_as_bool(body.get("do_not_track")),
             properties=properties,
+            page_url=_bounded(_as_text(body.get("page_url"))),
+            os_name=_bounded(_as_text(body.get("os_name"))),
+            quality_flags=quality_flags,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -309,10 +401,14 @@ class RawEvent:
             "language": self.language,
             "do_not_track": self.do_not_track,
             "properties": dict(self.properties),
+            "page_url": self.page_url,
+            "os_name": self.os_name,
+            "quality_flags": list(self.quality_flags),
         }
 
 
 __all__ = [
+    "CLOCK_SKEW_TOLERANCE_MS",
     "COLLECTOR_VERSION",
     "EVENT_SCHEMA",
     "KNOWN_EVENT_TYPES",
@@ -321,5 +417,6 @@ __all__ = [
     "REQUIRED_EVENT_FIELDS",
     "RawEvent",
     "coarse_ip_prefix",
+    "compute_quality_flags",
     "salted_hash",
 ]

@@ -10,7 +10,9 @@ Adapters consumed (all already in production):
 * ``MyCiteV2.instances._shared.runtime.utilities_extensions.tolling``
   (``read_tolling_snapshot``, ``bandwidth_share_for_grantee``,
   ``domains_for_grantee``, ``load_grantee_directory``)
-* ``MyCiteV2.packages.adapters.sql.fnd_analytics_summary.MosDatumAnalyticsSummaryAdapter``
+* ``MyCiteV2.packages.core.analytics.derivations`` — on-demand
+  insights from the canonical NDJSON event log; no MOS-side adapter
+  exists for analytics any more (see ``analytics_event_schema.md``).
 * ``MyCiteV2.packages.adapters.filesystem.newsletter_state.FilesystemNewsletterStateAdapter``
 * ``MyCiteV2.packages.adapters.sql.fnd_email_deliverability.MosDatumEmailDeliverabilityAdapter``
 

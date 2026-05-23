@@ -19,6 +19,7 @@ from ._normalize import as_text, normalized_domain, normalized_email
 from .contracts import (
     AwsPeripheralPort,
     CostBreakdown,
+    CostLineItem,
     DomainStatus,
     ForwardingRoutesSyncResult,
     ProfileReadiness,
@@ -392,7 +393,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                             {
                                 "Value": (
                                     '"v=DMARC1; p=none; '
-                                    "rua=mailto:dylan@fruitfulnetworkdevelopment.com; "
+                                    "rua=mailto:dmarc-reports@fruitfulnetworkdevelopment.com; "
                                     'adkim=s; aspf=s"'
                                 )
                             }
@@ -802,6 +803,127 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 granularity=granularity,
             )
         return out
+
+    # ------------------------------------------------------------------
+    # Fine-grained Cost Explorer (ledger surface)
+
+    @staticmethod
+    def _ce_group_spec(token: str) -> dict[str, str]:
+        if token.startswith("TAG:"):
+            return {"Type": "TAG", "Key": token.split(":", 1)[1]}
+        return {"Type": "DIMENSION", "Key": token}
+
+    def get_costs_breakdown(
+        self,
+        *,
+        start: str,
+        end: str,
+        group_by: tuple[str, ...] = ("SERVICE", "USAGE_TYPE"),
+        tag_filter: dict[str, list[str]] | None = None,
+        service_filter: list[str] | None = None,
+        granularity: str = "MONTHLY",
+    ) -> list[CostLineItem]:
+        if not 1 <= len(group_by) <= 2:
+            raise ValueError("group_by must have 1 or 2 entries (Cost Explorer limit)")
+        client = self._client("ce", region="us-east-1")
+        kwargs: dict[str, Any] = {
+            "TimePeriod": {"Start": start, "End": end},
+            "Granularity": granularity,
+            "Metrics": ["UnblendedCost", "UsageQuantity"],
+            "GroupBy": [self._ce_group_spec(g) for g in group_by],
+        }
+        clauses: list[dict[str, Any]] = []
+        if tag_filter:
+            clauses.append({"Tags": tag_filter})
+        if service_filter:
+            clauses.append({"Dimensions": {"Key": "SERVICE", "Values": list(service_filter)}})
+        if len(clauses) == 1:
+            kwargs["Filter"] = clauses[0]
+        elif len(clauses) > 1:
+            kwargs["Filter"] = {"And": clauses}
+
+        # Sum across time periods per (group-key-tuple).
+        agg_cost: dict[tuple[str, ...], float] = {}
+        agg_qty: dict[tuple[str, ...], float] = {}
+        units: dict[tuple[str, ...], str] = {}
+        currency = ""
+        for result in client.get_cost_and_usage(**kwargs).get("ResultsByTime", []) or []:
+            for entry in result.get("Groups", []) or []:
+                keys_raw = entry.get("Keys") or []
+                # CE encodes tag groups as "key$value"; strip the prefix
+                # so the returned line key is just the value.
+                keys = tuple(
+                    (k.split("$", 1)[1] if "$" in k else k) for k in keys_raw
+                )
+                metrics = entry.get("Metrics") or {}
+                cost = metrics.get("UnblendedCost") or {}
+                qty = metrics.get("UsageQuantity") or {}
+                currency = currency or str(cost.get("Unit", ""))
+                try:
+                    agg_cost[keys] = agg_cost.get(keys, 0.0) + float(cost.get("Amount", "0"))
+                except ValueError:
+                    pass
+                try:
+                    agg_qty[keys] = agg_qty.get(keys, 0.0) + float(qty.get("Amount", "0"))
+                except ValueError:
+                    pass
+                if qty.get("Unit") and not units.get(keys):
+                    units[keys] = str(qty.get("Unit"))
+
+        out: list[CostLineItem] = []
+        for keys, amount in agg_cost.items():
+            if amount == 0.0 and agg_qty.get(keys, 0.0) == 0.0:
+                # Cost Explorer often emits zero-cost groups for free-tier
+                # usage; keep them out of the ledger.
+                continue
+            out.append(CostLineItem(
+                keys=keys,
+                amount=f"{amount:.10f}",
+                currency=currency,
+                usage_quantity=f"{agg_qty.get(keys, 0.0):.10f}",
+                usage_unit=units.get(keys, ""),
+            ))
+        # Sort by amount desc so the largest line items are first.
+        out.sort(key=lambda r: float(r["amount"]), reverse=True)
+        return out
+
+    def get_untagged_residue(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> CostBreakdown:
+        overview = self.get_costs_overview(
+            start=start, end=end, granularity=granularity,
+        )
+        residue = overview.get("")
+        if residue is not None:
+            return residue
+        # No untagged slice in the window — return an empty breakdown
+        # rather than KeyError so callers don't need defensive code.
+        return CostBreakdown(
+            currency="",
+            grand_total="0",
+            by_service={},
+            period_start=start,
+            period_end=end,
+            granularity=granularity,
+        )
+
+    def get_route53_registrar_renewal_lines(
+        self,
+        *,
+        start: str,
+        end: str,
+        granularity: str = "MONTHLY",
+    ) -> list[CostLineItem]:
+        return self.get_costs_breakdown(
+            start=start, end=end,
+            group_by=("SERVICE", "USAGE_TYPE"),
+            service_filter=["Amazon Registrar"],
+            granularity=granularity,
+        )
 
 
 __all__ = ["AwsPeripheralCloudAdapter"]

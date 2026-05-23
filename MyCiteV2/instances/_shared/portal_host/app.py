@@ -2013,6 +2013,105 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             pass
         return {}
 
+    def _send_email_extension_message(
+        *,
+        profile: dict[str, Any],
+        grantee: dict[str, Any],
+        subject: str,
+        body_text: str,
+        tag: str,
+        template_version: str = "",
+        configuration_set: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a transactional message tied to an operator-mailbox profile.
+
+        Shared between the resend-handoff and send-reminder admin routes.
+        Returns ``{ok, sent_to, message_id, sent_at, template_version, send_as,
+        detail}``. Always returns a dict (never raises); the caller decides
+        the HTTP status from ``ok``.
+
+        The ``configuration_set`` argument lets routes pin a per-purpose SES
+        configset for reputation isolation (e.g. ``fnd-transactional`` for
+        the onboarding-nudge family). It overrides whatever value is in
+        ``grantee.aws_ses.configuration_set``.
+        """
+        identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+        inbox = _as_text(identity.get("operator_inbox_target"))
+        if not inbox:
+            return {"ok": False, "detail": "profile missing operator_inbox_target"}
+
+        aws_cfg = dict(grantee.get("aws_ses") or {})
+        if not _as_text(aws_cfg.get("identity")) and not _as_text(aws_cfg.get("from_address")):
+            return {"ok": False, "detail": "grantee aws_ses identity not configured"}
+        if configuration_set:
+            aws_cfg["configuration_set"] = configuration_set
+
+        try:
+            send_result = _aws_peripheral.send_email(
+                aws_ses_profile=aws_cfg,
+                to=[inbox],
+                subject=subject,
+                body_text=body_text,
+            )
+        except SesSendError as exc:
+            _log.error(
+                f"{tag}_ses_failed",
+                extra={
+                    "profile_id": _as_text(identity.get("profile_id")),
+                    "domain": _as_text(identity.get("domain")),
+                    "aws_error_code": exc.aws_error_code,
+                    "aws_request_id": exc.aws_request_id,
+                    "reason": exc.reason,
+                },
+            )
+            return {"ok": False, "detail": exc.reason}
+        except Exception as exc:  # noqa: BLE001 — last-ditch envelope for unexpected raise
+            return {"ok": False, "detail": str(exc)}
+
+        return {
+            "ok": True,
+            "sent_to": inbox,
+            "send_as": _as_text(aws_cfg.get("from_address")) or _as_text(aws_cfg.get("identity")),
+            "message_id": _as_text(getattr(send_result, "message_id", None))
+            or _as_text(getattr(send_result, "MessageId", None))
+            or "",
+            "sent_at": _utc_now_iso(),
+            "template_version": _as_text(template_version),
+        }
+
+    def _reminder_subject_body(
+        profile: dict[str, Any], next_step_label: str
+    ) -> tuple[str, str]:
+        """Build the Subject + plain-text body for the onboarding reminder.
+
+        Distinct from the handoff template: no credentials, polite tone,
+        threading hint via In-Reply-To is left to a future iteration (the
+        peripherals.aws.send_email surface does not yet expose extra_headers
+        for arbitrary RFC 5322 fields in a way that survives DKIM signing).
+        """
+        ident = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
+        send_as = _as_text(ident.get("send_as_email")) or "your new mailbox"
+        inbox = _as_text(ident.get("operator_inbox_target")) or "your personal inbox"
+        next_step_label = _as_text(next_step_label) or "complete the next step"
+
+        subject = f"[Reminder] Finish setting up {send_as}"
+        body = (
+            "Hi,\n\n"
+            f"This is a follow-up to the setup note we sent earlier about your "
+            f"{send_as} mailbox. We have not yet seen the configuration go "
+            f"active on our side.\n\n"
+            f"The next step is: {next_step_label}.\n\n"
+            f"If you still have the original setup email, please follow the "
+            f"five-field SMTP instructions there. Replies will arrive at "
+            f"{inbox}.\n\n"
+            "If you no longer have the original setup email, reply to this "
+            "message and we'll reissue fresh credentials. The credentials are "
+            f"scoped only to {send_as} and can be rotated at any time.\n\n"
+            "Thank you,\n"
+            "FND mailbox setup\n"
+        )
+        return subject, body
+
     def _ses_forward_connect_message(
         *,
         grantee: dict[str, Any],
@@ -2127,6 +2226,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_datum_workbench_mutation_action,
             )
 
+            # Contacts are identity-only — the message body is the
+            # email payload and lives on SES, not on the contact record.
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
@@ -2139,8 +2240,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "last_name": last_name,
                     "phone": phone,
                     "zip": zip_code,
-                    "subject": subject,
-                    "message": message,
                     "forward_status": forward_status,
                 },
                 authority_db_file=host_config.authority_db_file,
@@ -2501,16 +2600,27 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         ), 200
 
     # ------------------------------------------------------------------
-    # FND Email admin route — resend handoff email (2026-05-18)
+    # FND Email admin route — resend handoff email (2026-05-18; rewired 2026-05-22)
     # ------------------------------------------------------------------
-    # Re-dispatches the SMTP-credentials handoff email for an operator
-    # mailbox that has not yet onboarded (lifecycle still ``draft`` and
-    # ``handoff_status == instruction_sent``). The send_handoff_email
-    # action is declared in the Nimm mutation contract, but the apply
-    # route (/portal/api/v2/mutations/<action>) only dispatches to
-    # cts_gis / datum_workbench target authorities today — so this
-    # sibling route gives the email-admin extension a direct entry
-    # point that matches the Suspend route's shape.
+    # Re-dispatches the operator-mailbox handoff notice for a profile
+    # whose onboarding is still in progress (lifecycle still ``draft``).
+    #
+    # History: the original implementation imported
+    # ``AwsEc2RoleOnboardingCloudAdapter`` from
+    # ``MyCiteV2.packages.adapters.event_transport``. That adapter — and
+    # its companion ``read_handoff_secret`` SMTP-credential reader — were
+    # removed in commit 68f0676 (AWS-CSM onboarding-cloud bloat sweep),
+    # but the call site here was not updated, so every click of the
+    # button hit ``module_load_failed`` (500).
+    #
+    # The rewire below uses the existing ``_aws_peripheral`` send surface
+    # directly. Because ``read_handoff_secret`` is gone (and rebuilding it
+    # requires iam:* which the EC2-AWSCMS-Admin role intentionally lacks),
+    # the resent message is the *handoff notice* body only — it does NOT
+    # re-embed an SMTP password. Operators who lost the original
+    # credential package should be issued fresh credentials via the AWS
+    # console / admin session and the profile JSON updated; this button
+    # nudges them with the same instructions otherwise.
 
     @app.post("/__fnd/email/admin/resend-handoff")
     def fnd_email_admin_resend_handoff() -> tuple[Any, int]:
@@ -2523,11 +2633,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
         try:
-            from MyCiteV2.packages.adapters.event_transport import (
-                AwsEc2RoleOnboardingCloudAdapter,
-            )
             from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
             from MyCiteV2.packages.peripherals.aws import ProfileStore
+            from MyCiteV2.packages.peripherals.aws.handoff_template import (
+                HANDOFF_TEMPLATE_VERSION,
+                handoff_body,
+                handoff_subject,
+            )
         except Exception as exc:
             return jsonify(
                 {"ok": False, "error": "module_load_failed", "detail": str(exc)}
@@ -2542,16 +2654,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if current is None:
             return jsonify({"ok": False, "error": "profile_not_found"}), 404
 
-        adapter = AwsEc2RoleOnboardingCloudAdapter()
-        try:
-            result = adapter.send_handoff_email(current)
-        except (ValueError, RuntimeError) as exc:
+        profile_domain = _as_text(
+            (current.get("identity") or {}).get("domain")
+        )
+        grantee_for_send = _resolve_grantee_for_domain(profile_domain)
+        result = _send_email_extension_message(
+            profile=current,
+            grantee=grantee_for_send,
+            subject=handoff_subject(current),
+            body_text=handoff_body(current, {}),  # password unavailable; template falls back
+            tag="resend_handoff",
+            template_version=HANDOFF_TEMPLATE_VERSION,
+            configuration_set="fnd-transactional",
+        )
+        if not result.get("ok"):
             return jsonify(
-                {"ok": False, "error": "send_failed", "detail": str(exc)}
-            ), 502
-        except Exception as exc:
-            return jsonify(
-                {"ok": False, "error": "send_failed", "detail": str(exc)}
+                {"ok": False, "error": "send_failed",
+                 "detail": _as_text(result.get("detail"))}
             ), 502
 
         identity = dict(current.get("identity") or {})
@@ -2628,15 +2747,169 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         ), 200
 
     # ------------------------------------------------------------------
-    # FND Analytics admin route (Phase 14d.4)
+    # FND Email admin route — send onboarding reminder (2026-05-22)
+    # ------------------------------------------------------------------
+    # Distinct from resend-handoff: re-sending the handoff package
+    # repeats SMTP credentials, which clutters inboxes and trains
+    # filters to flag handoff mail as bulk. A reminder is a polite
+    # nudge with no credentials, gated on:
+    #
+    #   - handoff_email_sent_at must be non-empty
+    #   - lifecycle must not already be operational / suspended
+    #   - the derived onboarding sequence still has a next_step
+    #   - cooldown: no two reminders inside 24h
+    #
+    # The same gates are enforced in
+    # ``utilities_extensions.email._send_reminder_action_for_profile`` so
+    # the button is hidden / disabled in the UI; this route re-checks
+    # server-side so a hand-rolled request cannot bypass the cooldown.
+
+    @app.post("/__fnd/email/admin/send-reminder")
+    def fnd_email_admin_send_reminder() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.instances._shared.runtime.utilities_extensions.email import (
+                _onboarding_progress,
+                _reminder_cooldown_remaining,
+            )
+            from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception as exc:
+            return jsonify(
+                {"ok": False, "error": "module_load_failed", "detail": str(exc)}
+            ), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        workflow = dict(current.get("workflow") or {})
+        lifecycle = _as_text(workflow.get("lifecycle_state")).lower()
+        if lifecycle in {"operational", "suspended"}:
+            return jsonify(
+                {"ok": False, "error": "not_eligible", "detail": f"lifecycle={lifecycle}"}
+            ), 409
+        if not _as_text(workflow.get("handoff_email_sent_at")):
+            return jsonify(
+                {"ok": False, "error": "not_eligible", "detail": "handoff_not_sent"}
+            ), 409
+
+        progress = _onboarding_progress(current)
+        next_step = (progress.get("next_step") or {}).get("label") or ""
+        if not next_step:
+            return jsonify(
+                {"ok": False, "error": "not_eligible", "detail": "no_next_step"}
+            ), 409
+
+        cooldown = _reminder_cooldown_remaining(workflow)
+        if cooldown is not None:
+            hours = max(1, int(round(cooldown.total_seconds() / 3600)))
+            return jsonify(
+                {"ok": False, "error": "cooldown_active",
+                 "detail": f"reminder sent within last {24 - hours}h; retry in ~{hours}h"}
+            ), 429
+
+        profile_domain = _as_text(
+            (current.get("identity") or {}).get("domain")
+        )
+        grantee_for_send = _resolve_grantee_for_domain(profile_domain)
+
+        subject, body = _reminder_subject_body(current, next_step)
+        result = _send_email_extension_message(
+            profile=current,
+            grantee=grantee_for_send,
+            subject=subject,
+            body_text=body,
+            tag="send_reminder",
+            template_version="reminder_v1_2026_05",
+            configuration_set="fnd-transactional",
+        )
+        if not result.get("ok"):
+            return jsonify(
+                {"ok": False, "error": "send_failed",
+                 "detail": _as_text(result.get("detail"))}
+            ), 502
+
+        workflow["reminder_sent_at"] = _as_text(result.get("sent_at"))
+        workflow["reminder_message_id"] = _as_text(result.get("message_id"))
+        workflow["reminder_template_version"] = _as_text(result.get("template_version"))
+        workflow["reminder_next_step"] = next_step
+        next_payload = dict(current)
+        next_payload["workflow"] = workflow
+
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        if host_config.portal_audit_storage_file is not None:
+            try:
+                audit_adapter = FilesystemAuditLogAdapter(
+                    host_config.portal_audit_storage_file
+                )
+                from MyCiteV2.packages.ports.audit_log import AuditLogAppendRequest
+
+                audit_adapter.append_audit_record(
+                    AuditLogAppendRequest(
+                        record={
+                            "event_type": "portal.aws.send_reminder_email.accepted",
+                            "shell_verb": "portal.aws.send_reminder_email",
+                            "focus_subject": profile_id,
+                            "details": {
+                                "profile_id": profile_id,
+                                "domain": profile_domain,
+                                "next_step": next_step,
+                                "sent_to": _as_text(result.get("sent_to")),
+                                "message_id": _as_text(result.get("message_id")),
+                                "template_version": _as_text(
+                                    result.get("template_version")
+                                ),
+                            },
+                        }
+                    )
+                )
+            except Exception:
+                pass
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "message_id": _as_text(result.get("message_id")),
+                "sent_to": _as_text(result.get("sent_to")),
+                "sent_at": _as_text(result.get("sent_at")),
+                "next_step": next_step,
+                "template_version": _as_text(result.get("template_version")),
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
+    # FND Analytics admin route (post-2026-05 — MOS adapter retired)
     # ------------------------------------------------------------------
     # The Analytics extension card surfaces a Refresh button that POSTs
-    # here. The handler re-runs ``_aggregate_for_domain`` from
-    # ``MyCiteV2.scripts.sync_fnd_analytics_summary`` for the requested
-    # domain and persists the result through
-    # ``MosDatumAnalyticsSummaryAdapter.save_summary``. Returns the new
-    # counts so the client can refresh the card without a full page
-    # reload (the workbench renderer triggers a shell reload regardless).
+    # here. The handler no longer persists anything to MOS — analytics
+    # storage is on-disk NDJSON only, per the analytics_event_schema.md
+    # contract. The handler now just invalidates the in-memory summary
+    # cache so the next /__fnd/analytics/summary call recomputes from
+    # the canonical NDJSON without a stale 60s TTL hit.
 
     # ------------------------------------------------------------------
     # FND Analytics raw-event collector (Phase 18a)
@@ -2653,6 +2926,43 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     _ANALYTICS_SALT_HOLDER: dict[str, str] = {}
     _ANALYTICS_DEDUP_WINDOW_MS = 250
     _ANALYTICS_DEDUP: dict[tuple[str, str, str], int] = {}
+
+    # Module-scoped TTL cache for /__fnd/analytics/summary. Cache key
+    # is (msn_id, start, end, cache_generation) — the generation token
+    # is the mtime of <analytics_root>/.cache_gen, so /__fnd/analytics/
+    # refresh can invalidate across all gunicorn workers by touching
+    # one file (clearing a worker-local dict only flushed half the
+    # cache with --workers 2 --preload).
+    _ANALYTICS_SUMMARY_CACHE: dict[tuple[str, str, str, float], tuple[float, dict[str, Any]]] = {}
+    _ANALYTICS_SUMMARY_TTL = 60.0
+    _ANALYTICS_CACHE_GEN_FILENAME = ".cache_gen"
+
+    def _analytics_cache_gen_path() -> Path | None:
+        if host_config.private_dir is None:
+            return None
+        return (
+            Path(host_config.private_dir)
+            / "utilities"
+            / "tools"
+            / "analytics"
+            / _ANALYTICS_CACHE_GEN_FILENAME
+        )
+
+    def _analytics_cache_gen() -> float:
+        path = _analytics_cache_gen_path()
+        if path is None:
+            return 0.0
+        try:
+            return path.stat().st_mtime
+        except FileNotFoundError:
+            return 0.0
+        except OSError:
+            return 0.0
+
+    def _is_operator_request() -> bool:
+        # Operator context = no oauth2-proxy grantee header. Mirrors
+        # the convention used by /__fnd/tolling/refresh.
+        return not _as_text(request.headers.get("X-Auth-Request-Grantee"))
 
     def _analytics_salt() -> str:
         cached = _ANALYTICS_SALT_HOLDER.get("salt")
@@ -2818,14 +3128,25 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/analytics/refresh")
     def fnd_analytics_refresh() -> tuple[Any, int]:
+        """Operator refresh: bump the analytics-cache generation token
+        so every gunicorn worker misses its cache on the next
+        /__fnd/analytics/summary call and recomputes from the canonical
+        NDJSON event log. No analytics state is persisted anywhere
+        outside that NDJSON — the legacy MOS summary adapter is retired
+        (see analytics_event_schema.md)."""
         from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+
+        if host_config.authority_db_file is None:
+            # Refresh doesn't touch the DB any more, but a missing
+            # authority_db is a deployment-misconfiguration signal we
+            # don't want to silently swallow. Operator ops monitoring
+            # historically watched for this 500.
+            return jsonify({"ok": False, "error": "authority_db_not_configured"}), 500
 
         payload = _json_payload()
         domain = _normalize_domain(_as_text(payload.get("domain")))
         if not domain:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
-        if host_config.authority_db_file is None:
-            return jsonify({"ok": False, "error": "authority_db_not_configured"}), 500
 
         analytics_root = None
         if host_config.private_dir is not None:
@@ -2836,48 +3157,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not resolver.iter_domain_event_files(domain):
             return jsonify({"ok": False, "error": "no_events_directory"}), 404
 
-        try:
-            from MyCiteV2.packages.adapters.sql.fnd_analytics_summary import (
-                MosDatumAnalyticsSummaryAdapter,
-            )
-            from MyCiteV2.scripts.sync_fnd_analytics_summary import (
-                DEFAULT_WINDOW_MONTHS,
-                _aggregate_for_domain,
-            )
-        except Exception:
-            return jsonify({"ok": False, "error": "module_load_failed"}), 500
-
-        try:
-            window_months = int(payload.get("window_months") or DEFAULT_WINDOW_MONTHS)
-        except (TypeError, ValueError):
-            window_months = DEFAULT_WINDOW_MONTHS
-
-        try:
-            counts, recent = _aggregate_for_domain(
-                resolver=resolver,
-                domain=domain,
-                window_months=window_months,
-            )
-            adapter = MosDatumAnalyticsSummaryAdapter(
-                authority_db_file=host_config.authority_db_file,
-                tenant_id=host_config.portal_instance_id or "fnd",
-            )
-            adapter.save_summary(
-                domain=domain,
-                window_months=window_months,
-                counts=counts,
-                recent_events=recent,
-            )
-        except Exception:
-            return jsonify({"ok": False, "error": "refresh_failed"}), 500
+        # Touch the cache-generation token file. Every worker observes
+        # the new mtime on its next request and naturally misses the
+        # cache (the gen is part of the cache key). The clear() trick
+        # we used before only flushed the calling worker's copy.
+        gen_path = _analytics_cache_gen_path()
+        if gen_path is not None:
+            try:
+                import os as _os
+                gen_path.parent.mkdir(parents=True, exist_ok=True)
+                gen_path.touch(exist_ok=True)
+                # Bump the mtime explicitly so two refreshes inside the
+                # same second still produce strictly-greater values
+                # (filesystem mtime resolution can be 1s).
+                stat = gen_path.stat()
+                _os.utime(gen_path, (stat.st_atime, stat.st_mtime + 1))
+            except OSError:
+                pass
 
         return jsonify(
             {
                 "ok": True,
                 "domain": domain,
-                "window_months": window_months,
-                "counts": counts,
-                "recent_events_captured": len(recent),
+                "cache_generation_bumped": True,
             }
         ), 200
 
@@ -3304,12 +3606,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "bandwidth_share_by_domain": bandwidth,
         }), 200
 
-    # Module-scoped TTL cache for analytics summaries. Parsing the
-    # NDJSON shards is the per-request bottleneck (a year of events on
-    # a couple of domains is 10s of MB); cache the materialized
-    # response so concurrent tab loads + tab-switch reloads share work.
-    _ANALYTICS_SUMMARY_CACHE: dict[tuple[str, str, str], tuple[float, dict[str, Any]]] = {}
-    _ANALYTICS_SUMMARY_TTL = 60.0
+    # Note: _ANALYTICS_SUMMARY_CACHE + _ANALYTICS_SUMMARY_TTL are
+    # declared earlier in the route-registration block so the refresh
+    # handler can invalidate entries.
 
     @app.get("/__fnd/analytics/summary")
     def fnd_analytics_summary() -> tuple[Any, int]:
@@ -3337,11 +3636,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if err:
             return err
 
-        cache_key = (requested_msn, start_d.isoformat(), end_d.isoformat())
+        cache_gen = _analytics_cache_gen()
+        cache_key = (requested_msn, start_d.isoformat(), end_d.isoformat(), cache_gen)
         now = _time.monotonic()
         cached = _ANALYTICS_SUMMARY_CACHE.get(cache_key)
         if cached is not None and now - cached[0] < _ANALYTICS_SUMMARY_TTL:
             return jsonify(cached[1]), 200
+        # Lightweight eviction: when the gen bumps, old keys are stale.
+        # Drop any cache entry whose key carries a gen lower than the
+        # current one. Cheap because the cache holds at most a handful
+        # of (msn, start, end) tuples per generation.
+        if cache_gen:
+            for stale_key in [k for k in _ANALYTICS_SUMMARY_CACHE if k[3] < cache_gen]:
+                _ANALYTICS_SUMMARY_CACHE.pop(stale_key, None)
 
         domains = domains_for_grantee(requested_msn)
         analytics_root = Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
@@ -3356,12 +3663,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             cursor = cursor.replace(year=year + 1, month=1) if month == 12 \
                 else cursor.replace(month=month + 1)
 
+        # Single read pass: maintain the cheap inline counters AND
+        # collect the event list so the derivations module can compute
+        # the schema-v3 / JSON Analytics Log Vision rollups below. The
+        # 60-second TTL cache keeps a repeat call cheap even though
+        # this pass is now O(events) in memory; in practice the
+        # grantee-scoped window is a few thousand events / month per
+        # domain so this is fine.
+        from MyCiteV2.packages.core.analytics import derivations as _derivations
+        from collections import Counter as _Counter
+
         total_events = 0
         bot_events = 0
         unique_visitors: set[str] = set()
         page_counts: dict[str, int] = {}
         referrer_counts: dict[str, int] = {}
         event_type_counts: dict[str, int] = {}
+        all_events: list[dict[str, Any]] = []
 
         for domain, month in product(domains, months):
             path = analytics_root / f"analytics.{domain}.events.{month}.ndjson"
@@ -3387,6 +3705,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     # intentional.
                     if occurred < start_d.isoformat() or occurred > end_d.isoformat():
                         continue
+                    all_events.append(event)
                     total_events += 1
                     if event.get("is_bot"):
                         bot_events += 1
@@ -3405,6 +3724,75 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         def _top(d: dict[str, int], n: int = 10) -> list[dict[str, int | str]]:
             return [{"key": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:n]]
 
+        # Schema-v3 / JSON Analytics Log Vision derivations.
+        humans, bots = _derivations.filter_bots(all_events)
+        sessions = _derivations.sessionize(humans)
+
+        # Visitor summaries — top 10 by total active time.
+        visitor_tokens: list[str] = []
+        seen_v: set[str] = set()
+        for ev in humans:
+            t = _as_text(ev.get("visitor_cookie_id_hash"))
+            if t and t not in seen_v:
+                seen_v.add(t)
+                visitor_tokens.append(t)
+        v_summaries = [
+            _derivations.visitor_summary(humans, vt) for vt in visitor_tokens
+        ]
+        v_summaries.sort(key=lambda v: v.get("total_active_time_ms") or 0, reverse=True)
+        visitor_summary_top10 = v_summaries[:10]
+
+        # Interest-category rollup across all visitors.
+        interest_counts: _Counter = _Counter()
+        interest_total_views = 0
+        for vt in visitor_tokens:
+            prof = _derivations.visitor_interest_profile(humans, vt)
+            for cat, info in (prof.get("categories") or {}).items():
+                interest_counts[cat] += info.get("hits", 0)
+            interest_total_views += prof.get("total_page_views", 0)
+        interest_profile_categories = (
+            [
+                {
+                    "category": cat,
+                    "hits": hits,
+                    "pct_of_views": round(100 * hits / interest_total_views, 2)
+                    if interest_total_views
+                    else 0.0,
+                }
+                for cat, hits in interest_counts.most_common()
+            ]
+            if interest_total_views
+            else []
+        )
+
+        abandoned = _derivations.abandoned_intent_sessions(sessions)
+        dead_ends = _derivations.dead_end_pages(sessions)
+        assists = _derivations.conversion_assisting_pages(humans)
+        origin_dist = _derivations.traffic_origin_classification(humans)
+
+        # Bot-classifier breakdown for the bot_separation widget.
+        bot_class_counts: _Counter = _Counter()
+        for ev in bots:
+            bot_class_counts[_as_text(ev.get("bot_class")) or "unclassified"] += 1
+        bot_separation = {
+            "human_events": len(humans),
+            "bot_events": len(bots),
+            "bot_class_breakdown": [
+                {"bot_class": k, "count": v}
+                for k, v in bot_class_counts.most_common()
+            ],
+        }
+
+        # Quality-flag triage histogram (operator-only payload key).
+        quality_flag_counts: _Counter = _Counter()
+        for ev in all_events:
+            for tok in ev.get("quality_flags") or []:
+                quality_flag_counts[tok] += 1
+        debugging_triage_buckets = [
+            {"flag": flag, "count": count}
+            for flag, count in quality_flag_counts.most_common()
+        ]
+
         payload = {
             "ok": True,
             "grantee": {"msn_id": requested_msn, "domains": domains},
@@ -3421,7 +3809,26 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
             "top_pages": _top(page_counts, 10),
             "top_referrers": _top(referrer_counts, 10),
+            # Schema-v3 / JSON Analytics Log Vision rollups.
+            "visitor_summary_top10": visitor_summary_top10,
+            "interest_profile_categories": interest_profile_categories,
+            "abandoned_intent_sessions": {
+                "count": len(abandoned),
+                "sample": abandoned[:10],
+            },
+            "dead_end_pages": dead_ends,
+            "conversion_assisting_pages": assists,
+            "origin_type_distribution": origin_dist,
+            "bot_separation": bot_separation,
         }
+        # Operator-only diagnostic block. Grantee-context callers
+        # (oauth2-proxy attached X-Auth-Request-Grantee header) never
+        # see it; their dashboard JS hides the section when the key
+        # is absent. Operator context = header missing.
+        if _is_operator_request():
+            payload["debugging"] = {
+                "quality_flag_buckets": debugging_triage_buckets,
+            }
         _ANALYTICS_SUMMARY_CACHE[cache_key] = (now, payload)
         return jsonify(payload), 200
 
@@ -3696,22 +4103,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/tolling/refresh")
     def fnd_tolling_refresh() -> tuple[Any, int]:
-        """Operator action: compute the current-month tolling row for a
-        grantee from live AWS + nginx logs, upsert into the grantee's
-        tolling.<msn>.json. Operator-only: when oauth2-proxy headers
-        identify a non-operator caller, refuse."""
+        """Operator action: rebuild the operator ledger for `period`
+        from live AWS + nginx logs, then derive every grantee's invoice
+        from the ledger × billing rules. Operator-only."""
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
-            compute_tolling_row,
+            refresh_all,
             resolve_grantee_from_headers,
-            upsert_tolling_row,
         )
 
-        requested_msn = _as_text(request.args.get("grantee"))
-        if not requested_msn:
-            return jsonify({"ok": False, "error": "missing_grantee"}), 400
-        # If oauth2-proxy resolved a grantee (i.e. a logged-in grantee
-        # user) reject — refresh is operator-only. No headers = operator
-        # context (dev tooling, cron-triggered, etc.) — allow.
+        # Operator-only — reject any logged-in grantee caller. No
+        # oauth2-proxy headers = operator context (dev tooling, cron).
         caller = resolve_grantee_from_headers(request.headers)
         if caller is not None:
             return jsonify({"ok": False, "error": "operator_only"}), 403
@@ -3721,18 +4122,108 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             period = datetime.now(UTC).date().strftime("%Y-%m")
 
         try:
-            row = compute_tolling_row(
-                requested_msn, period, aws_peripheral=_aws_peripheral
-            )
-            snapshot = upsert_tolling_row(requested_msn, row)
+            result = refresh_all(period, aws_peripheral=_aws_peripheral)
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         except Exception as exc:  # noqa: BLE001
             _log.error("tolling_refresh_failed",
-                       extra={"grantee": requested_msn, "period": period, "err": str(exc)})
+                       extra={"period": period, "err": str(exc)})
             return jsonify({"ok": False, "error": "refresh_failed"}), 500
 
-        return jsonify({"ok": True, "row": row, "snapshot": snapshot}), 200
+        return jsonify(result), 200
+
+    @app.get("/__fnd/tolling/ledger")
+    def fnd_tolling_ledger() -> tuple[Any, int]:
+        """Operator-only: read the raw operator ledger row for a period.
+
+        Returns every itemized AWS line for the month with attribution
+        (direct/shared_pool/residue) and totals. Used by the FND
+        dashboard's operator panel to render the raw cost view + drive
+        the rate-card editor.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            OPERATOR_MSN_ID,
+            read_ledger_row,
+            resolve_grantee_from_headers,
+        )
+
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+
+        period = _as_text(request.args.get("period"))
+        if not period:
+            period = datetime.now(UTC).date().strftime("%Y-%m")
+
+        row = read_ledger_row(period)
+        if row is None:
+            return jsonify({"ok": True, "period": period, "empty": True}), 200
+        return jsonify({"ok": True, "period": period, "row": row}), 200
+
+    @app.get("/__fnd/tolling/billing-rules")
+    def fnd_tolling_billing_rules_get() -> tuple[Any, int]:
+        """Operator-only: read the current billing rules (margins, waivers, pool splits)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            OPERATOR_MSN_ID,
+            read_billing_rules,
+            resolve_grantee_from_headers,
+        )
+
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+        return jsonify({"ok": True, "rules": read_billing_rules()}), 200
+
+    @app.post("/__fnd/tolling/billing-rules")
+    def fnd_tolling_billing_rules_set() -> tuple[Any, int]:
+        """Operator-only: persist updated billing rules. Body is the
+        full rules JSON. Validation: margin_pct ∈ [0, 1000], schema
+        version must match. On success the next refresh recomputes
+        invoices through the new rules.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            BILLING_RULES_SCHEMA,
+            LINE_ITEM_CATEGORIES,
+            OPERATOR_MSN_ID,
+            read_billing_rules,
+            resolve_grantee_from_headers,
+            write_billing_rules,
+        )
+
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+
+        # Validate categories used in per_grantee waivers
+        valid_categories = set(LINE_ITEM_CATEGORIES)
+        for msn, grantee_rules in (body.get("per_grantee") or {}).items():
+            for cat in grantee_rules.get("waive_categories") or []:
+                if cat not in valid_categories:
+                    return jsonify({
+                        "ok": False, "error": "invalid_category",
+                        "msn": msn, "category": cat,
+                    }), 400
+
+        # Validate margin range
+        margin = (body.get("defaults") or {}).get("margin_pct")
+        if margin is not None:
+            try:
+                m = float(margin)
+            except (TypeError, ValueError):
+                return jsonify({"ok": False, "error": "margin_pct_not_numeric"}), 400
+            if not (0 <= m <= 1000):
+                return jsonify({"ok": False, "error": "margin_pct_out_of_range"}), 400
+
+        body.setdefault("schema", BILLING_RULES_SCHEMA)
+        try:
+            saved = write_billing_rules(body)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": True, "rules": saved}), 200
 
     @app.get("/__fnd/tolling/whoami")
     def fnd_tolling_whoami() -> tuple[Any, int]:
@@ -3824,6 +4315,276 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             private_dir=Path(host_config.private_dir),
         )
         return jsonify({"ok": True, **payload}), 200
+
+    # ------------------------------------------------------------------
+    # Dashboard Contacts tab — per-grantee address book.
+    # ------------------------------------------------------------------
+    # The Contacts tab on the per-client `/dashboard/` shows the union of
+    # all contact-log JSONs across every domain the grantee owns and
+    # supports add + edit-by-email (no delete; submitters are the natural
+    # primary key and the email subjects them to GDPR-style retention
+    # policies separately).
+    #
+    # Auth: identical scope check to the Tolling/Email endpoints — the
+    # caller's grantee is resolved from oauth2-proxy headers (Keycloak)
+    # or, in the no-auth dev preview, from request.host. The requested
+    # `grantee` query arg must match the caller's msn, and any `domain`
+    # in the body must be one the caller owns.
+
+    def _contacts_caller_grantee(requested_msn: str) -> dict[str, Any] | None:
+        """Return the full grantee profile dict for the caller's msn.
+
+        Used to materialize the `domains` list owned by the grantee +
+        return label / short_name in the list response.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            load_grantee_directory,
+        )
+        if host_config.private_dir is None:
+            return None
+        directory = Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+        for profile in load_grantee_directory(directory):
+            if str(profile.get("msn_id", "")) == requested_msn:
+                return profile
+        return None
+
+    def _contacts_identity_view(record: dict[str, Any]) -> dict[str, Any]:
+        """Project a contact record down to its identity fields only.
+
+        Strips message/subject (historic leftover keys), keeps subscribe
+        state + lifecycle timestamps so the UI can show source/created.
+        """
+        return {
+            "email": _as_text(record.get("email")),
+            "name": _as_text(record.get("name")),
+            "first_name": _as_text(record.get("first_name")),
+            "middle_name": _as_text(record.get("middle_name")),
+            "last_name": _as_text(record.get("last_name")),
+            "phone": _as_text(record.get("phone")),
+            "zip": _as_text(record.get("zip")),
+            "subscribed": bool(record.get("subscribed")),
+            "source": _as_text(record.get("source")),
+            "forward_status": _as_text(record.get("forward_status")),
+            "signup_date": _as_text(record.get("signup_date")),
+            "created_at": _as_text(record.get("created_at")),
+            "updated_at": _as_text(record.get("updated_at")),
+        }
+
+    @app.get("/__fnd/contacts/list")
+    def fnd_contacts_list() -> tuple[Any, int]:
+        """Union of every contact-log row across the caller grantee's
+        domains. Identity fields only — message/subject never surface."""
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        owned_domains = [
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        ]
+        adapter = _newsletter_state_adapter(host_config)
+        contacts: list[dict[str, Any]] = []
+        for domain in owned_domains:
+            log = adapter.load_contact_log(domain=domain) or {}
+            for record in log.get("contacts") or []:
+                if not isinstance(record, dict):
+                    continue
+                row = _contacts_identity_view(record)
+                row["domain"] = domain
+                contacts.append(row)
+        contacts.sort(
+            key=lambda r: (r.get("updated_at") or r.get("created_at") or ""),
+            reverse=True,
+        )
+        return jsonify({
+            "ok": True,
+            "grantee": {
+                "msn_id": _as_text(grantee.get("msn_id")),
+                "label": _as_text(grantee.get("label")),
+                "short_name": _as_text(grantee.get("short_name")),
+                "domains": owned_domains,
+            },
+            "contacts": contacts,
+        }), 200
+
+    @app.post("/__fnd/contacts/add")
+    def fnd_contacts_add() -> tuple[Any, int]:
+        """Dashboard add path — identity-only, no email sent. Upserts by
+        email. If a row exists, identity fields patch in (existing
+        subscribed state is preserved); if not, a new unsubscribed row
+        lands with source=dashboard_add."""
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        owned_domains = {
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        }
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        domain = _normalize_domain(_as_text(body.get("domain")))
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if domain not in owned_domains:
+            return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+        email = _validate_email(body.get("email"))
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+
+        first_name = _as_text(body.get("first_name"))
+        middle_name = _as_text(body.get("middle_name"))
+        last_name = _as_text(body.get("last_name"))
+        phone = _as_text(body.get("phone"))
+        zip_code = _as_text(body.get("zip"))
+        composed_name = " ".join(t for t in (first_name, middle_name, last_name) if t)
+
+        adapter = _newsletter_state_adapter(host_config)
+        log = adapter.load_contact_log(domain=domain) or {
+            "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
+            "domain": domain,
+            "contacts": [],
+            "dispatches": [],
+        }
+        now_iso = _utc_now_iso()
+        today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
+        contacts = list(log.get("contacts") or [])
+        found = None
+        for c in contacts:
+            if _as_text(c.get("email")).lower() == email:
+                found = c
+                break
+        if found is None:
+            found = {
+                "email": email,
+                "name": composed_name,
+                "first_name": first_name,
+                "middle_name": middle_name,
+                "last_name": last_name,
+                "phone": phone,
+                "zip": zip_code,
+                "signup_date": today_date,
+                "subscribed": False,
+                "source": "dashboard_add",
+                "send_count": 0,
+                "last_newsletter_sent_at": "",
+                "created_at": now_iso,
+            }
+            contacts.append(found)
+        else:
+            if first_name:
+                found["first_name"] = first_name
+            if middle_name:
+                found["middle_name"] = middle_name
+            if last_name:
+                found["last_name"] = last_name
+            if composed_name:
+                found["name"] = composed_name
+            if phone:
+                found["phone"] = phone
+            if zip_code:
+                found["zip"] = zip_code
+            if not _as_text(found.get("source")):
+                found["source"] = "dashboard_add"
+        found["updated_at"] = now_iso
+        log["contacts"] = contacts
+        log["updated_at"] = now_iso
+        adapter.save_contact_log(domain=domain, payload=log)
+
+        view = _contacts_identity_view(found)
+        view["domain"] = domain
+        return jsonify({"ok": True, "contact": view}), 200
+
+    @app.post("/__fnd/contacts/update")
+    def fnd_contacts_update() -> tuple[Any, int]:
+        """Dashboard edit path — locate by `email` (natural key), patch
+        identity fields. Supports `new_email` to rename a row; the
+        rename rejects on collision with another row in the same log."""
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        owned_domains = {
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        }
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        domain = _normalize_domain(_as_text(body.get("domain")))
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if domain not in owned_domains:
+            return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+        email = _validate_email(body.get("email"))
+        if not email:
+            return jsonify({"ok": False, "error": "invalid_email"}), 400
+
+        adapter = _newsletter_state_adapter(host_config)
+        log = adapter.load_contact_log(domain=domain)
+        if not log:
+            return jsonify({"ok": False, "error": "contact_log_missing"}), 404
+        contacts = list(log.get("contacts") or [])
+        target = None
+        for c in contacts:
+            if _as_text(c.get("email")).lower() == email:
+                target = c
+                break
+        if target is None:
+            return jsonify({"ok": False, "error": "contact_not_found"}), 404
+
+        # Optional rename — must be a valid email and must not collide.
+        new_email_raw = body.get("new_email")
+        if new_email_raw is not None and _as_text(new_email_raw):
+            new_email = _validate_email(new_email_raw)
+            if not new_email:
+                return jsonify({"ok": False, "error": "invalid_new_email"}), 400
+            if new_email != email:
+                for c in contacts:
+                    if c is target:
+                        continue
+                    if _as_text(c.get("email")).lower() == new_email:
+                        return jsonify({"ok": False, "error": "new_email_collision"}), 409
+                target["email"] = new_email
+
+        for key in ("first_name", "middle_name", "last_name", "phone", "zip"):
+            if key in body:
+                target[key] = _as_text(body.get(key))
+        composed = " ".join(
+            t for t in (
+                _as_text(target.get("first_name")),
+                _as_text(target.get("middle_name")),
+                _as_text(target.get("last_name")),
+            )
+            if t
+        )
+        if composed:
+            target["name"] = composed
+        now_iso = _utc_now_iso()
+        target["updated_at"] = now_iso
+        log["contacts"] = contacts
+        log["updated_at"] = now_iso
+        adapter.save_contact_log(domain=domain, payload=log)
+
+        view = _contacts_identity_view(target)
+        view["domain"] = domain
+        return jsonify({"ok": True, "contact": view}), 200
 
     @app.get("/__fnd/email/dashboard")
     def fnd_email_dashboard() -> tuple[Any, int]:

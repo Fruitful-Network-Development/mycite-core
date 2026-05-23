@@ -22,6 +22,8 @@ from __future__ import annotations
 from .cloud_adapter import AwsPeripheralCloudAdapter
 from .contracts import (
     AwsPeripheralPort,
+    CostBreakdown,
+    CostLineItem,
     DomainStatus,
     ForwardingRoutesSyncResult,
     ProfileReadiness,
@@ -32,6 +34,8 @@ from .profile_store import ProfileStore, iter_profile_recipient_targets
 __all__ = [
     "AwsPeripheralCloudAdapter",
     "AwsPeripheralPort",
+    "CostBreakdown",
+    "CostLineItem",
     "DomainStatus",
     "ForwardingRoutesSyncResult",
     "ProfileReadiness",

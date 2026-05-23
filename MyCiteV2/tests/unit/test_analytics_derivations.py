@@ -249,5 +249,202 @@ class TopEntryExitTests(unittest.TestCase):
         self.assertEqual(rows[0]["count"], 2)
 
 
+class VisitorSummaryTests(unittest.TestCase):
+    def test_unknown_visitor_returns_zero_shape(self) -> None:
+        result = derivations.visitor_summary([_event()], "ghost")
+        self.assertEqual(result["visit_count"], 0)
+        self.assertEqual(result["total_events"], 0)
+        self.assertEqual(result["bot_status"], "unknown")
+
+    def test_aggregates_full_visitor(self) -> None:
+        events = [
+            _event(
+                session_id="s1",
+                page_path="/",
+                occurred_at_utc="2026-05-01T00:00:00Z",
+                active_time_ms=2000,
+                ip_prefix="192.0.2.0/24",
+                device_type="desktop",
+                referrer_domain="google.com",
+            ),
+            _event(
+                session_id="s1",
+                page_path="/pricing",
+                occurred_at_utc="2026-05-01T00:01:00Z",
+                active_time_ms=5000,
+                ip_prefix="192.0.2.0/24",
+                device_type="desktop",
+            ),
+            _event(
+                event_type="form_submit",
+                session_id="s2",
+                page_path="/contact",
+                occurred_at_utc="2026-05-02T00:00:00Z",
+                active_time_ms=0,
+                ip_prefix="198.51.100.0/24",
+                device_type="mobile",
+            ),
+        ]
+        result = derivations.visitor_summary(events, "visitor-a")
+        self.assertEqual(result["session_count"], 2)
+        self.assertEqual(result["total_events"], 3)
+        self.assertEqual(result["total_active_time_ms"], 7000)
+        self.assertEqual(result["first_landing_page"], "/")
+        self.assertEqual(result["last_seen_page"], "/contact")
+        self.assertEqual(result["conversion_count"], 1)
+        self.assertEqual(result["bot_status"], "human")
+        self.assertEqual(result["vpn_or_geo_jump_status"], "multi_prefix")
+
+
+class VisitorInterestProfileTests(unittest.TestCase):
+    def test_categorises_pages(self) -> None:
+        events = [
+            _event(page_path="/", visitor_cookie_id_hash="v"),
+            _event(page_path="/services", visitor_cookie_id_hash="v"),
+            _event(page_path="/pricing", visitor_cookie_id_hash="v"),
+            _event(page_path="/contact", visitor_cookie_id_hash="v"),
+        ]
+        result = derivations.visitor_interest_profile(events, "v")
+        self.assertEqual(result["total_page_views"], 4)
+        self.assertIn("pricing", result["categories"])
+        self.assertEqual(result["intent_tier"], "high")
+
+    def test_browsing_tier_when_only_home(self) -> None:
+        events = [
+            _event(page_path="/", visitor_cookie_id_hash="v"),
+            _event(page_path="/blog/x", visitor_cookie_id_hash="v"),
+        ]
+        result = derivations.visitor_interest_profile(events, "v")
+        self.assertEqual(result["intent_tier"], "browsing")
+
+
+class AbandonedIntentSessionsTests(unittest.TestCase):
+    def test_flags_intent_without_conversion(self) -> None:
+        sessions = [
+            {
+                "visitor_cookie_id_hash": "v",
+                "session_id": "s1",
+                "started_at_utc": "2026-05-01T00:00:00Z",
+                "entry_page": "/",
+                "exit_page": "/pricing",
+                "active_time_ms": 30_000,
+                "duration_ms": 60_000,
+                "event_types": ["page_view"],
+                "is_bot": False,
+            },
+        ]
+        out = derivations.abandoned_intent_sessions(sessions)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["exit_page"], "/pricing")
+        self.assertIn("/pricing", out[0]["visited_intent_pages"])
+
+    def test_skips_converted_session(self) -> None:
+        sessions = [
+            {
+                "visitor_cookie_id_hash": "v",
+                "session_id": "s1",
+                "entry_page": "/",
+                "exit_page": "/contact",
+                "active_time_ms": 30_000,
+                "event_types": ["page_view", "form_submit"],
+                "is_bot": False,
+            },
+        ]
+        self.assertEqual(derivations.abandoned_intent_sessions(sessions), [])
+
+
+class DeadEndPagesTests(unittest.TestCase):
+    def test_flags_high_single_page_session_rate(self) -> None:
+        sessions = (
+            [
+                {
+                    "entry_page": "/dead",
+                    "exit_page": "/dead",
+                    "active_time_ms": 1000,
+                    "is_bot": False,
+                }
+            ]
+            * 5
+        )
+        rows = derivations.dead_end_pages(sessions, min_entries=5, single_page_rate_threshold=0.6)
+        self.assertEqual(rows[0]["page_path"], "/dead")
+        self.assertEqual(rows[0]["single_page_session_rate"], 1.0)
+
+    def test_ignores_low_volume_entries(self) -> None:
+        sessions = [
+            {
+                "entry_page": "/rare",
+                "exit_page": "/rare",
+                "active_time_ms": 0,
+                "is_bot": False,
+            }
+        ]
+        self.assertEqual(derivations.dead_end_pages(sessions, min_entries=5), [])
+
+
+class ConversionAssistingPagesTests(unittest.TestCase):
+    def test_counts_pages_before_conversion(self) -> None:
+        events = [
+            _event(
+                visitor_cookie_id_hash="v",
+                session_id="s1",
+                page_path="/",
+                occurred_at_utc="2026-05-01T00:00:00Z",
+            ),
+            _event(
+                visitor_cookie_id_hash="v",
+                session_id="s1",
+                page_path="/services",
+                occurred_at_utc="2026-05-01T00:01:00Z",
+            ),
+            _event(
+                visitor_cookie_id_hash="v",
+                session_id="s1",
+                page_path="/contact",
+                occurred_at_utc="2026-05-01T00:02:00Z",
+            ),
+            _event(
+                visitor_cookie_id_hash="v",
+                session_id="s1",
+                event_type="form_submit",
+                page_path="/contact",
+                occurred_at_utc="2026-05-01T00:03:00Z",
+            ),
+        ]
+        rows = derivations.conversion_assisting_pages(events)
+        paths = {r["page_path"] for r in rows}
+        self.assertIn("/services", paths)
+        self.assertIn("/", paths)
+        self.assertIn("/contact", paths)
+
+
+class TrafficOriginClassificationTests(unittest.TestCase):
+    def test_buckets_by_origin(self) -> None:
+        events = [
+            _event(
+                visitor_cookie_id_hash="v1",
+                session_id="s1",
+                referrer_domain="google.com",
+                active_time_ms=3000,
+            ),
+            _event(
+                visitor_cookie_id_hash="v2",
+                session_id="s2",
+                referrer_domain="",
+                active_time_ms=1000,
+            ),
+            _event(
+                visitor_cookie_id_hash="v3",
+                session_id="s3",
+                referrer_domain="facebook.com",
+                active_time_ms=2000,
+            ),
+        ]
+        result = derivations.traffic_origin_classification(events)
+        self.assertEqual(result["search"]["sessions"], 1)
+        self.assertEqual(result["direct"]["sessions"], 1)
+        self.assertEqual(result["social"]["sessions"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

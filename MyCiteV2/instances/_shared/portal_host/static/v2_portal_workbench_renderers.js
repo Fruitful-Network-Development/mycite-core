@@ -495,10 +495,16 @@
     var payload = JSON.stringify(asObject(a.payload));
     var schema = asText(a.schema);
     var confirm = asText(a.confirm);
+    // Server can mark an action disabled (e.g. reminder still in 24h
+    // cooldown) by setting action.disabled === true. We render the button
+    // with the HTML `disabled` attribute + a "is-disabled" class so the
+    // existing click handler in bindRowAction will not fire.
+    var disabled = a.disabled === true;
     return (
       '<button type="button" class="v2-rowAction v2-rowAction--' +
-      escapeHtml(variant) +
+      escapeHtml(variant) + (disabled ? " is-disabled" : "") +
       '"' +
+      (disabled ? " disabled" : "") +
       ' data-row-action-route="' +
       escapeHtml(asText(a.route)) +
       '"' +
@@ -509,6 +515,29 @@
       "'>" +
       escapeHtml(asText(a.label)) +
       "</button>"
+    );
+  }
+
+  function renderOnboardingProgressCell(progress) {
+    var p = asObject(progress);
+    var total = Number(p.steps_total) || 0;
+    var done = Number(p.steps_done) || 0;
+    var pct = Number(p.percent) || 0;
+    var nextStep = asObject(p.next_step);
+    var nextLabel = asText(nextStep.label);
+    var title = done + " of " + total + " complete";
+    if (nextLabel) title += " · next: " + nextLabel;
+    // Use semantic <progress> so screen readers + CSS-less rendering still
+    // convey the value. value/max are integers; the visible % label sits
+    // below so a glance reads the same number assistive tech announces.
+    return (
+      '<td class="v2-mailboxes__progressCell" title="' +
+      escapeHtml(title) + '">' +
+      '<progress class="v2-mailboxes__progress" value="' + pct +
+      '" max="100">' + pct + '%</progress>' +
+      '<span class="v2-mailboxes__progressLabel">' + pct + '%' +
+      (total ? ' (' + done + '/' + total + ')' : '') +
+      '</span></td>'
     );
   }
 
@@ -720,19 +749,57 @@
     // Phase 16c: Domain column so operators of multi-domain grantees
     // (e.g. CVCC owns cvcc + cvccboard) can tell which mailbox lives
     // where. Rows are sorted by domain then mailbox server-side.
-    return renderRowsTableWithActions(
-      "Mailboxes",
-      rows,
-      [
-        { key: "domain", label: "Domain" },
-        { key: "mailbox", label: "Mailbox" },
-        { key: "send_as", label: "Send-as" },
-        { key: "role", label: "Role" },
-        { key: "lifecycle", label: "Lifecycle" },
-        { key: "inbound", label: "Inbound" },
-      ],
-      "suspend_action",
-      "Actions"
+    //
+    // 2026-05-22: per-row onboarding-progress bar + three-action cell
+    // (suspend / resend handoff / send reminder). The progress cell has
+    // its own renderer (renderOnboardingProgressCell); other columns are
+    // plain text. The action cell concatenates whichever of the three
+    // actions the server provided — empty actions render nothing.
+    var rowList = asList(rows);
+    if (!rowList.length) return "";
+    var textColumns = [
+      { key: "domain", label: "Domain" },
+      { key: "mailbox", label: "Mailbox" },
+      { key: "send_as", label: "Send-as" },
+      { key: "role", label: "Role" },
+      { key: "lifecycle", label: "Lifecycle" },
+      { key: "inbound", label: "Inbound" },
+    ];
+    var actionKeys = ["suspend_action", "resend_handoff_action", "send_reminder_action"];
+    var hasActions = rowList.some(function (r) {
+      var ro = asObject(r);
+      return actionKeys.some(function (k) {
+        var a = asObject(ro[k]);
+        return a && a.route;
+      });
+    });
+    var headerCells = textColumns
+      .map(function (col) { return "<th>" + escapeHtml(asText(col.label)) + "</th>"; })
+      .join("") + "<th>Onboarding</th>" +
+      (hasActions ? "<th>Actions</th>" : "");
+    var bodyRows = rowList.map(function (row) {
+      var r = asObject(row);
+      var textCells = textColumns.map(function (col) {
+        var v = r[col.key];
+        if (typeof v === "boolean") v = v ? "yes" : "no";
+        if (v == null) v = "";
+        return "<td>" + escapeHtml(String(v)) + "</td>";
+      }).join("");
+      var progressCell = renderOnboardingProgressCell(r.onboarding_progress);
+      var actionCell = "";
+      if (hasActions) {
+        actionCell = "<td>" + actionKeys.map(function (k) {
+          return renderRowAction(r[k]);
+        }).join(" ") + "</td>";
+      }
+      return "<tr>" + textCells + progressCell + actionCell + "</tr>";
+    }).join("");
+    return (
+      '<section class="v2-extensionCard__table v2-extensionCard__mailboxes">' +
+      "<h4>Mailboxes</h4>" +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      headerCells + "</tr></thead><tbody>" + bodyRows +
+      "</tbody></table></div></section>"
     );
   }
 

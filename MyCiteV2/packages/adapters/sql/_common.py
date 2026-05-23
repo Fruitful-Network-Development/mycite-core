@@ -1,8 +1,9 @@
 """Shared helpers for the FND SQL adapters.
 
-Three FND-tenant SQL adapters (fnd_analytics_summary, fnd_paypal,
-fnd_email_deliverability) all need the same defensive type coercion +
-canonical-name token utilities. Keeping them here prevents drift.
+The remaining FND-tenant SQL adapters (fnd_paypal, fnd_email_deliverability)
+all need the same defensive type coercion + canonical-name token
+utilities. Keeping them here prevents drift. The retired analytics
+summary adapter used to share these helpers too.
 
 This module has no MyCiteV2-side imports — pure stdlib so any adapter
 can pull from it without risking a circular load.
