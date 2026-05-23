@@ -19,9 +19,16 @@ from typing import Any
 
 from datetime import datetime, timedelta, timezone
 
-from MyCiteV2.packages.peripherals.aws import ProfileStore
+from MyCiteV2.packages.peripherals.aws import ProbeCache, ProfileStore
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
+
+
+# B2 — module-level cache for the Wave-B activity-based onboarding overlay
+# probes. Single instance shared across requests in this worker process;
+# 5-minute TTL so the email tab doesn't trigger an SES/CloudWatch/S3
+# round-trip per mailbox per page render. Cleared on process restart.
+_OVERLAY_PROBE_CACHE: ProbeCache = ProbeCache(ttl_seconds=300)
 
 # Onboarding sequence used both for the per-row progress bar and for the
 # Send-reminder gate. Each entry is (key, label, predicate) — predicate
@@ -70,13 +77,83 @@ def _build_onboarding_legend() -> list[dict[str, str]]:
     ]
 
 
-def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
+def _onboarding_aws_evidence(
+    payload: dict[str, Any],
+    *,
+    aws_adapter: Any,
+    cache: ProbeCache | None = None,
+) -> dict[str, dict[str, str]]:
+    """B2 — call the 3 AwsPeripheralCloudAdapter probes for the steps that
+    have live AWS evidence (steps 2 / 4 / 6) and return a dict keyed by
+    step key with each probe's AwsEvidence triple. Steps with no live
+    probe (1 / 3 / 5) are absent from the returned dict.
+
+    Each probe result is cached for the lifetime of the module's
+    `_OVERLAY_PROBE_CACHE` TTL keyed by (probe_name, send_as_email/domain,
+    declared_flag) so an N-mailbox grantee triggers AT MOST 3*N round
+    trips on a cold render and 0 on a warm one.
+    """
+    if aws_adapter is None:
+        return {}
+    if cache is None:
+        cache = _OVERLAY_PROBE_CACHE
+
+    ident = _as_dict(payload.get("identity"))
+    workflow = _as_dict(payload.get("workflow"))
+    provider = _as_dict(payload.get("provider"))
+    inbound = _as_dict(payload.get("inbound"))
+
+    send_as = _as_text(ident.get("send_as_email")).lower()
+    domain = _as_text(ident.get("domain")).lower()
+    declared_ses_verified = _as_text(provider.get("aws_ses_identity_status")).lower() == "verified"
+    lifecycle_state = _as_text(workflow.get("lifecycle_state")).lower()
+    declared_operational = (
+        lifecycle_state == "operational" or bool(workflow.get("is_mailbox_operational"))
+    )
+    declared_inbound_verified = bool(inbound.get("receive_verified"))
+
+    evidence: dict[str, dict[str, str]] = {}
+    if send_as:
+        evidence["ses_identity_ready"] = cache.get_or_compute(
+            ("ses_identity", send_as, declared_ses_verified),
+            lambda: aws_adapter.probe_ses_identity_aws_evidence(
+                send_as, declared_verified=declared_ses_verified
+            ),
+        )
+        evidence["handoff_acked"] = cache.get_or_compute(
+            ("operator_sends", send_as, declared_operational),
+            lambda: aws_adapter.probe_operator_sends_aws_evidence(
+                send_as, declared_operational=declared_operational
+            ),
+        )
+    if domain:
+        evidence["inbound_verified"] = cache.get_or_compute(
+            ("inbound_verified", domain, declared_inbound_verified),
+            lambda: aws_adapter.probe_inbound_verified_aws_evidence(
+                domain, declared_verified=declared_inbound_verified
+            ),
+        )
+    return evidence
+
+
+def _onboarding_progress(
+    payload: dict[str, Any],
+    *,
+    aws_adapter: Any | None = None,
+) -> dict[str, Any]:
     """Derive an onboarding-progress summary from a profile JSON payload.
 
-    Returns ``{steps_total, steps_done, percent, completed, next_step}`` where
-    ``completed`` is the ordered list of step keys that are done and
-    ``next_step`` is the first incomplete (key, label) pair, or ``None`` if
-    every step is satisfied.
+    Returns ``{steps_total, steps_done, percent, completed, next_step,
+    aws_evidence}`` — `aws_evidence` is a dict keyed by step key
+    carrying the {state, detail, observed_at} triple from the Wave-B
+    probes; empty {} when ``aws_adapter`` is None (the existing
+    flag-only behavior — kept as the default so existing callers + tests
+    don't break).
+
+    B2 auto-advance: when a step's AWS evidence is ``auto_advance``
+    (positive evidence but the declared flag is unset), the step counts
+    as ``completed`` for percent / next_step purposes. ``drift`` /
+    ``absent`` / ``error`` do NOT change the flag-based proof.
     """
     workflow = _as_dict(payload.get("workflow"))
     provider = _as_dict(payload.get("provider"))
@@ -92,6 +169,15 @@ def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
         "inbound_configured": _as_text(inbound.get("receive_state")).lower() == "receive_configured",
         "inbound_verified": bool(inbound.get("receive_verified")),
     }
+
+    aws_evidence = _onboarding_aws_evidence(payload, aws_adapter=aws_adapter)
+    for step_key, evidence in aws_evidence.items():
+        if evidence.get("state") == "auto_advance":
+            proof[step_key] = True
+        # confirmed / drift / absent / error don't override the flag —
+        # confirmed agrees with the flag (already True); drift is the UI
+        # warning signal but doesn't move the percent; absent + error
+        # leave the flag's truth alone.
 
     completed: list[str] = []
     next_step: dict[str, str] | None = None
@@ -109,6 +195,7 @@ def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
         "percent": int(round(done * 100 / total)) if total else 0,
         "completed": completed,
         "next_step": next_step,
+        "aws_evidence": aws_evidence,
     }
 
 
@@ -150,6 +237,7 @@ def _build_email_extension_payload(
     private_dir: str | Path | None,
     authority_db_file: str | Path | None = None,
     portal_instance_id: str | None = None,
+    aws_adapter: Any | None = None,
 ) -> dict[str, Any]:
     aws_subconfig = _as_dict(grantee.get("aws_ses"))
     configuration = {
@@ -212,7 +300,7 @@ def _build_email_extension_payload(
             )
             workflow = _as_dict(payload.get("workflow"))
             inbox_target = _as_text(ident.get("operator_inbox_target"))
-            progress = _onboarding_progress(payload)
+            progress = _onboarding_progress(payload, aws_adapter=aws_adapter)
             profiles.append({
                 "profile_id": profile_id,
                 "domain": profile_domain,
@@ -431,6 +519,39 @@ def _send_reminder_action_for_profile(
     return base
 
 
+def _resolve_overlay_adapter(ctx: dict[str, Any]) -> Any | None:
+    """Pick the AwsPeripheralCloudAdapter for the Wave-B overlay probes.
+
+    Precedence:
+      1. ``ctx["aws_adapter"]`` — caller-injected (tests, future surface
+         wiring). Honored even if None (so tests can disable probes
+         explicitly by passing aws_adapter=None in ctx).
+      2. Otherwise lazy-create an adapter unless the env var
+         ``MYCITE_DISABLE_EMAIL_OVERLAY_PROBES=1`` is set (kill switch
+         when AWS perms are temporarily broken in production).
+
+    The adapter is cached per-process via ``_lazy_adapter`` so we don't
+    pay boto3 client construction cost on every render.
+    """
+    if "aws_adapter" in ctx:
+        return ctx.get("aws_adapter")
+    import os
+    if (os.environ.get("MYCITE_DISABLE_EMAIL_OVERLAY_PROBES") or "").strip() == "1":
+        return None
+    return _lazy_overlay_adapter()
+
+
+_LAZY_OVERLAY_ADAPTER: Any | None = None
+
+
+def _lazy_overlay_adapter() -> Any:
+    global _LAZY_OVERLAY_ADAPTER
+    if _LAZY_OVERLAY_ADAPTER is None:
+        from MyCiteV2.packages.peripherals.aws import AwsPeripheralCloudAdapter
+        _LAZY_OVERLAY_ADAPTER = AwsPeripheralCloudAdapter()
+    return _LAZY_OVERLAY_ADAPTER
+
+
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
@@ -438,13 +559,16 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
         private_dir=ctx.get("private_dir"),
         authority_db_file=ctx.get("authority_db_file"),
         portal_instance_id=ctx.get("portal_instance_id"),
+        aws_adapter=_resolve_overlay_adapter(ctx),
     )
 
 
 __all__ = [
+    "_OVERLAY_PROBE_CACHE",
     "_build_email_extension_payload",
     "_build_onboarding_legend",
     "_edit_action_for_profile",
+    "_onboarding_aws_evidence",
     "_onboarding_progress",
     "_remove_action_for_profile",
     "_render_ext_aws_email",

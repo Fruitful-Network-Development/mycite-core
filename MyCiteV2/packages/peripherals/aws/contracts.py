@@ -54,6 +54,26 @@ class SesSendResult(TypedDict):
     configuration_set: str
 
 
+class AwsEvidence(TypedDict):
+    """B1 — common shape for the activity-based onboarding overlay probes.
+
+    `state` is the badge the UI renders next to each onboarding step:
+      * "confirmed"     — AWS evidence agrees the step is complete
+      * "drift"         — declared complete (JSON flag set) but AWS has no evidence
+      * "auto_advance"  — AWS evidence positive but the JSON flag isn't set yet
+      * "absent"        — neither side has evidence; step really is pending
+      * "error"         — probe failed (permissions, network, throttle); display
+                          the dim "no data" badge and surface `detail` on hover.
+    `detail` is a short human string ("12 sends in last 7d", "VerificationStatus=Success",
+    "no S3 objects under inbound/<domain>/", or the error message). `observed_at`
+    is the ISO timestamp of the probe call (NOT cached value — when the probe
+    actually executed against AWS, which is also the start of the cache TTL window).
+    """
+    state: str
+    detail: str
+    observed_at: str
+
+
 class CostBreakdown(TypedDict):
     """Per-grantee or per-account cost slice over a date range.
 

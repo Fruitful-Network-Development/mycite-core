@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from .cloud_adapter import AwsPeripheralCloudAdapter
 from .contracts import (
+    AwsEvidence,
     AwsPeripheralPort,
     CostBreakdown,
     CostLineItem,
@@ -33,6 +34,7 @@ from .profile_store import ProfileStore, iter_profile_recipient_targets
 
 
 __all__ = [
+    "AwsEvidence",
     "AwsPeripheralCloudAdapter",
     "AwsPeripheralPort",
     "CostBreakdown",
