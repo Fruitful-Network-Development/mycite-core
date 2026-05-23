@@ -147,5 +147,70 @@ class SendSurfaceTests(unittest.TestCase):
         self.assertEqual(len(self.stub.send_raw_email_calls), 0)
 
 
+class MessageIdAndDateHeaderTests(unittest.TestCase):
+    """A5 — domain-anchored Message-ID + RFC 2822 Date headers on every send.
+
+    EmailMessage auto-generates Message-ID at serialize time using the
+    process's hostname, which is `.compute.internal` on EC2 — spam filters
+    score that as suspicious because it doesn't match the From domain.
+    The send_email helper now anchors Message-ID to the sender's domain
+    and sets Date explicitly to RFC 2822 UTC.
+    """
+
+    def setUp(self) -> None:
+        self.stub = _StubSesClient()
+        self.adapter = AwsPeripheralCloudAdapter(profile_store=MagicMock())
+        self.adapter._cached_clients["ses@us-east-1"] = self.stub
+
+    def _send_and_parse(self, **overrides: Any):
+        import email
+        kwargs = {
+            "aws_ses_profile": _profile(),
+            "to": ["visitor@example.com"],
+            "subject": "hi",
+            "body_text": "hello",
+        }
+        kwargs.update(overrides)
+        self.adapter.send_email(**kwargs)
+        raw = self.stub.send_raw_email_calls[-1]["RawMessage"]["Data"]
+        return email.message_from_bytes(raw)
+
+    def test_message_id_anchored_to_from_domain(self) -> None:
+        msg = self._send_and_parse()
+        message_id = msg["Message-ID"]
+        self.assertIsNotNone(message_id)
+        self.assertTrue(
+            message_id.endswith("@fruitfulnetworkdevelopment.com>"),
+            f"Message-ID {message_id!r} not anchored to from-domain",
+        )
+
+    def test_date_header_is_rfc2822_utc(self) -> None:
+        import email.utils
+        msg = self._send_and_parse()
+        date_header = msg["Date"]
+        self.assertIsNotNone(date_header)
+        parsed = email.utils.parsedate_to_datetime(date_header)
+        # formatdate(localtime=False) produces a UTC datetime
+        self.assertIsNotNone(parsed.tzinfo)
+        self.assertEqual(parsed.utcoffset().total_seconds(), 0)
+
+    def test_caller_provided_message_id_wins(self) -> None:
+        msg = self._send_and_parse(
+            extra_headers={"Message-ID": "<custom-abc@example.com>"}
+        )
+        self.assertEqual(msg["Message-ID"], "<custom-abc@example.com>")
+        # Default Message-ID NOT also appended
+        all_ids = msg.get_all("Message-ID") or []
+        self.assertEqual(len(all_ids), 1)
+
+    def test_caller_provided_date_wins(self) -> None:
+        msg = self._send_and_parse(
+            extra_headers={"Date": "Sat, 23 May 2026 05:00:00 +0000"}
+        )
+        self.assertEqual(msg["Date"], "Sat, 23 May 2026 05:00:00 +0000")
+        all_dates = msg.get_all("Date") or []
+        self.assertEqual(len(all_dates), 1)
+
+
 if __name__ == "__main__":
     unittest.main()
