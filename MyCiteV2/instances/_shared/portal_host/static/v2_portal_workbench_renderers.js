@@ -745,6 +745,36 @@
     );
   }
 
+  function renderOnboardingLegendTable(legend) {
+    // 2026-05-23: static reference table above the Mailboxes table.
+    // Explains what each step in the per-row "X of 6" progress bar
+    // actually means so the operator doesn't have to read JSON to
+    // interpret a partial score. Rows are static (server emits the
+    // same six rows for every grantee) — no actions, no edit cell.
+    var rowList = asList(legend);
+    if (!rowList.length) return "";
+    var columns = [
+      { key: "step", label: "#" },
+      { key: "stage", label: "Stage" },
+      { key: "meaning", label: "What it means" },
+    ];
+    return (
+      '<section class="v2-extensionCard__table v2-extensionCard__onboardingLegend">' +
+      "<h4>Onboarding stages</h4>" +
+      '<p class="v2-extensionCard__summary">Each mailbox’s progress bar advances through these six stages in order.</p>' +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      columns.map(function (c) { return "<th>" + escapeHtml(asText(c.label)) + "</th>"; }).join("") +
+      "</tr></thead><tbody>" +
+      rowList.map(function (row) {
+        var r = asObject(row);
+        return "<tr>" + columns.map(function (c) {
+          return "<td>" + escapeHtml(asText(r[c.key])) + "</td>";
+        }).join("") + "</tr>";
+      }).join("") +
+      "</tbody></table></div></section>"
+    );
+  }
+
   function renderMailboxesTable(rows) {
     // Phase 16c: Domain column so operators of multi-domain grantees
     // (e.g. CVCC owns cvcc + cvccboard) can tell which mailbox lives
@@ -753,8 +783,14 @@
     // 2026-05-22: per-row onboarding-progress bar + three-action cell
     // (suspend / resend handoff / send reminder). The progress cell has
     // its own renderer (renderOnboardingProgressCell); other columns are
-    // plain text. The action cell concatenates whichever of the three
-    // actions the server provided — empty actions render nothing.
+    // plain text. The action cell concatenates whichever of the actions
+    // the server provided — empty actions render nothing.
+    //
+    // 2026-05-23: added per-row Edit (inline form expands a hidden row)
+    // and Remove buttons. Edit uses the same `renderInlineEditForm`
+    // primitive as the contacts table; bindMailboxEditActions handles
+    // toggle/cancel/submit using the dedicated data-mailbox-edit-* attrs
+    // so it can't collide with the contacts-table bindings.
     var rowList = asList(rows);
     if (!rowList.length) return "";
     var textColumns = [
@@ -765,7 +801,13 @@
       { key: "lifecycle", label: "Lifecycle" },
       { key: "inbound", label: "Inbound" },
     ];
-    var actionKeys = ["suspend_action", "resend_handoff_action", "send_reminder_action"];
+    var actionKeys = [
+      "edit_action",
+      "suspend_action",
+      "resend_handoff_action",
+      "send_reminder_action",
+      "remove_action",
+    ];
     var hasActions = rowList.some(function (r) {
       var ro = asObject(r);
       return actionKeys.some(function (k) {
@@ -777,7 +819,8 @@
       .map(function (col) { return "<th>" + escapeHtml(asText(col.label)) + "</th>"; })
       .join("") + "<th>Onboarding</th>" +
       (hasActions ? "<th>Actions</th>" : "");
-    var bodyRows = rowList.map(function (row) {
+    var actionColspan = textColumns.length + 1 + (hasActions ? 1 : 0);
+    var bodyRows = rowList.map(function (row, index) {
       var r = asObject(row);
       var textCells = textColumns.map(function (col) {
         var v = r[col.key];
@@ -788,11 +831,28 @@
       var progressCell = renderOnboardingProgressCell(r.onboarding_progress);
       var actionCell = "";
       if (hasActions) {
-        actionCell = "<td>" + actionKeys.map(function (k) {
-          return renderRowAction(r[k]);
-        }).join(" ") + "</td>";
+        var parts = [];
+        if (asObject(r.edit_action).route) {
+          parts.push(renderMailboxEditToggleButton(r.edit_action, index));
+        }
+        ["suspend_action", "resend_handoff_action", "send_reminder_action", "remove_action"]
+          .forEach(function (k) {
+            if (asObject(r[k]).route) parts.push(renderRowAction(r[k]));
+          });
+        actionCell = "<td>" + parts.join(" ") + "</td>";
       }
-      return "<tr>" + textCells + progressCell + actionCell + "</tr>";
+      var mainRow =
+        '<tr data-mailbox-row-index="' + String(index) + '">' +
+        textCells + progressCell + actionCell + "</tr>";
+      var editRow = "";
+      if (asObject(r.edit_action).route) {
+        editRow =
+          '<tr class="v2-mailboxEditRow" data-mailbox-edit-index="' + String(index) +
+          '" hidden><td colspan="' + String(actionColspan) + '">' +
+          renderMailboxInlineEditForm(r.edit_action) +
+          "</td></tr>";
+      }
+      return mainRow + editRow;
     }).join("");
     return (
       '<section class="v2-extensionCard__table v2-extensionCard__mailboxes">' +
@@ -800,6 +860,54 @@
       '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
       headerCells + "</tr></thead><tbody>" + bodyRows +
       "</tbody></table></div></section>"
+    );
+  }
+
+  function renderMailboxEditToggleButton(action, index) {
+    var a = asObject(action);
+    var variant = asText(a.variant) || "secondary";
+    return (
+      '<button type="button" class="v2-rowAction v2-rowAction--' +
+      escapeHtml(variant) +
+      '" data-mailbox-edit-toggle="' +
+      String(index) +
+      '">' +
+      escapeHtml(asText(a.label) || "Edit") +
+      "</button>"
+    );
+  }
+
+  function renderMailboxInlineEditForm(action) {
+    var a = asObject(action);
+    var fields = asList(a.editable_fields);
+    var route = asText(a.route);
+    var schema = asText(a.schema);
+    var payload = JSON.stringify(asObject(a.payload));
+    return (
+      '<form class="v2-mailboxEditForm" data-mailbox-edit-route="' +
+      escapeHtml(route) +
+      '" data-mailbox-edit-schema="' +
+      escapeHtml(schema) +
+      "\" data-mailbox-edit-payload='" +
+      escapeHtml(payload) +
+      "'>" +
+      fields.map(function (f) {
+        var key = asText(f.key);
+        var label = asText(f.label) || key;
+        var value = asText(f.value);
+        return (
+          '<label class="v2-mailboxEditForm__label">' +
+          "<span>" + escapeHtml(label) + "</span>" +
+          '<input type="text" data-mailbox-edit-key="' +
+          escapeHtml(key) +
+          '" value="' + escapeHtml(value) + '">' +
+          "</label>"
+        );
+      }).join("") +
+      '<div class="v2-mailboxEditForm__actions">' +
+      '<button type="submit" class="v2-rowAction v2-rowAction--primary">Save</button>' +
+      '<button type="button" class="v2-rowAction v2-rowAction--secondary" data-mailbox-edit-cancel="1">Cancel</button>' +
+      "</div></form>"
     );
   }
 
@@ -926,6 +1034,9 @@
         { key: "status", label: "Status" },
         { key: "event", label: "Event" },
       ]);
+    }
+    if (asList(p.profiles).length || asList(p.onboarding_legend).length) {
+      html += renderOnboardingLegendTable(p.onboarding_legend);
     }
     if (asList(p.profiles).length) {
       html += renderMailboxesTable(p.profiles);
@@ -1204,6 +1315,106 @@
     );
   }
 
+  function bindMailboxEditActions(ctx, target) {
+    // 2026-05-23: per-row inline edit on the Mailboxes table. Toggle
+    // button shows/hides the hidden edit row; the form submits to
+    // /__fnd/email/admin/edit and refreshes the shell on success.
+    // Mirrors bindContactEditActions but operates on the dedicated
+    // data-mailbox-edit-* attributes so the two tables can coexist
+    // without selector collisions.
+    if (!target) return;
+    Array.prototype.forEach.call(
+      target.querySelectorAll("[data-mailbox-edit-toggle]"),
+      function (btn) {
+        if (btn.dataset.mailboxEditBound === "1") return;
+        btn.dataset.mailboxEditBound = "1";
+        var index = btn.getAttribute("data-mailbox-edit-toggle");
+        btn.addEventListener("click", function () {
+          var row = target.querySelector(
+            '[data-mailbox-edit-index="' + index + '"]'
+          );
+          if (!row) return;
+          row.hidden = !row.hidden;
+        });
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll("[data-mailbox-edit-cancel]"),
+      function (btn) {
+        if (btn.dataset.mailboxCancelBound === "1") return;
+        btn.dataset.mailboxCancelBound = "1";
+        btn.addEventListener("click", function () {
+          var editRow = btn.closest(".v2-mailboxEditRow");
+          if (editRow) editRow.hidden = true;
+        });
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll("form.v2-mailboxEditForm"),
+      function (form) {
+        if (form.dataset.mailboxEditFormBound === "1") return;
+        form.dataset.mailboxEditFormBound = "1";
+        form.addEventListener("submit", function (event) {
+          event.preventDefault();
+          var route = form.getAttribute("data-mailbox-edit-route");
+          var schema = form.getAttribute("data-mailbox-edit-schema") || "";
+          var basePayload = {};
+          try {
+            basePayload = JSON.parse(form.getAttribute("data-mailbox-edit-payload") || "{}");
+          } catch (_) {}
+          var fields = asObject(basePayload).fields || {};
+          Array.prototype.forEach.call(
+            form.querySelectorAll("[data-mailbox-edit-key]"),
+            function (input) {
+              fields[input.getAttribute("data-mailbox-edit-key")] = input.value || "";
+            }
+          );
+          var body = Object.assign({}, basePayload, { schema: schema, fields: fields });
+          var saveBtn = form.querySelector('button[type="submit"]');
+          if (saveBtn) saveBtn.disabled = true;
+          fetch(route, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            credentials: "same-origin",
+          })
+            .then(function (r) {
+              return r.json().then(function (j) {
+                return { status: r.status, body: j };
+              });
+            })
+            .then(function (out) {
+              if (saveBtn) saveBtn.disabled = false;
+              var ok = out.status >= 200 && out.status < 300 && out.body && out.body.ok !== false;
+              if (ok && typeof ctx.loadShell === "function") {
+                var envelope = ctx.getEnvelope && ctx.getEnvelope();
+                if (envelope) {
+                  ctx.loadShell({
+                    schema: "mycite.v2.portal.shell.request.v1",
+                    requested_surface_id: envelope.surface_id,
+                    surface_query: envelope.surface_query || {},
+                  });
+                }
+              } else if (!ok) {
+                var msg =
+                  (out.body && (out.body.detail || out.body.error || ("HTTP " + out.status))) ||
+                  "unknown error";
+                try {
+                  window.alert("Edit failed: " + msg);
+                } catch (_) {}
+              }
+            })
+            .catch(function (err) {
+              if (saveBtn) saveBtn.disabled = false;
+              try {
+                window.alert("Network error: " + (err && err.message ? err.message : err));
+              } catch (_) {}
+            });
+        });
+      }
+    );
+  }
+
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
     Array.prototype.forEach.call(
@@ -1219,6 +1430,7 @@
       }
     );
     bindContactEditActions(ctx, target);
+    bindMailboxEditActions(ctx, target);
   }
 
   function renderGenericSurface(ctx, target, region, surfacePayload) {

@@ -35,7 +35,39 @@ _ONBOARDING_STEPS: tuple[tuple[str, str], ...] = (
     ("inbound_verified",    "Inbound verified end-to-end"),
 )
 
+# Plain-English meaning per step. Surfaced in the email extension card as
+# a static legend table above the Mailboxes table so an operator scanning
+# a "2 of 6" progress bar can tell what the remaining steps are without
+# digging into JSON.
+_ONBOARDING_STEP_DESCRIPTIONS: dict[str, str] = {
+    "profile_created":     "Operator profile JSON exists with workflow.initiated set.",
+    "ses_identity_ready":  "AWS SES verified the send-as identity (DKIM signed, sending enabled).",
+    "handoff_sent":        "Onboarding handoff email (SMTP credentials + setup link) was dispatched.",
+    "handoff_acked":       "Operator confirmed receipt — lifecycle flipped to operational.",
+    "inbound_configured":  "Inbound SES rule + S3/Lambda forwarder wired for the mailbox.",
+    "inbound_verified":    "A live inbound message was received and forwarded end-to-end.",
+}
+
 _REMINDER_COOLDOWN = timedelta(hours=24)
+
+
+def _build_onboarding_legend() -> list[dict[str, str]]:
+    """Return the static legend rows for the onboarding-stage table.
+
+    Each row is ``{step, stage, meaning}`` — `stage` is what the operator
+    sees in the progress-bar tooltip, `meaning` explains what "complete"
+    means in concrete terms. Order matches `_ONBOARDING_STEPS` so the
+    table reads top-to-bottom in the same order completion advances.
+    """
+    return [
+        {
+            "step": str(idx + 1),
+            "key": key,
+            "stage": label,
+            "meaning": _ONBOARDING_STEP_DESCRIPTIONS.get(key, ""),
+        }
+        for idx, (key, label) in enumerate(_ONBOARDING_STEPS)
+    ]
 
 
 def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
@@ -142,7 +174,12 @@ def _build_email_extension_payload(
     if domain:
         grantee_domains.add(domain.lower())
     if not grantee_domains or private_dir is None:
-        return {"profiles": [], "domain": domain, "configuration": configuration}
+        return {
+            "profiles": [],
+            "domain": domain,
+            "configuration": configuration,
+            "onboarding_legend": _build_onboarding_legend(),
+        }
 
     # Profiles live as JSON files at
     # ``<private>/utilities/tools/aws-csm/aws-csm.<scope>.<mailbox>.json``;
@@ -187,6 +224,7 @@ def _build_email_extension_payload(
                     _as_dict(payload.get("inbound")).get("receive_state")
                 ),
                 "onboarding_progress": progress,
+                "edit_action": _edit_action_for_profile(profile_id, ident),
                 "suspend_action": _suspend_action_for_profile(profile_id, lifecycle),
                 "resend_handoff_action": _resend_handoff_action_for_profile(
                     profile_id, lifecycle, inbox_target
@@ -194,6 +232,7 @@ def _build_email_extension_payload(
                 "send_reminder_action": _send_reminder_action_for_profile(
                     profile_id, lifecycle, inbox_target, workflow, progress
                 ),
+                "remove_action": _remove_action_for_profile(profile_id),
                 "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
                 "reminder_sent_at": _as_text(workflow.get("reminder_sent_at")),
             })
@@ -209,6 +248,77 @@ def _build_email_extension_payload(
         "profiles": profiles,
         "domain_record": domain_record,
         "configuration": configuration,
+        "onboarding_legend": _build_onboarding_legend(),
+    }
+
+
+def _edit_action_for_profile(
+    profile_id: str, identity: dict[str, Any]
+) -> dict[str, Any]:
+    """Per-row inline edit on the mailbox profile table.
+
+    Editable fields are the cosmetic / routing fields the operator legitimately
+    needs to tweak after the mailbox is alive — send_as_email, role, and
+    operator_inbox_target. Identity primary keys (profile_id, domain,
+    mailbox_local_part, tenant_id) are NOT editable inline; changing them would
+    desynchronize the JSON filename, SES identity registration, and forwarder
+    map all at once, which is a re-onboard, not an edit.
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    return {
+        "label": "Edit",
+        "route": "/__fnd/email/admin/edit",
+        "schema": "mycite.v2.email.admin.edit.request.v1",
+        "payload": {
+            "profile_id": profile_id,
+            "fields": {},
+        },
+        "variant": "secondary",
+        "editable_fields": [
+            {
+                "key": "send_as_email",
+                "label": "Send-as email",
+                "value": _as_text(identity.get("send_as_email")),
+            },
+            {
+                "key": "role",
+                "label": "Role",
+                "value": _as_text(identity.get("role")),
+            },
+            {
+                "key": "operator_inbox_target",
+                "label": "Operator inbox",
+                "value": _as_text(identity.get("operator_inbox_target")),
+            },
+        ],
+    }
+
+
+def _remove_action_for_profile(profile_id: str) -> dict[str, Any]:
+    """Per-row "Remove" button.
+
+    Deletes the on-disk profile JSON. Strong confirmation required because
+    this is destructive — the operator's mailbox is unaffected at the SES
+    level, but the portal forgets every workflow timestamp + lifecycle
+    state until the profile is re-bootstrapped. Use Suspend for a
+    reversible "stop using this" toggle.
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    return {
+        "label": "Remove",
+        "route": "/__fnd/email/admin/remove",
+        "schema": "mycite.v2.email.admin.remove.request.v1",
+        "payload": {"profile_id": profile_id},
+        "confirm": (
+            f"Remove profile {profile_id}? This deletes the on-disk "
+            "JSON. SES identity + inbound rules are NOT touched. Use "
+            "Suspend instead for a reversible disable."
+        ),
+        "variant": "danger",
     }
 
 
@@ -333,7 +443,10 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "_build_email_extension_payload",
+    "_build_onboarding_legend",
+    "_edit_action_for_profile",
     "_onboarding_progress",
+    "_remove_action_for_profile",
     "_render_ext_aws_email",
     "_resend_handoff_action_for_profile",
     "_send_reminder_action_for_profile",
