@@ -2600,6 +2600,128 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         ), 200
 
     # ------------------------------------------------------------------
+    # FND Email admin route — inline edit operator-profile fields
+    # ------------------------------------------------------------------
+    # Updates the cosmetic / routing fields the operator legitimately
+    # tweaks after the mailbox is alive:
+    #
+    #   identity.send_as_email
+    #   identity.role
+    #   identity.operator_inbox_target
+    #
+    # Identity primary keys (profile_id, domain, mailbox_local_part,
+    # tenant_id) are NOT mutable here — changing them re-onboards the
+    # mailbox; that work belongs to a dedicated rebuild flow, not an
+    # inline edit. Unknown field keys are ignored.
+    @app.post("/__fnd/email/admin/edit")
+    def fnd_email_admin_edit() -> tuple[Any, int]:
+        payload = _json_payload()
+        fields = payload.get("fields") if isinstance(payload.get("fields"), dict) else {}
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if not isinstance(fields, dict) or not fields:
+            return jsonify({"ok": False, "error": "missing_fields"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        allowed_keys = {"send_as_email", "role", "operator_inbox_target"}
+        identity = dict(current.get("identity") or {})
+        updated: list[str] = []
+        for key in allowed_keys:
+            if key in fields:
+                identity[key] = _as_text(fields.get(key))
+                updated.append(key)
+        if not updated:
+            return jsonify({"ok": False, "error": "no_supported_fields"}), 400
+
+        next_payload = dict(current)
+        next_payload["identity"] = identity
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "updated_fields": updated,
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
+    # FND Email admin route — remove operator profile (delete JSON on disk)
+    # ------------------------------------------------------------------
+    # Deletes the operator-profile JSON file. SES identity registration,
+    # inbound rules, and forward map entries are NOT touched — only the
+    # portal's view of the mailbox. Re-bootstrapping with the same
+    # profile_id will recreate the JSON. Use Suspend (not Remove) for a
+    # reversible disable.
+    @app.post("/__fnd/email/admin/remove")
+    def fnd_email_admin_remove() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        source_path = _as_text(current.get("_source_path"))
+        if not source_path:
+            return jsonify({"ok": False, "error": "source_path_missing"}), 500
+        try:
+            Path(source_path).unlink()
+        except OSError as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "removed_path": source_path,
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
     # FND Email admin route — resend handoff email (2026-05-18; rewired 2026-05-22)
     # ------------------------------------------------------------------
     # Re-dispatches the operator-mailbox handoff notice for a profile

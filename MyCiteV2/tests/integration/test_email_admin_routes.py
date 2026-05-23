@@ -309,5 +309,260 @@ class EmailExtensionMultiDomainTests(unittest.TestCase):
         )
 
 
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class EmailEditRouteTests(unittest.TestCase):
+    """2026-05-23 — inline-edit route updates send_as_email, role, and
+    operator_inbox_target on the operator-profile JSON, ignores unknown
+    keys, refuses unknown profile_id, and refuses missing fields.
+    """
+
+    def _build_client(self):
+        tmp = Path(tempfile.mkdtemp(prefix="2026_05_23_email_edit_"))
+        for sub in ("public", "private", "data", "webapps"):
+            (tmp / sub).mkdir()
+        aws_csm_dir = tmp / "private" / "utilities" / "tools" / "aws-csm"
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.alpha.support",
+            tenant_id="alpha",
+            domain="alpha.example.test",
+            mailbox="support",
+        )
+        config = V2PortalHostConfig(
+            portal_instance_id="fnd",
+            public_dir=tmp / "public",
+            private_dir=tmp / "private",
+            data_dir=tmp / "data",
+            portal_domain="example.test",
+            webapps_root=tmp / "webapps",
+        )
+        return create_app(config).test_client(), aws_csm_dir
+
+    def test_edit_updates_supported_identity_fields(self) -> None:
+        client, aws_csm_dir = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/edit",
+            data=json.dumps({
+                "profile_id": "aws-csm.alpha.support",
+                "fields": {
+                    "send_as_email": "support@alpha.example.test",
+                    "role": "support_lead",
+                    "operator_inbox_target": "ops@alpha.example.test",
+                },
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(
+            sorted(body["updated_fields"]),
+            ["operator_inbox_target", "role", "send_as_email"],
+        )
+        on_disk = json.loads(
+            (aws_csm_dir / "aws-csm.alpha.support.json").read_text(encoding="utf-8")
+        )
+        identity = on_disk["identity"]
+        self.assertEqual(identity["send_as_email"], "support@alpha.example.test")
+        self.assertEqual(identity["role"], "support_lead")
+        self.assertEqual(identity["operator_inbox_target"], "ops@alpha.example.test")
+
+    def test_edit_ignores_unsupported_keys(self) -> None:
+        client, aws_csm_dir = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/edit",
+            data=json.dumps({
+                "profile_id": "aws-csm.alpha.support",
+                "fields": {
+                    "role": "renamed",
+                    # Identity primary keys must NOT be writable inline.
+                    "profile_id": "aws-csm.evil.takeover",
+                    "domain": "evil.example.test",
+                    "mailbox_local_part": "evil",
+                },
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertEqual(body["updated_fields"], ["role"])
+        on_disk = json.loads(
+            (aws_csm_dir / "aws-csm.alpha.support.json").read_text(encoding="utf-8")
+        )
+        identity = on_disk["identity"]
+        self.assertEqual(identity["profile_id"], "aws-csm.alpha.support")
+        self.assertEqual(identity["domain"], "alpha.example.test")
+        self.assertEqual(identity["mailbox_local_part"], "support")
+        self.assertEqual(identity["role"], "renamed")
+
+    def test_edit_rejects_no_supported_fields(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/edit",
+            data=json.dumps({
+                "profile_id": "aws-csm.alpha.support",
+                "fields": {"profile_id": "aws-csm.evil.takeover"},
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"], "no_supported_fields")
+
+    def test_edit_rejects_missing_fields(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/edit",
+            data=json.dumps({"profile_id": "aws-csm.alpha.support"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"], "missing_fields")
+
+    def test_edit_rejects_unknown_profile_id(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/edit",
+            data=json.dumps({
+                "profile_id": "aws-csm.ghost.mailbox",
+                "fields": {"role": "x"},
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "profile_not_found")
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class EmailRemoveRouteTests(unittest.TestCase):
+    """2026-05-23 — Remove route deletes the on-disk profile JSON."""
+
+    def _build_client(self):
+        tmp = Path(tempfile.mkdtemp(prefix="2026_05_23_email_remove_"))
+        for sub in ("public", "private", "data", "webapps"):
+            (tmp / sub).mkdir()
+        aws_csm_dir = tmp / "private" / "utilities" / "tools" / "aws-csm"
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.alpha.support",
+            tenant_id="alpha",
+            domain="alpha.example.test",
+            mailbox="support",
+        )
+        config = V2PortalHostConfig(
+            portal_instance_id="fnd",
+            public_dir=tmp / "public",
+            private_dir=tmp / "private",
+            data_dir=tmp / "data",
+            portal_domain="example.test",
+            webapps_root=tmp / "webapps",
+        )
+        return create_app(config).test_client(), aws_csm_dir
+
+    def test_remove_deletes_profile_json(self) -> None:
+        client, aws_csm_dir = self._build_client()
+        path = aws_csm_dir / "aws-csm.alpha.support.json"
+        self.assertTrue(path.exists())
+        resp = client.post(
+            "/__fnd/email/admin/remove",
+            data=json.dumps({"profile_id": "aws-csm.alpha.support"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertTrue(body["ok"])
+        self.assertEqual(body["profile_id"], "aws-csm.alpha.support")
+        self.assertFalse(path.exists())
+
+    def test_remove_rejects_missing_profile_id(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/remove",
+            data=json.dumps({}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_remove_rejects_unknown_profile_id(self) -> None:
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/email/admin/remove",
+            data=json.dumps({"profile_id": "aws-csm.ghost.mailbox"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "profile_not_found")
+
+
+class EmailExtensionPayloadEditAndLegendTests(unittest.TestCase):
+    """2026-05-23 — payload-shape pins for the inline-edit action +
+    Remove action + onboarding legend table.
+    """
+
+    def _payload_with_profile(self):
+        tmp = Path(tempfile.mkdtemp(prefix="2026_05_23_email_payload_"))
+        aws_csm_dir = tmp / "utilities" / "tools" / "aws-csm"
+        _seed_profile(
+            aws_csm_dir,
+            "aws-csm.alpha.support",
+            tenant_id="alpha",
+            domain="alpha.example.test",
+            mailbox="support",
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.email import (
+            _build_email_extension_payload,
+        )
+        return _build_email_extension_payload(
+            grantee={},
+            domain="alpha.example.test",
+            private_dir=tmp,
+        )
+
+    def test_profile_row_carries_edit_action(self) -> None:
+        payload = self._payload_with_profile()
+        profiles = payload.get("profiles") or []
+        self.assertTrue(profiles)
+        edit = profiles[0].get("edit_action") or {}
+        self.assertEqual(edit.get("label"), "Edit")
+        self.assertEqual(edit.get("route"), "/__fnd/email/admin/edit")
+        keys = {f["key"] for f in edit.get("editable_fields") or []}
+        self.assertEqual(keys, {"send_as_email", "role", "operator_inbox_target"})
+
+    def test_profile_row_carries_remove_action(self) -> None:
+        payload = self._payload_with_profile()
+        profiles = payload.get("profiles") or []
+        remove = profiles[0].get("remove_action") or {}
+        self.assertEqual(remove.get("label"), "Remove")
+        self.assertEqual(remove.get("route"), "/__fnd/email/admin/remove")
+        self.assertEqual(remove.get("variant"), "danger")
+        self.assertIn("Remove profile", remove.get("confirm", ""))
+
+    def test_onboarding_legend_table_is_six_steps(self) -> None:
+        payload = self._payload_with_profile()
+        legend = payload.get("onboarding_legend") or []
+        self.assertEqual(len(legend), 6)
+        # Step ordering matches the progress bar denominator.
+        self.assertEqual([r["step"] for r in legend], ["1", "2", "3", "4", "5", "6"])
+        keys = [r["key"] for r in legend]
+        self.assertEqual(keys[0], "profile_created")
+        self.assertEqual(keys[-1], "inbound_verified")
+        # Every step has a non-empty meaning string.
+        for row in legend:
+            self.assertTrue(row.get("meaning"), f"empty meaning for {row.get('key')}")
+
+    def test_onboarding_legend_present_when_no_profiles(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="2026_05_23_email_empty_"))
+        (tmp / "utilities" / "tools" / "aws-csm").mkdir(parents=True)
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.email import (
+            _build_email_extension_payload,
+        )
+        payload = _build_email_extension_payload(
+            grantee={"domains": ["empty.example.test"]},
+            domain="empty.example.test",
+            private_dir=tmp,
+        )
+        self.assertEqual(payload.get("profiles"), [])
+        self.assertEqual(len(payload.get("onboarding_legend") or []), 6)
+
+
 if __name__ == "__main__":
     unittest.main()
