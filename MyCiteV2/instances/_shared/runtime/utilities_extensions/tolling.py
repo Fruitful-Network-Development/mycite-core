@@ -650,6 +650,123 @@ def _domain_to_msn(
     return out
 
 
+# A10b — environment knobs for the SES-event enrichment hook. When unset
+# the enrichment is a no-op (metrics dicts default to {} so downstream
+# code that already reads emails_sent_by_msn etc. doesn't break).
+# Operator sets these in the systemd unit / shell env. Default prefix
+# matches the ses_event_sink Lambda's default.
+import os as _os
+_SES_EVENTS_BUCKET_ENV = "MYCITE_SES_EVENTS_BUCKET"
+_SES_EVENTS_PREFIX_ENV = "MYCITE_SES_EVENTS_PREFIX"
+_SES_EVENTS_PREFIX_DEFAULT = "ses_events"
+
+
+def _aggregate_ses_event_metrics(
+    start: str,
+    end_excl: str,
+    *,
+    fnd_csm_root: str | Path = _DEFAULT_FND_CSM_ROOT,
+    events_bucket: str | None = None,
+    events_prefix: str | None = None,
+    s3_client: Any | None = None,
+) -> dict[str, dict[str, int]]:
+    """Walk the ses_event_sink S3 prefix and count Send/Bounce/Complaint
+    events per grantee for the period [start, end_excl).
+
+    Returns ``{"emails_sent_by_msn": {msn: count}, "emails_bounced_by_msn":
+    {msn: count}, "emails_complained_by_msn": {msn: count}}``.
+
+    The Lambda partitions by recipient domain (see
+    `aws_lambdas/ses_event_sink/lambda_function.py`); we reverse-index
+    via the grantee profile JSONs' ``domains`` list to attribute each
+    domain back to its msn_id.
+
+    Defensive — any AWS / IAM / config error returns empty dicts rather
+    than failing the whole ledger compute. The SES enrichment is opt-in;
+    not having it must not be a deal-breaker for the rest of the row.
+    """
+    empty: dict[str, dict[str, int]] = {
+        "emails_sent_by_msn": {},
+        "emails_bounced_by_msn": {},
+        "emails_complained_by_msn": {},
+    }
+
+    bucket = (events_bucket if events_bucket is not None
+              else _os.environ.get(_SES_EVENTS_BUCKET_ENV, "")).strip()
+    if not bucket:
+        return empty
+    prefix = (events_prefix if events_prefix is not None
+              else _os.environ.get(_SES_EVENTS_PREFIX_ENV, _SES_EVENTS_PREFIX_DEFAULT)
+              ).strip().strip("/") or _SES_EVENTS_PREFIX_DEFAULT
+
+    domain_to_msn = _domain_to_msn(fnd_csm_root)
+    if not domain_to_msn:
+        return empty
+
+    # Date list: start .. end_excl - 1 day. Both are YYYY-MM-DD ISO strings.
+    from datetime import date as _date, timedelta
+    try:
+        start_d = _date.fromisoformat(start)
+        end_d = _date.fromisoformat(end_excl)
+    except ValueError:
+        return empty
+    dates: list[str] = []
+    cur = start_d
+    while cur < end_d:
+        dates.append(cur.isoformat())
+        cur = cur + timedelta(days=1)
+
+    if s3_client is None:
+        try:
+            import boto3
+            s3_client = boto3.client("s3")
+        except Exception:  # noqa: BLE001
+            return empty
+
+    # Lambda writes one S3 object per event under
+    #   <prefix>/<domain>/<YYYY-MM-DD>/<EventType>/<message_id>-<ulid>.json
+    # We count objects per (domain, date, event_type) via list_objects_v2
+    # KeyCount, paginating to be safe.
+    event_type_to_metric = {
+        "Send": "emails_sent_by_msn",
+        "Bounce": "emails_bounced_by_msn",
+        "Complaint": "emails_complained_by_msn",
+    }
+    result: dict[str, dict[str, int]] = {
+        "emails_sent_by_msn": {},
+        "emails_bounced_by_msn": {},
+        "emails_complained_by_msn": {},
+    }
+    for domain, msn in domain_to_msn.items():
+        for day in dates:
+            for event_type, metric_key in event_type_to_metric.items():
+                key_prefix = f"{prefix}/{domain}/{day}/{event_type}/"
+                count = 0
+                continuation: str | None = None
+                try:
+                    while True:
+                        kwargs: dict[str, Any] = {
+                            "Bucket": bucket,
+                            "Prefix": key_prefix,
+                        }
+                        if continuation:
+                            kwargs["ContinuationToken"] = continuation
+                        resp = s3_client.list_objects_v2(**kwargs)
+                        count += int(resp.get("KeyCount") or 0)
+                        if resp.get("IsTruncated"):
+                            continuation = resp.get("NextContinuationToken")
+                            if not continuation:
+                                break
+                        else:
+                            break
+                except Exception:  # noqa: BLE001
+                    # One domain/day failing must not poison the rest.
+                    continue
+                if count:
+                    result[metric_key][msn] = result[metric_key].get(msn, 0) + count
+    return result
+
+
 def compute_ledger_for_period(
     period: str,
     *,
@@ -817,6 +934,15 @@ def compute_ledger_for_period(
     sort_amount = lambda r: float(r.get("amount") or 0)  # noqa: E731
     line_items.sort(key=sort_amount, reverse=True)
 
+    # A10b — SES event enrichment. Walks the ses_event_sink S3 prefix
+    # for the period and counts Send/Bounce/Complaint events per msn_id.
+    # No-op when MYCITE_SES_EVENTS_BUCKET env is unset (returns empty
+    # dicts) so this layer is safe even before the sink Lambda is
+    # deployed.
+    ses_metrics = _aggregate_ses_event_metrics(
+        start, end_excl, fnd_csm_root=fnd_csm_root,
+    )
+
     return {
         "period": period,
         "currency": currency or "USD",
@@ -834,6 +960,9 @@ def compute_ledger_for_period(
             },
             "contacts_active_by_msn": contacts_by_msn,
             "domain_index": domain_idx,
+            "emails_sent_by_msn": ses_metrics["emails_sent_by_msn"],
+            "emails_bounced_by_msn": ses_metrics["emails_bounced_by_msn"],
+            "emails_complained_by_msn": ses_metrics["emails_complained_by_msn"],
         },
         "computed_at": datetime.now(UTC).isoformat(),
         "notes": "",
