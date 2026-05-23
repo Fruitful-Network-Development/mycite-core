@@ -281,8 +281,8 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         identity (FND default), not the per-grantee identity.
 
         Requires cloudwatch:GetMetricStatistics on the EC2 role. Without
-        that grant (it ships in AWSCMSCloudWatchMetricsRead.json from
-        Wave A1) the probe returns state=error.
+        that grant (folded into the AWSCMSDiagnosticsLogsReadOnly inline
+        policy) the probe returns state=error.
         """
         from datetime import datetime, timedelta, timezone
         observed_at = datetime.now(timezone.utc).isoformat()
