@@ -741,6 +741,105 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             result["mail_from_changed"] = True
         return result
 
+    # ------------------------------------------------------------------
+    # C3 — DMARC policy ramp (read + guarded apply)
+
+    def get_dmarc_policy(self, domain: str) -> dict[str, Any]:
+        """Read the current _dmarc.<domain> TXT record from Route53 and
+        parse it. Returns {ok, domain, zone_id, record, tags} or
+        {ok: False, error}."""
+        from .dmarc_ramp import parse_dmarc_policy
+
+        token = normalized_domain(domain)
+        if not token:
+            return {"ok": False, "error": "invalid_domain"}
+        r53 = self._client("route53")
+        zone_id = ""
+        for z in r53.list_hosted_zones().get("HostedZones", []):
+            if as_text(z.get("Name")).rstrip(".") == token:
+                zone_id = as_text(z.get("Id")).rsplit("/", 1)[-1]
+                break
+        if not zone_id:
+            return {"ok": False, "error": "hosted_zone_missing", "domain": token}
+        dmarc_name = f"_dmarc.{token}"
+        record_value = ""
+        for rr in r53.list_resource_record_sets(HostedZoneId=zone_id).get(
+            "ResourceRecordSets", []
+        ):
+            if rr.get("Name", "").rstrip(".") == dmarc_name and rr.get("Type") == "TXT":
+                values = [
+                    rec.get("Value", "") for rec in rr.get("ResourceRecords", [])
+                ]
+                record_value = " ".join(values)
+                break
+        return {
+            "ok": True,
+            "domain": token,
+            "zone_id": zone_id,
+            "record": record_value,
+            "tags": parse_dmarc_policy(record_value),
+        }
+
+    def apply_dmarc_policy(
+        self, domain: str, proposed_record: str, *, dry_run: bool = True
+    ) -> dict[str, Any]:
+        """UPSERT the _dmarc.<domain> TXT record. Guarded: callers should
+        only invoke this with a ``proposed_record`` from
+        ``compute_dmarc_ramp`` that came back ``allowed=True``.
+
+        Per active-task guardrail G-2 this is an UPSERT (never DELETE), so
+        a concurrent operator-managed DMARC change is overwritten by the
+        exact computed value rather than removed. ``dry_run`` returns the
+        ChangeBatch without submitting it."""
+        token = normalized_domain(domain)
+        if not token:
+            return {"ok": False, "error": "invalid_domain"}
+        if not (proposed_record or "").strip():
+            return {"ok": False, "error": "empty_proposed_record"}
+        r53 = self._client("route53")
+        zone_id = ""
+        for z in r53.list_hosted_zones().get("HostedZones", []):
+            if as_text(z.get("Name")).rstrip(".") == token:
+                zone_id = as_text(z.get("Id")).rsplit("/", 1)[-1]
+                break
+        if not zone_id:
+            return {"ok": False, "error": "hosted_zone_missing", "domain": token}
+        dmarc_name = f"_dmarc.{token}"
+        # DMARC TXT values must be quoted in the Route53 record.
+        quoted = proposed_record if proposed_record.startswith('"') else f'"{proposed_record}"'
+        change_batch = {
+            "Comment": "aws-peripheral dmarc ramp (UPSERT)",
+            "Changes": [
+                {
+                    "Action": "UPSERT",
+                    "ResourceRecordSet": {
+                        "Name": f"{dmarc_name}.",
+                        "Type": "TXT",
+                        "TTL": 300,
+                        "ResourceRecords": [{"Value": quoted}],
+                    },
+                }
+            ],
+        }
+        if dry_run:
+            return {
+                "ok": True,
+                "dry_run": True,
+                "domain": token,
+                "zone_id": zone_id,
+                "change_batch": change_batch,
+            }
+        r53.change_resource_record_sets(
+            HostedZoneId=zone_id, ChangeBatch=change_batch
+        )
+        return {
+            "ok": True,
+            "dry_run": False,
+            "domain": token,
+            "zone_id": zone_id,
+            "applied_record": quoted,
+        }
+
     def ensure_domain_receipt_rule(
         self, domain: str, *, tags: dict[str, str] | None = None
     ) -> dict[str, Any]:
