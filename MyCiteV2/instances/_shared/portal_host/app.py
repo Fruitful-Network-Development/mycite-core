@@ -2639,6 +2639,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # net-new profile via a form is its own scope; suspend ships now
     # because operators need it for runbook lockouts today.
 
+    def _post_profile_save_hook(profile_id: str, *, op: str) -> None:
+        """C2 — refresh the ses-forwarder Lambda's FORWARD_TO_MAP_JSON
+        after any profile-JSON write or delete. Fire-and-log: errors
+        are swallowed (and logged) so the admin action returns OK even
+        if the Lambda env update fails — the next sync run will retry.
+
+        Without this hook, the operator had to manually run
+        sync_aws_csm_forward_maps.py after every profile edit; missing
+        a run silently dropped inbound mail for newly-added recipients.
+        """
+        try:
+            _aws_peripheral.sync_operator_forwarding_routes(dry_run=False)
+        except Exception as exc:  # noqa: BLE001
+            _log.error(
+                "post_profile_save_hook_failed",
+                extra={"profile_id": profile_id, "op": op, "err": str(exc)},
+            )
+
     @app.post("/__fnd/email/admin/suspend")
     def fnd_email_admin_suspend() -> tuple[Any, int]:
         payload = _json_payload()
@@ -2862,6 +2880,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 {"ok": False, "error": "storage_error", "detail": str(exc)}
             ), 500
 
+        # C2: an edit may have changed send_as_email / operator_inbox_target,
+        # both of which feed the forwarder's FORWARD_TO_MAP_JSON. Refresh it
+        # so inbound mail for the edited mailbox routes correctly without a
+        # manual sync_aws_csm_forward_maps.py run.
+        _post_profile_save_hook(profile_id, op="edit")
+
         return jsonify(
             {
                 "ok": True,
@@ -2911,6 +2935,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify(
                 {"ok": False, "error": "storage_error", "detail": str(exc)}
             ), 500
+
+        # C2: the removed profile's send_as → target route must drop out of
+        # the forwarder's FORWARD_TO_MAP_JSON so inbound mail for the gone
+        # mailbox stops being relayed.
+        _post_profile_save_hook(profile_id, op="remove")
 
         return jsonify(
             {

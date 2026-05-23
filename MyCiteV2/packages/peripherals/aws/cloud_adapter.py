@@ -635,6 +635,75 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     }
                 )
 
+        # C1 — Custom MAIL FROM auto-bootstrap. The bare-domain MAIL FROM
+        # ("amazonses.com" envelope) trips DMARC-strict alignment because
+        # the From: domain (e.g. brock@brockspressurewashing.com) doesn't
+        # match the envelope domain (amazonses.com). Pointing MAIL FROM at
+        # a subdomain we control (mail.<domain>) restores alignment and
+        # closes the manual SES-console step in the client-onboarding
+        # runbook.
+        #
+        # Idempotent: get_identity_mail_from_domain_attributes returns the
+        # current setting; we only call set_identity_mail_from_domain if
+        # it differs from the desired mail.<domain> target.
+        mail_from_domain = f"mail.{token}"
+        mail_from_changed = False
+        try:
+            mf_attrs = ses.get_identity_mail_from_domain_attributes(
+                Identities=[token]
+            )
+            current_mf = (
+                mf_attrs.get("MailFromDomainAttributes", {})
+                .get(token, {})
+                .get("MailFromDomain", "")
+            )
+            if current_mf != mail_from_domain:
+                ses.set_identity_mail_from_domain(
+                    Identity=token,
+                    MailFromDomain=mail_from_domain,
+                    BehaviorOnMXFailure="UseDefaultValue",
+                )
+                mail_from_changed = True
+        except Exception:  # noqa: BLE001
+            # Don't fail the sync if SES MAIL FROM API errors; the rest
+            # of DKIM/SPF/DMARC still lands. Operator can retry.
+            pass
+
+        # MX record for the MAIL FROM subdomain — per SES docs, point to
+        # feedback-smtp.<region>.amazonses.com on priority 10.
+        mail_from_mx_name = mail_from_domain
+        if (mail_from_mx_name, "MX") not in rrs:
+            desired_changes.append(
+                {
+                    "Action": "CREATE",
+                    "ResourceRecordSet": {
+                        "Name": f"{mail_from_mx_name}.",
+                        "Type": "MX",
+                        "TTL": 300,
+                        "ResourceRecords": [
+                            {"Value": f"10 feedback-smtp.{SES_REGION}.amazonses.com"}
+                        ],
+                    },
+                }
+            )
+        # SPF TXT for the MAIL FROM subdomain — required so the envelope
+        # passes SPF in addition to the apex SPF (which authorizes the
+        # apex's senders). Two distinct records, two distinct SPF lookups.
+        if (mail_from_mx_name, "TXT") not in rrs:
+            desired_changes.append(
+                {
+                    "Action": "CREATE",
+                    "ResourceRecordSet": {
+                        "Name": f"{mail_from_mx_name}.",
+                        "Type": "TXT",
+                        "TTL": 300,
+                        "ResourceRecords": [
+                            {"Value": '"v=spf1 include:amazonses.com -all"'}
+                        ],
+                    },
+                }
+            )
+
         if desired_changes:
             r53.change_resource_record_sets(
                 HostedZoneId=zone_id,
@@ -667,6 +736,9 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         }
         if tagged_zone:
             result["tagged_zone"] = True
+        if mail_from_changed:
+            result["mail_from_domain"] = mail_from_domain
+            result["mail_from_changed"] = True
         return result
 
     def ensure_domain_receipt_rule(
