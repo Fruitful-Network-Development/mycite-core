@@ -28,6 +28,7 @@ from .contracts import (
     ForwardingRoutesSyncResult,
     ProfileReadiness,
 )
+from .probe_cache import ProbeCache
 from .profile_store import ProfileStore, iter_profile_recipient_targets
 
 
@@ -38,6 +39,7 @@ __all__ = [
     "CostLineItem",
     "DomainStatus",
     "ForwardingRoutesSyncResult",
+    "ProbeCache",
     "ProfileReadiness",
     "ProfileStore",
     "iter_profile_recipient_targets",

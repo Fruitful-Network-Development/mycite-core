@@ -300,7 +300,23 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
     # ------------------------------------------------------------------
     # Methods 4 / 5 / 6: mutating domain provisioning
 
-    def ensure_domain_identity(self, domain: str) -> dict[str, Any]:
+    def _account_id(self) -> str:
+        """Lazy STS caller-identity lookup; cached on the adapter."""
+        cached = getattr(self, "_cached_account_id", None)
+        if cached:
+            return cached
+        sts = self._client("sts", region="us-east-1")
+        try:
+            ident = sts.get_caller_identity()
+            account_id = str(ident.get("Account", "")) or ""
+        except Exception:  # noqa: BLE001
+            account_id = ""
+        self._cached_account_id = account_id
+        return account_id
+
+    def ensure_domain_identity(
+        self, domain: str, *, tags: dict[str, str] | None = None
+    ) -> dict[str, Any]:
         token = normalized_domain(domain)
         if not token:
             return {"ok": False, "error": "invalid_domain"}
@@ -329,9 +345,29 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         if not dkim_enabled:
             ses.set_identity_dkim_enabled(Identity=token, DkimEnabled=True)
             changed.append("set_identity_dkim_enabled")
-        return {"ok": True, "changed": changed, "domain": token}
+        # Auto-tag-on-create. SES v1 verify_domain_identity does NOT accept
+        # Tags directly; tag the identity via the ResourceGroupsTagging
+        # API after creation. Opportunistic — if tagging fails (e.g. ARN
+        # construction races a concurrent delete), we still return ok=True
+        # for the verification work that did land.
+        tagged_arn = ""
+        if tags:
+            account_id = self._account_id()
+            if account_id:
+                identity_arn = f"arn:aws:ses:{SES_REGION}:{account_id}:identity/{token}"
+                try:
+                    self.tag_resource(arns=[identity_arn], tags=tags)
+                    tagged_arn = identity_arn
+                except Exception:  # noqa: BLE001
+                    pass
+        result: dict[str, Any] = {"ok": True, "changed": changed, "domain": token}
+        if tagged_arn:
+            result["tagged_arn"] = tagged_arn
+        return result
 
-    def sync_domain_dns(self, domain: str) -> dict[str, Any]:
+    def sync_domain_dns(
+        self, domain: str, *, tags: dict[str, str] | None = None
+    ) -> dict[str, Any]:
         token = normalized_domain(domain)
         if not token:
             return {"ok": False, "error": "invalid_domain"}
@@ -422,21 +458,43 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     }
                 )
 
-        if not desired_changes:
-            return {"ok": True, "changed": [], "domain": token, "zone_id": zone_id}
-
-        r53.change_resource_record_sets(
-            HostedZoneId=zone_id,
-            ChangeBatch={"Comment": "aws-peripheral sync_domain_dns", "Changes": desired_changes},
-        )
-        return {
+        if desired_changes:
+            r53.change_resource_record_sets(
+                HostedZoneId=zone_id,
+                ChangeBatch={
+                    "Comment": "aws-peripheral sync_domain_dns",
+                    "Changes": desired_changes,
+                },
+            )
+        # Auto-tag-on-create — tag the hosted zone. Route53 records aren't
+        # taggable; the zone is. Opportunistic; tag failure doesn't fail
+        # the DNS sync. Runs even when the DNS records are already in
+        # place (desired_changes empty) so an already-synced zone still
+        # picks up cost-allocation tags on a follow-up call.
+        tagged_zone = False
+        if tags and zone_id:
+            try:
+                r53.change_tags_for_resource(
+                    ResourceType="hostedzone",
+                    ResourceId=zone_id,
+                    AddTags=[{"Key": k, "Value": v} for k, v in tags.items()],
+                )
+                tagged_zone = True
+            except Exception:  # noqa: BLE001
+                pass
+        result: dict[str, Any] = {
             "ok": True,
             "changed": [c["ResourceRecordSet"]["Type"] for c in desired_changes],
             "domain": token,
             "zone_id": zone_id,
         }
+        if tagged_zone:
+            result["tagged_zone"] = True
+        return result
 
-    def ensure_domain_receipt_rule(self, domain: str) -> dict[str, Any]:
+    def ensure_domain_receipt_rule(
+        self, domain: str, *, tags: dict[str, str] | None = None
+    ) -> dict[str, Any]:
         token = normalized_domain(domain)
         if not token:
             return {"ok": False, "error": "invalid_domain"}
@@ -488,7 +546,25 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             # idempotent: we just want the grant to exist.
             pass
         ses.create_receipt_rule(RuleSetName=ACTIVE_RECEIPT_RULE_SET, Rule=rule)
-        return {"ok": True, "changed": [rule_name], "rule_name": rule_name}
+        # Auto-tag-on-create. SES v1 receipt rules do NOT support per-rule
+        # tagging — only the parent rule-set is taggable (via sesv2). We
+        # accept the kwarg for API uniformity with the sibling ensure_*
+        # methods but currently no-op; the retroactive tagger handles the
+        # rule-set + receipt infrastructure separately. Surface the tags
+        # in the return value so the caller can audit the intent.
+        result: dict[str, Any] = {
+            "ok": True,
+            "changed": [rule_name],
+            "rule_name": rule_name,
+        }
+        if tags:
+            result["tags_requested"] = dict(tags)
+            result["tags_applied"] = False
+            result["tags_note"] = (
+                "SES v1 receipt rules are not directly taggable; "
+                "rule-set-level tagging belongs in a separate sesv2 path."
+            )
+        return result
 
     # ------------------------------------------------------------------
     # SES send surface (used by portal extensions: connect-form forward,
@@ -506,6 +582,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         reply_to: list[str] | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> SesSendResult:
+        import email.utils
         from email.message import EmailMessage
 
         from_address = as_text(aws_ses_profile.get("from_address")) or as_text(
@@ -528,6 +605,23 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         if extra_headers:
             for header_name, header_value in extra_headers.items():
                 msg[header_name] = header_value
+        # Standards-compliance: domain-anchored Message-ID + RFC 2822 Date.
+        # Python's EmailMessage auto-generates Message-ID at as_bytes() time
+        # using the local hostname (e.g. `@ec2-xxx.compute.internal`), which
+        # spam filters score as suspicious because the host domain doesn't
+        # match the From domain. Anchor it to the sender's domain instead.
+        # Caller wins — if extra_headers already set Message-ID/Date, skip.
+        from_domain = from_address.rsplit("@", 1)[-1].strip().strip(">")
+        if "Message-ID" not in msg:
+            msg["Message-ID"] = (
+                email.utils.make_msgid(domain=from_domain)
+                if from_domain
+                else email.utils.make_msgid()
+            )
+        if "Date" not in msg:
+            # usegmt=True emits "GMT" rather than "-0000"; some spam filters
+            # treat "-0000" as "unspecified offset" and score it lower.
+            msg["Date"] = email.utils.formatdate(usegmt=True)
         msg.set_content(body_text)
         if body_html:
             msg.add_alternative(body_html, subtype="html")
