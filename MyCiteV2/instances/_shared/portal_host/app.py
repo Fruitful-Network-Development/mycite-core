@@ -1205,27 +1205,71 @@ def _send_donation_receipt_email(
     if not ses_identity:
         return "skipped"
 
+    import email.utils
     from email.message import EmailMessage
 
     display_amount = f"{amount} {currency_code}".strip()
     org_label = _as_text(grantee.get("label")) if grantee else ""
+    salutation = f", {donor_name}" if donor_name else ""
+    org_for_display = org_label or domain
+
+    # Plain-text body kept verbatim with the HTML alternative below —
+    # multipart/alternative divergence detection (Gmail) penalizes
+    # parts whose visible content diverges.
     body_text = (
-        f"Thank you{(', ' + donor_name) if donor_name else ''}, for your"
-        f" {display_amount} contribution to {org_label or domain}.\n\n"
+        f"Thank you{salutation}, for your"
+        f" {display_amount} contribution to {org_for_display}.\n\n"
         f"Capture ID: {capture_id}\n\n"
         f"Attached is our blanket sales-tax-exempt certificate for your records.\n"
         f"No goods or services were provided in exchange for this contribution.\n"
     )
+    # A6: HTML alternative. Inline styles only — no <link> / <script> /
+    # web fonts. Same wording as the plain-text part.
+    import html as _html
+    body_html = (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        '<title>Donation receipt</title></head>'
+        '<body style="font-family:Georgia,serif;max-width:600px;'
+        'margin:0 auto;padding:24px;color:#222;line-height:1.5;">'
+        f'<p>Thank you{_html.escape(salutation)}, for your '
+        f'<strong>{_html.escape(display_amount)}</strong> contribution to '
+        f'<strong>{_html.escape(org_for_display)}</strong>.</p>'
+        f'<p style="color:#666;font-size:0.9em;">Capture ID: '
+        f'<code>{_html.escape(capture_id)}</code></p>'
+        '<p>Attached is our blanket sales-tax-exempt certificate for '
+        'your records. No goods or services were provided in exchange '
+        'for this contribution.</p>'
+        '</body></html>'
+    )
     from_address = _as_text(aws_cfg.get("from_address")) or ses_identity
     from_name = _as_text(aws_cfg.get("from_name"))
+    from_domain = from_address.rsplit("@", 1)[-1].strip() if "@" in from_address else ""
     msg = EmailMessage()
     msg["Subject"] = f"Donation receipt — {org_label or domain}"
     msg["From"] = f'"{from_name}" <{from_address}>' if from_name else from_address
     msg["To"] = donor_email
+    # A4: always-on Reply-To. Default to reply-to@<from_domain> when the
+    # grantee aws_ses doesn't set one.
     reply_to = _as_text(aws_cfg.get("reply_to"))
+    if not reply_to and from_domain:
+        reply_to = f"reply-to@{from_domain}"
     if reply_to:
         msg["Reply-To"] = reply_to
+    # A5 (donation path bypasses send_email's auto-injection): explicit
+    # domain-anchored Message-ID + RFC 2822 GMT Date so spam filters don't
+    # see process-hostname Message-IDs.
+    msg["Message-ID"] = (
+        email.utils.make_msgid(domain=from_domain)
+        if from_domain
+        else email.utils.make_msgid()
+    )
+    msg["Date"] = email.utils.formatdate(usegmt=True)
     msg.set_content(body_text)
+    # A6: HTML alternative makes the receipt render as multipart/alternative.
+    # Combined with the PDF attachment below the outer container becomes
+    # multipart/mixed wrapping a multipart/alternative wrapping the two text
+    # parts, then the application/pdf attachment.
+    msg.add_alternative(body_html, subtype="html")
     try:
         pdf_bytes = receipt_path.read_bytes()
     except OSError as exc:
@@ -2034,11 +2078,30 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         configset for reputation isolation (e.g. ``fnd-transactional`` for
         the onboarding-nudge family). It overrides whatever value is in
         ``grantee.aws_ses.configuration_set``.
+
+        A3 — sets RFC 8058 one-click List-Unsubscribe headers anchored on
+        the profile_id so Gmail/O365 render an Unsubscribe button next to
+        every nudge. Honors a per-profile opt-out: if the profile JSON
+        carries ``notifications.unsubscribed=True``, the send is skipped.
+
+        A4 — always sets Reply-To (no conditional path). Falls back to
+        ``reply-to@<from_domain>`` if the grantee profile doesn't set one.
         """
         identity = profile.get("identity") if isinstance(profile.get("identity"), dict) else {}
         inbox = _as_text(identity.get("operator_inbox_target"))
         if not inbox:
             return {"ok": False, "detail": "profile missing operator_inbox_target"}
+
+        # A3: respect a prior one-click unsubscribe so we don't ignore
+        # the operator's stated preference even if the admin clicks the
+        # Send-reminder button again.
+        notifications = profile.get("notifications") if isinstance(profile.get("notifications"), dict) else {}
+        if bool(notifications.get("unsubscribed")):
+            return {
+                "ok": False,
+                "detail": "operator has unsubscribed from notifications",
+                "skipped_reason": "unsubscribed",
+            }
 
         aws_cfg = dict(grantee.get("aws_ses") or {})
         if not _as_text(aws_cfg.get("identity")) and not _as_text(aws_cfg.get("from_address")):
@@ -2046,12 +2109,37 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if configuration_set:
             aws_cfg["configuration_set"] = configuration_set
 
+        # A4: always-on Reply-To. Default to reply-to@<from_domain> when
+        # the grantee aws_ses doesn't set one (no cross-domain Reply-To;
+        # filters score that as suspicious).
+        from_address = _as_text(aws_cfg.get("from_address")) or _as_text(aws_cfg.get("identity"))
+        from_domain = from_address.rsplit("@", 1)[-1].strip() if "@" in from_address else ""
+        reply_to_value = _as_text(aws_cfg.get("reply_to"))
+        if not reply_to_value and from_domain:
+            reply_to_value = f"reply-to@{from_domain}"
+        reply_to_list = [reply_to_value] if reply_to_value else None
+
+        # A3: build the per-profile one-click unsubscribe URL. The route
+        # itself (POST = RFC 8058 one-click, GET = browser fallback) is
+        # registered below near the other email-admin routes.
+        profile_id = _as_text(identity.get("profile_id"))
+        extra_headers: dict[str, str] = {}
+        if profile_id:
+            unsubscribe_url = (
+                f"https://{host_config.portal_domain}"
+                f"/__fnd/profile/{profile_id}/unsubscribe-notifications"
+            )
+            extra_headers["List-Unsubscribe"] = f"<{unsubscribe_url}>"
+            extra_headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
         try:
             send_result = _aws_peripheral.send_email(
                 aws_ses_profile=aws_cfg,
                 to=[inbox],
                 subject=subject,
                 body_text=body_text,
+                reply_to=reply_to_list,
+                extra_headers=extra_headers or None,
             )
         except SesSendError as exc:
             _log.error(
@@ -2598,6 +2686,117 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "lifecycle_state": workflow["lifecycle_state"],
             }
         ), 200
+
+    # ------------------------------------------------------------------
+    # A3 — RFC 8058 one-click unsubscribe for transactional onboarding mail
+    # ------------------------------------------------------------------
+    # Every nudge (resend-handoff, send-reminder) emitted by the portal
+    # carries List-Unsubscribe + List-Unsubscribe-Post headers pointing at
+    # this route. POST is the RFC 8058 one-click endpoint that Gmail /
+    # O365 hit when the operator clicks the in-MUA Unsubscribe button.
+    # GET is the browser fallback if the operator pastes the URL.
+    #
+    # The opt-out is recorded on the profile JSON; _send_email_extension_message
+    # checks `notifications.unsubscribed` and refuses to send if set.
+    # Suspend / Resume + Resend handoff are not gated by this — only the
+    # nudge-class messages (reminders) honor it.
+    @app.post("/__fnd/profile/<profile_id>/unsubscribe-notifications")
+    def fnd_profile_unsubscribe_notifications_post(profile_id: str) -> tuple[Any, int]:
+        profile_id_clean = _as_text(profile_id)
+        if not profile_id_clean:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+        try:
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception:
+            return jsonify({"ok": False, "error": "module_load_failed"}), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id_clean, profile_id=profile_id_clean
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        notifications = dict(current.get("notifications") or {})
+        if notifications.get("unsubscribed"):
+            # Idempotent — repeat one-click POSTs return ok.
+            return jsonify(
+                {"ok": True, "profile_id": profile_id_clean, "already_unsubscribed": True}
+            ), 200
+        notifications["unsubscribed"] = True
+        notifications["unsubscribed_at"] = _utc_now_iso()
+        next_payload = dict(current)
+        next_payload["notifications"] = notifications
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id_clean,
+                profile_id=profile_id_clean,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id_clean,
+                "unsubscribed_at": notifications["unsubscribed_at"],
+            }
+        ), 200
+
+    @app.get("/__fnd/profile/<profile_id>/unsubscribe-notifications")
+    def fnd_profile_unsubscribe_notifications_get(profile_id: str) -> tuple[Any, int]:
+        """Browser fallback. Renders a minimal confirmation page; if the
+        operator hits Confirm, an HTML form POSTs to the same URL and the
+        opt-out is recorded the same way the one-click MUA path would.
+        """
+        profile_id_clean = _as_text(profile_id)
+        if not profile_id_clean:
+            return ("Missing profile id.", 400)
+        if host_config.private_dir is None:
+            return ("Server not configured.", 500)
+        try:
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception:
+            return ("Server module load failed.", 500)
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id_clean, profile_id=profile_id_clean
+        )
+        if current is None:
+            return ("Unknown profile.", 404)
+        already = bool((current.get("notifications") or {}).get("unsubscribed"))
+        page = (
+            "<!doctype html><meta charset='utf-8'>"
+            "<title>Unsubscribe from onboarding notifications</title>"
+            "<style>body{font-family:Georgia,serif;max-width:560px;margin:64px auto;"
+            "padding:0 24px;line-height:1.5;color:#222}</style>"
+        )
+        if already:
+            page += (
+                "<h1>You're already unsubscribed.</h1>"
+                "<p>No further onboarding-reminder emails will be sent to this profile.</p>"
+            )
+            return (page, 200)
+        page += (
+            "<h1>Unsubscribe from onboarding reminders?</h1>"
+            "<p>This stops the periodic reminder emails that ask you to finish "
+            "setting up your mailbox. You will still receive credential-handoff "
+            "and account-status messages.</p>"
+            f"<form method='post' action='/__fnd/profile/{profile_id_clean}/unsubscribe-notifications'>"
+            "<button type='submit' style='padding:10px 20px;font-size:1em;"
+            "cursor:pointer;background:#444;color:#fff;border:0;border-radius:4px;'>"
+            "Confirm unsubscribe</button>"
+            "</form>"
+        )
+        return (page, 200)
 
     # ------------------------------------------------------------------
     # FND Email admin route — inline edit operator-profile fields
