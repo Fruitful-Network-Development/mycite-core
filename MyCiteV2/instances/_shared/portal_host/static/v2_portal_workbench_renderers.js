@@ -491,6 +491,12 @@
   function renderRowAction(action) {
     var a = asObject(action);
     if (!a.route || !a.label) return "";
+    // Form-shaped actions (is_form=true with form_fields) open an inline
+    // edit form instead of POSTing immediately. The button toggles the
+    // form's hidden state; bindRowFormAction handles the submit.
+    if (a.is_form === true) {
+      return renderRowFormAction(a);
+    }
     var variant = asText(a.variant) || "secondary";
     var payload = JSON.stringify(asObject(a.payload));
     var schema = asText(a.schema);
@@ -518,18 +524,96 @@
     );
   }
 
-  function renderOnboardingProgressCell(progress) {
+  function renderRowFormAction(action) {
+    // Inline edit form. The button reveals a <details>-wrapped form
+    // containing one input per ``form_fields`` entry. Submit POSTs
+    // {schema, ...payload, fields:{key:value,...}} to action.route.
+    // Markup uses data-* attributes that bindRowFormAction binds to.
+    var a = asObject(action);
+    var variant = asText(a.variant) || "secondary";
+    var payload = JSON.stringify(asObject(a.payload));
+    var schema = asText(a.schema);
+    var route = asText(a.route);
+    var label = asText(a.label);
+    var fields = asList(a.form_fields);
+    var fieldHtml = fields
+      .map(function (entry) {
+        var f = asObject(entry);
+        var fkey = asText(f.key);
+        if (!fkey) return "";
+        var flabel = asText(f.label) || fkey;
+        var fvalue = asText(f.value);
+        var required = f.required === true ? " required" : "";
+        return (
+          '<label class="v2-rowFormAction__field">' +
+          '<span class="v2-rowFormAction__fieldLabel">' + escapeHtml(flabel) + "</span>" +
+          '<input type="text" class="v2-rowFormAction__input"' +
+          ' data-row-form-field-key="' + escapeHtml(fkey) + '"' +
+          ' value="' + escapeHtml(fvalue) + '"' +
+          required +
+          " />" +
+          "</label>"
+        );
+      })
+      .join("");
+    return (
+      '<details class="v2-rowFormAction">' +
+      '<summary class="v2-rowAction v2-rowAction--' + escapeHtml(variant) + '">' +
+      escapeHtml(label) +
+      "</summary>" +
+      '<form class="v2-rowFormAction__form"' +
+      ' data-row-form-action-route="' + escapeHtml(route) + '"' +
+      (schema ? ' data-row-form-action-schema="' + escapeHtml(schema) + '"' : "") +
+      " data-row-form-action-payload='" + escapeHtml(payload) + "'>" +
+      fieldHtml +
+      '<div class="v2-rowFormAction__actions">' +
+      '<button type="submit" class="v2-rowAction v2-rowAction--primary">Save</button>' +
+      "</div>" +
+      "</form>" +
+      "</details>"
+    );
+  }
+
+  function renderOnboardingProgressCell(progress, steps) {
+    // ``steps`` is the payload-level legend [{key,label}, ...] threaded
+    // down from renderExtensionCardBody so the cell can render per-step
+    // pills (done / next / pending) alongside the percent. Without the
+    // legend it falls back to the percent + progress bar.
     var p = asObject(progress);
     var total = Number(p.steps_total) || 0;
     var done = Number(p.steps_done) || 0;
     var pct = Number(p.percent) || 0;
     var nextStep = asObject(p.next_step);
     var nextLabel = asText(nextStep.label);
+    var nextKey = asText(nextStep.key);
+    var completed = asList(p.completed).map(asText);
+    var completedSet = {};
+    completed.forEach(function (k) { completedSet[k] = true; });
     var title = done + " of " + total + " complete";
     if (nextLabel) title += " · next: " + nextLabel;
-    // Use semantic <progress> so screen readers + CSS-less rendering still
-    // convey the value. value/max are integers; the visible % label sits
-    // below so a glance reads the same number assistive tech announces.
+    var legend = asList(steps);
+    var pillsHtml = "";
+    if (legend.length) {
+      pillsHtml = '<ol class="v2-mailboxes__steps">' +
+        legend
+          .map(function (entry) {
+            var s = asObject(entry);
+            var skey = asText(s.key);
+            var slabel = asText(s.label) || skey;
+            var state = "pending";
+            if (completedSet[skey]) state = "done";
+            else if (skey && skey === nextKey) state = "next";
+            return (
+              '<li class="v2-mailboxes__step v2-mailboxes__step--' +
+              escapeHtml(state) + '" title="' + escapeHtml(slabel) + '">' +
+              '<span class="v2-mailboxes__stepDot" aria-hidden="true"></span>' +
+              '<span class="v2-mailboxes__stepLabel">' + escapeHtml(slabel) + "</span>" +
+              "</li>"
+            );
+          })
+          .join("") +
+        "</ol>";
+    }
     return (
       '<td class="v2-mailboxes__progressCell" title="' +
       escapeHtml(title) + '">' +
@@ -537,7 +621,39 @@
       '" max="100">' + pct + '%</progress>' +
       '<span class="v2-mailboxes__progressLabel">' + pct + '%' +
       (total ? ' (' + done + '/' + total + ')' : '') +
-      '</span></td>'
+      '</span>' +
+      pillsHtml +
+      "</td>"
+    );
+  }
+
+  function renderOnboardingLegend(steps) {
+    // Operator-facing key for what "N/6" means. Collapsed by default
+    // so it doesn't dominate the card; expanded once per page is
+    // typically enough since the six labels rarely change.
+    var legend = asList(steps);
+    if (!legend.length) return "";
+    var rowsHtml = legend
+      .map(function (entry, idx) {
+        var s = asObject(entry);
+        var skey = asText(s.key);
+        var slabel = asText(s.label) || skey;
+        return (
+          "<tr>" +
+          "<td>" + (idx + 1) + "</td>" +
+          "<td><code>" + escapeHtml(skey) + "</code></td>" +
+          "<td>" + escapeHtml(slabel) + "</td>" +
+          "</tr>"
+        );
+      })
+      .join("");
+    return (
+      '<details class="v2-extensionCard__legend v2-mailboxes__legend">' +
+      "<summary>Onboarding steps (what does N/6 mean?)</summary>" +
+      '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
+      "<th>#</th><th>Key</th><th>Label</th>" +
+      "</tr></thead><tbody>" + rowsHtml + "</tbody></table></div>" +
+      "</details>"
     );
   }
 
@@ -745,16 +861,20 @@
     );
   }
 
-  function renderMailboxesTable(rows) {
+  function renderMailboxesTable(rows, onboardingSteps) {
     // Phase 16c: Domain column so operators of multi-domain grantees
     // (e.g. CVCC owns cvcc + cvccboard) can tell which mailbox lives
     // where. Rows are sorted by domain then mailbox server-side.
     //
     // 2026-05-22: per-row onboarding-progress bar + three-action cell
-    // (suspend / resend handoff / send reminder). The progress cell has
-    // its own renderer (renderOnboardingProgressCell); other columns are
-    // plain text. The action cell concatenates whichever of the three
-    // actions the server provided — empty actions render nothing.
+    // (suspend / resend handoff / send reminder).
+    //
+    // 2026-05-23: appended edit_profile_action (inline form) and
+    // ack_handoff_action (explicit milestone for Operator-confirmed-
+    // credentials). ``onboardingSteps`` is the payload-level legend
+    // threaded down so each progress cell can render per-step pills,
+    // and the table emits a collapsible legend explaining what "N/6"
+    // means above the table itself.
     var rowList = asList(rows);
     if (!rowList.length) return "";
     var textColumns = [
@@ -765,7 +885,13 @@
       { key: "lifecycle", label: "Lifecycle" },
       { key: "inbound", label: "Inbound" },
     ];
-    var actionKeys = ["suspend_action", "resend_handoff_action", "send_reminder_action"];
+    var actionKeys = [
+      "suspend_action",
+      "resend_handoff_action",
+      "send_reminder_action",
+      "edit_profile_action",
+      "ack_handoff_action",
+    ];
     var hasActions = rowList.some(function (r) {
       var ro = asObject(r);
       return actionKeys.some(function (k) {
@@ -785,7 +911,7 @@
         if (v == null) v = "";
         return "<td>" + escapeHtml(String(v)) + "</td>";
       }).join("");
-      var progressCell = renderOnboardingProgressCell(r.onboarding_progress);
+      var progressCell = renderOnboardingProgressCell(r.onboarding_progress, onboardingSteps);
       var actionCell = "";
       if (hasActions) {
         actionCell = "<td>" + actionKeys.map(function (k) {
@@ -797,6 +923,7 @@
     return (
       '<section class="v2-extensionCard__table v2-extensionCard__mailboxes">' +
       "<h4>Mailboxes</h4>" +
+      renderOnboardingLegend(onboardingSteps) +
       '<div class="v2-tableWrap"><table class="v2-table"><thead><tr>' +
       headerCells + "</tr></thead><tbody>" + bodyRows +
       "</tbody></table></div></section>"
@@ -928,7 +1055,12 @@
       ]);
     }
     if (asList(p.profiles).length) {
-      html += renderMailboxesTable(p.profiles);
+      html += renderMailboxesTable(p.profiles, p.onboarding_steps);
+    } else if (asList(p.onboarding_steps).length) {
+      // No mailboxes yet but the legend is informative on its own
+      // (e.g. private_dir not configured). Surface it so the operator
+      // still understands the eventual N/6 vocabulary.
+      html += renderOnboardingLegend(p.onboarding_steps);
     }
     if (asText(p.empty_message) && !html) {
       html += '<p class="v2-extensionCard__empty">' + escapeHtml(asText(p.empty_message)) + "</p>";
@@ -1204,6 +1336,73 @@
     );
   }
 
+  function bindRowFormAction(ctx, form) {
+    // Submit handler for the inline edit form rendered by
+    // renderRowFormAction. POSTs {schema, ...payload, fieldA, fieldB, ...}
+    // — fields are flattened into the top-level body (the new admin
+    // routes accept the editable keys as top-level body fields, not a
+    // nested ``fields`` object, so they look like the other admin
+    // POSTs).
+    if (!form || form.dataset.rowFormActionBound === "1") return;
+    form.dataset.rowFormActionBound = "1";
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var route = form.getAttribute("data-row-form-action-route");
+      var schema = form.getAttribute("data-row-form-action-schema") || "";
+      var basePayload = {};
+      try {
+        basePayload = JSON.parse(form.getAttribute("data-row-form-action-payload") || "{}");
+      } catch (_) {}
+      var body = Object.assign({ schema: schema }, basePayload);
+      Array.prototype.forEach.call(
+        form.querySelectorAll("[data-row-form-field-key]"),
+        function (input) {
+          body[input.getAttribute("data-row-form-field-key")] = input.value || "";
+        }
+      );
+      var saveBtn = form.querySelector('button[type="submit"]');
+      if (saveBtn) saveBtn.disabled = true;
+      fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        credentials: "same-origin",
+      })
+        .then(function (r) {
+          return r.json().then(function (j) {
+            return { status: r.status, body: j };
+          });
+        })
+        .then(function (out) {
+          if (saveBtn) saveBtn.disabled = false;
+          var ok = out.status >= 200 && out.status < 300 && out.body && out.body.ok !== false;
+          if (ok && typeof ctx.loadShell === "function") {
+            var envelope = ctx.getEnvelope && ctx.getEnvelope();
+            if (envelope) {
+              ctx.loadShell({
+                schema: "mycite.v2.portal.shell.request.v1",
+                requested_surface_id: envelope.surface_id,
+                surface_query: envelope.surface_query || {},
+              });
+            }
+          } else if (!ok) {
+            var msg =
+              (out.body && (out.body.detail || out.body.error || ("HTTP " + out.status))) ||
+              "unknown error";
+            try {
+              window.alert("Edit failed: " + msg);
+            } catch (_) {}
+          }
+        })
+        .catch(function (err) {
+          if (saveBtn) saveBtn.disabled = false;
+          try {
+            window.alert("Network error: " + (err && err.message ? err.message : err));
+          } catch (_) {}
+        });
+    });
+  }
+
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
     Array.prototype.forEach.call(
@@ -1216,6 +1415,12 @@
       target.querySelectorAll(".v2-rowAction[data-row-action-route]"),
       function (button) {
         bindRowAction(ctx, button);
+      }
+    );
+    Array.prototype.forEach.call(
+      target.querySelectorAll("form[data-row-form-action-route]"),
+      function (form) {
+        bindRowFormAction(ctx, form);
       }
     );
     bindContactEditActions(ctx, target);

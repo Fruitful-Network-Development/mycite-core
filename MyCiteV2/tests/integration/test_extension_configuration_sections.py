@@ -79,12 +79,20 @@ class SecretMaskingTests(unittest.TestCase):
 
 
 class GranteeEditLinkTests(unittest.TestCase):
-    def test_link_points_at_utilities_tool_exposure_with_focus_field(self) -> None:
+    def test_link_points_at_grantee_profile_surface_with_focus_field(self) -> None:
+        # 2026-05-23: the link previously pointed at the legacy
+        # ``/portal/utilities/tool-exposure`` route, which 302-redirected
+        # to the extensions surface (dropping the query string) and never
+        # actually opened the grantee-profile editor. The link now targets
+        # the dedicated ``/portal/utilities/grantee-profile`` surface
+        # directly; the ``focus_field`` query parameter is consumed by
+        # v2_portal_shell_core.js to scroll-anchor the matching input.
         link = _grantee_edit_link("paypal")
         self.assertEqual(link["focus_field"], "paypal")
-        self.assertIn("/portal/utilities/tool-exposure", link["href"])
+        self.assertIn("/portal/utilities/grantee-profile", link["href"])
         self.assertIn("focus_field=paypal", link["href"])
-        self.assertIn("utilities_extension=ext_grantee_profile", link["href"])
+        self.assertNotIn("tool-exposure", link["href"])
+        self.assertNotIn("utilities_extension=", link["href"])
 
 
 class PaypalExtensionConfigurationTests(unittest.TestCase):

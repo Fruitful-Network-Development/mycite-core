@@ -14,14 +14,16 @@ no MOS authority is consulted.
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
-
-from datetime import datetime, timedelta, timezone
 
 from MyCiteV2.packages.peripherals.aws import ProfileStore
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
+
+_LOG = logging.getLogger(__name__)
 
 # Onboarding sequence used both for the per-row progress bar and for the
 # Send-reminder gate. Each entry is (key, label, predicate) — predicate
@@ -50,13 +52,18 @@ def _onboarding_progress(payload: dict[str, Any]) -> dict[str, Any]:
     provider = _as_dict(payload.get("provider"))
     inbound = _as_dict(payload.get("inbound"))
 
-    lifecycle_state = _as_text(workflow.get("lifecycle_state")).lower()
-
+    # ``handoff_acked`` used to be inferred from ``lifecycle_state == "operational"``,
+    # but lifecycle is toggled by Suspend / Resume and by manual edits, which
+    # made it possible for the step to flip true without the operator ever
+    # confirming credentials. The proof now requires either an explicit
+    # ``workflow.handoff_acked_at`` timestamp (set by /__fnd/email/admin/ack-handoff)
+    # or the AWS-CSM-provisioned ``is_mailbox_operational`` boolean — both are
+    # deliberate signals rather than side-effects of UI flow.
     proof: dict[str, bool] = {
         "profile_created": bool(workflow.get("initiated")) or bool(workflow.get("initiated_at")),
         "ses_identity_ready": _as_text(provider.get("aws_ses_identity_status")).lower() == "verified",
         "handoff_sent": bool(_as_text(workflow.get("handoff_email_sent_at"))),
-        "handoff_acked": lifecycle_state == "operational" or bool(workflow.get("is_mailbox_operational")),
+        "handoff_acked": bool(_as_text(workflow.get("handoff_acked_at"))) or bool(workflow.get("is_mailbox_operational")),
         "inbound_configured": _as_text(inbound.get("receive_state")).lower() == "receive_configured",
         "inbound_verified": bool(inbound.get("receive_verified")),
     }
@@ -132,6 +139,11 @@ def _build_email_extension_payload(
         "edit_link": _grantee_edit_link("aws_ses"),
     }
 
+    # Legend rendered above the mailbox table so the operator can tell
+    # what "2/6" means without spelunking the codebase. The 6 step keys
+    # mirror ``_onboarding_progress`` proof keys.
+    onboarding_steps = [{"key": key, "label": label} for key, label in _ONBOARDING_STEPS]
+
     # Phase 16c: take the union of the grantee's registered domains
     # AND the currently-selected ``domain`` (in case the operator
     # picked a domain that isn't in the grantee list yet). Lowercased
@@ -142,7 +154,21 @@ def _build_email_extension_payload(
     if domain:
         grantee_domains.add(domain.lower())
     if not grantee_domains or private_dir is None:
-        return {"profiles": [], "domain": domain, "configuration": configuration}
+        # Uniform shape: callers (JS renderer, tests) read the same keys
+        # whether or not private_dir is wired. Surface a notice so the
+        # operator can tell "no domains" from "missing private dir".
+        notice = ""
+        if private_dir is None:
+            notice = "Private directory not configured — mailbox profiles cannot be listed."
+        return {
+            "domain": domain,
+            "domains": sorted(grantee_domains),
+            "profiles": [],
+            "domain_record": {},
+            "configuration": configuration,
+            "onboarding_steps": onboarding_steps,
+            "notice": notice,
+        }
 
     # Profiles live as JSON files at
     # ``<private>/utilities/tools/aws-csm/aws-csm.<scope>.<mailbox>.json``;
@@ -159,29 +185,39 @@ def _build_email_extension_payload(
         try:
             domain_record = _as_dict(store.get_domain(domain))
         except Exception:
+            _LOG.exception("get_domain failed for %s", domain)
             domain_record = {}
 
     profiles: list[dict[str, Any]] = []
     try:
-        operator_source = store.list_profiles()
-        for payload in operator_source:
+        operator_source = list(store.list_profiles())
+    except Exception:
+        _LOG.exception("list_profiles failed under %s", tool_root)
+        operator_source = []
+
+    # Per-iteration try/except: one corrupt aws-csm.*.json must not
+    # silently truncate every row that would have been listed after it.
+    for payload in operator_source:
+        try:
             ident = _as_dict(payload.get("identity"))
             profile_domain = _as_text(ident.get("domain")).lower()
             if profile_domain not in grantee_domains:
                 continue
             profile_id = _as_text(ident.get("profile_id"))
-            lifecycle = _as_text(
-                _as_dict(payload.get("workflow")).get("lifecycle_state")
-            )
             workflow = _as_dict(payload.get("workflow"))
+            lifecycle = _as_text(workflow.get("lifecycle_state"))
             inbox_target = _as_text(ident.get("operator_inbox_target"))
+            send_as = _as_text(ident.get("send_as_email"))
+            role = _as_text(ident.get("role"))
+            mailbox_local = _as_text(ident.get("mailbox_local_part"))
             progress = _onboarding_progress(payload)
             profiles.append({
                 "profile_id": profile_id,
                 "domain": profile_domain,
-                "mailbox": _as_text(ident.get("mailbox_local_part")),
-                "send_as": _as_text(ident.get("send_as_email")),
-                "role": _as_text(ident.get("role")),
+                "mailbox": mailbox_local,
+                "send_as": send_as,
+                "role": role,
+                "operator_inbox_target": inbox_target,
                 "lifecycle": lifecycle,
                 "inbound": _as_text(
                     _as_dict(payload.get("inbound")).get("receive_state")
@@ -194,21 +230,32 @@ def _build_email_extension_payload(
                 "send_reminder_action": _send_reminder_action_for_profile(
                     profile_id, lifecycle, inbox_target, workflow, progress
                 ),
+                "edit_profile_action": _edit_profile_action_for_profile(
+                    profile_id, lifecycle, send_as, role, inbox_target
+                ),
+                "ack_handoff_action": _ack_handoff_action_for_profile(
+                    profile_id, lifecycle, workflow
+                ),
                 "handoff_email_sent_at": _as_text(workflow.get("handoff_email_sent_at")),
+                "handoff_acked_at": _as_text(workflow.get("handoff_acked_at")),
                 "reminder_sent_at": _as_text(workflow.get("reminder_sent_at")),
             })
-        # Stable ordering: by domain, then mailbox local part — keeps
-        # cvcc.admin / cvcc.finance / cvccboard.daniel / etc. grouped
-        # so the operator can scan the table predictably.
-        profiles.sort(key=lambda r: (r["domain"], r["mailbox"]))
-    except Exception:
-        pass
+        except Exception:
+            source_path = _as_text(payload.get("_source_path")) if isinstance(payload, dict) else ""
+            _LOG.exception("skipping malformed AWS-CSM profile at %s", source_path or "<unknown>")
+            continue
+    # Stable ordering: by domain, then mailbox local part — keeps
+    # cvcc.admin / cvcc.finance / cvccboard.daniel / etc. grouped
+    # so the operator can scan the table predictably.
+    profiles.sort(key=lambda r: (r["domain"], r["mailbox"]))
     return {
         "domain": domain,
         "domains": sorted(grantee_domains),
         "profiles": profiles,
         "domain_record": domain_record,
         "configuration": configuration,
+        "onboarding_steps": onboarding_steps,
+        "notice": "",
     }
 
 
@@ -321,6 +368,98 @@ def _send_reminder_action_for_profile(
     return base
 
 
+def _edit_profile_action_for_profile(
+    profile_id: str,
+    lifecycle: str,
+    send_as: str,
+    role: str,
+    operator_inbox_target: str,
+) -> dict[str, Any]:
+    """Per-row "Edit" button that opens an inline form modal.
+
+    The modal lets the operator change ``send_as_email``, ``role``, and
+    ``operator_inbox_target`` on the AWS-CSM profile JSON. The mailbox
+    local part is intentionally NOT editable here — it is the primary
+    key used to derive the on-disk filename, and renaming it would
+    create an orphan file.
+
+    Hidden on suspended rows (suspended mailboxes should be resumed
+    before identity changes are made).
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    if _as_text(lifecycle).lower() == "suspended":
+        return {}
+    return {
+        "label": "Edit",
+        "route": "/__fnd/email/admin/edit-profile",
+        "schema": "mycite.v2.email.admin.edit_profile.request.v1",
+        "is_form": True,
+        "payload": {"profile_id": profile_id},
+        "form_fields": [
+            {
+                "key": "send_as_email",
+                "label": "Send-as email",
+                "value": send_as,
+                "required": True,
+            },
+            {
+                "key": "role",
+                "label": "Role",
+                "value": role,
+                "required": False,
+            },
+            {
+                "key": "operator_inbox_target",
+                "label": "Operator inbox target",
+                "value": operator_inbox_target,
+                "required": False,
+            },
+        ],
+        "variant": "secondary",
+    }
+
+
+def _ack_handoff_action_for_profile(
+    profile_id: str,
+    lifecycle: str,
+    workflow: dict[str, Any],
+) -> dict[str, Any]:
+    """Per-row "Confirm credentials" button.
+
+    Visible only when the operator received the handoff
+    (``handoff_email_sent_at`` is set) AND has not yet acknowledged it
+    (``handoff_acked_at`` is empty). Suspended rows are skipped — an
+    acknowledgement on a suspended mailbox is meaningless.
+
+    Clicking POSTs to ``/__fnd/email/admin/ack-handoff`` which stamps
+    ``workflow.handoff_acked_at``. The onboarding-progress ``handoff_acked``
+    step keys on this field directly, so the click is the milestone.
+    """
+    profile_id = _as_text(profile_id)
+    if not profile_id:
+        return {}
+    if _as_text(lifecycle).lower() == "suspended":
+        return {}
+    if not _as_text(workflow.get("handoff_email_sent_at")):
+        return {}
+    if _as_text(workflow.get("handoff_acked_at")):
+        return {}
+    return {
+        "label": "Confirm credentials",
+        "route": "/__fnd/email/admin/ack-handoff",
+        "schema": "mycite.v2.email.admin.ack_handoff.request.v1",
+        "payload": {"profile_id": profile_id},
+        "confirm": (
+            f"Confirm that {profile_id} received and stored the SMTP credentials "
+            "from the handoff email? This marks the milestone in the onboarding "
+            "progress and cannot be undone from the UI."
+        ),
+        "variant": "primary",
+    }
+
+
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
@@ -332,10 +471,12 @@ def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
 
 
 __all__ = [
+    "_ack_handoff_action_for_profile",
     "_build_email_extension_payload",
+    "_edit_profile_action_for_profile",
     "_onboarding_progress",
+    "_reminder_cooldown_remaining",
     "_render_ext_aws_email",
     "_resend_handoff_action_for_profile",
     "_send_reminder_action_for_profile",
-    "_reminder_cooldown_remaining",
 ]

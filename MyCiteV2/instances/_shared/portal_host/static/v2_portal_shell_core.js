@@ -482,6 +482,42 @@
     }
     window.__MYCITE_V2_SHELL_HYDRATED = true;
     setBootState("hydrated");
+    // Anchor-scroll target driven by ``?focus_field=<key>`` in the URL.
+    // Emitted by the email extension's "Edit in Grantee Profile" link
+    // (utilities_extensions/_shared.py:_grantee_edit_link). Pure
+    // progressive enhancement: no-op if the param is absent or no
+    // matching form field is on the page.
+    try {
+      applyFocusFieldFromUrl();
+    } catch (_) {
+      /* never let a focus-scroll failure block the render */
+    }
+  }
+
+  function applyFocusFieldFromUrl() {
+    var params = new URLSearchParams(window.location.search || "");
+    var key = (params.get("focus_field") || "").trim();
+    if (!key) return;
+    // Form fields are emitted by the component library with
+    // ``data-form-field="<key>"`` (e.g. "aws_ses.region"). Try an
+    // exact match first; fall back to prefix match so a focus_field of
+    // ``aws_ses`` lands on the first ``aws_ses.*`` field in the form.
+    var target =
+      document.querySelector('[data-form-field="' + cssEscape(key) + '"]') ||
+      document.querySelector('[data-form-field^="' + cssEscape(key) + '."]');
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.classList.add("is-focused");
+    window.setTimeout(function () {
+      target.classList.remove("is-focused");
+    }, 2000);
+  }
+
+  function cssEscape(value) {
+    // Minimal selector-attribute escape — enough for the
+    // dot/underscore-separated field keys we emit. Avoid relying on
+    // CSS.escape so the helper works in older browsers.
+    return String(value).replace(/(["\\\]])/g, "\\$1");
   }
 
   function loadShell(shellRequest, options) {

@@ -2578,7 +2578,27 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "profile_not_found"}), 404
 
         workflow = dict(current.get("workflow") or {})
-        workflow["lifecycle_state"] = "suspended" if suspended else "operational"
+        prior_lifecycle = _as_text(workflow.get("lifecycle_state"))
+        if suspended:
+            # Snapshot the prior state so Resume can restore it faithfully
+            # instead of inventing "operational" — pre-operational mailboxes
+            # (draft / instruction_sent) must not be auto-promoted by the
+            # round-trip.
+            if prior_lifecycle.lower() != "suspended":
+                workflow["lifecycle_state_prior_suspend"] = prior_lifecycle
+            workflow["lifecycle_state"] = "suspended"
+        else:
+            snapshot = _as_text(workflow.get("lifecycle_state_prior_suspend"))
+            if snapshot:
+                workflow["lifecycle_state"] = snapshot
+            elif bool(workflow.get("is_mailbox_operational")):
+                workflow["lifecycle_state"] = "operational"
+            else:
+                # No snapshot and not provisioned: fall back to the
+                # earliest pre-operational state rather than auto-marking
+                # the mailbox operational on Resume.
+                workflow["lifecycle_state"] = "draft"
+            workflow.pop("lifecycle_state_prior_suspend", None)
         next_payload = dict(current)
         next_payload["workflow"] = workflow
 
@@ -2675,12 +2695,23 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         identity = dict(current.get("identity") or {})
         workflow = dict(current.get("workflow") or {})
-        workflow["handoff_email_sent_to"] = _as_text(result.get("sent_to"))
-        workflow["handoff_email_message_id"] = _as_text(result.get("message_id"))
-        workflow["handoff_email_sent_at"] = _as_text(result.get("sent_at"))
-        workflow["handoff_template_version"] = _as_text(
-            result.get("template_version")
-        )
+        # Guard each assignment so an ok=True send-result with a missing
+        # field (e.g. stubbed sender, future migration) does NOT clobber
+        # the prior good value. ``handoff_email_sent_at`` in particular
+        # gates the reminder + ack actions downstream — losing it breaks
+        # the UI flow on the next render.
+        sent_to = _as_text(result.get("sent_to"))
+        if sent_to:
+            workflow["handoff_email_sent_to"] = sent_to
+        message_id = _as_text(result.get("message_id"))
+        if message_id:
+            workflow["handoff_email_message_id"] = message_id
+        sent_at = _as_text(result.get("sent_at"))
+        if sent_at:
+            workflow["handoff_email_sent_at"] = sent_at
+        template_version = _as_text(result.get("template_version"))
+        if template_version:
+            workflow["handoff_template_version"] = template_version
         workflow["handoff_status"] = "instruction_sent"
         next_payload = dict(current)
         next_payload["workflow"] = workflow
@@ -2899,6 +2930,219 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "next_step": next_step,
                 "template_version": _as_text(result.get("template_version")),
             }
+        ), 200
+
+    # ------------------------------------------------------------------
+    # FND Email admin route — edit mailbox identity (2026-05-23)
+    # ------------------------------------------------------------------
+    # Per-row inline edit form. Lets the operator change send_as_email,
+    # role, and operator_inbox_target on the AWS-CSM profile JSON.
+    # ``mailbox_local_part`` is intentionally NOT editable — it is the
+    # primary key that derives the on-disk filename. The grantee-wide
+    # ``aws_ses`` block (region / SES identity / SMTP creds) is edited
+    # via the dedicated Grantee Profile surface; that path is unchanged.
+
+    @app.post("/__fnd/email/admin/edit-profile")
+    def fnd_email_admin_edit_profile() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception as exc:
+            return jsonify(
+                {"ok": False, "error": "module_load_failed", "detail": str(exc)}
+            ), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        identity = dict(current.get("identity") or {})
+        editable_keys = ("send_as_email", "role", "operator_inbox_target")
+        changes: dict[str, str] = {}
+        for key in editable_keys:
+            if key not in payload:
+                continue
+            value = _as_text(payload.get(key))
+            if key == "send_as_email":
+                if not value:
+                    return jsonify(
+                        {"ok": False, "error": "invalid_field",
+                         "detail": "send_as_email must not be empty"}
+                    ), 400
+                if "@" not in value or value.startswith("@") or value.endswith("@"):
+                    return jsonify(
+                        {"ok": False, "error": "invalid_field",
+                         "detail": "send_as_email must look like local@domain"}
+                    ), 400
+            changes[key] = value
+
+        if not changes:
+            return jsonify(
+                {"ok": False, "error": "no_changes",
+                 "detail": "supply at least one of send_as_email / role / operator_inbox_target"}
+            ), 400
+
+        for key, value in changes.items():
+            identity[key] = value
+        next_payload = dict(current)
+        next_payload["identity"] = identity
+
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        if host_config.portal_audit_storage_file is not None:
+            try:
+                audit_adapter = FilesystemAuditLogAdapter(
+                    host_config.portal_audit_storage_file
+                )
+                from MyCiteV2.packages.ports.audit_log import AuditLogAppendRequest
+
+                audit_adapter.append_audit_record(
+                    AuditLogAppendRequest(
+                        record={
+                            "event_type": "portal.aws.edit_profile.accepted",
+                            "shell_verb": "portal.aws.edit_profile",
+                            "focus_subject": profile_id,
+                            "details": {
+                                "profile_id": profile_id,
+                                "changed_fields": sorted(changes.keys()),
+                            },
+                        }
+                    )
+                )
+            except Exception:
+                # Audit failure must not break the edit; the profile JSON
+                # on disk is the durable record.
+                pass
+
+        return jsonify(
+            {
+                "ok": True,
+                "profile_id": profile_id,
+                "changed_fields": sorted(changes.keys()),
+            }
+        ), 200
+
+    # ------------------------------------------------------------------
+    # FND Email admin route — acknowledge handoff credentials (2026-05-23)
+    # ------------------------------------------------------------------
+    # Distinct, explicit milestone for the onboarding step
+    # ``handoff_acked`` (Operator confirmed credentials). Previously the
+    # progress proof inferred this from ``lifecycle_state == "operational"``,
+    # which could be flipped true by Suspend/Resume or a manual edit
+    # without the operator ever confirming receipt. The proof now keys
+    # on the explicit ``workflow.handoff_acked_at`` timestamp that this
+    # route stamps, so the count is honest.
+    #
+    # Gates: handoff must have been sent (``handoff_email_sent_at`` is
+    # set) and not already acknowledged. Suspended mailboxes are refused
+    # — an ack on a suspended mailbox is meaningless until resumed.
+
+    @app.post("/__fnd/email/admin/ack-handoff")
+    def fnd_email_admin_ack_handoff() -> tuple[Any, int]:
+        payload = _json_payload()
+        profile_id = _as_text(payload.get("profile_id"))
+
+        if not profile_id:
+            return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        try:
+            from MyCiteV2.packages.adapters.filesystem import FilesystemAuditLogAdapter
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+        except Exception as exc:
+            return jsonify(
+                {"ok": False, "error": "module_load_failed", "detail": str(exc)}
+            ), 500
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        current = store.load_profile(
+            tenant_scope_id=profile_id, profile_id=profile_id
+        )
+        if current is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+
+        workflow = dict(current.get("workflow") or {})
+        lifecycle = _as_text(workflow.get("lifecycle_state")).lower()
+        if lifecycle == "suspended":
+            return jsonify(
+                {"ok": False, "error": "not_eligible", "detail": "lifecycle=suspended"}
+            ), 409
+        if not _as_text(workflow.get("handoff_email_sent_at")):
+            return jsonify(
+                {"ok": False, "error": "not_eligible", "detail": "handoff_not_sent"}
+            ), 409
+        if _as_text(workflow.get("handoff_acked_at")):
+            return jsonify(
+                {"ok": False, "error": "already_acked",
+                 "detail": _as_text(workflow.get("handoff_acked_at"))}
+            ), 409
+
+        acked_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        workflow["handoff_acked_at"] = acked_at
+        next_payload = dict(current)
+        next_payload["workflow"] = workflow
+
+        try:
+            store.save_profile(
+                tenant_scope_id=profile_id,
+                profile_id=profile_id,
+                payload=next_payload,
+            )
+        except (ValueError, OSError) as exc:
+            return jsonify(
+                {"ok": False, "error": "storage_error", "detail": str(exc)}
+            ), 500
+
+        if host_config.portal_audit_storage_file is not None:
+            try:
+                audit_adapter = FilesystemAuditLogAdapter(
+                    host_config.portal_audit_storage_file
+                )
+                from MyCiteV2.packages.ports.audit_log import AuditLogAppendRequest
+
+                audit_adapter.append_audit_record(
+                    AuditLogAppendRequest(
+                        record={
+                            "event_type": "portal.aws.ack_handoff.accepted",
+                            "shell_verb": "portal.aws.ack_handoff",
+                            "focus_subject": profile_id,
+                            "details": {
+                                "profile_id": profile_id,
+                                "handoff_acked_at": acked_at,
+                            },
+                        }
+                    )
+                )
+            except Exception:
+                pass
+
+        return jsonify(
+            {"ok": True, "profile_id": profile_id, "handoff_acked_at": acked_at}
         ), 200
 
     # ------------------------------------------------------------------

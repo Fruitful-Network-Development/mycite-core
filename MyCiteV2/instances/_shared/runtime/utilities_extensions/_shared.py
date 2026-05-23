@@ -38,14 +38,15 @@ def _as_list(value: object) -> list[Any]:
 def _grantee_edit_link(focus_field: str) -> dict[str, str]:
     """Build the ``{label, href, focus_field}`` edit-link.
 
-    The href points at the Utilities tool-exposure surface with a query
-    parameter telling the client to scroll the grantee form to a
-    particular sub-config. Phase 10 emits this as plain metadata; the
-    client-side rendering interprets ``focus_field`` to anchor-scroll.
+    The href points at the dedicated Grantee Profile surface with a
+    ``focus_field`` query parameter telling the client to scroll the
+    grantee form to a particular sub-config. The client-side renderer
+    on that surface reads ``focus_field`` to anchor-scroll the matching
+    ``[data-field-key]`` input.
     """
     return {
         "label": "Edit in Grantee Profile",
-        "href": f"/portal/utilities/tool-exposure?utilities_extension=ext_grantee_profile&focus_field={focus_field}",
+        "href": f"/portal/utilities/grantee-profile?focus_field={focus_field}",
         "focus_field": focus_field,
     }
 
