@@ -518,7 +518,12 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
     # Methods 4 / 5 / 6: mutating domain provisioning
 
     def _account_id(self) -> str:
-        """Lazy STS caller-identity lookup; cached on the adapter."""
+        """Lazy STS caller-identity lookup. A SUCCESSFUL result is memoized
+        on the adapter for its lifetime; a FAILURE is intentionally NOT
+        cached, so a transient STS error (throttle / brief perm gap) is
+        retried on the next call rather than poisoning every later tagging
+        attempt with an empty account id. Returns "" when STS is currently
+        unreachable; callers treat "" as 'skip tagging this round'."""
         cached = getattr(self, "_cached_account_id", None)
         if cached:
             return cached
@@ -527,8 +532,9 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             ident = sts.get_caller_identity()
             account_id = str(ident.get("Account", "")) or ""
         except Exception:  # noqa: BLE001
-            account_id = ""
-        self._cached_account_id = account_id
+            return ""  # do NOT cache failure — retry next call
+        if account_id:
+            self._cached_account_id = account_id
         return account_id
 
     def ensure_domain_identity(
