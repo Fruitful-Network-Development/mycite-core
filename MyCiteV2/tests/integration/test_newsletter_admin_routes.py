@@ -117,8 +117,8 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         # Phase 15b: the admin form sends first_name / middle_name /
         # last_name separately. The mutation runtime + adapter persist
         # them as their own magnitudes, recoverable via load_contact_log.
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -139,9 +139,7 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         loaded = adapter.load_contact_log(domain="alpha.example.test")
         row = next(
             c for c in loaded["contacts"] if c["email"] == "mary.zaun@subscriber.test"
@@ -154,8 +152,8 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
     def test_add_subscriber_persists_phone_zip(self) -> None:
         # Phase 16a: phone + zip are now first-class magnitudes that
         # the admin form supplies + the adapter persists.
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -177,9 +175,7 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         loaded = adapter.load_contact_log(domain="alpha.example.test")
         row = next(c for c in loaded["contacts"] if c["email"] == "phone.fan@subscriber.test")
         self.assertEqual(row["phone"], "216-555-9999")
@@ -187,8 +183,8 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         self.assertRegex(row["signup_date"], r"^\d{4}-\d{2}-\d{2}$")
 
     def test_edit_route_updates_named_fields(self) -> None:
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -224,9 +220,7 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
             set(body["updated_fields"]), {"first_name", "last_name", "phone"}
         )
 
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         row = next(
             c
             for c in adapter.load_contact_log(domain="alpha.example.test")["contacts"]
@@ -254,8 +248,8 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
     def test_add_subscriber_legacy_single_name_auto_splits(self) -> None:
         # Phase 15b back-compat: clients that still post a single
         # ``name`` field continue to work — the runtime auto-splits.
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -271,9 +265,7 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         loaded = adapter.load_contact_log(domain="alpha.example.test")
         row = next(
             c for c in loaded["contacts"] if c["email"] == "legacy@subscriber.test"

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.ports.newsletter import (
+    _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS,
+    _ACCEPTED_NEWSLETTER_PROFILE_SCHEMAS,
     NEWSLETTER_CONTACT_LOG_SCHEMA,
     NEWSLETTER_PROFILE_SCHEMA,
     NewsletterStatePort,
-    _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS,
-    _ACCEPTED_NEWSLETTER_PROFILE_SCHEMAS,
 )
 
 
@@ -47,8 +49,26 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
+    """Write JSON atomically (temp file in the same dir + os.replace).
+
+    Newsletter contact logs are written from several concurrent paths
+    (public subscribe/connect, operator edits, dispatch callbacks); a torn
+    file would read back as ``{}`` and silently drop the whole list, so the
+    write must be all-or-nothing.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    text = json.dumps(payload, indent=2) + "\n"
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".json")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp_path, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 class FilesystemNewsletterStateAdapter(NewsletterStatePort):
@@ -161,7 +181,9 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
         body["schema"] = NEWSLETTER_CONTACT_LOG_SCHEMA
         body["domain"] = token
         body["contacts"] = list(body.get("contacts") or [])
-        body["dispatches"] = list(body.get("dispatches") or [])[-20:]
+        # Preserve full dispatch history — a contact write must never drop
+        # dispatch records as a side effect (it previously truncated to 20).
+        body["dispatches"] = list(body.get("dispatches") or [])
         _write_json(self._contacts_path(token), body)
         return body
 

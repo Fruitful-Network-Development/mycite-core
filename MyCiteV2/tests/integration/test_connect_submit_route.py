@@ -104,8 +104,8 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         )
 
     def test_success_forwards_via_ses_and_persists(self) -> None:
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -145,23 +145,20 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         )
 
         # Persisted as unsubscribed contact with source=connect_form.
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
         self.assertFalse(row["subscribed"])
         self.assertEqual(row["source"], "connect_form")
         self.assertEqual(row["forward_status"], "sent")
-        # Contacts are identity-only — the message body lives on the SES
-        # email, not on the contact record.
-        self.assertNotIn("subject", row)
-        self.assertNotIn("message", row)
+        # The subject + message are persisted onto the canonical contact row
+        # so the operator can read the submission from the Connect tab.
+        self.assertEqual(row["subject"], "Hello")
+        self.assertEqual(row["message"], "Just saying hi from the website.")
 
     def test_ses_failure_persists_with_failed_status(self) -> None:
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
-
         from MyCiteV2.packages.peripherals.aws.contracts import SesSendError
 
         client, tmp = self._build_client()
@@ -182,9 +179,7 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         # forward_status carries the failure so the operator can retry.
         self.assertTrue(body["ok"])
         self.assertEqual(body["forward_status"], "failed")
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
         self.assertEqual(row["forward_status"], "failed")
 
@@ -231,8 +226,8 @@ class ConnectSubmitRouteTests(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_form_encoded_success_returns_html(self) -> None:
-        from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-            MosDatumNewsletterContactLogAdapter,
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
         )
 
         client, tmp = self._build_client()
@@ -263,9 +258,7 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         self.assertIn("Message received", body)
         self.assertIn("/contact", body)  # link back to referrer
         # Contact still persisted via the same mutation runtime as the JSON path.
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=tmp / "authority.sqlite3", tenant_id="fnd"
-        )
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
         row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
         self.assertEqual(row["email"], "noscript@example.test")
         self.assertEqual(row["source"], "connect_form")
