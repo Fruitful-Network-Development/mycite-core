@@ -130,6 +130,23 @@ class OnboardingProgressWithAdapterTests(unittest.TestCase):
         # next_step shifts to the first incomplete one (handoff_sent)
         self.assertEqual(result["next_step"]["key"], "handoff_sent")
 
+    def test_handoff_acked_evidence_is_display_only_not_auto_advance(self) -> None:
+        # The operator-sends probe maps to handoff_acked but is an indirect
+        # proxy — even when it returns auto_advance, the step must NOT flip
+        # complete (only the lifecycle flag does that). Evidence is still
+        # attached for the badge.
+        adapter = _adapter_returning(
+            ses_state="absent", sends_state="auto_advance", inbound_state="absent"
+        )
+        result = self.email._onboarding_progress(
+            _profile_payload(initiated=True),  # lifecycle NOT operational
+            aws_adapter=adapter,
+        )
+        self.assertEqual(result["aws_evidence"]["handoff_acked"]["state"], "auto_advance")
+        self.assertNotIn("handoff_acked", result["completed"])
+        # Only profile_created is done — handoff_acked did NOT inflate it.
+        self.assertEqual(result["steps_done"], 1)
+
     def test_drift_does_not_change_percent(self) -> None:
         # Flag says ses_identity_ready (provider=verified) so it counts
         # as done; AWS evidence is "drift" (declared but AWS says no).
@@ -168,6 +185,39 @@ class OnboardingProgressWithAdapterTests(unittest.TestCase):
         self.assertEqual(
             adapter.probe_inbound_verified_aws_evidence.call_count, 1
         )
+
+    def test_passed_probe_deadline_skips_probes(self) -> None:
+        # A deadline already in the past → no probes issued for this
+        # mailbox (renders flag-only), so the extension can't blow its
+        # 5s render future on a cold multi-mailbox grantee.
+        import time as _t
+        adapter = _adapter_returning(
+            ses_state="confirmed", sends_state="absent", inbound_state="confirmed"
+        )
+        result = self.email._onboarding_progress(
+            _profile_payload(initiated=True, ses_status="verified"),
+            aws_adapter=adapter,
+            probe_deadline=_t.monotonic() - 1.0,  # already elapsed
+        )
+        self.assertEqual(result["aws_evidence"], {})
+        adapter.probe_ses_identity_aws_evidence.assert_not_called()
+        adapter.probe_operator_sends_aws_evidence.assert_not_called()
+        adapter.probe_inbound_verified_aws_evidence.assert_not_called()
+        # Flag-only progress still computed (profile_created + ses verified).
+        self.assertIn("profile_created", result["completed"])
+
+    def test_future_probe_deadline_allows_probes(self) -> None:
+        import time as _t
+        adapter = _adapter_returning(
+            ses_state="confirmed", sends_state="absent", inbound_state="confirmed"
+        )
+        result = self.email._onboarding_progress(
+            _profile_payload(initiated=True, ses_status="verified"),
+            aws_adapter=adapter,
+            probe_deadline=_t.monotonic() + 30.0,  # plenty of budget
+        )
+        self.assertIn("ses_identity_ready", result["aws_evidence"])
+        adapter.probe_ses_identity_aws_evidence.assert_called_once()
 
 
 class RenderExtAwsEmailAdapterResolutionTests(unittest.TestCase):
