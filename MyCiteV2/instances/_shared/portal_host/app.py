@@ -1271,6 +1271,74 @@ def _capture_paypal_order(*, access_token: str, base_url: str, order_id: str) ->
         return json.loads(resp.read().decode())
 
 
+def _verify_paypal_webhook_signature(
+    *,
+    access_token: str,
+    base_url: str,
+    headers: Any,
+    webhook_id: str,
+    event_body: dict[str, Any],
+) -> bool:
+    """Verify a PayPal webhook via the verify-webhook-signature API.
+
+    PayPal signs each webhook; we replay the transmission headers + our
+    configured ``webhook_id`` + the raw event to PayPal and trust the event
+    only when ``verification_status == "SUCCESS"``. Any error → not verified.
+    """
+    def _h(name: str) -> str:
+        return _as_text(headers.get(name))
+
+    payload = {
+        "auth_algo": _h("Paypal-Auth-Algo"),
+        "cert_url": _h("Paypal-Cert-Url"),
+        "transmission_id": _h("Paypal-Transmission-Id"),
+        "transmission_sig": _h("Paypal-Transmission-Sig"),
+        "transmission_time": _h("Paypal-Transmission-Time"),
+        "webhook_id": webhook_id,
+        "webhook_event": event_body,
+    }
+    req = urllib.request.Request(
+        f"{base_url}/v1/notifications/verify-webhook-signature",
+        data=json.dumps(payload).encode(),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+    except Exception:
+        return False
+    return _as_text(result.get("verification_status")).upper() == "SUCCESS"
+
+
+def _ndjson_has_capture(orders_log: Path, capture_id: str) -> bool:
+    """True if a capture_order/webhook_capture row with ``capture_id`` exists.
+
+    Used to make webhook reconciliation idempotent — a capture already
+    recorded by the browser flow (or a duplicate webhook) is not re-logged.
+    """
+    capture_id = _as_text(capture_id)
+    if not capture_id or not orders_log.exists():
+        return False
+    try:
+        for line in orders_log.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if _as_text(row.get("capture_id")) == capture_id:
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1663,6 +1731,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
+
+        # If the request arrived through a per-grantee dashboard (the auth proxy
+        # injects the grantee header), it may only edit that grantee's OWN
+        # profile — closes a cross-tenant write hole. The operator portal sends
+        # no such header and keeps full access.
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            resolve_grantee_from_headers as _resolve_grantee_from_headers,
+        )
+
+        _caller = _resolve_grantee_from_headers(
+            request.headers,
+            fnd_csm_root=_Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+        )
+        if _caller is not None and _as_text(_caller.get("msn_id")) != msn_id:
+            return jsonify({"ok": False, "error": "grantee_not_owned"}), 403
 
         # Find the file. Grantee files are named
         # grantee.{fnd_msn}.{grantee_msn}.json; we match by the suffix.
@@ -3672,22 +3755,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
 
         orders: list[dict[str, Any]] = []
-        if host_config.authority_db_file is not None:
-            try:
-                from MyCiteV2.packages.adapters.sql.fnd_paypal import (
-                    MosDatumPayPalOrdersAdapter,
-                )
-
-                adapter = MosDatumPayPalOrdersAdapter(
-                    authority_db_file=host_config.authority_db_file,
-                    tenant_id=host_config.portal_instance_id or "fnd",
-                )
-                orders = adapter.load_orders(domain=domain) or []
-            except Exception:
-                orders = []
-
-        # Filesystem fallback (mirrors the extension renderer).
-        if not orders and host_config.private_dir is not None:
+        # Single source of truth: the append-only order log that create-order,
+        # capture-order, and the webhook reconciler all write to. (Previously
+        # this read MOS first and only fell back to the ndjson log when MOS was
+        # empty — which silently hid every real donation once a MOS row
+        # existed, since the live write path only ever wrote the ndjson log.)
+        if host_config.private_dir is not None:
             ndjson_path = (
                 Path(host_config.private_dir)
                 / "utilities"
@@ -3748,6 +3821,117 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             f'attachment; filename="paypal-orders-{domain}.csv"'
         )
         return response, 200
+
+    def _grantee_file_for_msn(msn_id: str):
+        """Locate the single grantee JSON for an msn. Returns (path, None) or
+        (None, error_response)."""
+        import glob as _glob
+        from pathlib import Path as _Path
+
+        if host_config.private_dir is None:
+            return None, (jsonify({"ok": False, "error": "private_dir_not_configured"}), 500)
+        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
+        if not candidates:
+            return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
+        if len(candidates) > 1:
+            return None, (jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409)
+        return _Path(candidates[0]), None
+
+    def _paypal_config_view(paypal: Any) -> dict[str, Any]:
+        """Project a PaypalConfig for the dashboard — the secret is never
+        returned in full, only a boolean + last-4 so the operator can confirm
+        which secret is set."""
+        client_id = _as_text(paypal.client_id) if paypal else ""
+        secret = _as_text(paypal.client_secret) if paypal else ""
+        return {
+            "client_id": client_id,
+            "environment": _as_text(paypal.environment) if paypal else "sandbox",
+            "webhook_url": _as_text(paypal.webhook_url) if paypal else "",
+            "webhook_id": _as_text(paypal.webhook_id) if paypal else "",
+            "has_secret": bool(secret),
+            "secret_tail": secret[-4:] if secret else "",
+        }
+
+    @app.get("/__fnd/paypal/admin/config")
+    def fnd_paypal_admin_config() -> tuple[Any, int]:
+        """Operator/grantee-scoped read of the caller grantee's PayPal config.
+        The client_secret is masked (has_secret + last-4 only)."""
+        from MyCiteV2.packages.core.grantee import load_grantee_profile
+
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        path, perr = _grantee_file_for_msn(msn)
+        if perr:
+            return perr
+        try:
+            profile = load_grantee_profile(path)
+        except (FileNotFoundError, ValueError) as exc:
+            return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
+        return jsonify({"ok": True, "paypal": _paypal_config_view(profile.paypal)}), 200
+
+    @app.post("/__fnd/paypal/admin/update")
+    def fnd_paypal_admin_update() -> tuple[Any, int]:
+        """Operator/grantee-scoped write of the caller grantee's PayPal config.
+
+        Validates ``environment`` ∈ {sandbox, live}. An empty client_id /
+        client_secret means "leave unchanged" — the GET never returns the
+        secret, so the form field is blank and a no-op save must not wipe it.
+        Credentials are read fresh per request (mtime-invalidated grantee
+        cache), so an update re-wires create-order/capture-order with no
+        portal restart.
+        """
+        from dataclasses import replace as _dc_replace
+
+        from MyCiteV2.packages.core.grantee import (
+            PaypalConfig,
+            load_grantee_profile,
+            save_grantee_profile,
+        )
+        from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
+
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        path, perr = _grantee_file_for_msn(msn)
+        if perr:
+            return perr
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        environment = _as_text(body.get("environment")).lower() or "sandbox"
+        if environment not in {"sandbox", "live"}:
+            return jsonify({"ok": False, "error": "invalid_environment"}), 400
+
+        try:
+            profile = load_grantee_profile(path)
+        except (FileNotFoundError, ValueError) as exc:
+            return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
+
+        merged = profile.paypal.to_dict() if profile.paypal else {}
+        merged["environment"] = environment
+        if "webhook_url" in body:
+            merged["webhook_url"] = _as_text(body.get("webhook_url"))
+        if "webhook_id" in body:
+            merged["webhook_id"] = _as_text(body.get("webhook_id"))
+        # Empty client_id / client_secret => leave the stored value unchanged.
+        new_client_id = _as_text(body.get("client_id"))
+        if new_client_id:
+            merged["client_id"] = new_client_id
+        new_client_secret = _as_text(body.get("client_secret"))
+        if new_client_secret:
+            merged["client_secret"] = new_client_secret
+
+        try:
+            next_profile = _dc_replace(profile, paypal=PaypalConfig.from_dict(merged))
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
+        try:
+            save_grantee_profile(path, next_profile)
+        except GranteeProfileWriteError as exc:
+            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
+        return jsonify({"ok": True, "paypal": _paypal_config_view(next_profile.paypal)}), 200
 
     # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)
@@ -3843,47 +4027,36 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return jsonify({"ok": True, "order_id": order_id, "approval_url": approval_url,
                         "status": _as_text(order_result.get("status"))}), 200
 
-    @app.post("/__fnd/paypal/capture-order")
-    def fnd_paypal_capture_order() -> tuple[Any, int]:
-        payload = _json_payload()
-        domain = _normalize_domain(request.host)
-        order_id = _as_text(payload.get("order_id"))
-
-        if not order_id:
-            return jsonify({"ok": False, "error": "missing_order_id"}), 400
-
+    def _capture_and_log_paypal_order(domain: str, order_id: str) -> tuple[dict[str, Any], int]:
+        """Capture an approved PayPal order + append the result to the single
+        order log. Shared by the browser capture route and the webhook
+        reconciler. Returns ``(payload, status_code)`` — payload is
+        ``{ok, capture_id, status, amount, currency_code}`` on success or
+        ``{ok: False, error, ...}`` otherwise.
+        """
         private_dir = host_config.private_dir
         domain_profile = _load_domain_profile(private_dir, domain)
         if domain_profile is None:
-            return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
-
+            return {"ok": False, "error": "domain_profile_not_found"}, 404
         tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
         tenant_config = _load_tenant_config(private_dir, tenant_ref)
         if tenant_config is None:
-            return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
-
+            return {"ok": False, "error": "tenant_config_not_found"}, 503
         credentials = _resolve_paypal_credentials_for_domain(private_dir, domain, tenant_config)
         if credentials is None:
-            return jsonify({"ok": False, "error": "credentials_not_set"}), 503
-
+            return {"ok": False, "error": "credentials_not_set"}, 503
         client_id, client_secret, resolved_env = credentials
         environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
-
         try:
             access_token = _get_paypal_access_token(client_id, client_secret, base_url)
             capture_result = _capture_paypal_order(
-                access_token=access_token,
-                base_url=base_url,
-                order_id=order_id,
+                access_token=access_token, base_url=base_url, order_id=order_id
             )
         except Exception as exc:
-            return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
-
+            return {"ok": False, "error": "paypal_api_error", "detail": str(exc)}, 502
         status = _as_text(capture_result.get("status"))
-        capture_id = ""
-        capture_amount = ""
-        currency_code = ""
+        capture_id = capture_amount = currency_code = ""
         purchase_units = capture_result.get("purchase_units", [])
         if purchase_units and isinstance(purchase_units, list):
             captures = purchase_units[0].get("payments", {}).get("captures", [])
@@ -3892,7 +4065,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 amount_obj = captures[0].get("amount", {})
                 capture_amount = _as_text(amount_obj.get("value"))
                 currency_code = _as_text(amount_obj.get("currency_code"))
-
         import time as _time
         orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
         _append_to_ndjson(orders_log, {
@@ -3905,6 +4077,35 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "status": status,
             "timestamp_ms": int(_time.time() * 1000),
         })
+        return {
+            "ok": True,
+            "capture_id": capture_id,
+            "status": status,
+            "amount": capture_amount,
+            "currency_code": currency_code,
+        }, 200
+
+    @app.post("/__fnd/paypal/capture-order")
+    def fnd_paypal_capture_order() -> tuple[Any, int]:
+        payload = _json_payload()
+        domain = _normalize_domain(request.host)
+        order_id = _as_text(payload.get("order_id"))
+
+        if not order_id:
+            return jsonify({"ok": False, "error": "missing_order_id"}), 400
+
+        result, code = _capture_and_log_paypal_order(domain, order_id)
+        if not result.get("ok"):
+            return jsonify(result), code
+
+        import time as _time
+
+        status = _as_text(result.get("status"))
+        capture_id = _as_text(result.get("capture_id"))
+        capture_amount = _as_text(result.get("amount"))
+        currency_code = _as_text(result.get("currency_code"))
+        private_dir = host_config.private_dir
+        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
 
         response: dict[str, Any] = {
             "ok": True,
@@ -3949,6 +4150,100 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 response["receipt_email_status"] = email_status
 
         return jsonify(response), 200
+
+    @app.post("/__fnd/paypal/webhook")
+    def fnd_paypal_webhook() -> tuple[Any, int]:
+        """Public PayPal webhook receiver. Verifies the event signature against
+        the grantee's configured ``webhook_id``, then reconciles:
+
+          * CHECKOUT.ORDER.APPROVED  -> capture the order server-side (covers a
+            donor who approved on PayPal but never returned to the browser
+            capture step), then log it.
+          * PAYMENT.CAPTURE.COMPLETED -> idempotently record the capture if the
+            browser flow hasn't already logged it (dedup on capture_id).
+
+        Returns 2xx only after a verified event has been handled.
+        """
+        domain = _normalize_domain(request.host)
+        private_dir = host_config.private_dir
+        if not domain or private_dir is None:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+
+        event = request.get_json(silent=True)
+        if not isinstance(event, dict):
+            return jsonify({"ok": False, "error": "invalid_payload"}), 400
+
+        domain_profile = _load_domain_profile(private_dir, domain)
+        if domain_profile is None:
+            return jsonify({"ok": False, "error": "domain_profile_not_found"}), 404
+        tenant_ref = _as_text(domain_profile.get("tenant_ref")) or "1"
+        tenant_config = _load_tenant_config(private_dir, tenant_ref)
+        if tenant_config is None:
+            return jsonify({"ok": False, "error": "tenant_config_not_found"}), 503
+        credentials = _resolve_paypal_credentials_for_domain(private_dir, domain, tenant_config)
+        if credentials is None:
+            return jsonify({"ok": False, "error": "credentials_not_set"}), 503
+        client_id, client_secret, resolved_env = credentials
+        environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
+        base_url = _paypal_base_url(environment)
+
+        grantee = _load_grantee_for_domain(private_dir, domain) or {}
+        paypal_cfg = grantee.get("paypal") if isinstance(grantee.get("paypal"), dict) else {}
+        webhook_id = _as_text(paypal_cfg.get("webhook_id"))
+        if not webhook_id:
+            return jsonify({"ok": False, "error": "webhook_id_not_set"}), 503
+
+        try:
+            access_token = _get_paypal_access_token(client_id, client_secret, base_url)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": "paypal_api_error", "detail": str(exc)}), 502
+
+        if not _verify_paypal_webhook_signature(
+            access_token=access_token,
+            base_url=base_url,
+            headers=request.headers,
+            webhook_id=webhook_id,
+            event_body=event,
+        ):
+            return jsonify({"ok": False, "error": "signature_verification_failed"}), 400
+
+        import time as _time
+
+        event_type = _as_text(event.get("event_type")).upper()
+        resource = event.get("resource") if isinstance(event.get("resource"), dict) else {}
+        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+
+        if event_type == "CHECKOUT.ORDER.APPROVED":
+            order_id = _as_text(resource.get("id"))
+            if not order_id:
+                return jsonify({"ok": False, "error": "missing_order_id"}), 400
+            result, _code = _capture_and_log_paypal_order(domain, order_id)
+            return jsonify(
+                {"ok": True, "event_type": event_type, "captured": bool(result.get("ok"))}
+            ), 200
+
+        if event_type == "PAYMENT.CAPTURE.COMPLETED":
+            capture_id = _as_text(resource.get("id"))
+            amount_obj = resource.get("amount") if isinstance(resource.get("amount"), dict) else {}
+            related = {}
+            supp = resource.get("supplementary_data")
+            if isinstance(supp, dict) and isinstance(supp.get("related_ids"), dict):
+                related = supp["related_ids"]
+            if capture_id and not _ndjson_has_capture(orders_log, capture_id):
+                _append_to_ndjson(orders_log, {
+                    "event": "webhook_capture",
+                    "order_id": _as_text(related.get("order_id")),
+                    "capture_id": capture_id,
+                    "domain": domain,
+                    "amount": _as_text(amount_obj.get("value")),
+                    "currency_code": _as_text(amount_obj.get("currency_code")),
+                    "status": _as_text(resource.get("status")) or "COMPLETED",
+                    "timestamp_ms": int(_time.time() * 1000),
+                })
+            return jsonify({"ok": True, "event_type": event_type, "recorded": True}), 200
+
+        # Verified, but not an event type we reconcile — acknowledge it.
+        return jsonify({"ok": True, "event_type": event_type, "handled": False}), 200
 
     @app.get("/__fnd/donation/receipt-document")
     def fnd_donation_receipt_document() -> Any:
