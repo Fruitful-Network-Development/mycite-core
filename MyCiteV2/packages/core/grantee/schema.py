@@ -52,6 +52,7 @@ def _validate_email(value: str, *, field_label: str) -> str:
 @dataclass(frozen=True)
 class PaypalConfig:
     webhook_url: str = ""
+    webhook_id: str = ""
     client_id: str = ""
     client_secret: str = ""
     environment: str = "sandbox"
@@ -64,12 +65,14 @@ class PaypalConfig:
             )
         object.__setattr__(self, "environment", env)
         object.__setattr__(self, "webhook_url", _validate_url(self.webhook_url, field_label="paypal.webhook_url"))
+        object.__setattr__(self, "webhook_id", _as_text(self.webhook_id))
         object.__setattr__(self, "client_id", _as_text(self.client_id))
         object.__setattr__(self, "client_secret", _as_text(self.client_secret))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "webhook_url": self.webhook_url,
+            "webhook_id": self.webhook_id,
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "environment": self.environment,
@@ -80,6 +83,7 @@ class PaypalConfig:
         data = payload if isinstance(payload, dict) else {}
         return cls(
             webhook_url=_as_text(data.get("webhook_url")),
+            webhook_id=_as_text(data.get("webhook_id")),
             client_id=_as_text(data.get("client_id")),
             client_secret=_as_text(data.get("client_secret")),
             environment=_as_text(data.get("environment")) or "sandbox",
