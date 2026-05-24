@@ -2079,10 +2079,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         the onboarding-nudge family). It overrides whatever value is in
         ``grantee.aws_ses.configuration_set``.
 
-        A3 — sets RFC 8058 one-click List-Unsubscribe headers anchored on
-        the profile_id so Gmail/O365 render an Unsubscribe button next to
-        every nudge. Honors a per-profile opt-out: if the profile JSON
-        carries ``notifications.unsubscribed=True``, the send is skipped.
+        A3 — for the NUDGE class only (``tag == "send_reminder"``): sets RFC
+        8058 one-click List-Unsubscribe headers anchored on the profile_id
+        and honors a per-profile opt-out (``notifications.unsubscribed``).
+        Credential/account-status mail (``tag == "resend_handoff"``) is NOT
+        gated and does NOT carry the unsubscribe header — the GET unsubscribe
+        page explicitly promises operators still receive handoff mail, and a
+        one-click unsubscribe on a credential email would otherwise lock the
+        operator out of future credential resends.
 
         A4 — always sets Reply-To (no conditional path). Falls back to
         ``reply-to@<from_domain>`` if the grantee profile doesn't set one.
@@ -2092,11 +2096,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not inbox:
             return {"ok": False, "detail": "profile missing operator_inbox_target"}
 
+        # The notification opt-out + List-Unsubscribe affordance apply ONLY
+        # to nudge-class mail (reminders), never to credential-handoff or
+        # account-status mail. resend_handoff must always send + must not
+        # advertise one-click unsubscribe.
+        is_nudge = tag == "send_reminder"
+
         # A3: respect a prior one-click unsubscribe so we don't ignore
         # the operator's stated preference even if the admin clicks the
-        # Send-reminder button again.
+        # Send-reminder button again. Nudge class only.
         notifications = profile.get("notifications") if isinstance(profile.get("notifications"), dict) else {}
-        if bool(notifications.get("unsubscribed")):
+        if is_nudge and bool(notifications.get("unsubscribed")):
             return {
                 "ok": False,
                 "detail": "operator has unsubscribed from notifications",
@@ -2119,12 +2129,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             reply_to_value = f"reply-to@{from_domain}"
         reply_to_list = [reply_to_value] if reply_to_value else None
 
-        # A3: build the per-profile one-click unsubscribe URL. The route
-        # itself (POST = RFC 8058 one-click, GET = browser fallback) is
-        # registered below near the other email-admin routes.
+        # A3: build the per-profile one-click unsubscribe URL — nudge class
+        # ONLY. The route itself (POST = RFC 8058 one-click, GET = browser
+        # fallback) is registered below near the other email-admin routes.
+        # resend_handoff (credential mail) deliberately carries no
+        # List-Unsubscribe header.
         profile_id = _as_text(identity.get("profile_id"))
         extra_headers: dict[str, str] = {}
-        if profile_id:
+        if is_nudge and profile_id:
             unsubscribe_url = (
                 f"https://{host_config.portal_domain}"
                 f"/__fnd/profile/{profile_id}/unsubscribe-notifications"
@@ -2648,9 +2660,28 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         Without this hook, the operator had to manually run
         sync_aws_csm_forward_maps.py after every profile edit; missing
         a run silently dropped inbound mail for newly-added recipients.
+
+        IMPORTANT: the forward map MUST be rebuilt from the SAME profile
+        directory the edit/remove routes write to —
+        ``host_config.private_dir/utilities/tools/aws-csm``. The
+        module-level ``_aws_peripheral`` was constructed with no
+        profile_store, so its ProfileStore defaults to
+        ``deployed/<grantee>/...`` which is a DIFFERENT directory on this
+        host; syncing from it would rebuild the map from a stale set and
+        miss the just-saved edit. We therefore list profiles from the
+        correct root and pass them explicitly.
         """
+        if host_config.private_dir is None:
+            return
         try:
-            _aws_peripheral.sync_operator_forwarding_routes(dry_run=False)
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+
+            store = ProfileStore(
+                root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+            )
+            _aws_peripheral.sync_operator_forwarding_routes(
+                profiles=store.list_profiles(), dry_run=False
+            )
         except Exception as exc:  # noqa: BLE001
             _log.error(
                 "post_profile_save_hook_failed",
