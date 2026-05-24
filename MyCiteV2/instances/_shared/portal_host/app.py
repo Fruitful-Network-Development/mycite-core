@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
@@ -1312,6 +1313,114 @@ def _verify_paypal_webhook_signature(
     except Exception:
         return False
     return _as_text(result.get("verification_status")).upper() == "SUCCESS"
+
+
+# PayPal webhook events the donation reconciler verifies + handles. The
+# auto-provisioner subscribes a created webhook to exactly these.
+_PAYPAL_WEBHOOK_EVENT_TYPES = ("CHECKOUT.ORDER.APPROVED", "PAYMENT.CAPTURE.COMPLETED")
+
+
+class _PaypalWebhookError(Exception):
+    """A PayPal webhook-create failure carrying PayPal's error ``name``.
+
+    ``name`` lets the caller distinguish a recoverable
+    ``WEBHOOK_URL_ALREADY_EXISTS`` from a fatal error.
+    """
+
+    def __init__(self, name: str, detail: str = "") -> None:
+        super().__init__(name)
+        self.name = name
+        self.detail = detail
+
+
+def _list_paypal_webhooks(*, access_token: str, base_url: str) -> list[dict[str, Any]]:
+    """Return the REST app's registered webhooks (``[]`` on any error).
+
+    Used to make provisioning idempotent — an existing webhook whose URL
+    matches is reused rather than creating a forbidden duplicate.
+    """
+    req = urllib.request.Request(
+        f"{base_url}/v1/notifications/webhooks",
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode())
+    except Exception:
+        return []
+    webhooks = result.get("webhooks")
+    return webhooks if isinstance(webhooks, list) else []
+
+
+def _create_paypal_webhook(
+    *, access_token: str, base_url: str, url: str, event_types: tuple[str, ...]
+) -> dict[str, Any]:
+    """Create a webhook for ``url`` subscribed to ``event_types``.
+
+    PayPal expects ``event_types`` as a list of objects (``[{"name": ...}]``),
+    not bare strings. Raises ``_PaypalWebhookError`` (with PayPal's error
+    ``name``) on a non-2xx so the caller can recover or surface it.
+    """
+    body = {"url": url, "event_types": [{"name": name} for name in event_types]}
+    req = urllib.request.Request(
+        f"{base_url}/v1/notifications/webhooks",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read().decode()
+        except Exception:
+            detail = ""
+        try:
+            name = _as_text(json.loads(detail).get("name"))
+        except Exception:
+            name = ""
+        raise _PaypalWebhookError(name or "http_error", detail) from exc
+
+
+def _webhook_url_matches(candidate: str, target: str) -> bool:
+    def _norm(value: str) -> str:
+        return _as_text(value).strip().rstrip("/").lower()
+
+    return _norm(candidate) == _norm(target)
+
+
+def _find_or_create_paypal_webhook(
+    *, access_token: str, base_url: str, url: str, event_types: tuple[str, ...]
+) -> tuple[str, str]:
+    """Idempotently ensure a webhook exists for ``url``. Returns ``(id, url)``.
+
+    Lists first and reuses a URL match (PayPal forbids duplicate URLs); only
+    creates when none matches. If creation raises
+    ``WEBHOOK_URL_ALREADY_EXISTS`` (the list endpoint can lag a fresh write),
+    re-list and return the now-visible match.
+    """
+    for hook in _list_paypal_webhooks(access_token=access_token, base_url=base_url):
+        if _webhook_url_matches(_as_text(hook.get("url")), url):
+            return _as_text(hook.get("id")), _as_text(hook.get("url")) or url
+    try:
+        created = _create_paypal_webhook(
+            access_token=access_token, base_url=base_url, url=url, event_types=event_types
+        )
+        return _as_text(created.get("id")), _as_text(created.get("url")) or url
+    except _PaypalWebhookError as exc:
+        if exc.name == "WEBHOOK_URL_ALREADY_EXISTS":
+            for hook in _list_paypal_webhooks(access_token=access_token, base_url=base_url):
+                if _webhook_url_matches(_as_text(hook.get("url")), url):
+                    return _as_text(hook.get("id")), _as_text(hook.get("url")) or url
+        raise
 
 
 def _ndjson_has_capture(orders_log: Path, capture_id: str) -> bool:
@@ -3881,6 +3990,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         Credentials are read fresh per request (mtime-invalidated grantee
         cache), so an update re-wires create-order/capture-order with no
         portal restart.
+
+        The donation webhook is auto-provisioned: the URL is derived from the
+        grantee's domain and the PayPal webhook is created (or reused) for the
+        events the reconciler handles, with the returned id stored. The client
+        does not supply webhook_url / webhook_id. A provisioning failure does
+        not fail the save — the response carries a ``webhook_warning`` instead.
         """
         from dataclasses import replace as _dc_replace
 
@@ -3911,10 +4026,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         merged = profile.paypal.to_dict() if profile.paypal else {}
         merged["environment"] = environment
-        if "webhook_url" in body:
-            merged["webhook_url"] = _as_text(body.get("webhook_url"))
-        if "webhook_id" in body:
-            merged["webhook_id"] = _as_text(body.get("webhook_id"))
+        # webhook_url / webhook_id are NOT accepted from the client — they are
+        # auto-provisioned below from the grantee's own domain.
         # Empty client_id / client_secret => leave the stored value unchanged.
         new_client_id = _as_text(body.get("client_id"))
         if new_client_id:
@@ -3931,7 +4044,57 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             save_grantee_profile(path, next_profile)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
-        return jsonify({"ok": True, "paypal": _paypal_config_view(next_profile.paypal)}), 200
+
+        # Auto-provision the donation webhook so the operator never creates one
+        # in PayPal or pastes a Webhook ID. Credentials are saved ABOVE first,
+        # so any failure here only yields a warning — creds are never lost.
+        # Idempotent: a re-save reuses the existing webhook for the same URL.
+        webhook_warning = ""
+        pp = next_profile.paypal
+        client_id = _as_text(pp.client_id) if pp else ""
+        client_secret = _as_text(pp.client_secret) if pp else ""
+        if not (client_id and client_secret):
+            webhook_warning = "credentials_incomplete"
+        else:
+            # Prefer the domain already carried by a stored webhook_url so a
+            # re-save never migrates a multi-domain grantee's webhook to a
+            # different domain; otherwise use the first domain.
+            stored_host = _normalize_domain(
+                urllib.parse.urlsplit(_as_text(pp.webhook_url)).netloc
+            )
+            domains = [_normalize_domain(d) for d in next_profile.domains if _as_text(d)]
+            webhook_domain = stored_host if stored_host in domains else (domains[0] if domains else "")
+            if not webhook_domain:
+                webhook_warning = "no_domain_for_grantee"
+            else:
+                webhook_url = f"https://{webhook_domain}/__fnd/paypal/webhook"
+                base_url = _paypal_base_url(_as_text(pp.environment))
+                try:
+                    token = _get_paypal_access_token(client_id, client_secret, base_url)
+                    wid, wurl = _find_or_create_paypal_webhook(
+                        access_token=token,
+                        base_url=base_url,
+                        url=webhook_url,
+                        event_types=_PAYPAL_WEBHOOK_EVENT_TYPES,
+                    )
+                    merged2 = pp.to_dict()
+                    merged2["webhook_id"] = wid
+                    merged2["webhook_url"] = wurl
+                    next_profile = _dc_replace(next_profile, paypal=PaypalConfig.from_dict(merged2))
+                    save_grantee_profile(path, next_profile)
+                except Exception as exc:
+                    webhook_warning = "provisioning_failed"
+                    _log.warning(
+                        "paypal_webhook_provision_failed domain=%s detail=%s", webhook_domain, exc
+                    )
+
+        return jsonify(
+            {
+                "ok": True,
+                "paypal": _paypal_config_view(next_profile.paypal),
+                "webhook_warning": webhook_warning,
+            }
+        ), 200
 
     # ------------------------------------------------------------------
     # FND PayPal order mediation routes (peripheral)
@@ -4027,6 +4190,52 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return jsonify({"ok": True, "order_id": order_id, "approval_url": approval_url,
                         "status": _as_text(order_result.get("status"))}), 200
 
+    def _upsert_donor_contact(domain: str, donor_email: str, donor_name: str) -> str:
+        """Resolve-or-create the donor as a contact in the grantee's contact
+        log; return the canonical email key (``""`` when no email/failure).
+
+        Mirrors ``fnd_contacts_add``: a NEW contact lands unsubscribed with
+        ``source='paypal_donation'``; an EXISTING contact is left as-is on the
+        subscribe flag (a donation never re-subscribes a newsletter member).
+        Email-keyed, so calling it from both the browser capture and the
+        webhook is idempotent. Best-effort — a contact-store failure must never
+        fail the capture, exactly like the receipt email.
+        """
+        email = _as_text(donor_email).strip().lower()
+        if not email or host_config.private_dir is None:
+            return ""
+        try:
+            adapter = _newsletter_state_adapter(host_config)
+            log = adapter.load_contact_log(domain=domain) or {
+                "domain": domain,
+                "contacts": [],
+                "dispatches": [],
+            }
+            now_iso = _utc_now_iso()
+            contacts = list(log.get("contacts") or [])
+            index = next(
+                (i for i, c in enumerate(contacts) if _as_text(c.get("email")).lower() == email),
+                None,
+            )
+            existing = contacts[index] if index is not None else None
+            patch: dict[str, Any] = {"email": email, "name": donor_name}
+            if existing is None:
+                patch["source"] = "paypal_donation"
+                patch["signup_date"] = now_iso[:10]
+                patch["subscribed"] = False
+            row = canonical_contact_entry(existing=existing, patch=patch, now=now_iso)
+            if index is not None:
+                contacts[index] = row
+            else:
+                contacts.append(row)
+            log["contacts"] = contacts
+            log["updated_at"] = now_iso
+            adapter.save_contact_log(domain=domain, payload=log)
+            return _as_text(row.get("email")) or email
+        except Exception as exc:
+            _log.warning("paypal_donor_contact_upsert_failed domain=%s detail=%s", domain, exc)
+            return ""
+
     def _capture_and_log_paypal_order(domain: str, order_id: str) -> tuple[dict[str, Any], int]:
         """Capture an approved PayPal order + append the result to the single
         order log. Shared by the browser capture route and the webhook
@@ -4067,6 +4276,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 currency_code = _as_text(amount_obj.get("currency_code"))
         import time as _time
         orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+        # The capture API response carries no donor identity — recover it from
+        # the create-order row and link the donor to a contact (only on a
+        # completed capture). Best-effort; never fails the capture.
+        create_entry = _find_create_order_entry(orders_log, order_id) or {}
+        donor_email = _as_text(create_entry.get("donor_email"))
+        donor_name = _as_text(create_entry.get("donor_name"))
+        contact_email = (
+            _upsert_donor_contact(domain, donor_email, donor_name)
+            if status.upper() == "COMPLETED"
+            else ""
+        )
         _append_to_ndjson(orders_log, {
             "event": "capture_order",
             "order_id": order_id,
@@ -4075,6 +4295,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "amount": capture_amount,
             "currency_code": currency_code,
             "status": status,
+            "donor_email": donor_email,
+            "donor_name": donor_name,
+            "contact_email": contact_email,
             "timestamp_ms": int(_time.time() * 1000),
         })
         return {
@@ -4230,14 +4453,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             if isinstance(supp, dict) and isinstance(supp.get("related_ids"), dict):
                 related = supp["related_ids"]
             if capture_id and not _ndjson_has_capture(orders_log, capture_id):
+                # Donor identity isn't on the webhook resource — recover it
+                # from the create-order row and link the donor to a contact.
+                order_id = _as_text(related.get("order_id"))
+                create_entry = _find_create_order_entry(orders_log, order_id) or {}
+                donor_email = _as_text(create_entry.get("donor_email"))
+                donor_name = _as_text(create_entry.get("donor_name"))
+                contact_email = _upsert_donor_contact(domain, donor_email, donor_name)
                 _append_to_ndjson(orders_log, {
                     "event": "webhook_capture",
-                    "order_id": _as_text(related.get("order_id")),
+                    "order_id": order_id,
                     "capture_id": capture_id,
                     "domain": domain,
                     "amount": _as_text(amount_obj.get("value")),
                     "currency_code": _as_text(amount_obj.get("currency_code")),
                     "status": _as_text(resource.get("status")) or "COMPLETED",
+                    "donor_email": donor_email,
+                    "donor_name": donor_name,
+                    "contact_email": contact_email,
                     "timestamp_ms": int(_time.time() * 1000),
                 })
             return jsonify({"ok": True, "event_type": event_type, "recorded": True}), 200
