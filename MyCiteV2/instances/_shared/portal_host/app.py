@@ -1865,6 +1865,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not result.get("ok"):
             return jsonify({"ok": False, "error": "storage_error"}), 500
+        if not (result.get("preview") or {}).get("matched"):
+            # Email wasn't on the list (or no list yet) — say so instead of a
+            # misleading 200 "unsubscribed".
+            return jsonify({"ok": False, "error": "contact_not_found"}), 404
         return (
             jsonify({"ok": True, "email": email, "subscribed": False}),
             200,
@@ -2202,6 +2206,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 is_json_request, ok=False, status=400, error="missing_domain"
             )
 
+        # Gate to known grantee domains — the public endpoint must not persist
+        # contacts for arbitrary Host headers (anti-spam / abuse vector).
+        grantee = _resolve_grantee_for_domain(domain)
+        if not grantee:
+            return _connect_response(
+                is_json_request, ok=False, status=404, error="domain_not_configured"
+            )
+
+        # Honeypot: a hidden field a real visitor never fills. If a bot fills
+        # it, ack success (so it moves on) but persist + forward nothing.
+        if _fnd_newsletter_request_field("hp_field"):
+            return _connect_response(
+                is_json_request, ok=True, status=200, forward_status="sent"
+            )
+
         raw_email = _fnd_newsletter_request_field("email")
         email = _validate_email(raw_email)
         if not email:
@@ -2222,29 +2241,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         subject = _fnd_newsletter_request_field("subject")
         display_name = " ".join(t for t in (first_name, last_name) if t) or email
 
-        # Attempt SES forward first so the persisted row reflects the
-        # actual delivery outcome. If forwarding isn't configured we
-        # still persist with forward_status=pending — the operator can
-        # see the queue in the Connect extension tab and retry later.
-        grantee = _resolve_grantee_for_domain(domain)
-        forward_status = _ses_forward_connect_message(
-            grantee=grantee,
-            domain=domain,
-            visitor_email=email,
-            visitor_name=display_name,
-            subject=subject,
-            message=message,
+        from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+            run_datum_workbench_mutation_action,
         )
 
+        # 1. Persist FIRST (forward_status=pending). Persisting before the SES
+        #    send means a storage failure aborts before any email goes out, so
+        #    a visitor retry can't double-send the message to the grantee.
         try:
-            from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
-                run_datum_workbench_mutation_action,
-            )
-
-            # Persist the submission onto the canonical contact row, including
-            # the subject + message, so the operator can read what the visitor
-            # wrote from the Connect tab (the SES forward is best-effort).
-            result = run_datum_workbench_mutation_action(
+            persisted = run_datum_workbench_mutation_action(
                 "apply",
                 {
                     "target_authority": "newsletter_contact_log",
@@ -2259,7 +2264,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "organization": organization,
                     "subject": subject,
                     "message": message,
-                    "forward_status": forward_status,
+                    "forward_status": "pending",
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
@@ -2268,14 +2273,45 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception:
             return _connect_response(
                 is_json_request, ok=False, status=500,
-                error="storage_error", forward_status=forward_status,
+                error="storage_error", forward_status="pending",
             )
-
-        if not result.get("ok"):
+        if not persisted.get("ok"):
             return _connect_response(
                 is_json_request, ok=False, status=500,
-                error="storage_error", forward_status=forward_status,
+                error="storage_error", forward_status="pending",
             )
+
+        # 2. Forward to the grantee inbox via SES (best-effort).
+        forward_status = _ses_forward_connect_message(
+            grantee=grantee,
+            domain=domain,
+            visitor_email=email,
+            visitor_name=display_name,
+            subject=subject,
+            message=message,
+        )
+
+        # 3. Record the final forward outcome on the now-persisted row
+        #    (best-effort — the contact is already saved, so a failure here
+        #    only leaves the status as pending, it never loses the message).
+        if forward_status and forward_status != "pending":
+            try:
+                run_datum_workbench_mutation_action(
+                    "apply",
+                    {
+                        "target_authority": "newsletter_contact_log",
+                        "operation": "edit_subscriber",
+                        "domain": domain,
+                        "email": email,
+                        "forward_status": forward_status,
+                    },
+                    authority_db_file=host_config.authority_db_file,
+                    portal_instance_id=host_config.portal_instance_id,
+                    private_dir=host_config.private_dir,
+                )
+            except Exception:
+                pass
+
         return _connect_response(
             is_json_request, ok=True, status=200,
             email=email, subscribed=False, forward_status=forward_status,
@@ -2301,6 +2337,36 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def _admin_field(payload: dict[str, Any], key: str) -> str:
         return _as_text(payload.get(key)) if isinstance(payload, dict) else ""
 
+    def _newsletter_admin_scope_error(domain: str):
+        """Per-grantee scope guard for the operator newsletter-admin routes.
+
+        These routes serve the FND operator portal (no grantee header →
+        full access). But they are also reachable through the per-grantee
+        ``/dashboard/api/`` proxy, which injects the caller's grantee header.
+        When that header is present, restrict the write to the caller's own
+        domains so one grantee can't mutate another's contact list.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            resolve_grantee_from_headers,
+        )
+
+        if host_config.private_dir is None:
+            return None
+        caller = resolve_grantee_from_headers(
+            request.headers,
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+        )
+        if caller is None:
+            return None
+        owned = {
+            _normalize_domain(str(d))
+            for d in caller.get("domains") or []
+            if str(d).strip()
+        }
+        if domain not in owned:
+            return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+        return None
+
     @app.post("/__fnd/newsletter/admin/add")
     def fnd_newsletter_admin_add() -> tuple[Any, int]:
         payload = _json_payload()
@@ -2325,6 +2391,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+        scope_err = _newsletter_admin_scope_error(domain)
+        if scope_err:
+            return scope_err
 
         try:
             from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
@@ -2381,6 +2450,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+        scope_err = _newsletter_admin_scope_error(domain)
+        if scope_err:
+            return scope_err
 
         edit_payload: dict[str, Any] = {
             "target_authority": "newsletter_contact_log",
@@ -2394,6 +2466,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "last_name",
             "phone",
             "zip",
+            "organization",
             "signup_date",
         ):
             if isinstance(fields, dict) and key in fields:
@@ -2453,6 +2526,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
             return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+        scope_err = _newsletter_admin_scope_error(domain)
+        if scope_err:
+            return scope_err
 
         try:
             from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
@@ -2476,6 +2552,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not result.get("ok"):
             return jsonify({"ok": False, "error": "storage_error"}), 500
+        if not (result.get("preview") or {}).get("matched"):
+            # No such contact on this domain — don't pretend we removed one.
+            return jsonify({"ok": False, "error": "contact_not_found"}), 404
         return jsonify({"ok": True, "domain": domain, "email": email, "subscribed": False}), 200
 
     @app.post("/__fnd/newsletter/admin/set_sender")
