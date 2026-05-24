@@ -4985,6 +4985,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             if not (0 <= m <= 1000):
                 return jsonify({"ok": False, "error": "margin_pct_out_of_range"}), 400
 
+        # Validate shared-pool split modes + residue handling (allow-list) so a
+        # typo returns 400 instead of silently falling through to absorb_fnd.
+        defaults = body.get("defaults") or {}
+        valid_pool_modes = {"absorb_fnd", "by_bandwidth_share", "equal"}
+        for pool, pool_rule in (defaults.get("shared_pool_split") or {}).items():
+            mode = (pool_rule or {}).get("mode")
+            if mode is not None and mode not in valid_pool_modes:
+                return jsonify({
+                    "ok": False, "error": "invalid_pool_split_mode",
+                    "pool": pool, "mode": mode,
+                }), 400
+        residue_mode = defaults.get("residue_handling")
+        if residue_mode is not None and residue_mode not in {"absorb_fnd", "passthrough"}:
+            return jsonify({
+                "ok": False, "error": "invalid_residue_handling",
+                "residue_handling": residue_mode,
+            }), 400
+
         body.setdefault("schema", BILLING_RULES_SCHEMA)
         try:
             saved = write_billing_rules(body)

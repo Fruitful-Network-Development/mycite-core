@@ -17,9 +17,12 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+    COST_POOL_FND_OPERATOR,
+    OPERATOR_MSN_ID,
     _parse_log_window_bytes,
     bandwidth_share_by_domain,
     bandwidth_share_for_grantee,
+    derive_invoice_for_grantee,
     domains_for_grantee,
     load_grantee_directory,
     resolve_grantee_from_headers,
@@ -231,6 +234,140 @@ class ResolveGranteeFromHeadersTests(unittest.TestCase):
 
     def test_no_headers_returns_none(self) -> None:
         self.assertIsNone(resolve_grantee_from_headers({}, self.fnd_csm))
+
+
+# msn_ids used across the division tests. CVCC deliberately owns TWO domains
+# so the "equal" split is exercised against the count-distinct-grantees fix.
+_CVCC = "3-2-3-17-77-3-6-1-1-2"
+_TFF = "3-2-3-17-77-3-6-3-1-6"
+_BPW = "3-2-3-17-77-3-6-5-1-9"
+
+
+def _ledger_row(*, shared_amount: float = 12.0, residue_amount: float = 5.0) -> dict:
+    """Synthetic ledger row: one shared_pool line, one direct line (CVCC),
+    one residue line, plus a domain_index where CVCC owns two domains."""
+    return {
+        "currency": "USD",
+        "line_items": [
+            {
+                "id": "shared1", "category": "compute", "label": "EC2 compute",
+                "usage_quantity": "10", "usage_unit": "Hrs",
+                "amount": f"{shared_amount:.10f}", "amount_amortized": f"{shared_amount:.10f}",
+                "attribution": {"type": "shared_pool", "pool": COST_POOL_FND_OPERATOR},
+            },
+            {
+                "id": "d_cvcc", "category": "dns_hosted_zone", "label": "Route 53 DNS",
+                "usage_quantity": "100", "usage_unit": "Queries",
+                "amount": "1.0000000000", "amount_amortized": "1.0000000000",
+                "attribution": {"type": "direct", "msn_id": _CVCC, "tenant": "cvcc"},
+            },
+            {
+                "id": "res1", "category": "tax", "label": "Tax (untagged)",
+                "usage_quantity": "0", "usage_unit": "",
+                "amount": f"{residue_amount:.10f}", "amount_amortized": f"{residue_amount:.10f}",
+                "attribution": {"type": "residue"},
+            },
+        ],
+        "metrics": {
+            "bandwidth_by_domain": {
+                "brockspressurewashing.com": 900,
+                "cuyahogavalleycountrysideconservancy.org": 100,
+            },
+            "domain_index": {
+                "fruitfulnetworkdevelopment.com": OPERATOR_MSN_ID,
+                "cuyahogavalleycountrysideconservancy.org": _CVCC,
+                "cvccboard.org": _CVCC,  # second CVCC domain
+                "trappfamilyfarm.com": _TFF,
+                "brockspressurewashing.com": _BPW,
+            },
+        },
+    }
+
+
+def _rules(*, pool_mode: str, margin: float = 0.0, residue: str = "absorb_fnd") -> dict:
+    return {
+        "defaults": {
+            "margin_pct": margin,
+            "residue_handling": residue,
+            "shared_pool_split": {COST_POOL_FND_OPERATOR: {"mode": pool_mode}},
+        },
+        "per_grantee": {},
+    }
+
+
+def _shared_line(invoice: dict) -> dict | None:
+    for ln in invoice["billable_lines"]:
+        if ln.get("id") == "shared1":
+            return ln
+    return None
+
+
+class DeriveInvoiceDivisionTests(unittest.TestCase):
+    """Covers the shared-pool split + annotation in derive_invoice_for_grantee."""
+
+    def _invoice(self, msn_id: str, rules: dict, **kw) -> dict:
+        return derive_invoice_for_grantee(
+            msn_id, "2026-05", _ledger_row(**kw), rules,
+        )
+
+    def test_equal_splits_across_distinct_grantees_not_domains(self) -> None:
+        # CVCC owns 2 domains but must still get exactly 1/3 — not 2/N.
+        rules = _rules(pool_mode="equal")
+        for msn in (_CVCC, _TFF, _BPW):
+            line = _shared_line(self._invoice(msn, rules))
+            self.assertIsNotNone(line, f"{msn} should carry the shared line")
+            assert line is not None
+            self.assertAlmostEqual(float(line["share_pct"]), 33.3333, places=3)
+            self.assertAlmostEqual(float(line["amount"]), 12.0 / 3, places=4)
+
+    def test_equal_shares_sum_to_full_pool(self) -> None:
+        rules = _rules(pool_mode="equal")
+        total = sum(
+            float(_shared_line(self._invoice(m, rules))["amount"])  # type: ignore[arg-type]
+            for m in (_CVCC, _TFF, _BPW)
+        )
+        self.assertAlmostEqual(total, 12.0, places=4)
+
+    def test_equal_excludes_operator(self) -> None:
+        line = _shared_line(self._invoice(OPERATOR_MSN_ID, _rules(pool_mode="equal")))
+        self.assertIsNone(line, "FND takes no shared-pool share under 'equal'")
+
+    def test_absorb_fnd_puts_shared_on_operator_only(self) -> None:
+        rules = _rules(pool_mode="absorb_fnd")
+        self.assertIsNotNone(_shared_line(self._invoice(OPERATOR_MSN_ID, rules)))
+        self.assertIsNone(_shared_line(self._invoice(_CVCC, rules)))
+
+    def test_by_bandwidth_share_uses_traffic(self) -> None:
+        # BPW = 900/1000 bytes, CVCC = 100/1000.
+        rules = _rules(pool_mode="by_bandwidth_share")
+        bpw = _shared_line(self._invoice(_BPW, rules))
+        cvcc = _shared_line(self._invoice(_CVCC, rules))
+        assert bpw is not None and cvcc is not None
+        self.assertAlmostEqual(float(bpw["share_pct"]), 90.0, places=3)
+        self.assertAlmostEqual(float(cvcc["share_pct"]), 10.0, places=3)
+
+    def test_residue_absorbed_by_fnd_even_when_pool_divided(self) -> None:
+        rules = _rules(pool_mode="equal", residue="absorb_fnd")
+        fnd = self._invoice(OPERATOR_MSN_ID, rules)
+        cvcc = self._invoice(_CVCC, rules)
+        self.assertTrue(any(l["id"] == "res1" for l in fnd["billable_lines"]))
+        self.assertFalse(any(l["id"] == "res1" for l in cvcc["billable_lines"]))
+
+    def test_shared_lines_annotated_direct_lines_are_not(self) -> None:
+        inv = self._invoice(_CVCC, _rules(pool_mode="equal"))
+        shared = _shared_line(inv)
+        assert shared is not None
+        self.assertIs(shared["shared"], True)
+        self.assertEqual(shared["share_basis"], "equal")
+        self.assertIn("share_pct", shared)
+        direct = next(l for l in inv["billable_lines"] if l["id"] == "d_cvcc")
+        self.assertNotIn("shared", direct)
+
+    def test_margin_applies_after_division(self) -> None:
+        # 30% margin on a 1/3 share of 12.0 → 4.0 * 1.30 = 5.20.
+        line = _shared_line(self._invoice(_CVCC, _rules(pool_mode="equal", margin=30)))
+        assert line is not None
+        self.assertAlmostEqual(float(line["amount"]), 4.0 * 1.30, places=4)
 
 
 if __name__ == "__main__":
