@@ -53,19 +53,11 @@ def _build_connect_extension_payload(
 
     contacts: list[dict[str, Any]] = []
     try:
+        # Single canonical store — the same tree every contact writer now
+        # uses. (``authority_db_file`` is accepted for call-site compat but no
+        # longer selects a separate adapter / doubled directory.)
         adapter = FilesystemNewsletterStateAdapter(private_dir)
-        if authority_db_file is not None:
-            from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-                MosDatumNewsletterContactLogAdapter,
-            )
-
-            mos_adapter = MosDatumNewsletterContactLogAdapter(
-                authority_db_file=authority_db_file,
-                tenant_id=portal_instance_id or "fnd",
-            )
-            contacts_payload = _as_dict(mos_adapter.load_contact_log(domain=domain))
-        else:
-            contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
+        contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
         contacts = _as_list(contacts_payload.get("contacts"))
     except Exception:
         contacts = []
