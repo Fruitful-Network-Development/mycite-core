@@ -199,14 +199,14 @@ class SendExtensionMessageHeaderTests(unittest.TestCase):
     the test must patch BEFORE create_app is invoked.
     """
 
-    def _capture_send(self) -> list[dict]:
+    def _capture_send(self, route: str, *, unsubscribed: bool = False) -> list[dict]:
         from unittest.mock import patch
 
         tmp = Path(tempfile.mkdtemp(prefix="a3a4_send_"))
         for sub in ("public", "private", "data", "webapps"):
             (tmp / sub).mkdir()
         aws_csm_dir = tmp / "private" / "utilities" / "tools" / "aws-csm"
-        _seed_profile(aws_csm_dir)
+        _seed_profile(aws_csm_dir, handoff_sent=True, unsubscribed=unsubscribed)
         _seed_grantee_json(tmp / "private", "alpha.example.test")
         config = V2PortalHostConfig(
             portal_instance_id="fnd",
@@ -226,40 +226,50 @@ class SendExtensionMessageHeaderTests(unittest.TestCase):
             "MyCiteV2.instances._shared.portal_host.app._aws_peripheral"
         ) as peripheral:
             peripheral.send_email = fake_send_email
+            peripheral.sync_operator_forwarding_routes.return_value = {"status": "ok"}
             app = create_app(config)
             client = app.test_client()
             client.post(
-                "/__fnd/email/admin/resend-handoff",
+                route,
                 data=json.dumps({"profile_id": "aws-csm.alpha.support"}),
                 content_type="application/json",
             )
         return captured
 
-    def test_send_includes_list_unsubscribe_headers(self) -> None:
-        captured = self._capture_send()
+    def test_send_reminder_includes_list_unsubscribe_headers(self) -> None:
+        # Nudge class — MUST carry the one-click unsubscribe header.
+        captured = self._capture_send("/__fnd/email/admin/send-reminder")
         self.assertTrue(captured, "no send_email call captured")
-        kwargs = captured[-1]
-        extra = kwargs.get("extra_headers") or {}
+        extra = captured[-1].get("extra_headers") or {}
         self.assertIn("List-Unsubscribe", extra)
         self.assertIn(
             "/__fnd/profile/aws-csm.alpha.support/unsubscribe-notifications",
             extra["List-Unsubscribe"],
         )
-        self.assertEqual(
-            extra.get("List-Unsubscribe-Post"),
-            "List-Unsubscribe=One-Click",
+        self.assertEqual(extra.get("List-Unsubscribe-Post"), "List-Unsubscribe=One-Click")
+
+    def test_resend_handoff_has_no_list_unsubscribe_header(self) -> None:
+        # Credential class — MUST NOT advertise one-click unsubscribe.
+        captured = self._capture_send("/__fnd/email/admin/resend-handoff")
+        self.assertTrue(captured, "no send_email call captured")
+        extra = captured[-1].get("extra_headers") or {}
+        self.assertNotIn("List-Unsubscribe", extra)
+        self.assertNotIn("List-Unsubscribe-Post", extra)
+
+    def test_resend_handoff_sends_even_when_unsubscribed(self) -> None:
+        # The notifications opt-out must NOT block credential-handoff mail
+        # (regression guard for the shared-gate bug).
+        captured = self._capture_send(
+            "/__fnd/email/admin/resend-handoff", unsubscribed=True
         )
+        self.assertTrue(captured, "resend-handoff was wrongly blocked for an unsubscribed profile")
 
     def test_send_passes_reply_to(self) -> None:
-        captured = self._capture_send()
+        # A4 — Reply-To is unconditional (both classes). Drive via
+        # resend-handoff.
+        captured = self._capture_send("/__fnd/email/admin/resend-handoff")
         self.assertTrue(captured)
-        kwargs = captured[-1]
-        reply_to = kwargs.get("reply_to") or []
-        self.assertTrue(reply_to, "reply_to missing on send_email kwargs")
-        # Defaulted to reply-to@<from_domain> when grantee aws_ses didn't
-        # set one — the seeded grantee sets from_address =
-        # support@alpha.example.test and no reply_to, so the fallback
-        # must trigger.
+        reply_to = captured[-1].get("reply_to") or []
         self.assertEqual(reply_to, ["reply-to@alpha.example.test"])
 
 
