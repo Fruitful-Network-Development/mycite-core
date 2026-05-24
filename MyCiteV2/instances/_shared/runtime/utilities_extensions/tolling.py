@@ -1159,20 +1159,26 @@ def derive_invoice_for_grantee(
 
         # Routing: does this line surface on THIS grantee's invoice?
         my_share = 0.0
+        share_basis = ""  # set for shared_pool lines so the invoice can annotate the split
         if atype == "direct":
             if attribution.get("msn_id") == msn_id:
                 my_share = 1.0
         elif atype == "shared_pool":
             pool = attribution.get("pool")
             mode = (pool_split.get(pool) or {}).get("mode") or "absorb_fnd"
+            share_basis = mode
             if mode == "absorb_fnd":
                 my_share = 1.0 if is_operator else 0.0
             elif mode == "by_bandwidth_share":
                 my_share = bandwidth_share
             elif mode == "equal":
-                # Count active grantees (non-operator) and split equally.
-                count = sum(1 for d in domain_idx.values() if d != OPERATOR_MSN_ID)
-                my_share = (1.0 / count) if count > 0 and not is_operator else (1.0 if is_operator else 0.0)
+                # Split equally across distinct non-operator grantees, keyed by
+                # msn_id (NOT by domain — a grantee with multiple domains is still
+                # one share). The operator (FND) takes no shared-pool share under
+                # this mode; it absorbs residue instead. Shares sum to 1.0.
+                non_operator_msns = {m for m in domain_idx.values() if m != OPERATOR_MSN_ID}
+                count = len(non_operator_msns)
+                my_share = (1.0 / count) if (count > 0 and not is_operator) else 0.0
             else:
                 my_share = 1.0 if is_operator else 0.0
         elif atype == "residue":
@@ -1199,7 +1205,7 @@ def derive_invoice_for_grantee(
             continue
 
         billable_amount = share_amount * (1.0 + margin / 100.0)
-        billable_lines.append({
+        billable_line = {
             "id": line_id,
             "category": category,
             "label": line.get("label"),
@@ -1209,7 +1215,15 @@ def derive_invoice_for_grantee(
                     if line.get("usage_quantity") and float(line.get("usage_quantity") or 0) > 0
                     else "",
             "amount": f"{billable_amount:.6f}",
-        })
+        }
+        if atype == "shared_pool":
+            # Annotate divided shared-infrastructure lines so the per-grantee
+            # dashboard can render "your X% share". Additive to invoice.v1 —
+            # existing keys unchanged; share_pct is a percentage (no raw $).
+            billable_line["shared"] = True
+            billable_line["share_pct"] = f"{my_share * 100:.4f}"
+            billable_line["share_basis"] = share_basis
+        billable_lines.append(billable_line)
 
     # Bandwidth as its own billable line (already counted within shared_pool data_transfer if applicable;
     # for now emit only if the operator has decided to expose bandwidth attribution explicitly).
