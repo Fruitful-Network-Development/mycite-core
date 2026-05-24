@@ -225,11 +225,19 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
     ) -> dict[str, Any]:
         """Step 2 overlay — query SES for the identity's verification status.
 
-        Compares the live SES verdict to the profile JSON's
-        provider.aws_ses_identity_status flag and returns the right
-        overlay state. Identity addresses (email-level) are checked via
-        get_identity_verification_attributes — the same call the existing
-        describe_profile_readiness uses for domain identities.
+        SES verification is granted at two granularities: a specific
+        email-address identity (e.g. ``noreply@fnd...``) OR a whole-domain
+        identity (e.g. ``fruitfulnetworkdevelopment.com``). A domain
+        identity covers EVERY address on that domain — so a mailbox whose
+        domain is verified can send even though its exact email address
+        was never registered as a standalone identity.
+
+        Most grantees verify at the domain level (confirmed live: only the
+        5 FND domains + a handful of explicit fnd email identities are
+        registered; per-grantee mailbox addresses are NOT). So we check the
+        email-address identity first, then fall back to the domain
+        identity. Reporting "drift" off the email-address check alone would
+        false-alarm on every domain-verified mailbox.
         """
         from datetime import datetime, timezone
         observed_at = datetime.now(timezone.utc).isoformat()
@@ -238,31 +246,46 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             return {"state": "error", "detail": "send_as_email empty", "observed_at": observed_at}
         try:
             ses = self._client("ses")
-            attrs = ses.get_identity_verification_attributes(Identities=[token])
-            vstatus = (
-                attrs.get("VerificationAttributes", {})
-                .get(token, {})
-                .get("VerificationStatus", "")
+            identities_to_check = [token]
+            domain = token.split("@", 1)[1] if "@" in token else ""
+            if domain:
+                identities_to_check.append(domain)
+            attrs = ses.get_identity_verification_attributes(
+                Identities=identities_to_check
             )
+            va = attrs.get("VerificationAttributes", {})
+            email_status = va.get(token, {}).get("VerificationStatus", "")
+            domain_status = va.get(domain, {}).get("VerificationStatus", "") if domain else ""
         except Exception as exc:  # noqa: BLE001
             return {
                 "state": "error",
                 "detail": f"ses_get_identity_verification_attributes: {exc}",
                 "observed_at": observed_at,
             }
-        aws_verified = (vstatus == "Success")
+        if email_status == "Success":
+            aws_verified, via = True, "email-identity"
+        elif domain_status == "Success":
+            aws_verified, via = True, "domain-identity"
+        else:
+            aws_verified, via = False, ""
         if aws_verified and declared_verified:
             state = "confirmed"
-            detail = "SES VerificationStatus=Success; flag agrees"
+            detail = f"SES verified via {via}; flag agrees"
         elif aws_verified and not declared_verified:
             state = "auto_advance"
-            detail = "SES VerificationStatus=Success; JSON flag not yet set"
+            detail = f"SES verified via {via}; JSON flag not yet set"
         elif not aws_verified and declared_verified:
             state = "drift"
-            detail = f"flag says verified; SES VerificationStatus={vstatus or 'absent'}"
+            detail = (
+                f"flag says verified; SES email={email_status or 'absent'}, "
+                f"domain={domain_status or 'absent'}"
+            )
         else:
             state = "absent"
-            detail = f"SES VerificationStatus={vstatus or 'absent'}"
+            detail = (
+                f"SES email={email_status or 'absent'}, "
+                f"domain={domain_status or 'absent'}"
+            )
         return {"state": state, "detail": detail, "observed_at": observed_at}
 
     def probe_operator_sends_aws_evidence(
@@ -276,13 +299,28 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
 
         A non-zero send count over the lookback window means the operator
         actually used the mailbox (sent at least one message via SES SMTP
-        or send_email under this identity). Any portal-generated handoff /
-        reminder send is excluded because the portal uses a different From
-        identity (FND default), not the per-grantee identity.
+        or send_email under this identity).
 
-        Requires cloudwatch:GetMetricStatistics on the EC2 role. Without
-        that grant (folded into the AWSCMSDiagnosticsLogsReadOnly inline
-        policy) the probe returns state=error.
+        IMPORTANT (verified live 2026-05-24): the AWS/SES Send metric is
+        only published with NO dimension (account-wide) and with the
+        ``ses:configuration-set`` dimension — there is NO
+        ``ses:source-address`` dimension unless a configuration set is
+        explicitly configured to emit one. So a per-identity query returns
+        zero datapoints whether or not the operator actually sent.
+
+        Consequence: a zero result is NOT proof of "no sends" — it's
+        "no per-identity signal available". We therefore treat a positive
+        count as trustworthy (confirmed / auto_advance) but a zero count as
+        ``absent`` (no data), NEVER ``drift``. Emitting drift off an
+        unmeasurable negative would false-alarm on every operational
+        mailbox. Per-identity send attribution becomes real once the A10
+        SES event sink is deployed + a configset dimension on the sender is
+        added; until then this probe only ever advances on positive
+        evidence.
+
+        Requires cloudwatch:GetMetricStatistics on the EC2 role (folded
+        into the AWSCMSDiagnosticsLogsReadOnly inline policy); without it
+        the probe returns state=error.
         """
         from datetime import datetime, timedelta, timezone
         observed_at = datetime.now(timezone.utc).isoformat()
@@ -312,19 +350,21 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 "observed_at": observed_at,
             }
         sent_count = int(total)
-        any_sends = sent_count > 0
-        if any_sends and declared_operational:
+        if sent_count > 0 and declared_operational:
             state = "confirmed"
             detail = f"{sent_count} sends in last {lookback_days}d; flag agrees"
-        elif any_sends and not declared_operational:
+        elif sent_count > 0 and not declared_operational:
             state = "auto_advance"
             detail = f"{sent_count} sends in last {lookback_days}d; lifecycle not yet operational"
-        elif (not any_sends) and declared_operational:
-            state = "drift"
-            detail = f"lifecycle=operational; 0 sends in last {lookback_days}d"
         else:
+            # Zero datapoints is unmeasurable (no per-identity dimension),
+            # not a confirmed negative — return absent, never drift, so we
+            # don't false-alarm on operational mailboxes.
             state = "absent"
-            detail = f"0 sends in last {lookback_days}d"
+            detail = (
+                f"no per-identity send signal (AWS/SES Send has no "
+                f"ses:source-address dimension); {lookback_days}d window"
+            )
         return {"state": state, "detail": detail, "observed_at": observed_at}
 
     def probe_inbound_verified_aws_evidence(
