@@ -734,9 +734,9 @@ def _newsletter_apply_or_preview(
             email = _as_text(payload.get("email")).lower()
             if not email:
                 raise ValueError("email is required for mark_unsubscribed")
-            log = adapter.load_contact_log(domain=domain)
-            if not log:
-                raise ValueError("contact_log_missing_for_domain")
+            # A missing/empty log just means the email isn't on the list — that
+            # is matched=False (the caller returns 404), not a 500.
+            log = adapter.load_contact_log(domain=domain) or {}
             now_iso = _now_iso()
             matched = False
             for c in log.get("contacts") or []:

@@ -219,6 +219,44 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["error"], "invalid_email")
 
+    def test_unknown_domain_rejected(self) -> None:
+        # The public endpoint must not persist contacts for arbitrary Host
+        # headers — an unknown domain is rejected before any write.
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
+        )
+
+        client, tmp = self._build_client()
+        resp = client.post(
+            "/__fnd/connect/submit",
+            data=json.dumps({"email": "v@example.test", "message": "hi"}),
+            content_type="application/json",
+            base_url="http://attacker.example",
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "domain_not_configured")
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
+        self.assertEqual(adapter.load_contact_log(domain="attacker.example"), {})
+
+    def test_honeypot_silently_drops(self) -> None:
+        # A filled honeypot field => ack ok, but persist + forward nothing.
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
+        )
+
+        client, tmp = self._build_client()
+        with patch(
+            "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
+        ) as send_email:
+            resp = self._post_connect(client, message="spam", hp_field="i-am-a-bot")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.get_json()["ok"])
+        send_email.assert_not_called()
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
+        self.assertEqual(
+            adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com"), {}
+        )
+
     # ------------------------------------------------------------------
     # Form-encoded fallback (no-JS submit). The frontend form carries
     # action="/__fnd/connect/submit" method="post", so a visitor with
