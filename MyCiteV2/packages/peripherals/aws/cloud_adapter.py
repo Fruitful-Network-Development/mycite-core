@@ -568,18 +568,32 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         # construction races a concurrent delete), we still return ok=True
         # for the verification work that did land.
         tagged_arn = ""
+        tag_failed = ""
         if tags:
             account_id = self._account_id()
             if account_id:
                 identity_arn = f"arn:aws:ses:{SES_REGION}:{account_id}:identity/{token}"
                 try:
-                    self.tag_resource(arns=[identity_arn], tags=tags)
-                    tagged_arn = identity_arn
-                except Exception:  # noqa: BLE001
-                    pass
+                    tag_result = self.tag_resource(arns=[identity_arn], tags=tags)
+                    # tag_resource returns ok=False (with failed_arns) on a
+                    # partial/throttled failure WITHOUT raising. Only claim
+                    # the tag landed when the API actually accepted it, so
+                    # callers + cost-allocation audits aren't misled.
+                    if tag_result.get("ok") and identity_arn not in {
+                        f.get("arn") for f in (tag_result.get("failed_arns") or [])
+                    }:
+                        tagged_arn = identity_arn
+                    else:
+                        failed = tag_result.get("failed_arns") or []
+                        detail = (failed[0].get("error_message") if failed else "") or "tag_resource ok=False"
+                        tag_failed = detail
+                except Exception as exc:  # noqa: BLE001
+                    tag_failed = str(exc)
         result: dict[str, Any] = {"ok": True, "changed": changed, "domain": token}
         if tagged_arn:
             result["tagged_arn"] = tagged_arn
+        if tag_failed:
+            result["tag_failed"] = tag_failed
         return result
 
     def sync_domain_dns(
@@ -683,11 +697,13 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         # closes the manual SES-console step in the client-onboarding
         # runbook.
         #
-        # Idempotent: get_identity_mail_from_domain_attributes returns the
-        # current setting; we only call set_identity_mail_from_domain if
-        # it differs from the desired mail.<domain> target.
+        # Idempotent: read the current MAIL FROM here, but DEFER the
+        # set_identity_mail_from_domain call until AFTER the Route53 publish
+        # below — so SES MAIL FROM never points at mail.<domain> MX/SPF
+        # records that haven't been published yet (a partial-failure window
+        # that would leave MAIL FROM verification stuck).
         mail_from_domain = f"mail.{token}"
-        mail_from_changed = False
+        mail_from_needs_set = False
         try:
             mf_attrs = ses.get_identity_mail_from_domain_attributes(
                 Identities=[token]
@@ -697,17 +713,10 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 .get(token, {})
                 .get("MailFromDomain", "")
             )
-            if current_mf != mail_from_domain:
-                ses.set_identity_mail_from_domain(
-                    Identity=token,
-                    MailFromDomain=mail_from_domain,
-                    BehaviorOnMXFailure="UseDefaultValue",
-                )
-                mail_from_changed = True
+            mail_from_needs_set = current_mf != mail_from_domain
         except Exception:  # noqa: BLE001
-            # Don't fail the sync if SES MAIL FROM API errors; the rest
-            # of DKIM/SPF/DMARC still lands. Operator can retry.
-            pass
+            # Can't read current MAIL FROM → don't risk setting it blind.
+            mail_from_needs_set = False
 
         # MX record for the MAIL FROM subdomain — per SES docs, point to
         # feedback-smtp.<region>.amazonses.com on priority 10.
@@ -745,13 +754,42 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             )
 
         if desired_changes:
-            r53.change_resource_record_sets(
-                HostedZoneId=zone_id,
-                ChangeBatch={
-                    "Comment": "aws-peripheral sync_domain_dns",
-                    "Changes": desired_changes,
-                },
-            )
+            try:
+                r53.change_resource_record_sets(
+                    HostedZoneId=zone_id,
+                    ChangeBatch={
+                        "Comment": "aws-peripheral sync_domain_dns",
+                        "Changes": desired_changes,
+                    },
+                )
+            except Exception as exc:  # noqa: BLE001
+                # DNS publish failed — return a clean partial-status and do
+                # NOT touch the SES MAIL FROM setting, so we never end up
+                # with MAIL FROM pointing at unpublished records.
+                return {
+                    "ok": False,
+                    "error": "dns_publish_failed",
+                    "detail": str(exc),
+                    "domain": token,
+                    "zone_id": zone_id,
+                }
+
+        # Now that mail.<domain> MX/SPF are live, set the SES MAIL FROM.
+        # DNS-first ordering guarantees the records exist before SES starts
+        # verifying them. A failure here is safe to retry (DNS is already
+        # published) and doesn't fail the whole sync.
+        mail_from_changed = False
+        if mail_from_needs_set:
+            try:
+                ses.set_identity_mail_from_domain(
+                    Identity=token,
+                    MailFromDomain=mail_from_domain,
+                    BehaviorOnMXFailure="UseDefaultValue",
+                )
+                mail_from_changed = True
+            except Exception:  # noqa: BLE001
+                pass
+
         # Auto-tag-on-create — tag the hosted zone. Route53 records aren't
         # taggable; the zone is. Opportunistic; tag failure doesn't fail
         # the DNS sync. Runs even when the DNS records are already in
@@ -807,10 +845,22 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             "ResourceRecordSets", []
         ):
             if rr.get("Name", "").rstrip(".") == dmarc_name and rr.get("Type") == "TXT":
+                import re
+
                 values = [
                     rec.get("Value", "") for rec in rr.get("ResourceRecords", [])
                 ]
-                record_value = " ".join(values)
+                # RFC 1035 / RFC 7489: a TXT record's character-strings
+                # concatenate with NO separator. Route53 returns a long
+                # DMARC record as space-separated quoted chunks (within one
+                # Value and/or across ResourceRecords). Pull every quoted
+                # chunk and concatenate so `"v=DMARC1; p=none;" " rua=..."`
+                # reassembles to `v=DMARC1; p=none; rua=...` rather than the
+                # old `" ".join` which left interior quotes + a spurious gap
+                # that mis-parsed the boundary tag.
+                joined = " ".join(values)
+                chunks = re.findall(r'"([^"]*)"', joined)
+                record_value = "".join(chunks) if chunks else joined.strip()
                 break
         return {
             "ok": True,
