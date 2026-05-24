@@ -128,6 +128,45 @@ class MailFromBootstrapTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertNotIn("mail_from_changed", result)
 
+    def test_set_mail_from_called_after_dns_publish(self) -> None:
+        # DNS-first ordering: set_identity_mail_from_domain must only be
+        # called AFTER change_resource_record_sets has published the
+        # mail.<domain> records. Track call order.
+        r53 = _r53_stub()
+        ses = _ses_stub(mail_from="")
+        order: list[str] = []
+        r53.change_resource_record_sets.side_effect = lambda **k: order.append("dns")
+        ses.set_identity_mail_from_domain.side_effect = lambda **k: order.append("mailfrom")
+        adapter = self._adapter(r53, ses)
+        result = adapter.sync_domain_dns("example.test")
+        self.assertTrue(result["ok"])
+        self.assertEqual(order, ["dns", "mailfrom"])
+
+    def test_set_mail_from_failure_after_dns_is_swallowed(self) -> None:
+        # DNS published OK, but the SES MAIL FROM set fails — sync still
+        # succeeds (safe to retry; DNS already live), mail_from_changed unset.
+        r53 = _r53_stub()
+        ses = _ses_stub(mail_from="")
+        ses.set_identity_mail_from_domain.side_effect = RuntimeError("ses throttle")
+        adapter = self._adapter(r53, ses)
+        result = adapter.sync_domain_dns("example.test")
+        self.assertTrue(result["ok"])
+        self.assertNotIn("mail_from_changed", result)
+        r53.change_resource_record_sets.assert_called_once()
+
+    def test_dns_publish_failure_skips_mail_from_set(self) -> None:
+        # If the Route53 publish fails, MAIL FROM must NOT be set (no
+        # MAIL-FROM-pointing-at-unpublished-records state) and the function
+        # returns a clean ok=False partial status.
+        r53 = _r53_stub()
+        ses = _ses_stub(mail_from="")
+        r53.change_resource_record_sets.side_effect = RuntimeError("r53 denied")
+        adapter = self._adapter(r53, ses)
+        result = adapter.sync_domain_dns("example.test")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "dns_publish_failed")
+        ses.set_identity_mail_from_domain.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

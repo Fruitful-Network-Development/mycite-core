@@ -94,6 +94,28 @@ class EnsureDomainIdentityTagsTests(unittest.TestCase):
         )
         self.assertTrue(result["ok"])
         self.assertNotIn("tagged_arn", result)
+        self.assertIn("tag_failed", result)
+
+    def test_partial_tag_failure_not_reported_as_tagged(self) -> None:
+        # tag_resources returns the ARN in FailedResourcesMap WITHOUT raising
+        # (AWS partial failure). ensure_domain_identity must NOT claim the
+        # tag landed — no tagged_arn, and a tag_failed note instead.
+        identity_arn = "arn:aws:ses:us-east-1:065948377733:identity/example.test"
+        self.rgt_stub.tag_resources.return_value = {
+            "FailedResourcesMap": {
+                identity_arn: {
+                    "ErrorCode": "InternalServiceException",
+                    "ErrorMessage": "throttled",
+                }
+            }
+        }
+        result = self.adapter.ensure_domain_identity(
+            "example.test", tags={"msn_id": "alpha-msn"}
+        )
+        self.assertTrue(result["ok"])
+        self.assertNotIn("tagged_arn", result)
+        self.assertIn("tag_failed", result)
+        self.assertIn("throttled", result["tag_failed"])
 
     def test_missing_account_id_skips_tagging_gracefully(self) -> None:
         self.sts_stub.get_caller_identity.side_effect = RuntimeError("STS denied")

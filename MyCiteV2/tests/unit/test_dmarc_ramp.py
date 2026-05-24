@@ -45,6 +45,18 @@ class ParseDmarcPolicyTests(unittest.TestCase):
         self.assertEqual(parse_dmarc_policy(""), {})
         self.assertEqual(parse_dmarc_policy("garbage"), {})
 
+    def test_parses_reassembled_split_record(self) -> None:
+        # get_dmarc_policy reassembles split-string TXT chunks (RFC 1035/7489
+        # concatenate with no separator) into a single unquoted string before
+        # calling parse. Confirm parse handles that reassembled input cleanly
+        # (no interior quotes / spurious gap mis-splitting the boundary tag).
+        reassembled = "v=DMARC1; p=quarantine; pct=20; rua=mailto:a@x.com; adkim=s; aspf=s"
+        tags = parse_dmarc_policy(reassembled)
+        self.assertEqual(tags["p"], "quarantine")
+        self.assertEqual(tags["pct"], "20")
+        self.assertEqual(tags["rua"], "mailto:a@x.com")
+        self.assertEqual(tags["aspf"], "s")
+
 
 def _tags(p: str, pct: str = "100") -> dict[str, str]:
     return {"v": "DMARC1", "p": p, "pct": pct, "rua": "mailto:dmarc-reports@x.com"}
@@ -173,6 +185,36 @@ class RampLadderGuardrailTests(unittest.TestCase):
         )
         self.assertFalse(d["allowed"])
         self.assertTrue(any("unrecognized" in b for b in d["blockers"]))
+
+    def test_empty_tags_treated_as_none_rung_not_unknown(self) -> None:
+        # No _dmarc record at all (parse → {}) is the bottom of the ladder,
+        # NOT a malformed record. It must be the 'none' rung and ramp to
+        # quarantine_20 when preconditions are met — never the "fix manually"
+        # unknown blocker.
+        d = compute_dmarc_ramp(
+            current_tags={},
+            mail_from_live=True,
+            alignment_pct=99.0,
+            days_at_current=14,
+        )
+        self.assertEqual(d["current_rung"], "none")
+        self.assertTrue(d["allowed"])
+        self.assertEqual(d["proposed_policy"], "quarantine")
+        self.assertEqual(d["proposed_pct"], "20")
+        self.assertFalse(any("unrecognized" in b for b in d["blockers"]))
+
+    def test_empty_tags_blocked_by_preconditions_but_still_none(self) -> None:
+        # Empty tags = 'none' rung, but still gated by alignment/dwell —
+        # blocked without a misleading "fix manually" message.
+        d = compute_dmarc_ramp(
+            current_tags={},
+            mail_from_live=False,
+            alignment_pct=None,
+            days_at_current=None,
+        )
+        self.assertEqual(d["current_rung"], "none")
+        self.assertFalse(d["allowed"])
+        self.assertFalse(any("unrecognized" in b for b in d["blockers"]))
 
 
 if __name__ == "__main__":

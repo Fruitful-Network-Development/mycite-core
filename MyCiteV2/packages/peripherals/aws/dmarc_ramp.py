@@ -110,7 +110,18 @@ def compute_dmarc_ramp(
     """
     current_policy = (current_tags.get("p") or "").lower()
     current_pct = str(current_tags.get("pct") or "100")
-    current_rung = _rung(current_policy, current_pct)
+    # No DMARC record at all (empty tags) is the BOTTOM of the ladder, not a
+    # malformed record. parse_dmarc_policy returns {} both when there's no
+    # _dmarc TXT yet and when the record is non-DMARC garbage; treat the
+    # empty case as the "none" rung so a freshly-onboarded domain (which
+    # sync_domain_dns seeds at p=none anyway) can ramp, instead of being
+    # told to "fix manually". A PRESENT-but-unrecognized p= still routes to
+    # 'unknown' below.
+    if not current_tags:
+        current_rung = "none"
+        current_policy = "none"
+    else:
+        current_rung = _rung(current_policy, current_pct)
 
     nxt = _NEXT_RUNG.get(current_rung)
     blockers: list[str] = []
