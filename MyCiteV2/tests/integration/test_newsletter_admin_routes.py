@@ -338,6 +338,42 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         self.assertTrue(body["ok"])
         self.assertFalse(body["subscribed"])
 
+    def test_remove_unknown_email_returns_404(self) -> None:
+        # Removing an email that isn't on the list must 404, not a false 200.
+        client, _ = self._build_client()
+        resp = client.post(
+            "/__fnd/newsletter/admin/remove",
+            data=json.dumps(
+                {
+                    "domain": "alpha.example.test",
+                    "fields": {"email": "never.subscribed@subscriber.test"},
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.get_json()["error"], "contact_not_found")
+
+    def test_admin_write_blocked_for_foreign_grantee(self) -> None:
+        # A request that arrives with a grantee header (per-grantee dashboard
+        # proxy) may only mutate that grantee's own domains.
+        client, tmp = self._build_client()
+        # beta is a known newsletter domain, but grantee "alpha" doesn't own it.
+        _seed_newsletter_admin_profile(tmp / "private", "beta.example.test")
+        resp = client.post(
+            "/__fnd/newsletter/admin/add",
+            data=json.dumps(
+                {
+                    "domain": "beta.example.test",
+                    "fields": {"email": "x@beta.example.test"},
+                }
+            ),
+            content_type="application/json",
+            headers={"X-Auth-Request-Grantee": "alpha"},
+        )
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.get_json()["error"], "domain_not_owned")
+
     def test_remove_subscriber_rejects_invalid_email(self) -> None:
         client, _ = self._build_client()
         resp = client.post(
