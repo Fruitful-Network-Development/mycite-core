@@ -47,40 +47,63 @@ def _assert_iso_utc(self, ts: str) -> None:
 
 
 class ProbeSesIdentityTests(unittest.TestCase):
-    def _ses_stub(self, status: str) -> MagicMock:
+    def _ses_stub(self, email_status: str, domain_status: str = "") -> MagicMock:
+        """Stub get_identity_verification_attributes for both the
+        email-address identity AND the domain identity (the probe now
+        checks email first, then falls back to the domain)."""
         stub = MagicMock()
+        va: dict[str, dict[str, str]] = {}
+        if email_status:
+            va["dylan@example.test"] = {"VerificationStatus": email_status}
+        if domain_status:
+            va["example.test"] = {"VerificationStatus": domain_status}
         stub.get_identity_verification_attributes.return_value = {
-            "VerificationAttributes": {
-                "dylan@example.test": {"VerificationStatus": status}
-            }
+            "VerificationAttributes": va
         }
         return stub
 
-    def test_confirmed_when_aws_success_and_flag_true(self) -> None:
+    def test_confirmed_when_email_identity_success_and_flag_true(self) -> None:
         adapter = _adapter_with_stubbed_clients(ses=self._ses_stub("Success"))
         result = adapter.probe_ses_identity_aws_evidence(
             "dylan@example.test", declared_verified=True
         )
         self.assertEqual(result["state"], "confirmed")
-        self.assertIn("Success", result["detail"])
+        self.assertIn("email-identity", result["detail"])
         _assert_iso_utc(self, result["observed_at"])
 
-    def test_auto_advance_when_aws_success_but_flag_false(self) -> None:
-        adapter = _adapter_with_stubbed_clients(ses=self._ses_stub("Success"))
+    def test_confirmed_via_domain_fallback_when_email_absent(self) -> None:
+        # The email-address identity isn't registered, but the DOMAIN is
+        # verified — which covers all addresses on it. Must be confirmed,
+        # NOT drift. This is the live FND case (domain-level verification).
+        adapter = _adapter_with_stubbed_clients(
+            ses=self._ses_stub("", domain_status="Success")
+        )
+        result = adapter.probe_ses_identity_aws_evidence(
+            "dylan@example.test", declared_verified=True
+        )
+        self.assertEqual(result["state"], "confirmed")
+        self.assertIn("domain-identity", result["detail"])
+
+    def test_auto_advance_when_domain_verified_but_flag_false(self) -> None:
+        adapter = _adapter_with_stubbed_clients(
+            ses=self._ses_stub("", domain_status="Success")
+        )
         result = adapter.probe_ses_identity_aws_evidence(
             "dylan@example.test", declared_verified=False
         )
         self.assertEqual(result["state"], "auto_advance")
 
-    def test_drift_when_flag_true_but_aws_pending(self) -> None:
-        adapter = _adapter_with_stubbed_clients(ses=self._ses_stub("Pending"))
+    def test_drift_only_when_both_email_and_domain_not_verified(self) -> None:
+        adapter = _adapter_with_stubbed_clients(
+            ses=self._ses_stub("Pending", domain_status="Pending")
+        )
         result = adapter.probe_ses_identity_aws_evidence(
             "dylan@example.test", declared_verified=True
         )
         self.assertEqual(result["state"], "drift")
-        self.assertIn("Pending", result["detail"])
+        self.assertIn("domain=Pending", result["detail"])
 
-    def test_absent_when_neither_side_has_evidence(self) -> None:
+    def test_absent_when_neither_email_nor_domain_has_evidence(self) -> None:
         adapter = _adapter_with_stubbed_clients(ses=self._ses_stub(""))
         result = adapter.probe_ses_identity_aws_evidence(
             "dylan@example.test", declared_verified=False
@@ -130,12 +153,17 @@ class ProbeOperatorSendsTests(unittest.TestCase):
         self.assertEqual(result["state"], "auto_advance")
         self.assertIn("3 sends", result["detail"])
 
-    def test_drift_when_lifecycle_operational_but_no_sends(self) -> None:
+    def test_zero_sends_is_absent_not_drift_even_when_operational(self) -> None:
+        # Zero datapoints from CloudWatch is unmeasurable (AWS/SES Send has
+        # no ses:source-address dimension), NOT a confirmed negative. Must
+        # be absent so the overlay doesn't false-alarm "drift" on every
+        # operational mailbox. (Verified live 2026-05-24.)
         adapter = _adapter_with_stubbed_clients(cloudwatch=self._cw_stub([]))
         result = adapter.probe_operator_sends_aws_evidence(
             "dylan@example.test", declared_operational=True
         )
-        self.assertEqual(result["state"], "drift")
+        self.assertEqual(result["state"], "absent")
+        self.assertIn("no per-identity send signal", result["detail"])
 
     def test_absent_when_no_sends_and_lifecycle_not_operational(self) -> None:
         adapter = _adapter_with_stubbed_clients(cloudwatch=self._cw_stub([]))
