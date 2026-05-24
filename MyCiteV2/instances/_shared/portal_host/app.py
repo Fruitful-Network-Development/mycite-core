@@ -6,7 +6,6 @@ import json
 import logging
 import os
 import re
-import tempfile
 import urllib.parse
 import urllib.request
 from collections.abc import Mapping
@@ -47,6 +46,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     build_tool_exposure_policy,
 )
+from MyCiteV2.packages.domain import canonical_contact_entry
 from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAdapter
 from MyCiteV2.packages.peripherals.aws.contracts import SesSendError
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -752,8 +752,6 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
 # FND newsletter subscribe pipeline — helpers
 # ---------------------------------------------------------------------------
 
-_CONTACT_LOG_SCHEMA = "mycite.webapp.contact_log.v1"
-
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
 # Path layout under `host_config.private_dir`. Phase 13d follow-up: both the
@@ -825,104 +823,17 @@ def _legacy_deprecation_headers(target_authority: str, operation: str) -> dict[s
 def _newsletter_state_adapter(host_config: V2PortalHostConfig):
     """Return the live newsletter-state adapter.
 
-    Newsletter state lives in JSON under
-    ``<private>/utilities/tools/newsletter/`` per the peripheral
+    Newsletter + contact-log state lives in JSON under
+    ``<private>/utilities/tools/aws-csm/newsletter/`` per the peripheral
     architecture: extensions read grantee/extension JSON files, no MOS
-    authority is consulted.
+    authority is consulted. This is the single canonical store that every
+    contact writer (subscribe, connect, operator admin) also writes to.
     """
     from MyCiteV2.packages.adapters.filesystem import (
         FilesystemNewsletterStateAdapter,
     )
 
     return FilesystemNewsletterStateAdapter(host_config.private_dir)
-
-
-def _load_contact_log(path: Path, *, domain: str) -> dict[str, Any]:
-    """Load contact log JSON; bootstrap empty log if absent or unparseable."""
-    if path.exists() and path.is_file():
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-            if isinstance(payload, dict) and payload.get("schema") == _CONTACT_LOG_SCHEMA:
-                return payload
-        except Exception:
-            pass
-    return {
-        "schema": _CONTACT_LOG_SCHEMA,
-        "domain": domain,
-        "contacts": [],
-        "dispatches": [],
-        "updated_at": "",
-    }
-
-
-def _write_contact_log_atomic(path: Path, payload: dict[str, Any]) -> None:
-    """Write contact log atomically via temp-file rename."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-contact-log-")
-    try:
-        with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(payload, indent=2) + "\n")
-        os.rename(tmp_path, str(path))
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-
-def _upsert_subscriber(
-    contact_log: dict[str, Any],
-    *,
-    email: str,
-    name: str,
-    zip_code: str,
-    now_iso: str,
-) -> dict[str, Any]:
-    """Upsert a subscriber record. Sorts contacts by email. Returns the upserted record.
-
-    Write contract:
-    - Does NOT touch dispatches array.
-    - Does NOT modify any contact other than the target email.
-    - Sorts contacts ascending by email after upsert.
-    """
-    contacts: list[dict[str, Any]] = list(contact_log.get("contacts") or [])
-    by_email: dict[str, dict[str, Any]] = {
-        str(row.get("email", "")).lower(): dict(row)
-        for row in contacts
-        if isinstance(row, dict) and row.get("email")
-    }
-    current = by_email.get(email)
-    if current is None:
-        current = {
-            "email": email,
-            "name": name,
-            "zip": zip_code,
-            "source": "website_signup",
-            "subscribed": True,
-            "created_at": now_iso,
-            "subscribed_at": now_iso,
-            "unsubscribed_at": "",
-            "updated_at": now_iso,
-            "last_newsletter_sent_at": "",
-            "send_count": 0,
-            "notes": "",
-        }
-    else:
-        if name:
-            current["name"] = name
-        if zip_code:
-            current["zip"] = zip_code
-        current["source"] = "website_signup"
-        current["subscribed"] = True
-        current["subscribed_at"] = str(current.get("subscribed_at") or "").strip() or now_iso
-        current["unsubscribed_at"] = ""
-        current["updated_at"] = now_iso
-    by_email[email] = current
-    # Sort contacts ascending by email — consistent with NewsletterService.subscribe() line 298
-    contact_log["contacts"] = [by_email[k] for k in sorted(by_email.keys())]
-    # dispatches array passes through unchanged
-    return current
 
 
 def _fnd_newsletter_request_field(field: str) -> str:
@@ -1882,6 +1793,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -1946,6 +1858,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -2016,6 +1929,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -2304,6 +2218,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         last_name = _fnd_newsletter_request_field("last_name")
         phone = _fnd_newsletter_request_field("phone")
         zip_code = _fnd_newsletter_request_field("zip")
+        organization = _fnd_newsletter_request_field("organization")
         subject = _fnd_newsletter_request_field("subject")
         display_name = " ".join(t for t in (first_name, last_name) if t) or email
 
@@ -2326,8 +2241,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 run_datum_workbench_mutation_action,
             )
 
-            # Contacts are identity-only — the message body is the
-            # email payload and lives on SES, not on the contact record.
+            # Persist the submission onto the canonical contact row, including
+            # the subject + message, so the operator can read what the visitor
+            # wrote from the Connect tab (the SES forward is best-effort).
             result = run_datum_workbench_mutation_action(
                 "apply",
                 {
@@ -2340,10 +2256,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "last_name": last_name,
                     "phone": phone,
                     "zip": zip_code,
+                    "organization": organization,
+                    "subject": subject,
+                    "message": message,
                     "forward_status": forward_status,
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return _connect_response(
@@ -2429,6 +2349,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -2488,6 +2409,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 edit_payload,
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -2547,6 +2469,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
                 authority_db_file=host_config.authority_db_file,
                 portal_instance_id=host_config.portal_instance_id,
+                private_dir=host_config.private_dir,
             )
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
@@ -4832,6 +4755,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "last_name": _as_text(record.get("last_name")),
             "phone": _as_text(record.get("phone")),
             "zip": _as_text(record.get("zip")),
+            "organization": _as_text(record.get("organization")),
             "subscribed": bool(record.get("subscribed")),
             "source": _as_text(record.get("source")),
             "forward_status": _as_text(record.get("forward_status")),
@@ -4913,16 +4837,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not email:
             return jsonify({"ok": False, "error": "invalid_email"}), 400
 
-        first_name = _as_text(body.get("first_name"))
-        middle_name = _as_text(body.get("middle_name"))
-        last_name = _as_text(body.get("last_name"))
-        phone = _as_text(body.get("phone"))
-        zip_code = _as_text(body.get("zip"))
-        composed_name = " ".join(t for t in (first_name, middle_name, last_name) if t)
-
         adapter = _newsletter_state_adapter(host_config)
         log = adapter.load_contact_log(domain=domain) or {
-            "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
             "domain": domain,
             "contacts": [],
             "dispatches": [],
@@ -4930,49 +4846,40 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         now_iso = _utc_now_iso()
         today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
         contacts = list(log.get("contacts") or [])
-        found = None
-        for c in contacts:
-            if _as_text(c.get("email")).lower() == email:
-                found = c
-                break
-        if found is None:
-            found = {
-                "email": email,
-                "name": composed_name,
-                "first_name": first_name,
-                "middle_name": middle_name,
-                "last_name": last_name,
-                "phone": phone,
-                "zip": zip_code,
-                "signup_date": today_date,
-                "subscribed": False,
-                "source": "dashboard_add",
-                "send_count": 0,
-                "last_newsletter_sent_at": "",
-                "created_at": now_iso,
-            }
-            contacts.append(found)
+        index = next(
+            (
+                i
+                for i, c in enumerate(contacts)
+                if _as_text(c.get("email")).lower() == email
+            ),
+            None,
+        )
+        existing = contacts[index] if index is not None else None
+        patch: dict[str, Any] = {
+            "email": email,
+            "first_name": _as_text(body.get("first_name")),
+            "middle_name": _as_text(body.get("middle_name")),
+            "last_name": _as_text(body.get("last_name")),
+            "phone": _as_text(body.get("phone")),
+            "zip": _as_text(body.get("zip")),
+            "organization": _as_text(body.get("organization")),
+        }
+        if existing is None:
+            # New contact lands unsubscribed; the operator opts them in via the
+            # per-row toggle. Adding an EXISTING contact never re-subscribes it.
+            patch["source"] = "dashboard_add"
+            patch["signup_date"] = today_date
+            patch["subscribed"] = False
+        row = canonical_contact_entry(existing=existing, patch=patch, now=now_iso)
+        if index is not None:
+            contacts[index] = row
         else:
-            if first_name:
-                found["first_name"] = first_name
-            if middle_name:
-                found["middle_name"] = middle_name
-            if last_name:
-                found["last_name"] = last_name
-            if composed_name:
-                found["name"] = composed_name
-            if phone:
-                found["phone"] = phone
-            if zip_code:
-                found["zip"] = zip_code
-            if not _as_text(found.get("source")):
-                found["source"] = "dashboard_add"
-        found["updated_at"] = now_iso
+            contacts.append(row)
         log["contacts"] = contacts
         log["updated_at"] = now_iso
         adapter.save_contact_log(domain=domain, payload=log)
 
-        view = _contacts_identity_view(found)
+        view = _contacts_identity_view(row)
         view["domain"] = domain
         return jsonify({"ok": True, "contact": view}), 200
 
@@ -5033,26 +4940,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                         return jsonify({"ok": False, "error": "new_email_collision"}), 409
                 target["email"] = new_email
 
-        for key in ("first_name", "middle_name", "last_name", "phone", "zip"):
+        # Identity patch — an empty value means "no change", so the dashboard
+        # can submit the whole form without wiping stored phone/zip/etc.
+        patch: dict[str, Any] = {"email": _as_text(target.get("email"))}
+        for key in ("first_name", "middle_name", "last_name", "phone", "zip", "organization"):
             if key in body:
-                target[key] = _as_text(body.get(key))
-        composed = " ".join(
-            t for t in (
-                _as_text(target.get("first_name")),
-                _as_text(target.get("middle_name")),
-                _as_text(target.get("last_name")),
-            )
-            if t
-        )
-        if composed:
-            target["name"] = composed
+                patch[key] = _as_text(body.get(key))
         now_iso = _utc_now_iso()
-        target["updated_at"] = now_iso
+        index = contacts.index(target)
+        contacts[index] = canonical_contact_entry(existing=target, patch=patch, now=now_iso)
         log["contacts"] = contacts
         log["updated_at"] = now_iso
         adapter.save_contact_log(domain=domain, payload=log)
 
-        view = _contacts_identity_view(target)
+        view = _contacts_identity_view(contacts[index])
         view["domain"] = domain
         return jsonify({"ok": True, "contact": view}), 200
 
