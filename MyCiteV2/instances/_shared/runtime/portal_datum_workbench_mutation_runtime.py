@@ -331,8 +331,15 @@ def run_datum_workbench_mutation_action(
     *,
     authority_db_file: str | Path | None,
     portal_instance_id: str,
+    private_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     normalized = dict(payload or {})
+    # Newsletter/contact-log + sender mutations resolve their filesystem store
+    # from ``private_dir``. Inject the caller's private dir (without clobbering
+    # an explicit payload value) so every writer lands in the one canonical
+    # tree the dashboard reads.
+    if private_dir is not None and not _as_text(normalized.get("private_dir")):
+        normalized["private_dir"] = str(private_dir)
     action = _as_text(action).lower()
     if action not in _ALLOWED_ACTIONS:
         return _error("unsupported_mutation_action", f"Unsupported datum workbench mutation action: {action}")
@@ -525,91 +532,78 @@ def _newsletter_apply_or_preview(
     hash), we just return the planned action — the actual write
     happens on ``apply``.
     """
-    from MyCiteV2.packages.adapters.sql.newsletter_contact_log import (
-        MosDatumNewsletterContactLogAdapter,
+    from MyCiteV2.packages.adapters.filesystem import (
+        FilesystemNewsletterStateAdapter,
     )
+    from MyCiteV2.packages.domain import canonical_contact_entry, split_legacy_name
 
     if target_authority == "newsletter_contact_log":
         domain = _as_text(payload.get("domain"))
         if not domain:
             raise ValueError("domain is required for newsletter contact log mutations")
-        adapter = MosDatumNewsletterContactLogAdapter(
-            authority_db_file=authority_db_file, tenant_id=tenant_id
-        )
+        # Single canonical store, rooted at the live private dir — the same
+        # tree the dashboard reads. (The retired MosDatum shim derived a
+        # doubled ``private/private`` path from the authority-db location.)
+        private_dir = _as_text(payload.get("private_dir"))
+        if not private_dir:
+            raise ValueError("private_dir is required for newsletter contact log mutations")
+        adapter = FilesystemNewsletterStateAdapter(private_dir)
         if operation == "upsert_subscriber":
             email = _as_text(payload.get("email")).lower()
-            # Phase 15b: prefer split first/middle/last when supplied.
-            # Back-compat: a single ``name`` is auto-split by the adapter
-            # at write time, but we also normalize here so existing rows
-            # picked up by load_contact_log carry through cleanly.
+            if not email:
+                raise ValueError("email is required for upsert_subscriber")
+            # source="operator" => an operator added the row from the admin
+            # surface; a website self-signup carries no source.
+            source = _as_text(payload.get("source"))
+            is_operator = source == "operator"
             first_name = _as_text(payload.get("first_name"))
             middle_name = _as_text(payload.get("middle_name"))
             last_name = _as_text(payload.get("last_name"))
             name = _as_text(payload.get("name"))
-            # Phase 16a: also capture phone / zip / signup_date.
-            phone = _as_text(payload.get("phone"))
-            zip_code = _as_text(payload.get("zip"))
-            signup_date = _as_text(payload.get("signup_date"))
             if not (first_name or middle_name or last_name) and name:
-                first_name, middle_name, last_name = (
-                    MosDatumNewsletterContactLogAdapter._split_legacy_name(name)
-                )
-            composed_name = name or " ".join(
-                t for t in (first_name, middle_name, last_name) if t
-            )
-            if not email:
-                raise ValueError("email is required for upsert_subscriber")
+                first_name, middle_name, last_name = split_legacy_name(name)
+            now_iso = _now_iso()
+            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
             log = adapter.load_contact_log(domain=domain) or {
-                "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
                 "domain": domain,
                 "contacts": [],
                 "dispatches": [],
             }
-            now_iso = _now_iso()
-            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
-            effective_signup_date = signup_date or today_date
             contacts = list(log.get("contacts") or [])
-            found = False
-            for c in contacts:
-                if _as_text(c.get("email")).lower() == email:
-                    c["subscribed"] = True
-                    if composed_name:
-                        c["name"] = composed_name
-                    if first_name:
-                        c["first_name"] = first_name
-                    if middle_name:
-                        c["middle_name"] = middle_name
-                    if last_name:
-                        c["last_name"] = last_name
-                    if phone:
-                        c["phone"] = phone
-                    if zip_code:
-                        c["zip"] = zip_code
-                    if not _as_text(c.get("signup_date")):
-                        c["signup_date"] = effective_signup_date
-                    c["updated_at"] = now_iso
-                    if not _as_text(c.get("source")):
-                        c["source"] = "website_signup"
-                    found = True
-                    break
-            if not found:
-                contacts.append(
-                    {
-                        "email": email,
-                        "name": composed_name,
-                        "first_name": first_name,
-                        "middle_name": middle_name,
-                        "last_name": last_name,
-                        "phone": phone,
-                        "zip": zip_code,
-                        "signup_date": effective_signup_date,
-                        "subscribed": True,
-                        "source": "website_signup",
-                        "send_count": 0,
-                        "last_newsletter_sent_at": "",
-                        "created_at": now_iso,
-                    }
-                )
+            index = next(
+                (
+                    i
+                    for i, c in enumerate(contacts)
+                    if _as_text(c.get("email")).lower() == email
+                ),
+                None,
+            )
+            existing = contacts[index] if index is not None else None
+            patch: dict[str, Any] = {
+                "email": email,
+                "name": name,
+                "first_name": first_name,
+                "middle_name": middle_name,
+                "last_name": last_name,
+                "phone": _as_text(payload.get("phone")),
+                "zip": _as_text(payload.get("zip")),
+                "organization": _as_text(payload.get("organization")),
+            }
+            if existing is None:
+                # New contact: stamp acquisition source + first-seen date, opt in.
+                patch["source"] = source or "website_signup"
+                patch["signup_date"] = _as_text(payload.get("signup_date")) or today_date
+                patch["subscribed"] = True
+            elif not is_operator:
+                # Website re-signup re-opts-in an existing contact.
+                patch["subscribed"] = True
+            # Operator add of an EXISTING contact: leave subscribed / source /
+            # signup_date untouched — never resurrect an opt-out.
+            row = canonical_contact_entry(existing=existing, patch=patch, now=now_iso)
+            if index is not None:
+                contacts[index] = row
+            else:
+                contacts.append(row)
             log["contacts"] = contacts
             log["updated_at"] = now_iso
             if apply:
@@ -618,14 +612,14 @@ def _newsletter_apply_or_preview(
                 "operation": operation,
                 "domain": domain,
                 "email": email,
-                "subscribed": True,
+                "subscribed": row["subscribed"],
                 "applied": apply,
                 "contact_count": len(contacts),
             }
         if operation == "edit_subscriber":
-            # Phase 16a: operator-side row edit. Updates the named
-            # fields on an existing contact without touching subscribed
-            # state. Raises if the contact doesn't exist.
+            # Operator-side row edit. Patches the named identity fields on an
+            # existing contact without changing subscribed state. Empty values
+            # are ignored (no clobber). Raises if the contact doesn't exist.
             email = _as_text(payload.get("email")).lower()
             if not email:
                 raise ValueError("email is required for edit_subscriber")
@@ -633,130 +627,37 @@ def _newsletter_apply_or_preview(
             if not log:
                 raise ValueError("contact_log_missing_for_domain")
             now_iso = _now_iso()
-            updates: dict[str, str] = {}
+            patch: dict[str, Any] = {"email": email}
+            updated_fields: list[str] = []
             for key in (
                 "first_name",
                 "middle_name",
                 "last_name",
                 "phone",
                 "zip",
+                "organization",
                 "signup_date",
-                # forward_status remains editable so operators can mark
-                # a record sent after a manual retry. subject/message
-                # are not stored on contacts.
+                # forward_status stays editable so operators can mark a record
+                # sent after a manual retry.
                 "forward_status",
             ):
                 if key in payload:
-                    updates[key] = _as_text(payload.get(key))
-            matched = False
-            for c in log.get("contacts") or []:
-                if _as_text(c.get("email")).lower() == email:
-                    for key, value in updates.items():
-                        c[key] = value
-                    # Recompose the display ``name`` so the legacy
-                    # field stays in sync after a first/last edit.
-                    composed = " ".join(
-                        t
-                        for t in (
-                            _as_text(c.get("first_name")),
-                            _as_text(c.get("middle_name")),
-                            _as_text(c.get("last_name")),
-                        )
-                        if t
-                    )
-                    if composed:
-                        c["name"] = composed
-                    c["updated_at"] = now_iso
-                    matched = True
-                    break
-            if not matched:
-                raise ValueError("contact_not_found")
-            log["updated_at"] = now_iso
-            if apply:
-                adapter.save_contact_log(domain=domain, payload=log)
-            return {
-                "operation": operation,
-                "domain": domain,
-                "email": email,
-                "applied": apply,
-                "updated_fields": list(updates.keys()),
-            }
-        if operation == "submit_connect_form":
-            # A website visitor used the Connect form. Land the contact
-            # as an UNSUBSCRIBED identity row with source=connect_form
-            # + forward_status (set by the /__fnd/connect/submit
-            # endpoint after the SES send attempt). The message body
-            # is not stored on the contact — it lives on the SES email
-            # itself. Re-submissions update identity fields and the
-            # latest forward_status, but preserve the existing
-            # subscribed state — a visitor who was already a newsletter
-            # subscriber stays subscribed.
-            email = _as_text(payload.get("email")).lower()
-            if not email:
-                raise ValueError("email is required for submit_connect_form")
-            first_name = _as_text(payload.get("first_name"))
-            middle_name = _as_text(payload.get("middle_name"))
-            last_name = _as_text(payload.get("last_name"))
-            phone = _as_text(payload.get("phone"))
-            zip_code = _as_text(payload.get("zip"))
-            forward_status = _as_text(payload.get("forward_status"))
-            log = adapter.load_contact_log(domain=domain) or {
-                "schema": "mycite.v2.datum.fnd.newsletter.contact_log.v2",
-                "domain": domain,
-                "contacts": [],
-                "dispatches": [],
-            }
-            now_iso = _now_iso()
-            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
+                    patch[key] = _as_text(payload.get(key))
+                    updated_fields.append(key)
             contacts = list(log.get("contacts") or [])
-            composed_name = " ".join(
-                t for t in (first_name, middle_name, last_name) if t
+            index = next(
+                (
+                    i
+                    for i, c in enumerate(contacts)
+                    if _as_text(c.get("email")).lower() == email
+                ),
+                None,
             )
-            found = False
-            for c in contacts:
-                if _as_text(c.get("email")).lower() == email:
-                    # Preserve subscribed state — don't downgrade an
-                    # existing newsletter subscriber.
-                    if first_name:
-                        c["first_name"] = first_name
-                    if middle_name:
-                        c["middle_name"] = middle_name
-                    if last_name:
-                        c["last_name"] = last_name
-                    if composed_name:
-                        c["name"] = composed_name
-                    if phone:
-                        c["phone"] = phone
-                    if zip_code:
-                        c["zip"] = zip_code
-                    c["forward_status"] = forward_status
-                    c["source"] = "connect_form"
-                    if not _as_text(c.get("signup_date")):
-                        c["signup_date"] = today_date
-                    c["updated_at"] = now_iso
-                    found = True
-                    break
-            if not found:
-                contacts.append(
-                    {
-                        "email": email,
-                        "name": composed_name,
-                        "first_name": first_name,
-                        "middle_name": middle_name,
-                        "last_name": last_name,
-                        "phone": phone,
-                        "zip": zip_code,
-                        "forward_status": forward_status,
-                        "signup_date": today_date,
-                        # Connect submissions land UNSUBSCRIBED. The
-                        # visitor opts into the newsletter separately.
-                        "subscribed": False,
-                        "source": "connect_form",
-                        "send_count": 0,
-                        "last_newsletter_sent_at": "",
-                        "created_at": now_iso,
-                    }
-                )
+            if index is None:
+                raise ValueError("contact_not_found")
+            contacts[index] = canonical_contact_entry(
+                existing=contacts[index], patch=patch, now=now_iso
+            )
             log["contacts"] = contacts
             log["updated_at"] = now_iso
             if apply:
@@ -765,8 +666,67 @@ def _newsletter_apply_or_preview(
                 "operation": operation,
                 "domain": domain,
                 "email": email,
-                "subscribed": False,
-                "forward_status": forward_status,
+                "applied": apply,
+                "updated_fields": updated_fields,
+            }
+        if operation == "submit_connect_form":
+            # A website visitor used the Connect form. Land/refresh the contact
+            # with source=connect_form, the latest forward_status, and the
+            # submitted subject + message so the operator can read it from the
+            # dashboard. A new contact lands UNSUBSCRIBED (they opt into the
+            # newsletter separately); an existing subscriber keeps their state.
+            email = _as_text(payload.get("email")).lower()
+            if not email:
+                raise ValueError("email is required for submit_connect_form")
+            now_iso = _now_iso()
+            today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
+            log = adapter.load_contact_log(domain=domain) or {
+                "domain": domain,
+                "contacts": [],
+                "dispatches": [],
+            }
+            contacts = list(log.get("contacts") or [])
+            index = next(
+                (
+                    i
+                    for i, c in enumerate(contacts)
+                    if _as_text(c.get("email")).lower() == email
+                ),
+                None,
+            )
+            existing = contacts[index] if index is not None else None
+            patch: dict[str, Any] = {
+                "email": email,
+                "first_name": _as_text(payload.get("first_name")),
+                "middle_name": _as_text(payload.get("middle_name")),
+                "last_name": _as_text(payload.get("last_name")),
+                "phone": _as_text(payload.get("phone")),
+                "zip": _as_text(payload.get("zip")),
+                "organization": _as_text(payload.get("organization")),
+                "subject": _as_text(payload.get("subject")),
+                "message": _as_text(payload.get("message")),
+                "forward_status": _as_text(payload.get("forward_status")),
+                "source": "connect_form",
+                "last_contacted_at": now_iso,
+            }
+            if existing is None:
+                patch["signup_date"] = today_date
+                patch["subscribed"] = False
+            row = canonical_contact_entry(existing=existing, patch=patch, now=now_iso)
+            if index is not None:
+                contacts[index] = row
+            else:
+                contacts.append(row)
+            log["contacts"] = contacts
+            log["updated_at"] = now_iso
+            if apply:
+                adapter.save_contact_log(domain=domain, payload=log)
+            return {
+                "operation": operation,
+                "domain": domain,
+                "email": email,
+                "subscribed": row["subscribed"],
+                "forward_status": row["forward_status"],
                 "applied": apply,
                 "contact_count": len(contacts),
             }

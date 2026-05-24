@@ -3,15 +3,22 @@ from __future__ import annotations
 from typing import Any, Protocol, runtime_checkable
 
 NEWSLETTER_PROFILE_SCHEMA = "mycite.service_tool.newsletter.profile.v2"
-NEWSLETTER_CONTACT_LOG_SCHEMA = "mycite.service_tool.newsletter.contact_log.v2"
-# Back-compat: v1 schema strings accepted on read; writers emit v2.
+NEWSLETTER_CONTACT_LOG_SCHEMA = "mycite.service_tool.newsletter.contact_log.v3"
+# Back-compat: older schema strings accepted on read; writers emit the
+# current constant. v3 adds the canonical contact-entry row contract
+# (see packages/domain/contact_entry.py); v2/v1 rows still load.
+_PRIOR_NEWSLETTER_CONTACT_LOG_SCHEMA = "mycite.service_tool.newsletter.contact_log.v2"
 _LEGACY_NEWSLETTER_PROFILE_SCHEMA = "mycite.service_tool.aws_csm.newsletter_profile.v1"
 _LEGACY_NEWSLETTER_CONTACT_LOG_SCHEMA = "mycite.service_tool.aws_csm.newsletter_contact_log.v1"
 _ACCEPTED_NEWSLETTER_PROFILE_SCHEMAS = frozenset(
     {NEWSLETTER_PROFILE_SCHEMA, _LEGACY_NEWSLETTER_PROFILE_SCHEMA}
 )
 _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS = frozenset(
-    {NEWSLETTER_CONTACT_LOG_SCHEMA, _LEGACY_NEWSLETTER_CONTACT_LOG_SCHEMA}
+    {
+        NEWSLETTER_CONTACT_LOG_SCHEMA,
+        _PRIOR_NEWSLETTER_CONTACT_LOG_SCHEMA,
+        _LEGACY_NEWSLETTER_CONTACT_LOG_SCHEMA,
+    }
 )
 
 
