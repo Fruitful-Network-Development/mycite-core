@@ -45,14 +45,27 @@ def _seed_grantee_dir(tmp: Path, domain: str, msn_id: str) -> Path:
     return tmp
 
 
+def _keys_from_counts(counts: dict[str, int]) -> list[str]:
+    """Expand a {key_prefix: n} spec into n object keys per prefix, matching
+    the Lambda's key shape `<prefix>/<domain>/<date>/<EventType>/<id>.json`."""
+    keys: list[str] = []
+    for kp, n in counts.items():
+        for i in range(n):
+            keys.append(f"{kp}msg-{i}-abc.json")
+    return keys
+
+
 class _StubS3:
-    """Returns canned counts per (Bucket, Prefix). Anything not in the
-    map returns KeyCount=0. Test sets `.fail_for_prefix` to raise on a
-    specific prefix to exercise the defensive error path.
+    """Contents-based S3 stub. The aggregator now lists each DOMAIN prefix
+    once and parses date/event-type from each key, so the stub returns
+    `Contents` (a list of {Key}) for keys under the requested prefix.
+    `.fail_for_prefix` raises on a domain prefix to exercise the defensive
+    error path. `page_size` forces pagination.
     """
 
-    def __init__(self, counts: dict[str, int]):
-        self.counts = counts
+    def __init__(self, counts: dict[str, int], *, page_size: int = 1000):
+        self.keys = _keys_from_counts(counts)
+        self.page_size = page_size
         self.fail_for_prefix: str | None = None
         self.calls: list[dict[str, Any]] = []
 
@@ -61,7 +74,19 @@ class _StubS3:
         prefix = kwargs.get("Prefix", "")
         if self.fail_for_prefix and prefix == self.fail_for_prefix:
             raise RuntimeError("s3 transient failure")
-        return {"KeyCount": self.counts.get(prefix, 0), "IsTruncated": False}
+        matching = sorted(k for k in self.keys if k.startswith(prefix))
+        token = kwargs.get("ContinuationToken")
+        start = int(token) if token else 0
+        page = matching[start:start + self.page_size]
+        next_start = start + self.page_size
+        truncated = next_start < len(matching)
+        resp: dict[str, Any] = {"Contents": [{"Key": k} for k in page]}
+        if truncated:
+            resp["IsTruncated"] = True
+            resp["NextContinuationToken"] = str(next_start)
+        else:
+            resp["IsTruncated"] = False
+        return resp
 
 
 class SesEventMetricsTests(unittest.TestCase):
@@ -140,8 +165,8 @@ class SesEventMetricsTests(unittest.TestCase):
             "ses_events/beta.example.test/2026-05-22/Send/": 4,
         }
         stub = _StubS3(counts)
-        # Make alpha's Send list raise; beta should still be counted.
-        stub.fail_for_prefix = "ses_events/alpha.example.test/2026-05-22/Send/"
+        # Make alpha's DOMAIN listing raise; beta should still be counted.
+        stub.fail_for_prefix = "ses_events/alpha.example.test/"
         result = self.tolling._aggregate_ses_event_metrics(
             "2026-05-22", "2026-05-23",
             fnd_csm_root=self.tmp,
@@ -153,24 +178,8 @@ class SesEventMetricsTests(unittest.TestCase):
 
     def test_paginated_response_summed(self) -> None:
         """Pin that pagination via ContinuationToken adds across pages."""
-        # Custom stub that returns 2 pages for one prefix.
-        class _PaginatedStub:
-            def __init__(self):
-                self.call_count = 0
-            def list_objects_v2(self, **kwargs):
-                self.call_count += 1
-                prefix = kwargs.get("Prefix", "")
-                if prefix != "ses_events/alpha.example.test/2026-05-22/Send/":
-                    return {"KeyCount": 0, "IsTruncated": False}
-                if self.call_count == 1:
-                    return {
-                        "KeyCount": 1000,
-                        "IsTruncated": True,
-                        "NextContinuationToken": "tok2",
-                    }
-                return {"KeyCount": 7, "IsTruncated": False}
-
-        stub = _PaginatedStub()
+        counts = {"ses_events/alpha.example.test/2026-05-22/Send/": 1007}
+        stub = _StubS3(counts, page_size=1000)  # forces 2 pages
         result = self.tolling._aggregate_ses_event_metrics(
             "2026-05-22", "2026-05-23",
             fnd_csm_root=self.tmp,
@@ -178,6 +187,39 @@ class SesEventMetricsTests(unittest.TestCase):
             s3_client=stub,
         )
         self.assertEqual(result["emails_sent_by_msn"], {"msn-a": 1007})
+
+    def test_lists_once_per_domain_not_per_day_event(self) -> None:
+        # Efficiency pin: one list call per domain (no pagination here), not
+        # days x event_types. 2 grantee domains → 2 list calls.
+        counts = {
+            "ses_events/alpha.example.test/2026-05-22/Send/": 1,
+            "ses_events/beta.example.test/2026-05-23/Send/": 1,
+        }
+        stub = _StubS3(counts)
+        self.tolling._aggregate_ses_event_metrics(
+            "2026-05-01", "2026-05-31",  # 30-day window
+            fnd_csm_root=self.tmp,
+            events_bucket="my-events",
+            s3_client=stub,
+        )
+        # Old code: 2 domains x 30 days x 3 types = 180 calls. New: 2.
+        self.assertEqual(len(stub.calls), 2)
+
+    def test_dates_outside_window_excluded(self) -> None:
+        # A key dated outside [start, end_excl) must not be counted even
+        # though it's under the domain prefix we list.
+        counts = {
+            "ses_events/alpha.example.test/2026-05-22/Send/": 2,  # in window
+            "ses_events/alpha.example.test/2026-06-05/Send/": 9,  # out of window
+        }
+        stub = _StubS3(counts)
+        result = self.tolling._aggregate_ses_event_metrics(
+            "2026-05-22", "2026-05-23",  # only 05-22
+            fnd_csm_root=self.tmp,
+            events_bucket="my-events",
+            s3_client=stub,
+        )
+        self.assertEqual(result["emails_sent_by_msn"], {"msn-a": 2})
 
 
 class SesEventLambdaNormalizerTests(unittest.TestCase):

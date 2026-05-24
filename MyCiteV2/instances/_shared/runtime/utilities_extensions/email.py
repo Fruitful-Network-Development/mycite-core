@@ -14,6 +14,7 @@ no MOS authority is consulted.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,16 @@ from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_sec
 # round-trip per mailbox per page render. Cleared on process restart.
 _OVERLAY_PROBE_CACHE: ProbeCache = ProbeCache(ttl_seconds=300)
 
+# Per-render wall-clock budget for live AWS probes. The email extension
+# renders inside a 5.0s ThreadPoolExecutor future (portal_shell_runtime);
+# a cold cache on a multi-mailbox grantee could otherwise issue 3*N
+# sequential AWS round-trips and blow that timeout, degrading the WHOLE
+# extension to a placeholder. Once elapsed, remaining mailboxes render
+# flag-only (no badges) and warm the cache incrementally across renders —
+# cache hits are cheap, so subsequent renders reach further before the
+# budget bites. 3.0s leaves headroom under the 5.0s future timeout.
+_OVERLAY_PROBE_BUDGET_SECONDS = 3.0
+
 # Onboarding sequence used both for the per-row progress bar and for the
 # Send-reminder gate. Each entry is (key, label, predicate) — predicate
 # returns True when the step is complete.
@@ -40,6 +51,16 @@ _ONBOARDING_STEPS: tuple[tuple[str, str], ...] = (
     ("handoff_acked",       "Operator confirmed credentials"),
     ("inbound_configured",  "Inbound forwarding configured"),
     ("inbound_verified",    "Inbound verified end-to-end"),
+)
+
+# Steps whose AWS evidence is DIRECT enough to auto-advance the flag when
+# the evidence is positive but the JSON flag isn't set yet. ses_identity_ready
+# (SES VerificationStatus) and inbound_verified (an S3 inbound object exists)
+# are direct proof. handoff_acked is intentionally absent — its probe is the
+# operator-sends proxy, which is shown as a badge but must never flip the step
+# on its own (see _onboarding_progress).
+_AUTO_ADVANCE_STEPS: frozenset[str] = frozenset(
+    {"ses_identity_ready", "inbound_verified"}
 )
 
 # Plain-English meaning per step. Surfaced in the email extension card as
@@ -82,6 +103,7 @@ def _onboarding_aws_evidence(
     *,
     aws_adapter: Any,
     cache: ProbeCache | None = None,
+    deadline: float | None = None,
 ) -> dict[str, dict[str, str]]:
     """B2 — call the 3 AwsPeripheralCloudAdapter probes for the steps that
     have live AWS evidence (steps 2 / 4 / 6) and return a dict keyed by
@@ -92,8 +114,15 @@ def _onboarding_aws_evidence(
     `_OVERLAY_PROBE_CACHE` TTL keyed by (probe_name, send_as_email/domain,
     declared_flag) so an N-mailbox grantee triggers AT MOST 3*N round
     trips on a cold render and 0 on a warm one.
+
+    ``deadline`` is a ``time.monotonic()`` value (per-render budget shared
+    across all mailboxes in one payload build). Once it's passed, this
+    mailbox renders flag-only (no probes) so the extension can't exceed
+    its 5s render future on a cold multi-mailbox grantee.
     """
     if aws_adapter is None:
+        return {}
+    if deadline is not None and time.monotonic() > deadline:
         return {}
     if cache is None:
         cache = _OVERLAY_PROBE_CACHE
@@ -140,6 +169,7 @@ def _onboarding_progress(
     payload: dict[str, Any],
     *,
     aws_adapter: Any | None = None,
+    probe_deadline: float | None = None,
 ) -> dict[str, Any]:
     """Derive an onboarding-progress summary from a profile JSON payload.
 
@@ -170,14 +200,23 @@ def _onboarding_progress(
         "inbound_verified": bool(inbound.get("receive_verified")),
     }
 
-    aws_evidence = _onboarding_aws_evidence(payload, aws_adapter=aws_adapter)
+    aws_evidence = _onboarding_aws_evidence(
+        payload, aws_adapter=aws_adapter, deadline=probe_deadline
+    )
     for step_key, evidence in aws_evidence.items():
-        if evidence.get("state") == "auto_advance":
+        if step_key in _AUTO_ADVANCE_STEPS and evidence.get("state") == "auto_advance":
             proof[step_key] = True
         # confirmed / drift / absent / error don't override the flag —
         # confirmed agrees with the flag (already True); drift is the UI
         # warning signal but doesn't move the percent; absent + error
         # leave the flag's truth alone.
+        #
+        # handoff_acked is deliberately NOT in _AUTO_ADVANCE_STEPS: its
+        # probe (operator SES sends) is an INDIRECT proxy for "operator
+        # acknowledged the handoff", so we show its badge but never let it
+        # flip the step complete on its own — otherwise, once a per-identity
+        # send metric exists, a single outbound send would inflate the
+        # progress bar past a handoff the operator never confirmed.
 
     completed: list[str] = []
     next_step: dict[str, str] | None = None
@@ -287,6 +326,14 @@ def _build_email_extension_payload(
             domain_record = {}
 
     profiles: list[dict[str, Any]] = []
+    # One shared probe budget for the whole mailbox list this render, so the
+    # extension can't exceed its 5s render future on a cold multi-mailbox
+    # grantee. Only meaningful when probes are live (aws_adapter set).
+    probe_deadline = (
+        time.monotonic() + _OVERLAY_PROBE_BUDGET_SECONDS
+        if aws_adapter is not None
+        else None
+    )
     try:
         operator_source = store.list_profiles()
         for payload in operator_source:
@@ -300,7 +347,9 @@ def _build_email_extension_payload(
             )
             workflow = _as_dict(payload.get("workflow"))
             inbox_target = _as_text(ident.get("operator_inbox_target"))
-            progress = _onboarding_progress(payload, aws_adapter=aws_adapter)
+            progress = _onboarding_progress(
+                payload, aws_adapter=aws_adapter, probe_deadline=probe_deadline
+            )
             profiles.append({
                 "profile_id": profile_id,
                 "domain": profile_domain,

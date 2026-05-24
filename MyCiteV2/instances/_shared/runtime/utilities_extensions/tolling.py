@@ -725,45 +725,55 @@ def _aggregate_ses_event_metrics(
 
     # Lambda writes one S3 object per event under
     #   <prefix>/<domain>/<YYYY-MM-DD>/<EventType>/<message_id>-<ulid>.json
-    # We count objects per (domain, date, event_type) via list_objects_v2
-    # KeyCount, paginating to be safe.
+    # List each DOMAIN prefix ONCE (paginated) and parse the date +
+    # event-type out of each key, filtering to the period's dates and the
+    # tracked event types. This is ~N list operations (one per grantee
+    # domain, plus pagination) instead of the old N x days x event_types
+    # (~90N) — list_objects_v2 returns up to 1000 keys per page.
     event_type_to_metric = {
         "Send": "emails_sent_by_msn",
         "Bounce": "emails_bounced_by_msn",
         "Complaint": "emails_complained_by_msn",
     }
+    dates_set = set(dates)
     result: dict[str, dict[str, int]] = {
         "emails_sent_by_msn": {},
         "emails_bounced_by_msn": {},
         "emails_complained_by_msn": {},
     }
     for domain, msn in domain_to_msn.items():
-        for day in dates:
-            for event_type, metric_key in event_type_to_metric.items():
-                key_prefix = f"{prefix}/{domain}/{day}/{event_type}/"
-                count = 0
-                continuation: str | None = None
-                try:
-                    while True:
-                        kwargs: dict[str, Any] = {
-                            "Bucket": bucket,
-                            "Prefix": key_prefix,
-                        }
-                        if continuation:
-                            kwargs["ContinuationToken"] = continuation
-                        resp = s3_client.list_objects_v2(**kwargs)
-                        count += int(resp.get("KeyCount") or 0)
-                        if resp.get("IsTruncated"):
-                            continuation = resp.get("NextContinuationToken")
-                            if not continuation:
-                                break
-                        else:
-                            break
-                except Exception:  # noqa: BLE001
-                    # One domain/day failing must not poison the rest.
-                    continue
-                if count:
-                    result[metric_key][msn] = result[metric_key].get(msn, 0) + count
+        domain_prefix = f"{prefix}/{domain}/"
+        continuation: str | None = None
+        try:
+            while True:
+                kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": domain_prefix}
+                if continuation:
+                    kwargs["ContinuationToken"] = continuation
+                resp = s3_client.list_objects_v2(**kwargs)
+                for obj in resp.get("Contents", []) or []:
+                    key = obj.get("Key", "")
+                    if not key.startswith(domain_prefix):
+                        continue
+                    # rel = "<YYYY-MM-DD>/<EventType>/<message_id>-<ulid>.json"
+                    parts = key[len(domain_prefix):].split("/")
+                    if len(parts) < 3:
+                        continue
+                    day, event_type = parts[0], parts[1]
+                    if day not in dates_set:
+                        continue
+                    metric_key = event_type_to_metric.get(event_type)
+                    if not metric_key:
+                        continue
+                    result[metric_key][msn] = result[metric_key].get(msn, 0) + 1
+                if resp.get("IsTruncated"):
+                    continuation = resp.get("NextContinuationToken")
+                    if not continuation:
+                        break
+                else:
+                    break
+        except Exception:  # noqa: BLE001
+            # One domain's listing failing must not poison the rest.
+            continue
     return result
 
 

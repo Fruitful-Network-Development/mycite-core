@@ -7,7 +7,12 @@
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
+      .replace(/"/g, "&quot;")
+      // Escape the single quote too: some attributes here are single-quoted
+      // (e.g. data-mailbox-edit-payload='...'), so an unescaped ' would
+      // break out of the attribute. &#39; is safe in both HTML text and
+      // single/double-quoted attribute contexts.
+      .replace(/'/g, "&#39;");
   }
 
   function asObject(value) {
