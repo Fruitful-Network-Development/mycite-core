@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from collections.abc import Mapping
-from datetime import UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,7 @@ from MyCiteV2.packages.core.datum_templates import (
     scaffold_from_template,
 )
 from MyCiteV2.packages.core.document_naming import (
+    _sanitize_segment,
     format_canonical_document_id,
 )
 from MyCiteV2.packages.core.mss import compute_mss_hash
@@ -32,8 +34,12 @@ _ALLOWED_OPERATIONS = {
     "delete_datum",
     "move_datum",
     "scaffold_datum",
+    "create_document",
 }
-_NEW_DOCUMENT_OPERATIONS = {"scaffold_datum"}
+# Operations that mint a brand-new document (no pre-existing document_id).
+# ``create_document`` is the title-only human-facing flow; ``scaffold_datum``
+# remains for template-based import/intake.
+_NEW_DOCUMENT_OPERATIONS = {"scaffold_datum", "create_document"}
 
 
 def _as_text(value: object) -> str:
@@ -274,6 +280,126 @@ def _scaffold_datum(
     return result
 
 
+def _create_empty_document(
+    store: SqliteSystemDatumStoreAdapter,
+    *,
+    tenant_id: str,
+    sandbox_id: str,
+    payload: Mapping[str, Any],
+    apply: bool,
+) -> dict[str, Any]:
+    """Title-only datum-document creation.
+
+    The user supplies only a human title; document shape (rows, columns) is
+    authored later inside the document, not chosen at the creation gate. No
+    template is required — implementation templates (product_profile, etc.)
+    must not leak into the user-facing create flow (review finding).
+    """
+    msn_id = _as_text(payload.get("msn_id"))
+    if not msn_id:
+        raise ValueError("msn_id_required")
+    title = (
+        _as_text(payload.get("document_name"))
+        or _as_text(payload.get("canonical_name"))
+        or _as_text(payload.get("title"))
+    )
+    if not title:
+        raise ValueError("document_title_required")
+    # Sanitize the free-text title into a canonical name segment. A raw title
+    # containing '.' or one that strips to empty would otherwise raise
+    # CanonicalNameError inside format_canonical_document_id (review finding #2).
+    canonical_name = _sanitize_segment(title)
+
+    # An empty document is content-addressed over (source_kind, metadata, rows).
+    # With zero rows and no template metadata, two same-titled empty documents
+    # would hash identically and the second create would silently dedupe to
+    # ``already_present`` (review finding #3). A per-creation nonce in the
+    # metadata makes each intentional creation a distinct, addressable document
+    # while leaving content-addressing intact for authored rows.
+    document_metadata = {
+        "source_kind": "sandbox_source",
+        "sandbox_id": sandbox_id,
+        "title": title,
+        "created_at": datetime.now(UTC).isoformat(),
+        "creation_nonce": uuid.uuid4().hex,
+        "empty_document": True,
+    }
+    document_name = title if title.endswith(".json") else f"{canonical_name}.json"
+    relative_path = _as_text(payload.get("relative_path")) or (
+        f"sandbox/{sandbox_id.replace('_', '-')}/{document_name}"
+    )
+
+    placeholder_id = format_canonical_document_id(
+        prefix="lv",
+        msn_id=msn_id,
+        sandbox=sandbox_id,
+        name=canonical_name,
+        version_hash="0" * 64,
+    )
+    candidate = AuthoritativeDatumDocument(
+        document_id=placeholder_id,
+        source_kind="sandbox_source",
+        document_name=document_name,
+        relative_path=relative_path,
+        canonical_name=canonical_name,
+        tool_id=sandbox_id,
+        is_anchor=False,
+        rows=(),
+        document_metadata=document_metadata,
+    )
+    identity = compute_mss_hash(candidate)
+    real_hash = identity["version_hash"]
+    if real_hash.startswith("sha256:"):
+        real_hash = real_hash[len("sha256:") :]
+    real_id = format_canonical_document_id(
+        prefix="lv",
+        msn_id=msn_id,
+        sandbox=sandbox_id,
+        name=canonical_name,
+        version_hash=real_hash,
+    )
+    final_document = AuthoritativeDatumDocument(
+        document_id=real_id,
+        source_kind="sandbox_source",
+        document_name=document_name,
+        relative_path=relative_path,
+        canonical_name=canonical_name,
+        tool_id=sandbox_id,
+        is_anchor=False,
+        rows=(),
+        document_metadata=document_metadata,
+    )
+
+    result = {
+        "operation": "create_document",
+        "document_id": real_id,
+        "canonical_name": canonical_name,
+        "title": title,
+        "row_count": final_document.row_count,
+        "scaffolded_document": final_document.to_dict(),
+    }
+    if apply:
+        catalog = store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        )
+        if any(d.document_id == real_id for d in catalog.documents):
+            result["status"] = "already_present"
+            return result
+        next_documents = (*tuple(catalog.documents), final_document)
+        next_catalog = AuthoritativeDatumDocumentCatalogResult(
+            tenant_id=catalog.tenant_id,
+            documents=next_documents,
+            source_files=dict(catalog.source_files),
+            readiness_status=dict(catalog.readiness_status),
+            warnings=tuple(catalog.warnings),
+        )
+        store.store_authoritative_catalog(next_catalog)
+        result["status"] = "created"
+    else:
+        result["status"] = "previewed"
+    return result
+
+
 def _preview_or_apply(
     store: SqliteSystemDatumStoreAdapter,
     *,
@@ -316,6 +442,14 @@ def _preview_or_apply(
         )
     if operation == "scaffold_datum":
         return _scaffold_datum(
+            store,
+            tenant_id=tenant_id,
+            sandbox_id=sandbox_id,
+            payload=payload,
+            apply=apply,
+        )
+    if operation == "create_document":
+        return _create_empty_document(
             store,
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
