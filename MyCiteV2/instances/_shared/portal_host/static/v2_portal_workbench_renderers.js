@@ -1859,37 +1859,19 @@
     var documentTable = asObject(workspace.document_table);
     var rows = asList(documentTable.rows);
     var newForm = asObject(surfacePayload.new_source_document_form);
-    var templates = asList(newForm.available_templates);
     var addButton =
       '<button type="button" class="v2-workbenchUi__addBtn" data-action="open-new-document" title="Create datum document" aria-label="Create datum document">+</button>';
-    var templatesNotice = templates.length
-      ? ""
-      : '<small class="v2-workbenchUi__formStatus" data-role="templates-warning">No templates registered for this sandbox — registration required before create.</small>';
+    // Title-only creation: a free-text title (the backend sanitizes it into a
+    // canonical name segment). No template/type picker at the creation gate —
+    // document shape is authored later, inside the document.
     var formHtml =
       '<form class="v2-workbenchUi__newDocForm" data-form="new-document" hidden>' +
-      '<input name="document_name" type="text" placeholder="datum_document_name" ' +
-      'pattern="^[a-z][a-z0-9_]*$" maxlength="64" required autocomplete="off" />' +
-      (templates.length > 1
-        ? '<select name="template_id" data-role="template-select">' +
-          templates
-            .map(function (t) {
-              t = asObject(t);
-              return (
-                '<option value="' + escapeHtml(asText(t.template_id)) + '">' +
-                escapeHtml(asText(t.label) || asText(t.template_id)) +
-                "</option>"
-              );
-            })
-            .join("") +
-          "</select>"
-        : "") +
+      '<input name="document_name" type="text" placeholder="Document title" ' +
+      'maxlength="80" required autocomplete="off" />' +
       '<div class="v2-workbenchUi__newDocActions">' +
-      '<button type="submit" class="v2-workbenchUi__primary"' +
-      (templates.length ? "" : " disabled") +
-      ">Create</button>" +
+      '<button type="submit" class="v2-workbenchUi__primary">Create</button>' +
       '<button type="button" data-action="cancel-new-document">Cancel</button>' +
       "</div>" +
-      templatesNotice +
       '<small class="v2-workbenchUi__formStatus" data-role="status" hidden></small>' +
       "</form>";
     var itemsHtml = rows.length
@@ -2259,20 +2241,7 @@
         return;
       }
       if (input && !input.checkValidity()) {
-        setStatus("Use lowercase letters, digits, underscores; start with a letter.");
-        return;
-      }
-      var templates = asList(newForm.available_templates);
-      if (!templates.length) {
-        setStatus("No templates registered for this sandbox.");
-        return;
-      }
-      var templateSelect = form.querySelector('[data-role="template-select"]');
-      var templateId = templateSelect
-        ? asText(templateSelect.value)
-        : asText(asObject(templates[0]).template_id);
-      if (!templateId) {
-        setStatus("Select a template.");
+        setStatus("Enter a document title.");
         return;
       }
       var submitBtn = form.querySelector('button[type="submit"]');
@@ -2286,8 +2255,7 @@
         msn_id: asText(newForm.msn_id_default),
         document_name: documentName,
         canonical_name: documentName,
-        template_id: templateId,
-        operation: asText(newForm.operation) || "scaffold_datum",
+        operation: "create_document",
       };
 
       stageThenApply(
