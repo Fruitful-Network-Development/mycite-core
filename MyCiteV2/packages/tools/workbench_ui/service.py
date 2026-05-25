@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -388,6 +390,76 @@ def _preferred_document_id(document_rows: list[dict[str, Any]]) -> str:
     return _as_text((document_rows[0] if document_rows else {}).get("document_id"))
 
 
+# Projection cache. ``read_surface`` re-reads/filters/sorts/groups the entire
+# document set on every request; for view-only navigation (sort/group/lens
+# toggles, row/document selection) the catalog has not changed, so the heavy
+# per-row recognition + SQL semantic reads in ``_row_items`` are pure waste.
+# We memoize the assembled projection keyed by a content fingerprint of the
+# catalog content. The fingerprint hashes document identity + row content
+# (NOT just document ids — legacy ``system:`` / ``sandbox:`` ids are stable
+# regardless of content, so an in-place row edit must still be detected), plus
+# the normalized view parameters. The catalog rows are already in memory from
+# the store read, so this is an I/O-free CPU hash and is cheaper than the
+# recognition + SQL semantic reads a cache hit avoids. It does not rely on
+# filesystem mtime granularity. Entries that resolved a live directive overlay
+# are never stored (see ``read_surface``). The cache is process-local and
+# bounded; it holds no on-disk state (MOS-only datum rule).
+_GLOBAL_SURFACE_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
+_SURFACE_CACHE_MAX_ENTRIES = 256
+
+
+def _catalog_fingerprint(catalog: Any) -> str:
+    digest = hashlib.sha256()
+    for document in catalog.documents:
+        digest.update(_as_text(document.document_id).encode("utf-8"))
+        digest.update(b"\x00")
+        digest.update(_as_text(document.document_name).encode("utf-8"))
+        digest.update(b"\x00")
+        # ``raw`` rows fully determine a document's content/version.
+        digest.update(
+            json.dumps(
+                [[row.datum_address, row.raw] for row in document.rows],
+                separators=(",", ":"),
+                sort_keys=False,
+                default=str,
+            ).encode("utf-8")
+        )
+        digest.update(b"\x1e")
+    return digest.hexdigest()
+
+
+def _surface_cache_key(
+    *,
+    db_file: str,
+    portal_instance_id: str,
+    catalog: Any,
+    query: dict[str, Any],
+) -> tuple[Any, ...]:
+    fingerprint = _catalog_fingerprint(catalog)
+    return (
+        db_file,
+        portal_instance_id,
+        fingerprint,
+        _as_text(query.get("document")),
+        _as_text(query.get("row")),
+        _as_text(query.get("sandbox_filter")),
+        _as_text(query.get("document_filter")).lower(),
+        _normalize_sort_key(
+            query.get("document_sort"),
+            allowed=_DOCUMENT_SORT_KEYS,
+            default=WORKBENCH_UI_DEFAULT_DOCUMENT_SORT,
+        ),
+        _normalize_sort_direction(query.get("document_dir")),
+        _as_text(query.get("filter")).lower(),
+        _normalize_sort_key(query.get("sort"), allowed=_ROW_SORT_KEYS, default=WORKBENCH_UI_DEFAULT_ROW_SORT),
+        _normalize_sort_direction(query.get("dir")),
+        _normalize_mode(query.get("group"), allowed=_GROUP_MODES, default=WORKBENCH_UI_DEFAULT_GROUP),
+        _normalize_mode(query.get("workbench_lens"), allowed=_LENS_MODES, default=WORKBENCH_UI_DEFAULT_LENS),
+        _normalize_mode(query.get("source"), allowed=_VISIBILITY_MODES, default=WORKBENCH_UI_DEFAULT_SOURCE_VISIBILITY),
+        _normalize_mode(query.get("overlay"), allowed=_VISIBILITY_MODES, default=WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY),
+    )
+
+
 class WorkbenchUiReadService:
     def __init__(self, db_file: str | Path) -> None:
         self._db_file = Path(db_file)
@@ -509,9 +581,48 @@ class WorkbenchUiReadService:
     ) -> dict[str, Any]:
         del portal_domain
         query = dict(surface_query or {})
+        # The catalog read is already cached + correctly invalidated by the
+        # datum store (mtime + explicit pop on every write), so it is the
+        # cheap, authoritative freshness signal we fingerprint the cache on.
         catalog = self._datum_store.read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id=portal_instance_id)
         )
+        cache_key = _surface_cache_key(
+            db_file=str(self._db_file),
+            portal_instance_id=portal_instance_id,
+            catalog=catalog,
+            query=query,
+        )
+        cached = _GLOBAL_SURFACE_CACHE.get(cache_key)
+        if cached is not None:
+            # The runtime bundle builder mutates the returned model in place
+            # (schema / request_contract stamping, navigation decoration), so
+            # a hit must return an independent copy or the cache corrupts.
+            return copy.deepcopy(cached)
+
+        result = self._compute_surface(
+            portal_instance_id=portal_instance_id,
+            query=query,
+            catalog=catalog,
+        )
+
+        # Directive overlays are live, advisory annotations served from a
+        # separate subsystem. Only memoize projections that resolved no
+        # overlay, so an overlay can never be served stale; everything else in
+        # the projection is fully determined by the catalog fingerprint.
+        if result.get("overlay") is None:
+            if len(_GLOBAL_SURFACE_CACHE) >= _SURFACE_CACHE_MAX_ENTRIES:
+                _GLOBAL_SURFACE_CACHE.clear()
+            _GLOBAL_SURFACE_CACHE[cache_key] = copy.deepcopy(result)
+        return result
+
+    def _compute_surface(
+        self,
+        *,
+        portal_instance_id: str,
+        query: dict[str, Any],
+        catalog: Any,
+    ) -> dict[str, Any]:
         selected_document_id = _as_text(query.get("document"))
         selected_row_id = _as_text(query.get("row"))
         document_filter = _as_text(query.get("document_filter")).lower()
