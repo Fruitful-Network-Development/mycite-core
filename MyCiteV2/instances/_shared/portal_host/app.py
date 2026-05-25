@@ -62,9 +62,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     UTILITIES_TOOLS_SURFACE_ID,
     WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
-    build_portal_shell_state_from_query,
     build_portal_tool_registry_entries,
-    requires_shell_state_machine,
 )
 
 _aws_peripheral = AwsPeripheralCloudAdapter()
@@ -435,15 +433,10 @@ def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params
         "requested_surface_id": surface_id,
         "portal_scope": portal_scope.to_dict(),
     }
-    if requires_shell_state_machine(surface_id):
-        shell_state = build_portal_shell_state_from_query(
-            surface_id=surface_id,
-            portal_scope=portal_scope,
-            query=query_params,
-        )
-        if shell_state is not None:
-            payload["shell_state"] = shell_state.to_dict()
-    elif query_params:
+    # Phase A: every surface is query-native — the bootstrap carries the URL
+    # query as surface_query (server-side canonicalization resolves it); the
+    # focus-path reducer is retired.
+    if query_params:
         payload["surface_query"] = {
             str(key): str(value)
             for key, value in dict(query_params or {}).items()
