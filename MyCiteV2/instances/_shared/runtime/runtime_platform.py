@@ -7,9 +7,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_ENTRYPOINT_ID,
-    FND_CSM_TOOL_ROUTE,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_ROUTE,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SCOPE_DEFAULT_ID,
@@ -54,13 +51,10 @@ UTILITIES_GRANTEE_PROFILE_SURFACE_SCHEMA = "mycite.v2.portal.utilities.grantee_p
 UTILITIES_TOOLS_SURFACE_SCHEMA = "mycite.v2.portal.utilities.tools.surface.v1"
 UTILITIES_PERIPHERALS_SURFACE_SCHEMA = "mycite.v2.portal.utilities.peripherals.surface.v1"
 CTS_GIS_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.surface.v1"
-FND_CSM_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.surface.v1"
 WORKBENCH_UI_TOOL_SURFACE_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.surface.v1"
 
 CTS_GIS_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.request.v1"
 CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.action.request.v1"
-FND_CSM_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.request.v1"
-FND_CSM_TOOL_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.fnd_csm.action.request.v1"
 WORKBENCH_UI_TOOL_REQUEST_SCHEMA = "mycite.v2.portal.system.tools.workbench_ui.request.v1"
 SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA = "mycite.v2.portal.system.workspace.profile_basics.action.request.v1"
 
@@ -305,26 +299,6 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             required_configuration=("authority_db_file",),
         ),
         PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=FND_CSM_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime.run_portal_fnd_csm",
-            surface_id=FND_CSM_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/fnd-csm",
-            request_schema=FND_CSM_TOOL_REQUEST_SCHEMA,
-            surface_schema=FND_CSM_TOOL_SURFACE_SCHEMA,
-            read_write_posture="write",
-            required_configuration=(),
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id="portal.system.tools.fnd_csm.actions",
-            callable_path="MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime.run_portal_fnd_csm_action",
-            surface_id=FND_CSM_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/fnd-csm/actions",
-            request_schema=FND_CSM_TOOL_ACTION_REQUEST_SCHEMA,
-            surface_schema=FND_CSM_TOOL_SURFACE_SCHEMA,
-            read_write_posture="write",
-            required_configuration=(),
-        ),
-        PortalRuntimeEntrypointDescriptor(
             entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
             callable_path="MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime.run_portal_workbench_ui",
             surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
@@ -356,7 +330,6 @@ def surface_schema_for_surface(surface_id: str) -> str:
         UTILITIES_TOOLS_SURFACE_ID: UTILITIES_TOOLS_SURFACE_SCHEMA,
         UTILITIES_PERIPHERALS_SURFACE_ID: UTILITIES_PERIPHERALS_SURFACE_SCHEMA,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_SURFACE_SCHEMA,
-        FND_CSM_TOOL_SURFACE_ID: FND_CSM_TOOL_SURFACE_SCHEMA,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_SURFACE_SCHEMA)
@@ -373,7 +346,6 @@ def route_for_surface(surface_id: str) -> str:
         UTILITIES_TOOLS_SURFACE_ID: UTILITIES_TOOLS_ROUTE,
         UTILITIES_PERIPHERALS_SURFACE_ID: UTILITIES_PERIPHERALS_ROUTE,
         CTS_GIS_TOOL_SURFACE_ID: CTS_GIS_TOOL_ROUTE,
-        FND_CSM_TOOL_SURFACE_ID: FND_CSM_TOOL_ROUTE,
         WORKBENCH_UI_TOOL_SURFACE_ID: WORKBENCH_UI_TOOL_ROUTE,
     }
     return mapping.get(_as_text(surface_id), SYSTEM_ROOT_ROUTE)
@@ -480,9 +452,6 @@ __all__ = [
     "CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_REQUEST_SCHEMA",
     "CTS_GIS_TOOL_SURFACE_SCHEMA",
-    "FND_CSM_TOOL_ACTION_REQUEST_SCHEMA",
-    "FND_CSM_TOOL_REQUEST_SCHEMA",
-    "FND_CSM_TOOL_SURFACE_SCHEMA",
     "NETWORK_ROOT_SURFACE_SCHEMA",
     "PORTAL_REGION_FAMILY_CONTRACT_SCHEMA",
     "PORTAL_REGION_FAMILY_DIRECTIVE_PANEL",

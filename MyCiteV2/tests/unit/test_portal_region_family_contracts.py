@@ -10,12 +10,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
-from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,

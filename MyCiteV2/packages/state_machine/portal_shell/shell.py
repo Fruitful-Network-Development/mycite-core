@@ -635,7 +635,6 @@ def requires_shell_state_machine(surface_id: object) -> bool:
 
 _TOOL_SURFACE_TO_SANDBOX_ID: dict[str, str] = {
     CTS_GIS_TOOL_SURFACE_ID: "cts_gis",
-    FND_CSM_TOOL_SURFACE_ID: "fnd_csm",
     WORKBENCH_UI_TOOL_SURFACE_ID: "workbench_ui",
     AGRO_ERP_TOOL_SURFACE_ID: "agro_erp",
 }
@@ -1465,8 +1464,6 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "utilities"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return "cts_gis"
-    if normalized_surface_id == FND_CSM_TOOL_SURFACE_ID:
-        return "fnd_csm"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
         return "workbench_ui"
     if normalized_surface_id == AGRO_ERP_TOOL_SURFACE_ID:
@@ -1677,9 +1674,6 @@ __all__ = [
     "CTS_GIS_TOOL_ROUTE",
     "CTS_GIS_TOOL_SURFACE_ID",
     "FND_CSM_SANDBOX_TOKEN",
-    "FND_CSM_TOOL_ENTRYPOINT_ID",
-    "FND_CSM_TOOL_ROUTE",
-    "FND_CSM_TOOL_SURFACE_ID",
     "FOCUS_LEVEL_DATUM",
     "FOCUS_LEVEL_FILE",
     "FOCUS_LEVEL_OBJECT",

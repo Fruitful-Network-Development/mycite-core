@@ -195,7 +195,6 @@ class VestigialInterfacePanelReferencesTests(unittest.TestCase):
         "instances/_shared/portal_host/static/v2_portal_tool_surface_adapter.js",
         "instances/_shared/portal_host/static/portal.js",
         "instances/_shared/runtime/portal_shell_runtime.py",
-        "instances/_shared/runtime/portal_fnd_csm_runtime.py",
         "instances/_shared/runtime/portal_cts_gis_runtime.py",
         "instances/_shared/runtime/portal_system_workspace_runtime.py",
         "instances/_shared/runtime/portal_workbench_ui_runtime.py",
@@ -309,7 +308,8 @@ class LegacyFndCsmRedirectTests(unittest.TestCase):
             302,
             "Preservation contract: legacy FND-CSM URL must redirect to Utilities",
         )
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/tool-exposure")
+        # FND-CSM surface removed; functionality lives in Utilities extensions.
+        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
 
 
 if __name__ == "__main__":

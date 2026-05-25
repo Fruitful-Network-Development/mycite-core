@@ -28,7 +28,6 @@ from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
@@ -1235,10 +1234,6 @@ def _build_agro_erp_tool_bundle(
 
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
     CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
-    # FND_CSM_TOOL_SURFACE_ID dispatcher removed in Phase 13a — the surface
-    # was retired in Phase 7 and the only registry entry for it had already
-    # been dropped. The `build_portal_fnd_csm_surface_bundle` it called is
-    # also gone from portal_fnd_csm_runtime.py.
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
     AGRO_ERP_TOOL_SURFACE_ID: _build_agro_erp_tool_bundle,
 }
