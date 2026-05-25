@@ -443,6 +443,23 @@ def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params
         )
         if shell_state is not None:
             payload["shell_state"] = shell_state.to_dict()
+        # SYSTEM_ROOT is reducer-owned but delegates to the unified workbench,
+        # which is parameterized by surface_query (document / mode / row /
+        # sandbox_filter). The reducer shell_state above does not carry those
+        # workbench keys, so attach the canonical workbench surface_query as
+        # well — otherwise a deep-linked or bookmarked document is dropped on
+        # the initial /portal/system load and the view falls back to the
+        # default system sandbox.
+        if surface_id == SYSTEM_ROOT_SURFACE_ID and query_params:
+            from MyCiteV2.packages.state_machine.portal_shell import (
+                canonical_query_for_surface_query,
+            )
+
+            workbench_query = canonical_query_for_surface_query(
+                query_params, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+            )
+            if workbench_query:
+                payload["surface_query"] = workbench_query
     elif query_params:
         payload["surface_query"] = {
             str(key): str(value)
@@ -1495,16 +1512,31 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if tool_slug == "fnd-csm":
             return redirect("/portal/utilities/tool-exposure", code=302)
         # Plan v2: the dedicated tool surfaces collapse into the unified
-        # workbench at /portal/system. Old bookmarks 302 to the new shape:
-        #   - workbench-ui → /portal/system (system sandbox)
-        #   - agro-erp     → /portal/system?sandbox=agro_erp
-        #   - cts-gis      → /portal/system?tool=cts_gis
-        if tool_slug == "workbench-ui":
-            return redirect("/portal/system", code=302)
-        if tool_slug == "agro-erp":
-            return redirect("/portal/system?sandbox=agro_erp", code=302)
-        if tool_slug == "cts-gis":
-            return redirect("/portal/system?tool=cts_gis", code=302)
+        # workbench at /portal/system. Old bookmarks 302 to the new shape,
+        # PRESERVING + canonicalizing the incoming workbench query (document,
+        # mode, row, ...) so a deep-linked document is not dropped on redirect:
+        #   - workbench-ui → /portal/system?<canonical query>
+        #   - agro-erp     → /portal/system?sandbox_filter=agro_erp&<canonical>
+        #   - cts-gis      → /portal/system?tool=cts_gis&<canonical>
+        _tool_redirect_extra = {
+            "workbench-ui": {},
+            "agro-erp": {"sandbox_filter": "agro_erp"},
+            "cts-gis": {"tool": "cts_gis"},
+        }
+        if tool_slug in _tool_redirect_extra:
+            from MyCiteV2.packages.state_machine.portal_shell import (
+                canonical_query_for_surface_query,
+            )
+
+            merged = dict(request.args)
+            merged.update(_tool_redirect_extra[tool_slug])
+            canonical = canonical_query_for_surface_query(
+                merged, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+            )
+            target = "/portal/system"
+            if canonical:
+                target = target + "?" + urllib.parse.urlencode(canonical)
+            return redirect(target, code=302)
         surface_id = TOOL_SLUG_TO_SURFACE_ID.get(tool_slug)
         if surface_id is None:
             abort(404)

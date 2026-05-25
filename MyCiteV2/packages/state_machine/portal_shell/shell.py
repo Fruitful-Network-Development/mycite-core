@@ -5,6 +5,10 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlencode
 
+from MyCiteV2.packages.core.document_naming import (
+    CanonicalNameError,
+    parse_canonical_document_id,
+)
 from MyCiteV2.packages.core.network_root_surface_query import normalize_network_surface_query
 from MyCiteV2.packages.state_machine.nimm import (
     NimmDirective,
@@ -1108,6 +1112,22 @@ def canonical_query_for_shell_state(
     return query
 
 
+def _sandbox_filter_from_document_id(document_id: str) -> str:
+    """Infer the sandbox token from a canonical ``lv.`` document id.
+
+    Returns ``""`` for non-canonical/legacy ids (``system:``/``sandbox:``) and
+    for ``system`` documents — the workbench-ui view intentionally shows the
+    whole-corpus when scoped to system, so only tool sandboxes
+    (``agro_erp``/``cts_gis``/...) imply a sandbox filter.
+    """
+    try:
+        parsed = parse_canonical_document_id(document_id)
+    except CanonicalNameError:
+        return ""
+    sandbox = _as_text(parsed.sandbox)
+    return sandbox if sandbox and sandbox != "system" else ""
+
+
 def canonical_query_for_surface_query(
     surface_query: Mapping[str, Any] | None,
     *,
@@ -1176,7 +1196,15 @@ def canonical_query_for_surface_query(
         mode = _as_text(normalized.get("mode")).lower()
         if mode in {"docs", "datums", "author"}:
             query["mode"] = mode
-        sandbox_filter = _as_text(normalized.get("sandbox_filter"))
+        # Accept ``sandbox`` as an alias for ``sandbox_filter`` (legacy
+        # redirects / bookmarks emitted ``?sandbox=``), and when no sandbox is
+        # supplied, infer it from a canonical ``lv.<msn>.<sandbox>.<name>.<hash>``
+        # document id so opening an Agro-ERP (or other tool-sandbox) document
+        # resolves into its sandbox instead of dropping back to the whole-corpus
+        # system view.
+        sandbox_filter = _as_text(normalized.get("sandbox_filter")) or _as_text(normalized.get("sandbox"))
+        if not sandbox_filter and document_id:
+            sandbox_filter = _sandbox_filter_from_document_id(document_id)
         if sandbox_filter:
             query["sandbox_filter"] = sandbox_filter
         tool = _as_text(normalized.get("tool"))
