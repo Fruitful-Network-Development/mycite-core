@@ -23,7 +23,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import _load_grantee_profiles
+from MyCiteV2.instances._shared.runtime.operational_store import load_grantee_profiles
 from MyCiteV2.packages.core.grantee import GRANTEE_PROFILE_SCHEMA
 
 
@@ -64,7 +64,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         _seed_grantee(fnd_csm, msn_id="g1", with_paypal=False)
         _seed_sidecar(fnd_csm, "g1", "https://example.org/sidecar")
 
-        profiles = _load_grantee_profiles(private_dir)
+        profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
         paypal = profiles[0].get("paypal") or {}
         self.assertEqual(paypal.get("webhook_url"), "https://example.org/sidecar")
@@ -74,7 +74,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         _seed_grantee(fnd_csm, msn_id="g2", with_paypal=True)
         _seed_sidecar(fnd_csm, "g2", "https://example.org/sidecar")
 
-        profiles = _load_grantee_profiles(private_dir)
+        profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
         paypal = profiles[0].get("paypal") or {}
         # Inline grantee.paypal.webhook_url stays; sidecar is ignored when
@@ -85,7 +85,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         private_dir, fnd_csm = self._build_tree()
         _seed_grantee(fnd_csm, msn_id="g3", with_paypal=False)
 
-        profiles = _load_grantee_profiles(private_dir)
+        profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
         self.assertNotIn("paypal", profiles[0])
 
@@ -95,7 +95,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         # Malformed sidecar (not JSON) must not crash the loader.
         (fnd_csm / "paypal-webhook.g4.json").write_text("{ not json", encoding="utf-8")
 
-        profiles = _load_grantee_profiles(private_dir)
+        profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
         self.assertNotIn("paypal", profiles[0])
 
@@ -105,7 +105,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         private_dir, fnd_csm = self._build_tree()
         _seed_grantee(fnd_csm, msn_id="g5", with_paypal=False)
 
-        profiles = _load_grantee_profiles(private_dir)
+        profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
         p = profiles[0]
         self.assertIsInstance(p, dict)
@@ -120,7 +120,7 @@ class SidecarBackcompatTests(unittest.TestCase):
         production = Path("/srv/webapps/mycite/fnd/private")
         if not (production / "utilities" / "tools" / "fnd-csm").exists():
             self.skipTest("production grantee directory not present")
-        profiles = _load_grantee_profiles(production)
+        profiles = load_grantee_profiles(production)
         self.assertGreaterEqual(len(profiles), 1)
         for p in profiles:
             self.assertIn("msn_id", p)

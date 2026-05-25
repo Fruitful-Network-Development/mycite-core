@@ -14,7 +14,9 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_PALETTE_TARGET,
+    SYSTEM_ACTIVITY_FILE_KEY,
     SYSTEM_ANCHOR_FILE_KEY,
+    SYSTEM_PROFILE_BASICS_FILE_KEY,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_ANCHOR_FILE_KEY,
     TRANSITION_BACK_OUT,
@@ -34,9 +36,11 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     canonical_query_for_surface_query,
     canonical_route_for_surface,
     initial_portal_shell_state,
+    is_operational_file_key,
     reduce_portal_shell_state,
     requires_shell_state_machine,
     resolve_portal_shell_request,
+    sandbox_id_for_file_key,
     sandbox_id_for_surface,
 )
 
@@ -169,6 +173,20 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual(composition["foreground_shell_region"], "center-workbench")
         self.assertTrue(composition["regions"]["workbench"]["visible"])
         self.assertFalse(composition["regions"]["interface_panel"]["visible"])
+
+    def test_file_key_taxonomy_is_datum_only_operational_keys_separate(self) -> None:
+        # Phase B: sandbox_id_for_file_key parses DATUM ids only; operational
+        # anchors (system anchor / activity / profile basics / tool anchor) are
+        # not datum documents and are recognized by is_operational_file_key.
+        agro = "lv.3-2-3.agro_erp.farm_profile." + ("a" * 64)
+        self.assertEqual(sandbox_id_for_file_key(agro), "agro_erp")
+        self.assertEqual(sandbox_id_for_file_key("system:anthology"), "system")
+        self.assertEqual(sandbox_id_for_file_key("sandbox:cts_gis:sc.example.json"), "cts-gis")
+        # Operational anchors are NOT datum sandboxes.
+        for op_key in (SYSTEM_ANCHOR_FILE_KEY, SYSTEM_ACTIVITY_FILE_KEY, SYSTEM_PROFILE_BASICS_FILE_KEY, TOOL_ANCHOR_FILE_KEY):
+            self.assertEqual(sandbox_id_for_file_key(op_key), "")
+            self.assertTrue(is_operational_file_key(op_key))
+        self.assertFalse(is_operational_file_key(agro))
 
     def test_sandbox_id_for_surface_maps_canonical_segments(self) -> None:
         # Canonical sandbox tokens use underscores; URL slugs (cts-gis) are separate.

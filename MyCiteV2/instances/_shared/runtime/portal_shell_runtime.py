@@ -635,10 +635,10 @@ def _build_utilities_surface_context(
       - "grantee_selector": Phase 12h surface-level selector payload listing
         every available grantee with an `active` flag.
     """
-    from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-        _load_grantee_profiles,
-        _resolve_selected_domain,
-        _resolve_selected_grantee,
+    from MyCiteV2.instances._shared.runtime.operational_store import (
+        load_grantee_profiles,
+        resolve_selected_domain,
+        resolve_selected_grantee,
     )
 
     query = dict(surface_query or {})
@@ -646,10 +646,10 @@ def _build_utilities_surface_context(
         "selected_grantee_msn": query.get("selected_grantee_msn", ""),
         "selected_domain": query.get("selected_domain", ""),
     }
-    grantees = _load_grantee_profiles(private_dir)
-    selected_grantee = _resolve_selected_grantee(grantees, tool_state)
+    grantees = load_grantee_profiles(private_dir)
+    selected_grantee = resolve_selected_grantee(grantees, tool_state)
     selected_msn = _as_text(selected_grantee.get("msn_id"))
-    domain = _resolve_selected_domain(selected_grantee, tool_state)
+    domain = resolve_selected_domain(selected_grantee, tool_state)
 
     ctx = {
         "grantee": selected_grantee,
