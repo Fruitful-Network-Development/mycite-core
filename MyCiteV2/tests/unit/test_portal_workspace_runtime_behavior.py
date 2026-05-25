@@ -575,8 +575,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             tool_exposure_policy=None,
         )
         self.assertEqual(envelope["surface_id"], "system.tools.cts_gis")
-        self.assertEqual(envelope["canonical_query"]["file"], "anchor")
-        self.assertEqual(envelope["canonical_query"]["verb"], "mediate")
+        # Phase A: cts_gis is query-native and carries selection in tool_state
+        # (via POST), so its canonical_query is empty — and the workbench /
+        # network widening keys are still ignored.
+        self.assertNotIn("file", envelope["canonical_query"])
+        self.assertNotIn("verb", envelope["canonical_query"])
         self.assertNotIn("record", envelope["canonical_query"])
         self.assertNotIn("type", envelope["canonical_query"])
         self.assertNotIn("view", envelope["canonical_query"])

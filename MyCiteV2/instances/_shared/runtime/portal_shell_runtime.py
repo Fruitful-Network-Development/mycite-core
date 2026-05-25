@@ -51,7 +51,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PortalShellState,
     activity_icon_id_for_surface,
     build_canonical_url,
-    build_portal_activity_dispatch_bodies,
     build_portal_shell_request_payload,
     build_portal_surface_catalog,
     build_portal_tool_registry_entries,
@@ -276,13 +275,15 @@ def _activity_items(
     active_surface_id: str,
     shell_state: PortalShellState | None,
 ) -> list[dict[str, Any]]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
     # Plan v2: only Network + Utilities live in the activity-nav list.
     # The portal logo at the top of the activity bar (portal.html) is
     # the System entry — making "three slots: logo + network + utilities"
     # the canonical chrome. Tools (CTS-GIS map, etc.) are invoked from
     # the menubar search and paint into the workbench's visualization
     # panel rather than owning their own activity-bar slot.
+    # Phase A: these roots are query-native, so navigation is direct-href
+    # (no reducer dispatch bodies).
+    del shell_state
     visible_surface_ids = [
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
@@ -299,8 +300,7 @@ def _activity_items(
                 "href": entry.route,
                 "active": entry.surface_id == active_surface_id,
                 "nav_kind": "surface",
-                "nav_behavior": "dispatch" if entry.surface_id in dispatch_bodies else "direct",
-                "shell_request": dispatch_bodies.get(entry.surface_id),
+                "nav_behavior": "direct",
             }
         )
     return items
@@ -315,7 +315,9 @@ def _plain_control_panel(
     surface_group_title: str,
     surface_entries: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    dispatch_bodies = build_portal_activity_dispatch_bodies(portal_scope=portal_scope, shell_state=shell_state)
+    # Phase A: roots are query-native — navigate by direct href, no reducer
+    # dispatch bodies.
+    del shell_state
     return {
         "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
         "kind": "plain_navigation",
@@ -328,7 +330,6 @@ def _plain_control_panel(
                         "label": "System",
                         "href": "/portal/system",
                         "active": active_surface_id == SYSTEM_ROOT_SURFACE_ID,
-                        "shell_request": dispatch_bodies.get(SYSTEM_ROOT_SURFACE_ID),
                     },
                     {
                         "label": "Network",

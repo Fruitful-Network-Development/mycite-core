@@ -852,35 +852,6 @@ def _subject_for_level(focus_path: tuple[PortalFocusSegment, ...], *, level: str
     return None
 
 
-def _with_focus_path(
-    shell_state: PortalShellState,
-    *,
-    active_surface_id: str,
-    portal_scope: PortalScope,
-    focus_path: tuple[PortalFocusSegment, ...],
-) -> PortalShellState:
-    next_focus_subject = _subject_from_segment(focus_path[-1]) if focus_path else None
-    next_mediation_subject = shell_state.mediation_subject
-    if next_mediation_subject and not _focus_path_contains_subject(focus_path, next_mediation_subject):
-        next_mediation_subject = None
-    next_verb = shell_state.verb
-    next_chrome = shell_state.chrome
-    if active_surface_id == SYSTEM_ROOT_SURFACE_ID and next_mediation_subject is None and next_verb == VERB_MEDIATE:
-        next_verb = VERB_NAVIGATE
-        next_chrome = PortalShellChrome(
-            control_panel_collapsed=shell_state.chrome.control_panel_collapsed,
-            interface_panel_open=False,
-        )
-    return PortalShellState(
-        active_surface_id=active_surface_id,
-        focus_path=focus_path,
-        focus_subject=next_focus_subject,
-        mediation_subject=next_mediation_subject,
-        verb=next_verb,
-        chrome=next_chrome,
-    )
-
-
 def canonicalize_portal_shell_state(
     shell_state: PortalShellState | dict[str, Any] | None,
     *,
@@ -1337,65 +1308,6 @@ def build_canonical_url(*, surface_id: str, query: Mapping[str, str] | None = No
     return f"{route}?{urlencode(filtered)}"
 
 
-def build_portal_shell_state_from_query(
-    *,
-    surface_id: str,
-    portal_scope: PortalScope,
-    query: Mapping[str, Any] | None,
-) -> PortalShellState | None:
-    if not requires_shell_state_machine(surface_id):
-        return None
-    params = dict(query or {})
-    file_token = _as_text(params.get("file"))
-    verb = _normalize_slug(params.get("verb")) or (VERB_MEDIATE if is_tool_surface(surface_id) else VERB_NAVIGATE)
-    sandbox_id = sandbox_id_for_surface(surface_id)
-    segments: list[PortalFocusSegment] = [PortalFocusSegment(level=FOCUS_LEVEL_SANDBOX, id=sandbox_id)]
-    if file_token and file_token != SYSTEM_SANDBOX_QUERY_FILE_TOKEN:
-        segments.append(
-            PortalFocusSegment(
-                level=FOCUS_LEVEL_FILE,
-                id=_normalize_file_key_for_sandbox(file_token, sandbox_id=sandbox_id),
-            )
-        )
-    elif not file_token:
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
-    datum_id = _as_text(params.get("datum"))
-    object_id = _as_text(params.get("object"))
-    if datum_id:
-        if len(segments) == 1:
-            segments.append(PortalFocusSegment(level=FOCUS_LEVEL_FILE, id=anchor_file_key_for_sandbox(sandbox_id)))
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_DATUM, id=datum_id))
-    if object_id:
-        if not datum_id:
-            return canonicalize_portal_shell_state(
-                PortalShellState(
-                    active_surface_id=surface_id,
-                    focus_path=tuple(segments),
-                    focus_subject=_subject_from_segment(segments[-1]),
-                    mediation_subject=None,
-                    verb=VERB_NAVIGATE,
-                ),
-                active_surface_id=surface_id,
-                portal_scope=portal_scope,
-                seed_anchor_file=True,
-            )
-        segments.append(PortalFocusSegment(level=FOCUS_LEVEL_OBJECT, id=object_id))
-    base_state = PortalShellState(
-        active_surface_id=surface_id,
-        focus_path=tuple(segments),
-        focus_subject=_subject_from_segment(segments[-1]),
-        mediation_subject=_subject_from_segment(segments[-1]) if verb == VERB_MEDIATE else None,
-        verb=verb,
-        chrome=PortalShellChrome(interface_panel_open=verb == VERB_MEDIATE),
-    )
-    return canonicalize_portal_shell_state(
-        base_state,
-        active_surface_id=surface_id,
-        portal_scope=portal_scope,
-        seed_anchor_file=True,
-    )
-
-
 def build_portal_shell_request_payload(
     *,
     requested_surface_id: str,
@@ -1497,23 +1409,18 @@ def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | 
             reason_message=f"Surface is not approved: {requested_surface_id}",
         )
 
-    reducer_owned = requires_shell_state_machine(surface_entry.surface_id)
-    shell_state: PortalShellState | None
-    if reducer_owned:
-        shell_state = reduce_portal_shell_state(
-            active_surface_id=surface_entry.surface_id,
-            portal_scope=normalized_request.portal_scope,
-            current_state=normalized_request.shell_state,
-            transition=normalized_request.transition,
-            seed_anchor_file=normalized_request.shell_state is None,
-        )
-        canonical_query = canonical_query_for_shell_state(shell_state, surface_id=surface_entry.surface_id)
-    else:
-        shell_state = normalized_request.shell_state if isinstance(normalized_request.shell_state, PortalShellState) else None
-        canonical_query = canonical_query_for_surface_query(
-            normalized_request.surface_query,
-            surface_id=surface_entry.surface_id,
-        )
+    # Phase A: the focus-path reducer is retired. Every surface is query-
+    # native — selection travels as surface_query (workbench) or tool_state
+    # (cts_gis), never through reducer transitions. shell_state, when present
+    # on the request, is passed through as a passive value object (the
+    # profile-basics / system-workspace paths still read focus_subject; that
+    # residue is removed in the operational/datum split).
+    reducer_owned = False
+    shell_state = normalized_request.shell_state if isinstance(normalized_request.shell_state, PortalShellState) else None
+    canonical_query = canonical_query_for_surface_query(
+        normalized_request.surface_query,
+        surface_id=surface_entry.surface_id,
+    )
     canonical_route = canonical_route_for_surface(surface_entry.surface_id)
     return PortalShellResolution(
         requested_surface_id=requested_surface_id,
@@ -1526,46 +1433,6 @@ def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | 
         canonical_query=canonical_query,
         canonical_url=build_canonical_url(surface_id=surface_entry.surface_id, query=canonical_query),
     )
-
-
-def build_portal_activity_dispatch_bodies(
-    *,
-    portal_scope: PortalScope | dict[str, Any],
-    shell_state: PortalShellState | dict[str, Any] | None,
-) -> dict[str, dict[str, Any]]:
-    """Build per-surface activity-bar dispatch bodies.
-
-    Tool surfaces dispatch ``focus_sandbox`` so the workbench state
-    machine collapses (sandbox switch → anchor default). The URL
-    still mirrors state because the request payload carries the
-    requested surface id, which the runtime entrypoint converts back
-    into the tool route after the reducer applies the transition.
-    Non-tool reducer-owned surfaces continue to dispatch
-    ``enter_surface`` (the canonical seed).
-    """
-
-    scope = portal_scope if isinstance(portal_scope, PortalScope) else PortalScope.from_value(portal_scope)
-    bodies: dict[str, dict[str, Any]] = {}
-    for entry in build_portal_surface_catalog():
-        if not requires_shell_state_machine(entry.surface_id):
-            continue
-        if is_tool_surface(entry.surface_id):
-            sandbox_id = sandbox_id_for_surface(entry.surface_id)
-            transition = {
-                "kind": TRANSITION_FOCUS_SANDBOX,
-                "surface_id": entry.surface_id,
-                "sandbox_id": sandbox_id,
-                "file_key": anchor_file_key_for_sandbox(sandbox_id),
-            }
-        else:
-            transition = {"kind": TRANSITION_ENTER_SURFACE, "surface_id": entry.surface_id}
-        bodies[entry.surface_id] = build_portal_shell_request_payload(
-            requested_surface_id=entry.surface_id,
-            portal_scope=scope,
-            shell_state=shell_state,
-            transition=transition,
-        )
-    return bodies
 
 
 def activity_icon_id_for_surface(surface_id: object) -> str:
@@ -1869,9 +1736,7 @@ __all__ = [
     "apply_surface_posture_to_composition",
     "build_canonical_url",
     "build_nimm_envelope_for_shell_state",
-    "build_portal_activity_dispatch_bodies",
     "build_portal_shell_request_payload",
-    "build_portal_shell_state_from_query",
     "build_portal_surface_catalog",
     "build_portal_tool_registry_entries",
     "build_shell_composition_payload",

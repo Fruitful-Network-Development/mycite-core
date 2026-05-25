@@ -183,14 +183,10 @@ UTILITIES_SURFACE_IDS = frozenset(
         UTILITIES_PERIPHERALS_SURFACE_ID,
     }
 )
-# Phase A (function-forward refactor): system.root is now query-native — it
-# hosts the unified workbench, whose bundle already renders from surface_query
-# (document/mode/row/sandbox_filter), so it no longer needs the focus-path
-# reducer. cts_gis (and the retired fnd_csm, pending deletion) remain reducer-
-# owned until A2/A3 migrate/remove them.
-REDUCER_OWNED_SURFACE_IDS = frozenset(
-    {
-        CTS_GIS_TOOL_SURFACE_ID,
-        FND_CSM_TOOL_SURFACE_ID,
-    }
-)
+# Phase A (function-forward refactor): the focus-path reducer is being
+# retired. system.root went query-native in A1; cts_gis (A2) renders from
+# tool_state, not the reducer's focus_path, so it is query-native too. No
+# surface is reducer-owned now — the active state machine (transitions /
+# reduce_portal_shell_state / activity dispatch bodies) is dead and is deleted
+# in A3. (fnd_csm was already retired from the surface catalog.)
+REDUCER_OWNED_SURFACE_IDS: frozenset[str] = frozenset()
