@@ -11,7 +11,6 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.packages.ports.network_root_read_model import normalize_network_surface_query
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ACTIVITY_FILE_KEY,
@@ -192,7 +191,6 @@ class PortalShellContractTests(unittest.TestCase):
         # Canonical sandbox tokens use underscores; URL slugs (cts-gis) are separate.
         self.assertEqual(sandbox_id_for_surface(SYSTEM_ROOT_SURFACE_ID), "system")
         self.assertEqual(sandbox_id_for_surface(CTS_GIS_TOOL_SURFACE_ID), "cts_gis")
-        self.assertEqual(sandbox_id_for_surface(FND_CSM_TOOL_SURFACE_ID), "fnd_csm")
         self.assertEqual(sandbox_id_for_surface(WORKBENCH_UI_TOOL_SURFACE_ID), "workbench_ui")
         self.assertEqual(sandbox_id_for_surface("unknown.surface"), "system")
 

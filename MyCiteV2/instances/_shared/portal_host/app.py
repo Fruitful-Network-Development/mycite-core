@@ -1480,13 +1480,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/portal/system/tools/<tool_slug>")
     def portal_system_tool(tool_slug: str) -> Any:
-        # Phase 2 (portal_tool_surface_contract.md): the FND-CSM tool surface
-        # is being retired. Its content now lives under Utilities → Tool Exposure
-        # as four extensions (ext_aws_email, ext_analytics, ext_newsletter,
-        # ext_paypal). Redirect legacy bookmarks until Phase 3 deletes the
-        # surface entry entirely.
+        # The FND-CSM tool surface is removed; its functionality moved to the
+        # Utilities extensions. Keep a literal bookmark redirect.
         if tool_slug == "fnd-csm":
-            return redirect("/portal/utilities/tool-exposure", code=302)
+            return redirect("/portal/utilities/extensions", code=302)
         # Plan v2: the dedicated tool surfaces collapse into the unified
         # workbench at /portal/system. Old bookmarks 302 to the new shape,
         # PRESERVING + canonicalizing the incoming workbench query (document,
@@ -1624,58 +1621,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     public_dir=host_config.public_dir,
                     audit_storage_file=host_config.portal_audit_storage_file,
                     authority_db_file=host_config.authority_db_file,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/fnd-csm")
-    def portal_fnd_csm() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import run_portal_fnd_csm
-        from MyCiteV2.instances._shared.runtime.runtime_platform import FND_CSM_TOOL_REQUEST_SCHEMA
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = FND_CSM_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_fnd_csm(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    webapps_root=host_config.webapps_root,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                    authority_db_file=host_config.authority_db_file,
-                    data_dir=host_config.data_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-
-    @app.post("/portal/api/v2/system/tools/fnd-csm/actions")
-    def portal_fnd_csm_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-            run_portal_fnd_csm_action,
-        )
-        from MyCiteV2.instances._shared.runtime.runtime_platform import (
-            FND_CSM_TOOL_ACTION_REQUEST_SCHEMA,
-        )
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = FND_CSM_TOOL_ACTION_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_fnd_csm_action(
-                    payload,
-                    private_dir=host_config.private_dir,
-                    webapps_root=host_config.webapps_root,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                    authority_db_file=host_config.authority_db_file,
-                    data_dir=host_config.data_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
                 )
             )
         except ValueError as exc:

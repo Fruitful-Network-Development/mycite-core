@@ -28,7 +28,6 @@ UTILITIES_TOOLS_SURFACE_ID = "utilities.tools"
 UTILITIES_PERIPHERALS_SURFACE_ID = "utilities.peripherals"
 
 CTS_GIS_TOOL_SURFACE_ID = "system.tools.cts_gis"
-FND_CSM_TOOL_SURFACE_ID = "system.tools.fnd_csm"
 WORKBENCH_UI_TOOL_SURFACE_ID = "system.tools.workbench_ui"
 AGRO_ERP_TOOL_SURFACE_ID = "system.tools.agro_erp"
 
@@ -68,7 +67,6 @@ def sandbox_display_name(token: str) -> str:
 
 PORTAL_SHELL_ENTRYPOINT_ID = "portal.shell"
 CTS_GIS_TOOL_ENTRYPOINT_ID = "portal.system.tools.cts_gis"
-FND_CSM_TOOL_ENTRYPOINT_ID = "portal.system.tools.fnd_csm"
 WORKBENCH_UI_TOOL_ENTRYPOINT_ID = "portal.system.tools.workbench_ui"
 AGRO_ERP_TOOL_ENTRYPOINT_ID = "portal.system.tools.agro_erp"
 
@@ -83,7 +81,6 @@ UTILITIES_TOOLS_ROUTE = "/portal/utilities/tools"
 UTILITIES_PERIPHERALS_ROUTE = "/portal/utilities/peripherals"
 
 CTS_GIS_TOOL_ROUTE = "/portal/system/tools/cts-gis"
-FND_CSM_TOOL_ROUTE = "/portal/system/tools/fnd-csm"
 WORKBENCH_UI_TOOL_ROUTE = "/portal/system/tools/workbench-ui"
 AGRO_ERP_TOOL_ROUTE = "/portal/system/tools/agro-erp"
 
@@ -163,7 +160,6 @@ ROOT_SURFACE_IDS = frozenset(
 TOOL_SURFACE_IDS = frozenset(
     {
         CTS_GIS_TOOL_SURFACE_ID,
-        FND_CSM_TOOL_SURFACE_ID,
         WORKBENCH_UI_TOOL_SURFACE_ID,
         AGRO_ERP_TOOL_SURFACE_ID,
     }

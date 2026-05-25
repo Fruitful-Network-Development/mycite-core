@@ -14,8 +14,8 @@ from MyCiteV2.instances._shared.runtime.portal_workbench import (
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
+    WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
     PortalShellState,
 )
@@ -130,7 +130,7 @@ class DatumFileWorkbenchTests(unittest.TestCase):
         region = build_datum_file_workbench(
             portal_scope=self.portal_scope,
             shell_state=None,
-            surface_id=FND_CSM_TOOL_SURFACE_ID,
+            surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             sandbox_id="fnd_csm",
             anchor_document=anchor,
             selected_document=selected,

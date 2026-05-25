@@ -215,7 +215,7 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             summary="Read-only SQL datum grid with additive directive-overlay inspection.",
         ),
         # Utilities extensions — Phase 2 migration of former FND-CSM tabs.
-        # Renderers live in portal_fnd_csm_runtime.EXTENSION_RENDERERS; see
+        # Renderers live in utilities_extensions.EXTENSION_RENDERERS; see
         # portal_tool_surface_contract.md.
         PortalToolRegistryEntry(
             tool_id="ext_aws_email",

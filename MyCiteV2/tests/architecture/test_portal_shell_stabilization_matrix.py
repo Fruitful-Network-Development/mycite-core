@@ -10,7 +10,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
-    FND_CSM_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -61,13 +60,6 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
         system = composition_for(SYSTEM_ROOT_SURFACE_ID)
         self.assertFalse(system["workbench_collapsed"])
         self.assertTrue(system["interface_panel_collapsed"])
-
-        # FND-CSM tool surface was retired in Phase 3g; constants kept as
-        # preservation invariants. Composition for it still returns a
-        # collapsed interface panel and an uncollapsed (default-visible)
-        # workbench, same as any other tool surface.
-        fnd_csm = composition_for(FND_CSM_TOOL_SURFACE_ID)
-        self.assertTrue(fnd_csm["interface_panel_collapsed"])
 
         cts = composition_for(CTS_GIS_TOOL_SURFACE_ID)
         # CTS-GIS has default_workbench_visible=True — workbench is center foreground
