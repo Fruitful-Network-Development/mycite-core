@@ -583,42 +583,29 @@
   }
 
   function renderAuthorForms(ctx, workbenchMode) {
-    // Author-mode forms: a template-picker + name input for new
-    // documents, and a YAML textarea for new datums. The renderer
-    // builds vanilla HTML form controls; submission is handled by
-    // bindAuthorForms (POST stage → preview → apply).
+    // Author-mode forms: a title input for new documents (no template/type
+    // picker — document shape is authored later, inside the document), and a
+    // YAML textarea for new datums. The renderer builds vanilla HTML form
+    // controls; submission is handled by bindAuthorForms (POST stage →
+    // preview → apply) which posts operation=create_document.
     if (!workbenchMode || workbenchMode.active !== "author") return "";
     var forms = workbenchMode.author_forms || {};
     var html = "";
     var nsf = forms.new_source_document;
     if (nsf) {
-      var templates = nsf.available_templates || [];
+      var nameInput = nsf.name_input || {};
       html +=
         '<form class="ide-controlpanel__authorForm" data-author-form-kind="new_source_document">' +
         '<header class="ide-controlpanel__selectionGroupTitle">+ New document</header>';
-      if (templates.length === 0) {
-        html +=
-          '<p class="ide-controlpanel__authorEmpty">No templates registered for this sandbox.</p>';
-      } else {
-        html += '<label class="ide-controlpanel__authorLabel">Template' +
-          '<select name="template_id" required>';
-        templates.forEach(function (t) {
-          html +=
-            '<option value="' + ctx.escapeHtml(t.template_id) + '">' +
-            ctx.escapeHtml(t.label || t.template_id) +
-            "</option>";
-        });
-        html += "</select></label>";
-        var nameInput = nsf.name_input || {};
-        html += '<label class="ide-controlpanel__authorLabel">Name' +
-          '<input type="text" name="document_name" required' +
-          ' pattern="' + ctx.escapeHtml(nameInput.pattern || "^[a-z][a-z0-9_]*$") + '"' +
-          ' maxlength="' + String(nameInput.max_length || 64) + '"' +
-          ' placeholder="' + ctx.escapeHtml(nameInput.placeholder || "") + '" />' +
-          "</label>";
-        html += '<button type="submit" class="ide-controlpanel__authorSubmit">Create document</button>';
-        html += '<p class="ide-controlpanel__authorStatus" data-author-form-status></p>';
-      }
+      // Title-only: free-text title (the backend sanitizes it into a canonical
+      // name segment). No template/type selection at the creation gate.
+      html += '<label class="ide-controlpanel__authorLabel">Title' +
+        '<input type="text" name="document_name" required' +
+        ' maxlength="' + String(nameInput.max_length || 80) + '"' +
+        ' placeholder="' + ctx.escapeHtml(nameInput.placeholder || "Document title") + '" />' +
+        "</label>";
+      html += '<button type="submit" class="ide-controlpanel__authorSubmit">Create document</button>';
+      html += '<p class="ide-controlpanel__authorStatus" data-author-form-status></p>';
       html += "</form>";
     }
     var ndf = forms.new_datum;
@@ -679,8 +666,7 @@
             sandbox_id: contract.sandbox_id,
           };
           if (kind === "new_source_document") {
-            payload.operation = "scaffold_datum";
-            payload.template_id = form.template_id.value;
+            payload.operation = "create_document";
             payload.document_name = form.document_name.value;
             payload.msn_id = contract.msn_id_default || "";
           } else {
