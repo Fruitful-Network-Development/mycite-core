@@ -1088,61 +1088,6 @@ def _system_selection_groups(
     return []
 
 
-def build_system_control_panel(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState,
-    file_entries: list[dict[str, Any]],
-    active_document: Any | None,
-    selected_datum: Any | None,
-    selected_object: dict[str, Any] | None,
-    activity_projection: Any,
-    profile_summary: PublicationTenantSummary,
-) -> dict[str, Any]:
-    active_file_key = segment_id_for_level(shell_state, level=FOCUS_LEVEL_FILE)
-    selected_datum_payload = _selected_datum_payload(selected_datum)
-    actions: list[dict[str, Any]] = []
-    if isinstance(selected_datum_payload, dict) and as_text(selected_datum_payload.get("primary_value_token")):
-        actions.append(
-            _panel_action(
-                label="Copy Hyphae Value",
-                action_kind="copy_text",
-                value=selected_datum_payload.get("primary_value_token"),
-            )
-        )
-    return attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
-        "kind": "focus_selection_panel",
-        "title": "Control Panel",
-        "surface_label": "SYSTEM",
-        "context_items": _system_context_items(
-            shell_state=shell_state,
-            active_document=active_document,
-            selected_datum=selected_datum,
-            selected_object=selected_object,
-        ),
-        "verb_tabs": _verb_tab_entries(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            requested_surface_id=SYSTEM_ROOT_SURFACE_ID,
-        ),
-        "groups": _system_selection_groups(
-            portal_scope=portal_scope,
-            shell_state=shell_state,
-            file_entries=file_entries,
-            active_document=active_document,
-            active_file_key=active_file_key,
-            selected_datum=selected_datum,
-            selected_object=selected_object,
-            activity_projection=activity_projection,
-            profile_summary=profile_summary,
-        ),
-        "actions": actions,
-        },
-        family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
-        surface_id=SYSTEM_ROOT_SURFACE_ID,
-    )
 
 
 def _build_context_conditions(
