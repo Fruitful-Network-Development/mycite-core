@@ -443,23 +443,6 @@ def _bootstrap_request(surface_id: str, *, portal_instance_id: str, query_params
         )
         if shell_state is not None:
             payload["shell_state"] = shell_state.to_dict()
-        # SYSTEM_ROOT is reducer-owned but delegates to the unified workbench,
-        # which is parameterized by surface_query (document / mode / row /
-        # sandbox_filter). The reducer shell_state above does not carry those
-        # workbench keys, so attach the canonical workbench surface_query as
-        # well — otherwise a deep-linked or bookmarked document is dropped on
-        # the initial /portal/system load and the view falls back to the
-        # default system sandbox.
-        if surface_id == SYSTEM_ROOT_SURFACE_ID and query_params:
-            from MyCiteV2.packages.state_machine.portal_shell import (
-                canonical_query_for_surface_query,
-            )
-
-            workbench_query = canonical_query_for_surface_query(
-                query_params, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
-            )
-            if workbench_query:
-                payload["surface_query"] = workbench_query
     elif query_params:
         payload["surface_query"] = {
             str(key): str(value)

@@ -1469,14 +1469,26 @@ def resolve_portal_shell_request(request: PortalShellRequest | dict[str, Any] | 
     requested_surface_id = normalized_request.requested_surface_id
     surface_entry = resolve_portal_surface(requested_surface_id)
     if surface_entry is None or not surface_entry.launchable:
-        fallback_state = initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=normalized_request.portal_scope)
-        fallback_query = canonical_query_for_shell_state(fallback_state, surface_id=SYSTEM_ROOT_SURFACE_ID)
+        # Unknown surfaces fall back to system.root. Since Phase A made
+        # system.root query-native, the fallback resolves the same way: no
+        # reducer shell_state, an empty (default) workbench query.
+        fallback_reducer_owned = requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID)
+        fallback_state = (
+            initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=normalized_request.portal_scope)
+            if fallback_reducer_owned
+            else None
+        )
+        fallback_query = (
+            canonical_query_for_shell_state(fallback_state, surface_id=SYSTEM_ROOT_SURFACE_ID)
+            if fallback_state is not None
+            else {}
+        )
         return PortalShellResolution(
             requested_surface_id=requested_surface_id,
             active_surface_id=SYSTEM_ROOT_SURFACE_ID,
             selection_status="unknown",
             allowed=False,
-            reducer_owned=True,
+            reducer_owned=fallback_reducer_owned,
             shell_state=fallback_state,
             canonical_route=SYSTEM_ROOT_ROUTE,
             canonical_query=fallback_query,
