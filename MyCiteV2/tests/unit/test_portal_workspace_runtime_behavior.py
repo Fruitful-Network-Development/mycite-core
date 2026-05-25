@@ -1853,10 +1853,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             webapps_root=None,
             tool_exposure_policy=None,
         )
-        self.assertTrue(envelope["reducer_owned"])
+        # Phase A: system.root is query-native, so the unknown-surface
+        # fallback resolves to a non-reducer system.root with an empty query.
+        self.assertFalse(envelope["reducer_owned"])
         self.assertEqual(envelope["surface_id"], SYSTEM_ROOT_SURFACE_ID)
         self.assertEqual(envelope["canonical_route"], "/portal/system")
-        self.assertEqual(envelope["canonical_query"]["file"], "anthology")
+        self.assertNotIn("file", envelope["canonical_query"])
         self.assertEqual(envelope["error"]["code"], "surface_unknown")
 
     def test_network_root_projects_system_log_workbench_without_reducer_ownership(self) -> None:

@@ -61,24 +61,26 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertNotIn("/portal/system/activity", routes)
         self.assertNotIn("/portal/system/profile-basics", routes)
 
-    def test_state_machine_is_limited_to_system_workspace_and_tool_surfaces(self) -> None:
-        # Phase 3 (portal_tool_surface_contract.md): the fnd_csm surface is
-        # retired; cts_gis is the canonical reducer-owned tool surface today.
+    def test_state_machine_is_limited_to_tool_surfaces(self) -> None:
+        # Phase 3 retired fnd_csm; Phase A (function-forward) made system.root
+        # query-native (it hosts the workbench, which renders from
+        # surface_query). cts_gis is the only live reducer-owned surface today.
         self.assertEqual(canonical_route_for_surface(CTS_GIS_TOOL_SURFACE_ID), "/portal/system/tools/cts-gis")
-        self.assertTrue(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
+        self.assertFalse(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
         self.assertTrue(requires_shell_state_machine(CTS_GIS_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
-    def test_fresh_system_root_state_seeds_the_anchor_file(self) -> None:
+    def test_fresh_tool_state_seeds_the_anchor_file(self) -> None:
+        # Phase A made system.root query-native; cts_gis is the live
+        # reducer-owned surface that still seeds an anchor focus.
         state = initial_portal_shell_state(
-            surface_id=SYSTEM_ROOT_SURFACE_ID,
+            surface_id=CTS_GIS_TOOL_SURFACE_ID,
             portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
         )
-        self.assertEqual(state.active_surface_id, SYSTEM_ROOT_SURFACE_ID)
+        self.assertEqual(state.active_surface_id, CTS_GIS_TOOL_SURFACE_ID)
         self.assertEqual([segment.level for segment in state.focus_path], ["sandbox", "file"])
-        self.assertEqual(state.focus_path[-1].id, SYSTEM_ANCHOR_FILE_KEY)
-        self.assertEqual(canonical_query_for_shell_state(state, surface_id=SYSTEM_ROOT_SURFACE_ID)["file"], "anthology")
+        self.assertEqual(canonical_query_for_shell_state(state, surface_id=CTS_GIS_TOOL_SURFACE_ID)["file"], "anchor")
 
     def test_back_out_contracts_focus_in_object_datum_file_sandbox_order(self) -> None:
         base_state = initial_portal_shell_state(
@@ -177,10 +179,14 @@ class PortalShellContractTests(unittest.TestCase):
             portal_scope={"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing", "datum_recognition"]},
             shell_state=state,
         )
-        self.assertIn(SYSTEM_ROOT_SURFACE_ID, dispatch)
+        # Phase A: system.root is query-native, so only reducer-owned tool
+        # surfaces (cts_gis) get a dispatch body; system.root + workbench
+        # navigate via direct href / surface_query.
+        self.assertIn(CTS_GIS_TOOL_SURFACE_ID, dispatch)
+        self.assertNotIn(SYSTEM_ROOT_SURFACE_ID, dispatch)
         self.assertNotIn(WORKBENCH_UI_TOOL_SURFACE_ID, dispatch)
         self.assertNotIn(NETWORK_ROOT_SURFACE_ID, dispatch)
-        self.assertEqual(dispatch[SYSTEM_ROOT_SURFACE_ID]["portal_scope"]["capabilities"], ["fnd_peripheral_routing", "datum_recognition"])
+        self.assertEqual(dispatch[CTS_GIS_TOOL_SURFACE_ID]["portal_scope"]["capabilities"], ["fnd_peripheral_routing", "datum_recognition"])
 
     def test_sandbox_id_for_surface_maps_canonical_segments(self) -> None:
         # Canonical sandbox tokens use underscores; URL slugs (cts-gis) are separate.
@@ -239,18 +245,21 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual([segment.id for segment in state.focus_path], ["cts_gis", TOOL_ANCHOR_FILE_KEY])
 
     def test_shell_request_resolution_returns_canonical_query_for_reducer_surfaces(self) -> None:
+        # cts_gis is the live reducer-owned surface (system.root went
+        # query-native in Phase A); its canonical_query derives from the
+        # reduced shell_state, not surface_query.
         selection = resolve_portal_shell_request(
             {
                 "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": SYSTEM_ROOT_SURFACE_ID,
+                "requested_surface_id": CTS_GIS_TOOL_SURFACE_ID,
                 "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
             }
         )
         self.assertTrue(selection.allowed)
         self.assertTrue(selection.reducer_owned)
-        self.assertEqual(selection.active_surface_id, SYSTEM_ROOT_SURFACE_ID)
-        self.assertEqual(selection.canonical_query["file"], "anthology")
-        self.assertEqual(selection.canonical_query["verb"], "navigate")
+        self.assertEqual(selection.active_surface_id, CTS_GIS_TOOL_SURFACE_ID)
+        self.assertEqual(selection.canonical_query["file"], "anchor")
+        self.assertEqual(selection.canonical_query["verb"], "mediate")
 
     def test_shell_request_resolution_projects_surface_query_for_network(self) -> None:
         selection = resolve_portal_shell_request(
@@ -456,11 +465,12 @@ class PortalShellContractTests(unittest.TestCase):
             }
         )
         self.assertFalse(selection.allowed)
-        self.assertTrue(selection.reducer_owned)
+        # Phase A: fallback to query-native system.root.
+        self.assertFalse(selection.reducer_owned)
         self.assertEqual(selection.active_surface_id, SYSTEM_ROOT_SURFACE_ID)
         self.assertEqual(selection.reason_code, "surface_unknown")
         self.assertEqual(selection.canonical_route, "/portal/system")
-        self.assertEqual(selection.canonical_query["file"], "anthology")
+        self.assertNotIn("file", selection.canonical_query)
 
 
 if __name__ == "__main__":
