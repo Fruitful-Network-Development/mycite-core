@@ -381,6 +381,20 @@ class PortalShellContractTests(unittest.TestCase):
             },
         )
 
+    def test_system_root_shares_workbench_query_vocabulary(self) -> None:
+        # Phase A groundwork: system.root hosts the workbench, so it must
+        # canonicalize the same query keys (document/mode/sandbox_filter/...)
+        # — the prerequisite for making system.root query-native.
+        agro = "lv.3-2-3.agro_erp.farm_profile." + ("a" * 64)
+        out = canonical_query_for_surface_query(
+            {"document": agro, "mode": "datums", "sandbox": "agro_erp", "row": "4-2-2"},
+            surface_id=SYSTEM_ROOT_SURFACE_ID,
+        )
+        self.assertEqual(out["document"], agro)
+        self.assertEqual(out["mode"], "datums")
+        self.assertEqual(out["row"], "4-2-2")
+        self.assertEqual(out["sandbox_filter"], "agro_erp")
+
     def test_workbench_ui_query_accepts_sandbox_alias(self) -> None:
         # Legacy redirects/bookmarks emitted ?sandbox=; it must canonicalize
         # to sandbox_filter rather than being silently dropped.

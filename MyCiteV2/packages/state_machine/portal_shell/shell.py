@@ -1142,7 +1142,11 @@ def canonical_query_for_surface_query(
         surface_query,
         field_name="portal_shell_request.surface_query",
     )
-    if surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
+    # system.root hosts the unified workbench, so it shares the workbench
+    # query vocabulary. Phase A (function-forward refactor) is collapsing the
+    # dual state model so system.root becomes query-native like the workbench;
+    # accepting its query here is the additive groundwork for that flip.
+    if surface_id in {WORKBENCH_UI_TOOL_SURFACE_ID, SYSTEM_ROOT_SURFACE_ID}:
         query: dict[str, str] = {}
         document_id = _as_text(normalized.get("document"))
         if document_id:
