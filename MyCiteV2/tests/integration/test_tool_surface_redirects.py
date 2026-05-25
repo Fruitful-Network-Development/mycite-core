@@ -64,11 +64,39 @@ class ToolSurfaceRedirectTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 302)
         self.assertEqual(resp.headers["Location"].rstrip("/"), "/portal/system")
 
-    def test_agro_erp_redirects_with_sandbox_filter(self) -> None:
+    def test_workbench_ui_redirect_preserves_deep_link_query(self) -> None:
+        # A deep-linked document/mode/row must survive the legacy redirect
+        # rather than dropping back to a bare /portal/system.
+        resp = self._client.get(
+            "/portal/system/tools/workbench-ui?document=system:anthology&mode=datums&row=1-1-2",
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers["Location"]
+        self.assertTrue(location.startswith("/portal/system?"))
+        self.assertIn("document=system%3Aanthology", location)
+        self.assertIn("mode=datums", location)
+        self.assertIn("row=1-1-2", location)
+
+    def test_agro_erp_redirects_with_canonical_sandbox_filter(self) -> None:
         resp = self._client.get("/portal/system/tools/agro-erp", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("sandbox=agro_erp", resp.headers["Location"])
+        # Canonical key is sandbox_filter (NOT the legacy sandbox=, which the
+        # workbench query canonicalizer silently dropped).
+        self.assertIn("sandbox_filter=agro_erp", resp.headers["Location"])
+        self.assertNotIn("sandbox=agro_erp", resp.headers["Location"])
         self.assertTrue(resp.headers["Location"].startswith("/portal/system"))
+
+    def test_agro_erp_redirect_preserves_document(self) -> None:
+        resp = self._client.get(
+            "/portal/system/tools/agro-erp?document=system:anthology&mode=datums",
+            follow_redirects=False,
+        )
+        self.assertEqual(resp.status_code, 302)
+        location = resp.headers["Location"]
+        self.assertIn("sandbox_filter=agro_erp", location)
+        self.assertIn("document=system%3Aanthology", location)
+        self.assertIn("mode=datums", location)
 
     def test_cts_gis_redirects_with_tool_filter(self) -> None:
         resp = self._client.get("/portal/system/tools/cts-gis", follow_redirects=False)

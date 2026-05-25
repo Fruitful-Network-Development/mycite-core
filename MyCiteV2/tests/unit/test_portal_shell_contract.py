@@ -381,6 +381,50 @@ class PortalShellContractTests(unittest.TestCase):
             },
         )
 
+    def test_workbench_ui_query_accepts_sandbox_alias(self) -> None:
+        # Legacy redirects/bookmarks emitted ?sandbox=; it must canonicalize
+        # to sandbox_filter rather than being silently dropped.
+        self.assertEqual(
+            canonical_query_for_surface_query(
+                {"sandbox": "agro_erp"}, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+            ),
+            {"sandbox_filter": "agro_erp"},
+        )
+
+    def test_workbench_ui_query_infers_sandbox_from_canonical_document_id(self) -> None:
+        doc = "lv.3-2-3.agro_erp.farm_profile." + ("a" * 64)
+        out = canonical_query_for_surface_query(
+            {"document": doc}, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+        )
+        self.assertEqual(out["document"], doc)
+        self.assertEqual(out["sandbox_filter"], "agro_erp")
+
+    def test_workbench_ui_query_does_not_infer_sandbox_for_system_or_legacy_docs(self) -> None:
+        # Non-canonical legacy id -> no inference (whole-corpus view preserved).
+        self.assertNotIn(
+            "sandbox_filter",
+            canonical_query_for_surface_query(
+                {"document": "system:anthology"}, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+            ),
+        )
+        # Canonical *system* doc -> still whole-corpus, no implied filter.
+        sys_doc = "lv.3-2-3.system.anchor." + ("b" * 64)
+        self.assertNotIn(
+            "sandbox_filter",
+            canonical_query_for_surface_query(
+                {"document": sys_doc}, surface_id=WORKBENCH_UI_TOOL_SURFACE_ID
+            ),
+        )
+        # An explicit sandbox_filter always wins over inference.
+        agro_doc = "lv.3-2-3.agro_erp.x." + ("c" * 64)
+        self.assertEqual(
+            canonical_query_for_surface_query(
+                {"document": agro_doc, "sandbox_filter": "cts_gis"},
+                surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+            )["sandbox_filter"],
+            "cts_gis",
+        )
+
     def test_runtime_request_payload_helper_normalizes_surface_query_with_legacy_fallback_keys(self) -> None:
         workbench_query = canonical_query_for_runtime_request_payload(
             {"document": "sandbox:cts_gis:sc.example.json", "group": "documents"},

@@ -57,13 +57,14 @@ class PortalAgroErpRoutingTests(unittest.TestCase):
 
     def test_route_resolves_with_portal_shell(self) -> None:
         # Plan v2: the agro-erp tool URL 302-redirects into the unified
-        # workbench at /portal/system?sandbox=agro_erp. Following the
-        # redirect should land on a 200 system page whose bootstrap
-        # request carries the system root surface id.
+        # workbench at /portal/system?sandbox_filter=agro_erp (canonical key;
+        # the legacy ?sandbox= form was silently dropped by the workbench
+        # query canonicalizer). Following the redirect should land on a 200
+        # system page whose bootstrap request carries the system root surface.
         response = self.client.get(AGRO_ERP_TOOL_ROUTE, follow_redirects=False)
         self.assertEqual(response.status_code, 302)
         self.assertIn("/portal/system", response.headers["Location"])
-        self.assertIn("sandbox=agro_erp", response.headers["Location"])
+        self.assertIn("sandbox_filter=agro_erp", response.headers["Location"])
         # The system root resolves cleanly.
         followed = self.client.get(AGRO_ERP_TOOL_ROUTE, follow_redirects=True)
         self.assertEqual(followed.status_code, 200)
