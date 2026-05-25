@@ -40,7 +40,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     TRANSITION_FOCUS_FILE,
     UTILITIES_EXTENSIONS_SURFACE_ID,
     UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
-    UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
@@ -362,8 +361,6 @@ def _utilities_surface_label(surface_id: str) -> str:
         return "Peripherals"
     if surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
         return "Tool Exposure (legacy)"
-    if surface_id == UTILITIES_INTEGRATIONS_SURFACE_ID:
-        return "Integrations (legacy)"
     return "Overview"
 
 

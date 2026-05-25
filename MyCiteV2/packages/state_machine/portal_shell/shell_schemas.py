@@ -17,7 +17,6 @@ SYSTEM_ROOT_SURFACE_ID = "system.root"
 NETWORK_ROOT_SURFACE_ID = "network.root"
 UTILITIES_ROOT_SURFACE_ID = "utilities.root"
 UTILITIES_TOOL_EXPOSURE_SURFACE_ID = "utilities.tool_exposure"
-UTILITIES_INTEGRATIONS_SURFACE_ID = "utilities.integrations"
 # Phase 14b: replace the single mixed-purpose tool-exposure surface
 # (which conflated extensions + tools + grantee profile + workbench UI)
 # with four dedicated surfaces. The old IDs above stay registered for
@@ -77,7 +76,6 @@ SYSTEM_ROOT_ROUTE = "/portal/system"
 NETWORK_ROOT_ROUTE = "/portal/network"
 UTILITIES_ROOT_ROUTE = "/portal/utilities"
 UTILITIES_TOOL_EXPOSURE_ROUTE = "/portal/utilities/tool-exposure"
-UTILITIES_INTEGRATIONS_ROUTE = "/portal/utilities/integrations"
 # Phase 14b: per-surface canonical routes.
 UTILITIES_EXTENSIONS_ROUTE = "/portal/utilities/extensions"
 UTILITIES_GRANTEE_PROFILE_ROUTE = "/portal/utilities/grantee-profile"
@@ -176,7 +174,6 @@ UTILITIES_SURFACE_IDS = frozenset(
     {
         UTILITIES_ROOT_SURFACE_ID,
         UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-        UTILITIES_INTEGRATIONS_SURFACE_ID,
         UTILITIES_EXTENSIONS_SURFACE_ID,
         UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
         UTILITIES_TOOLS_SURFACE_ID,

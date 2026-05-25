@@ -1461,7 +1461,7 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "system"
     if normalized_surface_id == NETWORK_ROOT_SURFACE_ID:
         return "network"
-    if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID, UTILITIES_INTEGRATIONS_SURFACE_ID}:
+    if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID}:
         return "utilities"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return "cts_gis"
@@ -1724,8 +1724,6 @@ __all__ = [
     "UTILITIES_EXTENSIONS_SURFACE_ID",
     "UTILITIES_GRANTEE_PROFILE_ROUTE",
     "UTILITIES_GRANTEE_PROFILE_SURFACE_ID",
-    "UTILITIES_INTEGRATIONS_ROUTE",
-    "UTILITIES_INTEGRATIONS_SURFACE_ID",
     "UTILITIES_PERIPHERALS_ROUTE",
     "UTILITIES_PERIPHERALS_SURFACE_ID",
     "UTILITIES_ROOT_ROUTE",
