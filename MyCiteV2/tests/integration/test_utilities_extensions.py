@@ -180,7 +180,8 @@ class TestUtilitiesToolExposureSurface(unittest.TestCase):
         client = app.test_client()
         resp = client.get("/portal/system/tools/fnd-csm", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/tool-exposure")
+        # FND-CSM surface removed; functionality moved to Utilities extensions.
+        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
 
 
 if __name__ == "__main__":
