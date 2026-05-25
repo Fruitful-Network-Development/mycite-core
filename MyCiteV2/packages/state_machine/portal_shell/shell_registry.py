@@ -30,8 +30,6 @@ from .shell_schemas import (
     UTILITIES_EXTENSIONS_SURFACE_ID,
     UTILITIES_GRANTEE_PROFILE_ROUTE,
     UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
-    UTILITIES_INTEGRATIONS_ROUTE,
-    UTILITIES_INTEGRATIONS_SURFACE_ID,
     UTILITIES_PERIPHERALS_ROUTE,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_ROUTE,
@@ -86,16 +84,9 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             surface_kind="utilities_tool_exposure",
             page_owner="utilities",
         ),
-        PortalSurfaceCatalogEntry(
-            surface_id=UTILITIES_INTEGRATIONS_SURFACE_ID,
-            label="Integrations",
-            route=UTILITIES_INTEGRATIONS_ROUTE,
-            root_surface_id=UTILITIES_ROOT_SURFACE_ID,
-            surface_kind="utilities_integrations",
-            page_owner="utilities",
-        ),
-        # Phase 14b: four dedicated Utilities surfaces. The legacy two
-        # entries above remain registered for one transition cycle so
+        # Phase 14b: four dedicated Utilities surfaces. The legacy
+        # tool-exposure entry above remains registered for one transition
+        # cycle so
         # external bookmarks resolve via a 302 redirect at the HTTP layer.
         PortalSurfaceCatalogEntry(
             surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
