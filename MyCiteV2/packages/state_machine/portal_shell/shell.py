@@ -662,16 +662,36 @@ def anchor_file_key_for_sandbox(sandbox_id: object) -> str:
     return SYSTEM_ANCHOR_FILE_KEY if sandbox_token == "system" else TOOL_ANCHOR_FILE_KEY
 
 
-def sandbox_id_for_file_key(file_key: object) -> str:
-    token = _as_text(file_key)
-    if not token or token in {
+# Operational file keys address the OPERATIONAL subsystem (system/tool anchors,
+# activity log, profile basics) — they are NOT datum documents. Phase B keeps
+# them out of the datum file-key parser so the workbench's datum addressing and
+# the instance's operational state stay separate. Operational config itself
+# (grantee/extension) lives in the runtime's OperationalStore, not the state
+# machine.
+OPERATIONAL_FILE_KEYS = frozenset(
+    {
         SYSTEM_ANCHOR_FILE_KEY,
+        TOOL_ANCHOR_FILE_KEY,
         SYSTEM_ACTIVITY_FILE_KEY,
         SYSTEM_PROFILE_BASICS_FILE_KEY,
-    }:
-        return "system"
-    if token == TOOL_ANCHOR_FILE_KEY:
-        return ""
+    }
+)
+
+
+def is_operational_file_key(file_key: object) -> bool:
+    """True for operational-subsystem anchors (not datum documents)."""
+    return _as_text(file_key) in OPERATIONAL_FILE_KEYS
+
+
+def sandbox_id_for_file_key(file_key: object) -> str:
+    """Sandbox token for a DATUM document file key.
+
+    Datum-only: handles canonical ``lv.<msn>.<sandbox>.<name>.<hash>`` and the
+    legacy ``system:`` / ``sandbox:`` datum forms. Operational file keys
+    (``is_operational_file_key``) are not datum documents and return ""; they
+    are recognized by the operational subsystem, not by this parser.
+    """
+    token = _as_text(file_key)
     if token.startswith("lv."):
         parts = token.split(".")
         return parts[2] if len(parts) >= 4 else ""
@@ -1749,7 +1769,9 @@ __all__ = [
     "default_workbench_visible_for_surface",
     "focus_level_for_shell_state",
     "foreground_region_for_surface",
+    "OPERATIONAL_FILE_KEYS",
     "initial_portal_shell_state",
+    "is_operational_file_key",
     "is_tool_surface",
     "map_surface_to_active_service",
     "normalize_runtime_shell_action_request_payload",

@@ -965,11 +965,11 @@ def _load_grantee_for_domain(private_dir: Path, domain: str) -> dict[str, Any] |
     if not domain_lower:
         return None
     try:
-        from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-            _load_grantee_profiles,
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profiles,
         )
 
-        for grantee in _load_grantee_profiles(private_dir):
+        for grantee in load_grantee_profiles(private_dir):
             domains = [_as_text(d).lower() for d in (grantee.get("domains") or [])]
             if domain_lower in domains:
                 return grantee
@@ -2163,11 +2163,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if host_config.private_dir is None or not domain:
             return {}
         try:
-            from MyCiteV2.instances._shared.runtime.portal_fnd_csm_runtime import (
-                _load_grantee_profiles,
+            from MyCiteV2.instances._shared.runtime.operational_store import (
+                load_grantee_profiles,
             )
 
-            for grantee in _load_grantee_profiles(host_config.private_dir):
+            for grantee in load_grantee_profiles(host_config.private_dir):
                 domains = [str(d).lower() for d in (grantee.get("domains") or [])]
                 if domain.lower() in domains:
                     return grantee
