@@ -175,6 +175,16 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
             return {}
         return dict(payload)
 
+    def contact_log_present(self, *, domain: str) -> bool:
+        """True when a contact-log file physically exists for the domain.
+
+        Lets a write path distinguish "no log yet" (safe to create fresh) from
+        "a log file exists but didn't load" (unaccepted schema / parse error) so
+        it never silently overwrites and drops a domain's existing contacts.
+        """
+        path = self._contacts_path(domain)
+        return path.exists() and path.is_file()
+
     def save_contact_log(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
         token = _normalized_domain(domain)
         body = dict(payload if isinstance(payload, dict) else {})

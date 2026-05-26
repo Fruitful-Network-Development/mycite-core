@@ -183,9 +183,10 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         row = adapter.load_contact_log(domain="fruitfulnetworkdevelopment.com")["contacts"][0]
         self.assertEqual(row["forward_status"], "failed")
 
-    def test_no_forward_config_marks_pending(self) -> None:
-        # Grantee has no connect.forward_to_email — submission should
-        # still persist; forward_status=pending.
+    def test_no_forward_config_marks_not_configured(self) -> None:
+        # Grantee has no connect.forward_to_email — submission should still
+        # persist, but forward_status must be the honest "not_configured", NOT
+        # "pending" (which would imply an automatic retry that never comes).
         client, _tmp = self._build_client(forward_to="", ses_identity="")
         with patch(
             "MyCiteV2.instances._shared.portal_host.app._aws_peripheral.send_email"
@@ -195,7 +196,7 @@ class ConnectSubmitRouteTests(unittest.TestCase):
         send_email.assert_not_called()
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
-        self.assertEqual(body["forward_status"], "pending")
+        self.assertEqual(body["forward_status"], "not_configured")
 
     def test_missing_message_returns_400(self) -> None:
         client, _ = self._build_client()
