@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_rules import classify_row
 from MyCiteV2.packages.core.datum_templates import (
     TemplateRegistry,
     scaffold_from_template,
@@ -65,6 +66,21 @@ def _ok(action: str, payload: dict[str, Any]) -> dict[str, Any]:
         "action": action,
         **payload,
     }
+
+
+def _reject_malformed_row(datum_address: str, raw: Any) -> None:
+    """Reject writes of structurally malformed datum rows.
+
+    Consistent with the engine's reject-non-canonical stance (datum_semantics
+    refuses non-canonical families): only HARD malformity blocks. Advisory
+    issues such as ``value_group_pair_mismatch`` are well-formed and allowed,
+    and legacy ragged rows already in the catalog stay readable — they are
+    simply not newly creatable in a malformed shape.
+    """
+    shape = classify_row(datum_address, raw)
+    if not shape.well_formed:
+        detail = ", ".join(shape.issues) or shape.shape
+        raise ValueError(f"datum row shape is malformed ({detail})")
 
 
 def _parse_payload_text(payload: Mapping[str, Any]) -> Any:
@@ -413,17 +429,20 @@ def _preview_or_apply(
 ) -> dict[str, Any]:
     apply = action == "apply"
     if operation == "update_row_raw":
+        raw = _parse_payload_text(payload)
+        _reject_malformed_row(datum_address, raw)
         return _replace_row_raw(
             store,
             tenant_id=tenant_id,
             document_id=document_id,
             datum_address=datum_address,
-            raw=_parse_payload_text(payload),
+            raw=raw,
             apply=apply,
         )
     if operation == "insert_datum":
         raw = _parse_payload_text(payload)
         target_address = _as_text(payload.get("target_address")) or datum_address
+        _reject_malformed_row(target_address, raw)
         method = store.apply_document_insert if apply else store.preview_document_insert
         return method(tenant_id=tenant_id, document_id=document_id, target_address=target_address, raw=raw)
     if operation == "delete_datum":

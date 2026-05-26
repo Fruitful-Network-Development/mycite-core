@@ -56,7 +56,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             ),
         )
 
-    def test_workbench_ui_defaults_to_cts_gis_document_when_available(self) -> None:
+    def test_workbench_ui_defaults_to_first_listed_document(self) -> None:
         with TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             data_dir = root / "data"
@@ -105,7 +105,13 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = envelope["surface_payload"]["workspace"]
             selected_document_id = workspace["selected_document"]["document_id"]
 
-            self.assertTrue(selected_document_id.startswith("sandbox:cts_gis:"))
+            # Default selection follows anchor-first ordering: _preferred_document_id
+            # returns the anchor when present, else the first listed document — which the
+            # stable anchor-first sort places at row 0 either way. (The legacy
+            # "prefer sandbox:cts_gis:" default was dropped; see workbench_ui/service.py.)
+            document_rows = workspace["document_table"]["rows"]
+            self.assertTrue(document_rows)
+            self.assertEqual(selected_document_id, document_rows[0]["document_id"])
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
             composition = envelope["shell_composition"]
