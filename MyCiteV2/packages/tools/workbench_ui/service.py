@@ -15,6 +15,7 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
     datum_address_sort_key,
     parse_datum_address,
 )
+from MyCiteV2.packages.core.datum_rules import family_column_template
 from MyCiteV2.packages.modules.domains.datum_recognition import recognize_authoritative_document
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -33,7 +34,6 @@ WORKBENCH_UI_DEFAULT_GROUP = "flat"
 WORKBENCH_UI_DEFAULT_LENS = "interpreted"
 WORKBENCH_UI_DEFAULT_SOURCE_VISIBILITY = "show"
 WORKBENCH_UI_DEFAULT_OVERLAY_VISIBILITY = "show"
-WORKBENCH_UI_PREFERRED_DOCUMENT_PREFIX = "sandbox:cts_gis:"
 
 _DOCUMENT_SORT_KEYS = {
     "document_id",
@@ -238,6 +238,12 @@ def _layer_matrix(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 list(group["cells"]),
                 key=lambda item: datum_address_sort_key(item["datum_address"]),
             )
+            group["column_template"] = [
+                {"role": col.role, "index": col.index, "key": col.key, "variadic": col.variadic}
+                for col in family_column_template(
+                    [(cell.get("datum_address"), cell.get("raw")) for cell in group["cells"]]
+                )
+            ]
         layer_entry["value_groups"] = groups
     return ordered_layers
 
@@ -384,9 +390,8 @@ def _navigation_item(items: list[dict[str, Any]], *, index: int, label_key: str,
 
 def _preferred_document_id(document_rows: list[dict[str, Any]]) -> str:
     for document in document_rows:
-        document_id = _as_text(document.get("document_id"))
-        if document_id.startswith(WORKBENCH_UI_PREFERRED_DOCUMENT_PREFIX):
-            return document_id
+        if document.get("is_anchor"):
+            return _as_text(document.get("document_id"))
     return _as_text((document_rows[0] if document_rows else {}).get("document_id"))
 
 
@@ -485,6 +490,7 @@ class WorkbenchUiReadService:
             "row_count": int(document.row_count),
             "version_hash": version_hash,
             "version_hash_short": _short_hash(version_hash),
+            "is_anchor": bool(document.is_anchor),
             "selected": False,
         }
 
@@ -515,6 +521,10 @@ class WorkbenchUiReadService:
             primary_value_token = _as_text(getattr(recognized, "primary_value_token", ""))
             render_hints = dict(getattr(recognized, "render_hints", {}) or {})
             diagnostics = tuple(getattr(recognized, "diagnostic_states", ()) or ())
+            reference_bindings = [
+                binding.to_dict() if hasattr(binding, "to_dict") else dict(binding)
+                for binding in (getattr(recognized, "reference_bindings", ()) or ())
+            ]
             lens_resolution = resolve_datum_lens(
                 recognized_family=recognized_family,
                 primary_value_kind=render_hints.get("primary_value_kind"),
@@ -544,6 +554,7 @@ class WorkbenchUiReadService:
                     "primary_value_kind": _as_text(render_hints.get("primary_value_kind")),
                     "overlay_kind": _as_text(render_hints.get("overlay_kind")),
                     "diagnostic_states": list(diagnostics),
+                    "reference_bindings": reference_bindings,
                     "resolved_lens": lens_resolution.lens_id,
                     "resolved_lens_match": lens_resolution.matched_on,
                     "display_value": display_value,
@@ -675,6 +686,9 @@ class WorkbenchUiReadService:
             ),
             reverse=document_sort_direction == "desc",
         )
+        # Pin the sandbox anchor document first regardless of sort direction
+        # (stable sort preserves the prior ordering within each group).
+        document_rows.sort(key=lambda document: 0 if document.get("is_anchor") else 1)
         if selected_document_id not in {document["document_id"] for document in document_rows}:
             selected_document_id = ""
         if not selected_document_id and document_rows:
