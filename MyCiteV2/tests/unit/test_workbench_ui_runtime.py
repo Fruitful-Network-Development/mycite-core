@@ -937,6 +937,80 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["surface_payload"]["workspace"]["selected_row"]["datum_address"], "4-2-2")
             self.assertEqual(envelope["surface_payload"]["workspace"]["selected_row"]["labels"], "MAIN_STREET")
 
+    def test_datum_grid_layers_emit_per_family_column_template(self) -> None:
+        """Lock the datum_grid.layers contract the Datum IDE grid (L3) consumes.
+
+        The grid renderer (renderDatumIdeGrid / _ideRowCells) walks each
+        value_group's column_template POSITIONALLY against raw[0]. The ordering
+        therefore IS the contract: a PAIRS family must emit
+        address, reference, magnitude...; a RECORD family must emit
+        address, relation, reference, then one record_key column per dict key —
+        the relation column has to precede the reference so the reference maps to
+        head[2] (the object), not head[1] (the '~' relation).
+        """
+
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            db_file = root / "authority.sqlite3"
+            (data_dir / "system" / "sources").mkdir(parents=True)
+            (data_dir / "payloads" / "cache").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(
+                    {
+                        # PAIRS family (layer 2, value_group 1): [addr, ref, mag].
+                        "2-1-1": [["2-1-1", "0-0-5", "MAGBITS"], ["alpha"]],
+                        # RECORD family (layer 3, value_group 0): dict tail of
+                        # named magnitudes, head = [addr, '~', object_ref].
+                        "3-0-1": [["3-0-1", "~", "0-0-9"], {"alpha_ascii": "A", "beta_ascii": "B"}],
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+            )
+
+            envelope = run_portal_workbench_ui(
+                {
+                    "schema": "mycite.v2.portal.system.tools.workbench_ui.request.v1",
+                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition"]},
+                    "surface_query": {"document": "system:anthology"},
+                },
+                portal_instance_id="fnd",
+                portal_domain="fruitfulnetworkdevelopment.com",
+                authority_db_file=db_file,
+            )
+
+            layers = envelope["surface_payload"]["workspace"]["datum_grid"]["layers"]
+
+            def column_template(layer_id: int, value_group_id: int) -> list[dict[str, object]]:
+                layer = next(item for item in layers if item["layer"] == layer_id)
+                group = next(
+                    vg for vg in layer["value_groups"] if vg["value_group"] == value_group_id
+                )
+                return group["column_template"]
+
+            pairs_cols = column_template(2, 1)
+            self.assertEqual(
+                [col["role"] for col in pairs_cols],
+                ["address", "reference", "magnitude"],
+            )
+
+            record_cols = column_template(3, 0)
+            roles = [col["role"] for col in record_cols]
+            self.assertEqual(roles[:3], ["address", "relation", "reference"])
+            self.assertTrue(all(role == "record_key" for role in roles[3:]))
+            self.assertEqual(
+                [col["key"] for col in record_cols if col["role"] == "record_key"],
+                ["alpha_ascii", "beta_ascii"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2075,6 +2075,119 @@
     );
   }
 
+  // --- Datum IDE grid (L3) -------------------------------------------------
+  // Renders datum_grid.layers as an Excel-esque cell matrix: per layer, per
+  // value-group, columns come from the backend column_template (datum_rules),
+  // cells are the positional decomposition of each row's raw payload. Read-only
+  // in this pass; the raw row editor stays available beneath the grid.
+  function _ideCellText(value) {
+    if (value == null) return "";
+    if (typeof value === "object") {
+      try { return JSON.stringify(value); } catch (e) { return String(value); }
+    }
+    return String(value);
+  }
+  function _ideTruncate(text, max) {
+    text = _ideCellText(text);
+    return text.length <= max ? text : text.slice(0, max) + "…";
+  }
+  function _ideColumnLabel(col) {
+    switch (col.role) {
+      case "address": return "Datum";
+      case "relation": return "↳";
+      case "reference": return "Ref " + col.index;
+      case "magnitude": return "Mag " + col.index;
+      case "references": return "References";
+      case "record_key": return col.key || "field";
+      case "value": return "Value";
+      default: return col.role || "";
+    }
+  }
+  // Map each column onto the row's positional payload. The head (raw[0]) is a
+  // flat array whose slots correspond, IN ORDER, to the head-backed columns
+  // (address, relation, reference, magnitude); `references` (the RUDI variadic)
+  // consumes the rest of the head; record_key/value read the dict/scalar tail.
+  // Walking positionally — rather than re-deriving a head index per role — is
+  // the one mapping correct across PAIRS / RUDI / RECORD: a RECORD head is
+  // [address, "~", ref], so its single reference sits at head[2], not at
+  // head[1] as a PAIRS-style 2*index-1 would assume. It also degrades
+  // gracefully when a row is shorter than its family's template (extra cells
+  // stay blank, since head[slot] is then undefined).
+  function _ideRowCells(cell, columns) {
+    var raw = cell.raw;
+    var head = (raw && Array.isArray(raw) && Array.isArray(raw[0])) ? raw[0] : null;
+    var tail = (raw && Array.isArray(raw) && raw.length > 1) ? raw[1] : null;
+    var slot = 0;
+    return columns.map(function (col) {
+      switch (col.role) {
+        case "address": {
+          var addr = asText(cell.datum_address) || (head ? _ideCellText(head[slot]) : _ideCellText(raw));
+          slot += 1;
+          return addr;
+        }
+        case "relation":
+        case "reference":
+        case "magnitude":
+          return head ? _ideCellText(head[slot++]) : "";
+        case "references": {
+          var rest = head ? head.slice(slot).map(_ideCellText).join(", ") : "";
+          if (head) slot = head.length;
+          return rest;
+        }
+        case "record_key":
+          return (tail && typeof tail === "object" && !Array.isArray(tail)) ? _ideCellText(tail[col.key]) : "";
+        case "value":
+          return _ideCellText(raw);
+        default:
+          return "";
+      }
+    });
+  }
+  function renderDatumIdeGridRow(cell, columns) {
+    var values = _ideRowCells(cell, columns);
+    var tds = columns.map(function (col, i) {
+      var full = values[i];
+      var shown = _ideTruncate(full, 28);
+      return '<td class="v2-ide__cell v2-ide__cell--' + escapeHtml(col.role) + '" title="' +
+        escapeHtml(full) + '">' +
+        (shown ? escapeHtml(shown) : '<span class="v2-ide__blank">·</span>') + "</td>";
+    }).join("");
+    return '<tr class="v2-ide__row' + (cell.selected ? " is-selected" : "") +
+      '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds + "</tr>";
+  }
+  function renderDatumIdeValueGroup(group) {
+    var columns = asList(group.column_template);
+    if (!columns.length) columns = [{ role: "address" }];
+    var cells = asList(group.cells);
+    var headCells = columns.map(function (col) {
+      return '<th class="v2-ide__col v2-ide__col--' + escapeHtml(col.role) + '">' +
+        escapeHtml(_ideColumnLabel(col)) + "</th>";
+    }).join("");
+    var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns); }).join("");
+    return '<section class="v2-ide__valueGroup" data-value-group-id="' +
+      escapeHtml(String(asObject(group).value_group)) + '">' +
+      '<header class="v2-ide__vgHeader"><h5>' +
+      escapeHtml(asText(group.title) || ("Value Group " + asObject(group).value_group)) +
+      "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small></header>" +
+      '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><thead><tr>' + headCells +
+      "</tr></thead><tbody>" + bodyRows + "</tbody></table></div></section>";
+  }
+  function renderDatumIdeGrid(datumGrid) {
+    var layers = asList(datumGrid.layers);
+    if (!layers.length) {
+      return '<div class="v2-ide" data-region="datum-ide"><p class="v2-workbenchUi__empty">' +
+        "No datum rows yet — use the composer above to author the first datum.</p></div>";
+    }
+    var sections = layers.map(function (layer) {
+      var layerId = String(asObject(layer).layer);
+      var vgs = asList(layer.value_groups).map(renderDatumIdeValueGroup).join("");
+      return '<section class="v2-ide__layer" data-layer-id="' + escapeHtml(layerId) + '">' +
+        '<header class="v2-ide__layerHeader"><h4>' +
+        escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs + "</section>";
+    }).join("");
+    return '<div class="v2-ide" data-region="datum-ide">' + sections + "</div>";
+  }
+
   function renderDocumentEditor(workspace, surfacePayload, region) {
     var selectedDocument = asObject(workspace.selected_document);
     var datumGrid = asObject(workspace.datum_grid);
@@ -2096,7 +2209,8 @@
       );
     }
     var rows = flattenDatumGridForEditor(datumGrid);
-    var bodyHtml = rows.length
+    var gridHtml = renderDatumIdeGrid(datumGrid);
+    var tableHtml = rows.length
       ? '<div class="v2-tableWrap"><table class="v2-table v2-workbenchUi__editorTable">' +
         '<thead><tr><th class="v2-workbenchUi__editorAddr">Datum</th><th>' +
         escapeHtml(lens === "raw" ? "Raw Payload" : "Interpreted Value") +
@@ -2108,6 +2222,14 @@
           .join("") +
         "</tbody></table></div>"
       : '<p class="v2-workbenchUi__empty">This document has no datum rows yet.</p>';
+    // Grid is the primary view; the proven raw row-editor stays available under a
+    // disclosure (keeps bindDocumentEditor + editing intact — no regression).
+    var bodyHtml =
+      gridHtml +
+      '<details class="v2-ide__rowEditor"' + (rows.length ? "" : " open") + ">" +
+      "<summary>Row editor — edit raw datum payloads</summary>" +
+      tableHtml +
+      "</details>";
     return (
       '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
       '<header class="v2-workbenchUi__editorHeader">' +

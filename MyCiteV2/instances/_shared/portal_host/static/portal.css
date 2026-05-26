@@ -8835,6 +8835,107 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 12px;
 }
 
+/* Datum IDE grid (L3) — Excel-esque cell matrix, themed per layer / value-group */
+.v2-ide {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 12px 16px;
+}
+.v2-ide__layer {
+  --ide-layer: #2e74b5;
+  border-left: 3px solid var(--ide-layer);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+.v2-ide__layer[data-layer-id="0"] { --ide-layer: #5b6b7a; }
+.v2-ide__layer[data-layer-id="1"] { --ide-layer: #2e74b5; }
+.v2-ide__layer[data-layer-id="2"] { --ide-layer: #2f9e7d; }
+.v2-ide__layer[data-layer-id="3"] { --ide-layer: #b5772e; }
+.v2-ide__layer[data-layer-id="4"] { --ide-layer: #8a4fbf; }
+.v2-ide__layer[data-layer-id="5"] { --ide-layer: #b53e63; }
+.v2-ide__layer[data-layer-id="6"] { --ide-layer: #3e8fb5; }
+.v2-ide__layer[data-layer-id="7"] { --ide-layer: #6b8a2e; }
+.v2-ide__layerHeader {
+  padding: 6px 12px;
+  border-bottom: 2px solid var(--ide-layer);
+}
+.v2-ide__layerHeader h4 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ide-layer);
+}
+/* darker rule divides each value-group section within a layer */
+.v2-ide__valueGroup {
+  border-top: 2px solid rgba(32, 56, 77, 0.16);
+  padding: 8px 12px 12px;
+}
+.v2-ide__valueGroup:first-of-type {
+  border-top: 0;
+}
+.v2-ide__vgHeader {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.v2-ide__vgHeader h5 {
+  margin: 0;
+  font-size: 12px;
+  color: #20384d;
+}
+.v2-ide__vgHeader small {
+  color: rgba(32, 56, 77, 0.6);
+  font-size: 11px;
+}
+.v2-ide__table {
+  font-size: 12px;
+}
+.v2-ide__table th.v2-ide__col {
+  background: rgba(32, 56, 77, 0.04);
+  color: rgba(32, 56, 77, 0.75);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+.v2-ide__cell {
+  font-variant-numeric: tabular-nums;
+  max-width: 24ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-ide__col--address,
+.v2-ide__cell--address {
+  font-weight: 600;
+  color: var(--ide-layer);
+  white-space: nowrap;
+}
+.v2-ide__cell--reference {
+  color: #2e74b5;
+}
+.v2-ide__cell--magnitude {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.v2-ide__row.is-selected {
+  background: rgba(46, 116, 181, 0.08);
+}
+.v2-ide__blank {
+  color: rgba(32, 56, 77, 0.3);
+}
+.v2-ide__rowEditor {
+  margin: 10px 16px 16px;
+  border: 1px solid rgba(32, 56, 77, 0.12);
+  border-radius: 6px;
+  background: #fbfcfd;
+}
+.v2-ide__rowEditor > summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: rgba(32, 56, 77, 0.78);
+}
+
 /* Datum Composer — always-open compose bar in the editor header */
 .v2-workbenchUi__composer {
   padding: 10px 14px;
