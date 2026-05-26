@@ -12,6 +12,7 @@ import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
@@ -831,8 +832,14 @@ def _newsletter_state_adapter(host_config: V2PortalHostConfig):
 
 
 def _fnd_newsletter_request_field(field: str) -> str:
-    """Extract a field from JSON body or form data."""
-    data = request.get_json(silent=True)
+    """Extract a field from JSON body or form data.
+
+    Uses ``force=True`` so a JSON body still parses when the client (or a proxy)
+    omitted or rewrote ``Content-Type: application/json`` — otherwise every field
+    read empty and a correctly-filled form 400'd as ``invalid_email``. Falls back
+    to form-encoded data when the body genuinely isn't JSON.
+    """
+    data = request.get_json(silent=True, force=True)
     if isinstance(data, dict):
         return str(data.get(field) or "").strip()
     return str(request.form.get(field) or "").strip()
@@ -1080,6 +1087,41 @@ def _find_create_order_entry(orders_log: Path, order_id: str) -> dict[str, Any] 
         if _as_text(entry.get("event")) != "create_order":
             continue
         if _as_text(entry.get("order_id")) == target:
+            return entry
+    return None
+
+
+def _find_completed_capture_entry(orders_log: Path, order_id: str) -> dict[str, Any] | None:
+    """Return a prior COMPLETED ``capture_order`` log entry for ``order_id``.
+
+    Lets the capture path be idempotent: a retry / double-click / webhook+browser
+    race returns the already-recorded capture instead of re-calling PayPal, which
+    would 502 ``ORDER_ALREADY_CAPTURED`` for a donor who actually paid.
+    """
+    if not order_id:
+        return None
+    try:
+        if not orders_log.exists():
+            return None
+        lines = orders_log.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    target = _as_text(order_id)
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if _as_text(entry.get("event")) != "capture_order":
+            continue
+        if _as_text(entry.get("order_id")) != target:
+            continue
+        if _as_text(entry.get("status")).upper() == "COMPLETED":
             return entry
     return None
 
@@ -1447,7 +1489,12 @@ def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, separators=(",", ":")) + "\n")
     except Exception:
-        pass
+        # A swallowed write here means a captured payment (or other event) goes
+        # unrecorded — surface it so a captured-but-unlogged order is detectable.
+        _log.exception(
+            "ndjson_append_failed",
+            extra={"path": str(path), "event": record.get("event")},
+        )
 
 
 def create_app(config: V2PortalHostConfig | None = None) -> Flask:
@@ -2117,7 +2164,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 if domain.lower() in domains:
                     return grantee
         except Exception:
-            pass
+            # Never swallow silently: a loader/import failure here used to make
+            # every public form 404 "domain_not_configured" with no trace, turning
+            # a config hiccup into an invisible site-wide outage (the bug this
+            # endpoint shipped with). Log with stack so it is diagnosable; still
+            # return {} so callers treat it as "unknown domain" rather than
+            # crashing the request.
+            _log.exception(
+                "grantee_profile_load_failed",
+                extra={"domain": domain, "private_dir": str(host_config.private_dir)},
+            )
         return {}
 
     def _send_email_extension_message(
@@ -2288,8 +2344,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         Returns one of:
           - ``"sent"`` on success
-          - ``"pending"`` if forwarding is not configured (no
-            forward_to_email or no aws_ses identity)
+          - ``"not_configured"`` if forwarding is not set up (no
+            forward_to_email or no aws_ses identity) — distinct from
+            "pending" so the dashboard doesn't imply an automatic retry
           - ``"failed"`` on SES failure (the operator can retry from
             the extension tab)
         """
@@ -2298,7 +2355,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         forward_to = _as_text(connect_cfg.get("forward_to_email"))
         ses_identity = _as_text(aws_cfg.get("identity"))
         if not forward_to or not ses_identity:
-            return "pending"
+            # Forwarding isn't configured for this grantee. Return a distinct
+            # status (NOT "pending", which implies an automatic retry that will
+            # never come) so the dashboard reports "saved — no forward configured"
+            # honestly; the contact still lands in the Connect tab.
+            return "not_configured"
         display_subject = subject or f"Connect message from {visitor_email}"
         body_text = (
             f"From: {visitor_name or visitor_email} <{visitor_email}>\n"
@@ -2455,7 +2516,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     private_dir=host_config.private_dir,
                 )
             except Exception:
-                pass
+                # Best-effort: the contact is already persisted, so a failed
+                # status update must not fail the request. But log it (was a
+                # silent pass) so a row stuck at the pre-forward status is visible.
+                _log.exception(
+                    "connect_forward_status_update_failed",
+                    extra={"domain": domain, "email": email, "forward_status": forward_status},
+                )
 
         return _connect_response(
             is_json_request, ok=True, status=200,
@@ -4064,6 +4131,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not amount:
             return jsonify({"ok": False, "error": "missing_amount"}), 400
+        try:
+            amount_value = Decimal(amount)
+        except (InvalidOperation, ValueError):
+            return jsonify({"ok": False, "error": "invalid_amount"}), 400
+        if not amount_value.is_finite() or amount_value <= 0:
+            return jsonify({"ok": False, "error": "invalid_amount"}), 400
+        # Normalize to a 2-decimal string PayPal accepts. The raw value was
+        # previously forwarded verbatim, so "0", "0.00", "-5", "abc", "NaN" all
+        # reached PayPal and surfaced as opaque 502s (or a $0 order).
+        amount = f"{amount_value:.2f}"
 
         private_dir = host_config.private_dir
         domain_profile = _load_domain_profile(private_dir, domain)
@@ -4210,6 +4287,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         client_id, client_secret, resolved_env = credentials
         environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
+        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+        # Idempotency: if this order was already captured (retry, double-click, or
+        # webhook+browser race), return the recorded result instead of re-calling
+        # PayPal — a second capture 502s ORDER_ALREADY_CAPTURED for a donor who paid.
+        prior_capture = _find_completed_capture_entry(orders_log, order_id)
+        if prior_capture is not None:
+            return {
+                "ok": True,
+                "capture_id": _as_text(prior_capture.get("capture_id")),
+                "status": _as_text(prior_capture.get("status")) or "COMPLETED",
+                "amount": _as_text(prior_capture.get("amount")),
+                "currency_code": _as_text(prior_capture.get("currency_code")),
+            }, 200
         try:
             access_token = _get_paypal_access_token(client_id, client_secret, base_url)
             capture_result = _capture_paypal_order(
@@ -4220,15 +4310,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         status = _as_text(capture_result.get("status"))
         capture_id = capture_amount = currency_code = ""
         purchase_units = capture_result.get("purchase_units", [])
-        if purchase_units and isinstance(purchase_units, list):
-            captures = purchase_units[0].get("payments", {}).get("captures", [])
-            if captures and isinstance(captures, list):
+        if purchase_units and isinstance(purchase_units, list) and isinstance(purchase_units[0], dict):
+            # PayPal may return payments present-but-null for non-COMPLETED states;
+            # `.get("payments", {})` would not guard that, so coerce with `or {}`.
+            payments = purchase_units[0].get("payments") or {}
+            captures = (payments.get("captures") if isinstance(payments, dict) else None) or []
+            if captures and isinstance(captures, list) and isinstance(captures[0], dict):
                 capture_id = _as_text(captures[0].get("id"))
-                amount_obj = captures[0].get("amount", {})
+                amount_obj = captures[0].get("amount") or {}
                 capture_amount = _as_text(amount_obj.get("value"))
                 currency_code = _as_text(amount_obj.get("currency_code"))
         import time as _time
-        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
         # The capture API response carries no donor identity — recover it from
         # the create-order row and link the donor to a contact (only on a
         # completed capture). Best-effort; never fails the capture.

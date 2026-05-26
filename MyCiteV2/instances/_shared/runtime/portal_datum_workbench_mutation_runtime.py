@@ -717,11 +717,15 @@ def _newsletter_apply_or_preview(
                 first_name, middle_name, last_name = split_legacy_name(name)
             now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
-            log = adapter.load_contact_log(domain=domain) or {
-                "domain": domain,
-                "contacts": [],
-                "dispatches": [],
-            }
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                # Empty means either no file yet (safe to start fresh) or a file
+                # exists but didn't load (unaccepted schema / parse error). In the
+                # latter case, saving a fresh list would DROP every existing
+                # contact, so refuse rather than silently lose data.
+                if adapter.contact_log_present(domain=domain):
+                    raise ValueError("contact_log_unreadable")
+                log = {"domain": domain, "contacts": [], "dispatches": []}
             contacts = list(log.get("contacts") or [])
             index = next(
                 (
@@ -833,11 +837,15 @@ def _newsletter_apply_or_preview(
                 raise ValueError("email is required for submit_connect_form")
             now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
-            log = adapter.load_contact_log(domain=domain) or {
-                "domain": domain,
-                "contacts": [],
-                "dispatches": [],
-            }
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                # Empty means either no file yet (safe to start fresh) or a file
+                # exists but didn't load (unaccepted schema / parse error). In the
+                # latter case, saving a fresh list would DROP every existing
+                # contact, so refuse rather than silently lose data.
+                if adapter.contact_log_present(domain=domain):
+                    raise ValueError("contact_log_unreadable")
+                log = {"domain": domain, "contacts": [], "dispatches": []}
             contacts = list(log.get("contacts") or [])
             index = next(
                 (
