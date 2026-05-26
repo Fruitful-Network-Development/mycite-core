@@ -33,6 +33,8 @@ Options:
   --skip-build-bump        Do not write /srv/compose/portals/v2_portal_build.env
   --skip-restart           Do not restart portal service
   --skip-health            Do not hit /portal/healthz
+  --skip-smoke             Do not run the post-deploy public-form smoke gate
+                           (connect/newsletter/donate per grantee domain).
   --skip-verify           Skip post-sync rsync verification checks.
   --skip-cts-gis-compile-check
                            Skip the FND CTS-GIS compile+validate step that normally
@@ -217,6 +219,84 @@ run_health_check() {
   fail "Health endpoint did not become ready at ${url} within ${attempts}s"
 }
 
+# Derive the grantee domains from the live grantee profiles so the smoke gate
+# auto-covers any newly-added grantee without editing this script.
+smoke_domains() {
+  python3 - "${LIVE_ROOT}/private" <<'PY'
+import sys, glob, json, os
+base = sys.argv[1]
+seen = []
+for path in sorted(glob.glob(os.path.join(base, "utilities", "tools", "fnd-csm", "grantee.*.json"))):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:
+        continue
+    for dom in (data.get("domains") or []):
+        dom = str(dom).strip().lower()
+        if dom and dom not in seen:
+            seen.append(dom)
+print("\n".join(seen))
+PY
+}
+
+# Post-deploy gate: prove the public form endpoints actually resolve each grantee
+# domain and respond, using side-effect-free probes. This is the check that would
+# have caught the silent connect 404 outage. Runs AFTER restart+health on --code.
+run_public_form_smoke() {
+  [[ -n "$PORT" ]] || fail "No port known for instance ${INSTANCE}"
+  local base="http://127.0.0.1:${PORT}"
+  local domains
+  domains="$(smoke_domains)"
+  if [[ -z "$domains" ]]; then
+    log "Public-form smoke: no grantee domains found — skipping"
+    return 0
+  fi
+  if [[ "$DRY_RUN" == "1" ]]; then
+    log "[dry-run] would smoke-test public forms for: $(echo "$domains" | tr '\n' ' ')"
+    return 0
+  fi
+  local failures=0 d code
+  while IFS= read -r d; do
+    [[ -n "$d" ]] || continue
+    # connect: honeypot probe (hp_field set) passes the grantee gate then
+    # short-circuits before any persist/SES — must be 200 if the domain resolves.
+    code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "${base}/__fnd/connect/submit" \
+      -H "Host: ${d}" -H "Content-Type: application/json" -H "Accept: application/json" \
+      -d "{\"email\":\"smoke@example.com\",\"message\":\"deploy smoke\",\"hp_field\":\"x\",\"domain\":\"${d}\"}" || echo 000)"
+    if [[ "$code" != "200" ]]; then
+      log "SMOKE FAIL connect ${d}: HTTP ${code} (expected 200 — grantee not resolving?)"
+      failures=$((failures + 1))
+    fi
+    # newsletter: a bad email on a newsletter-enabled domain returns 400
+    # invalid_email. A 404 is tolerated here — alias domains (e.g. cvccboard.org)
+    # legitimately have no newsletter-admin profile; the grantee-vs-newsletter
+    # divergence is caught by the dedicated config-consistency test instead. Only
+    # a server error (5xx) or no response (000) fails the gate.
+    code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "${base}/__fnd/newsletter/subscribe" \
+      -H "Host: ${d}" -H "Content-Type: application/json" -H "Accept: application/json" \
+      -d "{\"email\":\"not-an-email\",\"domain\":\"${d}\"}" || echo 000)"
+    if [[ "$code" == "000" || "$code" -ge 500 ]]; then
+      log "SMOKE FAIL newsletter ${d}: HTTP ${code} (server error)"
+      failures=$((failures + 1))
+    fi
+  done <<< "$domains"
+  # donate create-order: an empty body trips the missing_amount 400 before any
+  # PayPal/profile lookup, so this proves the route is registered + alive.
+  local first_domain
+  first_domain="$(echo "$domains" | head -n1)"
+  code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' -X POST "${base}/__fnd/paypal/create-order" \
+    -H "Host: ${first_domain}" -H "Content-Type: application/json" -H "Accept: application/json" -d '{}' || echo 000)"
+  if [[ "$code" == "000" || "$code" -ge 500 ]]; then
+    log "SMOKE FAIL paypal/create-order: HTTP ${code}"
+    failures=$((failures + 1))
+  fi
+  if [[ "$failures" -gt 0 ]]; then
+    fail "Public-form smoke gate failed (${failures} check(s)). The service is live but a public form is broken — roll back or fix before treating this deploy as good."
+  fi
+  log "Public-form smoke gate passed for all grantee domains"
+}
+
 should_enforce_cts_gis_compile() {
   [[ "$SKIP_CTS_GIS_COMPILE_CHECK" != "1" ]] || return 1
   [[ "$INSTANCE" == "fnd" ]] || return 1
@@ -263,6 +343,7 @@ BUILD_LABEL="manual-update"
 SKIP_BUILD_BUMP="0"
 SKIP_RESTART="0"
 SKIP_HEALTH="0"
+SKIP_SMOKE="0"
 DRY_RUN="0"
 INCLUDE_TOOL_STATE="0"
 SKIP_VERIFY="0"
@@ -327,6 +408,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-health)
       SKIP_HEALTH="1"
+      shift
+      ;;
+    --skip-smoke)
+      SKIP_SMOKE="1"
       shift
       ;;
     --skip-verify)
@@ -421,6 +506,9 @@ if [[ "$DO_CODE" == "1" ]]; then
   fi
   if [[ "$SKIP_HEALTH" != "1" ]]; then
     run_health_check
+  fi
+  if [[ "$SKIP_SMOKE" != "1" ]]; then
+    run_public_form_smoke
   fi
 fi
 
