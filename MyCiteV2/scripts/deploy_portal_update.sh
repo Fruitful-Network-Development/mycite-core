@@ -300,6 +300,20 @@ run_public_form_smoke() {
   log "Public-form smoke gate passed for all grantee domains"
 }
 
+# Report (don't block) per-grantee config gaps — newsletter-admin presence,
+# contact forward address, aws_ses identity — derived from the grantee profiles.
+# Report-only here so a tooling hiccup can't block a deploy; CI / operators run
+# it with --strict to gate on REQUIRED gaps.
+run_grantee_config_check() {
+  [[ "$DRY_RUN" == "1" ]] && { log "[dry-run] would run grantee config-consistency check"; return 0; }
+  local py="${MYCITE_PORTAL_VENV:-/srv/venvs/fnd_portal}/bin/python"
+  [[ -x "$py" ]] || py="python3"
+  log "Grantee config-consistency (report-only; CI uses --strict):"
+  PYTHONPATH="$REPO_ROOT" "$py" -m MyCiteV2.scripts.grantee_config_consistency \
+    --private-dir "${LIVE_ROOT}/private" \
+    || log "WARN: grantee config-consistency linter did not run cleanly"
+}
+
 should_enforce_cts_gis_compile() {
   [[ "$SKIP_CTS_GIS_COMPILE_CHECK" != "1" ]] || return 1
   [[ "$INSTANCE" == "fnd" ]] || return 1
@@ -347,6 +361,7 @@ SKIP_BUILD_BUMP="0"
 SKIP_RESTART="0"
 SKIP_HEALTH="0"
 SKIP_SMOKE="0"
+SKIP_CONFIG_CHECK="0"
 DRY_RUN="0"
 INCLUDE_TOOL_STATE="0"
 SKIP_VERIFY="0"
@@ -415,6 +430,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-smoke)
       SKIP_SMOKE="1"
+      shift
+      ;;
+    --skip-config-check)
+      SKIP_CONFIG_CHECK="1"
       shift
       ;;
     --skip-verify)
@@ -512,6 +531,9 @@ if [[ "$DO_CODE" == "1" ]]; then
   fi
   if [[ "$SKIP_SMOKE" != "1" ]]; then
     run_public_form_smoke
+  fi
+  if [[ "$SKIP_CONFIG_CHECK" != "1" ]]; then
+    run_grantee_config_check
   fi
 fi
 
