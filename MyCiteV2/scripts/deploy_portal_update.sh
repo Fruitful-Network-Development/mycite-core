@@ -318,15 +318,20 @@ should_enforce_cts_gis_compile() {
   [[ "$SKIP_CTS_GIS_COMPILE_CHECK" != "1" ]] || return 1
   [[ "$INSTANCE" == "fnd" ]] || return 1
   [[ "$DO_DATA" == "1" || "$DO_PRIVATE" == "1" || "$DO_CODE" == "1" ]] || return 1
-  [[ -d "${LIVE_ROOT}/data/sandbox/cts-gis/sources" ]] || return 1
+  # MOS-backed (2026-05-17 cleanup retired the disk sandbox/cts-gis/sources/ tree):
+  # enforce when the MOS authority DB is present, OR the legacy disk sources exist.
+  [[ -f "${LIVE_ROOT}/private/mos_authority.sqlite3" || -d "${LIVE_ROOT}/data/sandbox/cts-gis/sources" ]] || return 1
   return 0
 }
 
 compile_and_validate_cts_gis() {
   local data_dir="${LIVE_ROOT}/data"
   local private_dir="${LIVE_ROOT}/private"
+  # Use the portal venv (deps + MyCiteV2 importable), mirroring run_grantee_config_check.
+  local py="${MYCITE_PORTAL_VENV:-/srv/venvs/fnd_portal}/bin/python"
+  [[ -x "$py" ]] || py="python3"
   local compile_cmd=(
-    python3
+    env "PYTHONPATH=${REPO_ROOT}" "$py"
     "${REPO_ROOT}/MyCiteV2/scripts/compile_cts_gis_artifact.py"
     --data-dir
     "${data_dir}"
@@ -336,10 +341,12 @@ compile_and_validate_cts_gis() {
     "${INSTANCE}"
   )
   local validate_cmd=(
-    python3
+    env "PYTHONPATH=${REPO_ROOT}" "$py"
     "${REPO_ROOT}/MyCiteV2/scripts/validate_cts_gis_sources.py"
     --data-dir
     "${data_dir}"
+    --private-dir
+    "${private_dir}"
     --scope-id
     "${INSTANCE}"
     --require-compiled-match
