@@ -19,6 +19,20 @@ _COMPILED_DIR = Path("payloads") / "compiled"
 _SOURCE_ROOT = Path("sandbox") / "cts-gis" / "sources"
 CTS_GIS_SOURCE_LAYOUT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.source_layout.v1"
 
+# MOS-backed compile inputs (the disk sandbox/cts-gis/sources/ tree was retired
+# by the 2026-05-17 MOS-only cleanup). The admin-root identity ("ohio" 3-2-3-17)
+# lives in the `administrative` doc; the district record (5-0-26) + precinct_group
+# (4-84-1) live in the `3-2-3-17` doc — so the admin-root das is reconstructed by
+# MERGING both. The 247_17_77 doc carries the SD-31 district boundary outline.
+CTS_GIS_ADMIN_ROOT_MOS_DOC_NAMES = ("administrative", "3-2-3-17")
+CTS_GIS_DISTRICT_OUTLINE_MOS_DOC_NAME = "247_17_77"
+CTS_GIS_PRECINCT_DOC_NAME_PREFIX = "247_17_77_"
+# Ohio's capital_msn_id. The MOS admin-root row stores a rf.3-1-3 binary at row[4]
+# (not the capital, unlike the retired disk layout), so this is sourced as a known
+# constant (matches the surviving compiled-artifact backup identity).
+CTS_GIS_OHIO_CAPITAL_MSN_ID = "3-2-3-25-1-1-1-1"
+CTS_GIS_ADMIN_ROOT_NODE_ID = "3-2-3-17"
+
 
 def _utc_timestamp() -> str:
     return datetime.now(tz=UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -51,7 +65,19 @@ def _iter_cts_gis_source_files(source_root: Path | None) -> tuple[list[Path], li
     return _deduped_paths(top_level_files), _deduped_paths(precinct_files)
 
 
-def build_cts_gis_source_layout_summary(data_dir: str | Path | None) -> dict[str, Any]:
+def build_cts_gis_source_layout_summary(
+    data_dir: str | Path | None,
+    *,
+    datum_store: Any = None,
+    tenant_id: str = "fnd",
+) -> dict[str, Any]:
+    """Summarize the CTS-GIS source layout for the compile gate.
+
+    Prefers the on-disk ``sandbox/cts-gis/sources/`` tree when present (test
+    fixtures). When that tree is absent/empty AND a ``datum_store`` is supplied,
+    falls back to a MOS-backed summary (the disk sources were retired by the
+    2026-05-17 MOS-only cleanup) so a recompile is no longer blocked.
+    """
     source_root = cts_gis_source_root(data_dir)
     precinct_root = None if source_root is None else source_root / "precincts"
     top_level_files, precinct_files = _iter_cts_gis_source_files(source_root)
@@ -67,6 +93,10 @@ def build_cts_gis_source_layout_summary(data_dir: str | Path | None) -> dict[str
         stat = path.stat()
         fingerprint.update(f"{relative_path}|{int(stat.st_mtime_ns)}|{int(stat.st_size)}\n".encode())
         relative_paths.append(relative_path)
+    if not relative_paths and datum_store is not None:
+        mos_summary = _mos_source_layout_summary(datum_store, tenant_id)
+        if mos_summary is not None:
+            return mos_summary
     return {
         "schema": CTS_GIS_SOURCE_LAYOUT_SCHEMA,
         "source_root": "" if source_root is None else str(source_root),
@@ -188,6 +218,13 @@ def _has_samras_authority(payload: dict[str, Any]) -> bool:
     return False
 
 
+def _has_reconstruction_authority(payload: dict[str, Any]) -> bool:
+    """True for a MOS-only administrative_source: a non-empty das from which the
+    canonical SAMRAS magnitude reconstructs (no legacy msn-SAMRAS container row)."""
+    space = payload.get("datum_addressing_abstraction_space")
+    return isinstance(space, dict) and len(space) > 0
+
+
 def _node_root(node_id: object) -> str:
     normalized = as_text(node_id)
     if not normalized:
@@ -219,10 +256,21 @@ def _strict_invariants(*, navigation_model: dict[str, Any], source_evidence: dic
     authority_sources: list[str] = []
     tool_anchor_payload = dict((source_evidence.get("tool_anchor") or {}).get("payload") or {})
     administrative_cache_payload = dict((source_evidence.get("administrative_payload_cache") or {}).get("payload") or {})
+    administrative_source_payload = dict((source_evidence.get("administrative_source") or {}).get("payload") or {})
     if _has_samras_authority(tool_anchor_payload):
         authority_sources.append("tool_anchor")
+    # The single administrative SAMRAS authority comes from EITHER the legacy disk
+    # cache (a msn-SAMRAS magnitude container) OR — in MOS-only mode (disk retired
+    # 2026-05-17) — the SQL-reconstructed administrative_source, whose das carries
+    # the staged address rows the canonical magnitude reconstructs from (no
+    # msn-SAMRAS label; magnitude_source_kind="administrative_source_reconstructed").
+    # Count it exactly once (legacy cache preferred for the back-compat label).
     if _has_samras_authority(administrative_cache_payload):
         authority_sources.append("administrative_payload_cache")
+    elif _has_samras_authority(administrative_source_payload) or _has_reconstruction_authority(
+        administrative_source_payload
+    ):
+        authority_sources.append("administrative_source")
     namespace_roots = _namespace_roots(navigation_model)
     issues: list[str] = []
     one_authority = len(authority_sources) == 1
@@ -799,6 +847,199 @@ def read_district_profile_static_from_source_datum(
     if not isinstance(source_datum, dict):
         return {}
     return build_district_profile_static(source_datum)
+
+
+# --- MOS-backed compile inputs ----------------------------------------------
+#
+# The disk admin-root / sources/ tree was retired (2026-05-17 MOS-only cleanup).
+# These helpers read the same records from MOS so the compile pipeline produces
+# a non-degraded `ready` artifact. They reconstruct the `datum_addressing_
+# abstraction_space` (das) from MOS document rows and feed the EXISTING pure
+# builders (`build_admin_profile_static` / `build_district_profile_static`).
+
+
+def _cts_gis_doc_name(document_id: str) -> str:
+    """Return the sandbox-local doc name from a canonical id (part after `.cts_gis.`)."""
+    text = as_text(document_id)
+    marker = ".cts_gis."
+    if marker not in text:
+        return ""
+    return text.split(marker, 1)[1].split(".", 1)[0]
+
+
+def _das_from_document_rows(rows: Any) -> dict[str, list[Any]]:
+    """Shape a document's rows into a das: ``{self_address: [row, labels]}``."""
+    das: dict[str, list[Any]] = {}
+    for row in rows or []:
+        raw = getattr(row, "raw", None)
+        if raw is None and isinstance(row, dict):
+            raw = row.get("raw")
+        if not (isinstance(raw, list) and raw and isinstance(raw[0], list)):
+            continue
+        key = as_text(raw[0][0])
+        if not key or key in das:
+            continue
+        labels = raw[1] if len(raw) > 1 and isinstance(raw[1], list) else []
+        das[key] = [raw[0], labels]
+    return das
+
+
+def _read_mos_catalog_documents(datum_store: Any, tenant_id: str) -> list[Any]:
+    if datum_store is None:
+        return []
+    from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
+
+    catalog = datum_store.read_authoritative_datum_documents(
+        AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+    )
+    return list(getattr(catalog, "documents", []) or [])
+
+
+def _merged_admin_root_das_from_mos(documents: list[Any]) -> dict[str, list[Any]]:
+    """Merge the admin-root das from the MOS docs that hold its records.
+
+    The admin-root identity, district record, and precinct_group are split
+    across `administrative` + `3-2-3-17` in MOS, so merge both (in priority
+    order; first-seen self-address wins). The 247_17_77 doc is deliberately
+    excluded — it carries a competing `district_*` label that would shadow the
+    canonical `23_present-district_31` record.
+    """
+    by_name: dict[str, list[Any]] = {}
+    for document in documents:
+        name = _cts_gis_doc_name(getattr(document, "document_id", ""))
+        if name:
+            by_name.setdefault(name, []).append(document)
+    das: dict[str, list[Any]] = {}
+    for name in CTS_GIS_ADMIN_ROOT_MOS_DOC_NAMES:
+        for document in by_name.get(name, []):
+            for key, value in _das_from_document_rows(getattr(document, "rows", [])).items():
+                das.setdefault(key, value)
+    return das
+
+
+def _district_outline_reference_geojson_from_mos(documents: list[Any]) -> dict[str, Any]:
+    """Decode the 247_17_77 district-boundary doc into a GeoJSON FeatureCollection.
+
+    Returns ``{}`` when the doc is absent or its ring does not decode.
+    """
+    for document in documents:
+        if _cts_gis_doc_name(getattr(document, "document_id", "")) != CTS_GIS_DISTRICT_OUTLINE_MOS_DOC_NAME:
+            continue
+        das = _das_from_document_rows(getattr(document, "rows", []))
+        points = _decode_precinct_ring_points({"datum_addressing_abstraction_space": das})
+        if len(points) < 3:
+            return {}
+        ring = _close_ring(points)
+        return {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "id": CTS_GIS_ADMIN_ROOT_NODE_ID,
+                    "geometry": {"type": "Polygon", "coordinates": [ring]},
+                    "properties": {
+                        "name": "ohio",
+                        "profile_label": "Ohio — SD-31 district outline",
+                        "geometry_provenance": "sd31_district_union",
+                    },
+                }
+            ],
+        }
+    return {}
+
+
+def read_admin_profile_static_from_mos(
+    datum_store: Any,
+    *,
+    tenant_id: str = "fnd",
+    reference_geojson: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build admin_profile_static IDENTITY from MOS (replaces the retired disk admin-root).
+
+    Identity (node_id / label) comes from the merged admin-root das; capital_msn_id
+    is forced to the known constant because the MOS admin-root row[4] is a rf.3-1-3
+    binary. The geospatial_projection is intentionally EMPTY here — the real Ohio
+    state boundary (a Census-shapefile MultiPolygon) is preserved by carry-forward
+    from the prior compiled artifact, NOT rebuilt from MOS (the corrected premise:
+    the Ohio boundary was never lost). A caller may pass an explicit
+    ``reference_geojson`` (e.g. the carried-forward Ohio outline) to populate it.
+    """
+    documents = _read_mos_catalog_documents(datum_store, tenant_id)
+    if not documents:
+        return {}
+    das = _merged_admin_root_das_from_mos(documents)
+    if not das:
+        return {}
+    source_datum = {
+        "datum_addressing_abstraction_space": das,
+        "reference_geojson": reference_geojson or {},
+        "reference_geojson_node_id": CTS_GIS_ADMIN_ROOT_NODE_ID,
+    }
+    profile = build_admin_profile_static(source_datum)
+    if profile:
+        profile["capital_msn_id"] = CTS_GIS_OHIO_CAPITAL_MSN_ID
+    return profile
+
+
+def read_district_profile_static_from_mos(
+    datum_store: Any,
+    *,
+    tenant_id: str = "fnd",
+) -> dict[str, Any]:
+    """Build district_profile_static (collection + 84-member list) from MOS."""
+    documents = _read_mos_catalog_documents(datum_store, tenant_id)
+    if not documents:
+        return {}
+    das = _merged_admin_root_das_from_mos(documents)
+    if not das:
+        return {}
+    return build_district_profile_static({"datum_addressing_abstraction_space": das})
+
+
+def _mos_source_layout_summary(datum_store: Any, tenant_id: str) -> dict[str, Any] | None:
+    """MOS-backed equivalent of build_cts_gis_source_layout_summary.
+
+    Returns a layout dict that passes validate_cts_gis_source_layout when the
+    MOS catalog holds cts_gis docs; returns None when the store can't be read so
+    the caller falls back to the (empty) disk summary.
+    """
+    try:
+        documents = _read_mos_catalog_documents(datum_store, tenant_id)
+    except Exception:
+        return None
+    top_level: list[str] = []
+    precincts: list[str] = []
+    fingerprint = hashlib.sha256()
+    rows: list[tuple[str, str]] = []
+    for document in documents:
+        document_id = as_text(getattr(document, "document_id", ""))
+        name = _cts_gis_doc_name(document_id)
+        if not name:
+            continue
+        if name.startswith(CTS_GIS_PRECINCT_DOC_NAME_PREFIX):
+            precincts.append(name)
+        else:
+            top_level.append(name)
+        rows.append((name, document_id))
+    if not rows:
+        return None
+    for name, document_id in sorted(rows):
+        # document_id embeds the version_hash, so this fingerprint changes when
+        # any doc's content changes (mirrors the disk mtime|size fingerprint).
+        fingerprint.update(f"{name}|{document_id}\n".encode())
+    return {
+        "schema": CTS_GIS_SOURCE_LAYOUT_SCHEMA,
+        "source_root": f"mos://{tenant_id}/cts_gis",
+        "precinct_root": f"mos://{tenant_id}/cts_gis/precincts",
+        "root_exists": bool(top_level or precincts),
+        "precinct_root_exists": bool(precincts),
+        "top_level_file_count": len(top_level),
+        "precinct_file_count": len(precincts),
+        "total_file_count": len(top_level) + len(precincts),
+        "sample_relative_paths": sorted(set(top_level))[:12],
+        "fingerprint": fingerprint.hexdigest(),
+        "source_backend": "mos",
+    }
 
 
 # --- district geospatial projection helpers ---------------------------------
