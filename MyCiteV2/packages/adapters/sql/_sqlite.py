@@ -60,12 +60,8 @@ CREATE TABLE IF NOT EXISTS documents (
     version_hash    TEXT    NOT NULL,
     is_anchor       INTEGER NOT NULL DEFAULT 0,
     origin          TEXT    NOT NULL DEFAULT 'local' CHECK (origin IN ('local','foreign')),
-    legacy_alias    TEXT,
     created_at      INTEGER NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_documents_tenant_legacy
-ON documents (tenant_id, legacy_alias);
 
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_prefix_sandbox
 ON documents (tenant_id, prefix, sandbox);
@@ -147,17 +143,6 @@ def connect_sqlite(db_file: str | Path) -> sqlite3.Connection:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
     connection.executescript(SCHEMA_SQL)
-    # One row per legacy alias once duplicates are repaired; creation fails until then.
-    try:
-        connection.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_documents_tenant_legacy_unique
-            ON documents (tenant_id, legacy_alias)
-            WHERE legacy_alias IS NOT NULL AND legacy_alias != ''
-            """
-        )
-    except sqlite3.OperationalError:
-        pass
     return connection
 
 

@@ -599,7 +599,7 @@ class SqliteSystemDatumStoreAdapter(
         if not isinstance(documents, list) or not documents:
             return
         cursor = connection.execute(
-            "SELECT id, document_id, legacy_alias, name, is_anchor, version_hash, created_at "
+            "SELECT id, document_id, name, is_anchor, version_hash, created_at "
             "FROM documents WHERE tenant_id = ? ORDER BY created_at DESC, id DESC",
             (tenant_id,),
         )
@@ -610,13 +610,10 @@ class SqliteSystemDatumStoreAdapter(
                 (tenant_id,),
             ).fetchall()
         }
-        canonical_by_legacy: dict[str, dict[str, Any]] = {}
-        canonical_by_legacy_version: dict[tuple[str, str], dict[str, Any]] = {}
         canonical_by_id: dict[str, dict[str, Any]] = {}
         canonical_by_id_version: dict[tuple[str, str], dict[str, Any]] = {}
         for row in cursor.fetchall():
             doc_id = str(row["document_id"]).strip()
-            alias_raw = (row["legacy_alias"] or "").strip()
             if not doc_id:
                 continue
             normalized_version = _normalize_version_hash_token(row["version_hash"])
@@ -624,31 +621,11 @@ class SqliteSystemDatumStoreAdapter(
                 "document_id": doc_id,
                 "canonical_name": str(row["name"] or "").strip(),
                 "is_anchor": bool(row["is_anchor"]),
-                "legacy_alias": alias_raw,
                 "version_hash": normalized_version,
             }
             canonical_by_id_version[(doc_id, normalized_version)] = details
             canonical_by_id.setdefault(doc_id, details)
-            if alias_raw:
-                if alias_raw.startswith("["):
-                    # Multi-alias JSON array: expand each entry as a lookup key.
-                    try:
-                        for item in loads_json(alias_raw):
-                            s = str(item).strip()
-                            if s:
-                                expanded_details = {
-                                    **details,
-                                    "legacy_alias": s,
-                                }
-                                canonical_by_legacy_version[(s, normalized_version)] = expanded_details
-                                canonical_by_legacy.setdefault(s, expanded_details)
-                    except (ValueError, TypeError):
-                        canonical_by_legacy_version[(alias_raw, normalized_version)] = details
-                        canonical_by_legacy.setdefault(alias_raw, details)
-                else:
-                    canonical_by_legacy_version[(alias_raw, normalized_version)] = details
-                    canonical_by_legacy.setdefault(alias_raw, details)
-        if not canonical_by_legacy and not canonical_by_id:
+        if not canonical_by_id:
             return
         for entry in documents:
             if not isinstance(entry, dict):
@@ -664,21 +641,12 @@ class SqliteSystemDatumStoreAdapter(
             if not isinstance(metadata, dict):
                 metadata = {}
             details = (
-                canonical_by_legacy_version.get((stored_id, stored_version))
-                or canonical_by_id_version.get((stored_id, stored_version))
-                or canonical_by_legacy.get(stored_id)
+                canonical_by_id_version.get((stored_id, stored_version))
                 or canonical_by_id.get(stored_id)
             )
             if details is None:
                 continue
             projected_id = str(details.get("document_id") or "").strip()
-            projected_alias = str(details.get("legacy_alias") or "").strip()
-            if canonical_by_legacy.get(stored_id) is not None and projected_alias:
-                metadata["legacy_alias"] = projected_alias
-                entry["legacy_alias"] = projected_alias
-            elif projected_alias:
-                metadata.setdefault("legacy_alias", projected_alias)
-                entry["legacy_alias"] = projected_alias
             if projected_id:
                 entry["document_id"] = projected_id
             if str(details.get("canonical_name") or "").strip():
@@ -713,68 +681,15 @@ class SqliteSystemDatumStoreAdapter(
         tenant_id: str,
         payload: dict[str, Any],
     ) -> None:
-        """Phase E4: extend ``source_files`` with canonical-keyed entries.
+        """Retired no-op (2026-05-27 legacy_alias retirement).
 
-        ``source_files`` is preserved one cycle for compatibility. For each
-        legacy id that has a canonical mapping in the ``documents`` table, an
-        additional entry is added under the canonical identifier (carrying the
-        legacy id under ``legacy_alias`` for downstream consumers).
+        This previously extended ``source_files`` with canonical-keyed entries
+        derived from ``documents.legacy_alias``. With the legacy-alias column
+        retired and every payload keyed by canonical document_id, there is no
+        legacy id to project; ``source_files`` is already canonical. Kept as a
+        no-op so callers need not change.
         """
-
-        source_files = payload.get("source_files")
-        if not isinstance(source_files, dict) or not source_files:
-            return
-        cursor = connection.execute(
-            "SELECT id, document_id, legacy_alias, name, is_anchor, version_hash, created_at "
-            "FROM documents WHERE tenant_id = ? ORDER BY created_at DESC, id DESC",
-            (tenant_id,),
-        )
-        semantics_version_by_id = {
-            str(row["document_id"]).strip(): _normalize_version_hash_token(row["version_hash"])
-            for row in connection.execute(
-                "SELECT document_id, version_hash FROM datum_document_semantics WHERE tenant_id = ?",
-                (tenant_id,),
-            ).fetchall()
-        }
-        canonical_by_legacy: dict[str, dict[str, Any]] = {}
-        canonical_by_legacy_version: dict[tuple[str, str], dict[str, Any]] = {}
-        for row in cursor.fetchall():
-            doc_id = str(row["document_id"]).strip()
-            alias = (row["legacy_alias"] or "").strip()
-            if doc_id and alias:
-                details = {
-                    "document_id": doc_id,
-                    "canonical_name": str(row["name"] or "").strip(),
-                    "is_anchor": bool(row["is_anchor"]),
-                    "legacy_alias": alias,
-                    "version_hash": _normalize_version_hash_token(row["version_hash"]),
-                }
-                canonical_by_legacy_version[(alias, str(details["version_hash"]))] = details
-                canonical_by_legacy.setdefault(alias, details)
-        if not canonical_by_legacy:
-            return
-        augmented = dict(source_files)
-        for legacy_id, file_metadata in source_files.items():
-            normalized_legacy_id = str(legacy_id).strip()
-            metadata_version = ""
-            if isinstance(file_metadata, dict):
-                metadata_version = _normalize_version_hash_token(file_metadata.get("version_hash"))
-            if not metadata_version:
-                metadata_version = semantics_version_by_id.get(normalized_legacy_id, "")
-            projected = canonical_by_legacy_version.get((normalized_legacy_id, metadata_version)) or canonical_by_legacy.get(normalized_legacy_id)
-            canonical_id = "" if projected is None else str(projected.get("document_id") or "").strip()
-            if not canonical_id or canonical_id in augmented:
-                continue
-            if isinstance(file_metadata, dict):
-                projected_metadata = dict(file_metadata)
-                projected_metadata.setdefault("legacy_alias", str(legacy_id))
-                if str(projected.get("canonical_name") or "").strip():
-                    projected_metadata.setdefault("canonical_name", str(projected.get("canonical_name") or "").strip())
-                projected_metadata.setdefault("is_anchor", bool(projected.get("is_anchor")))
-            else:
-                projected_metadata = file_metadata
-            augmented[canonical_id] = projected_metadata
-        payload["source_files"] = augmented
+        return
 
     def read_publication_tenant_summary(
         self,
