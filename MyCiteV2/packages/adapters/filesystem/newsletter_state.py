@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("mycite.portal_host")
 
 from MyCiteV2.packages.ports.newsletter import (
     _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS,
@@ -44,6 +47,9 @@ def _read_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        _log.warning(
+            "newsletter_state_json_parse_failed path=%s", path, exc_info=True
+        )
         return {}
     return dict(payload) if isinstance(payload, dict) else {}
 

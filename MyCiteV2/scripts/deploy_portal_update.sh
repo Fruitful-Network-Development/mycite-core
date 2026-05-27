@@ -138,8 +138,11 @@ sync_tree() {
 
 write_build_id() {
   local label="$1"
-  local build_id
-  build_id="$(date -u +%Y%m%d-%H%M%S)-${label}"
+  local build_id sha
+  # Embed the on-disk git short-sha so healthz code_coherence can compare the
+  # running build to HEAD even for a deploy-stamped (non-"git-") build label.
+  sha="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+  build_id="$(date -u +%Y%m%d-%H%M%S)-${label}${sha:+-git${sha}}"
   require_file_parent "$BUILD_ENV_FILE"
   log "Writing build id ${build_id} to ${BUILD_ENV_FILE}"
   if [[ "$DRY_RUN" == "1" ]]; then

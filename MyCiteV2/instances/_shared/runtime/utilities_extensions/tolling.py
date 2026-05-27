@@ -35,11 +35,14 @@ from __future__ import annotations
 
 import glob
 import json
+import logging
 import re
 import time
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("mycite.portal_host")
 
 
 # Match the standard nginx "combined" access-log format:
@@ -721,6 +724,7 @@ def _aggregate_ses_event_metrics(
             import boto3
             s3_client = boto3.client("s3")
         except Exception:  # noqa: BLE001
+            _log.warning("tolling_ses_metrics_s3_client_init_failed", exc_info=True)
             return empty
 
     # Lambda writes one S3 object per event under
@@ -772,6 +776,9 @@ def _aggregate_ses_event_metrics(
                 else:
                     break
         except Exception:  # noqa: BLE001
+            _log.warning(
+                "tolling_ses_metrics_domain_listing_failed", exc_info=True
+            )
             # One domain's listing failing must not poison the rest.
             continue
     return result
@@ -875,6 +882,7 @@ def compute_ledger_for_period(
             tag_filter={"Key": "msn_id", "Values": [""], "MatchOptions": ["ABSENT"]},
         )
     except Exception:
+        _log.warning("tolling_residue_breakdown_query_failed", exc_info=True)
         # Fallback: use get_untagged_residue (loses USAGE_TYPE detail
         # but doesn't crash if MatchOptions support changes).
         residue_lines = []
