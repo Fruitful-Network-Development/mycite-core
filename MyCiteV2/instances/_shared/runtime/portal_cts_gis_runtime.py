@@ -97,8 +97,12 @@ from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 # falls below it (i.e. when the artifact's default lands on a child
 # node such as a county).
 CTS_GIS_PRESUMED_ATTENTION_NODE_ID = "3-2-3-17"
+import logging
+
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
+
+_log = logging.getLogger("mycite.portal_host")
 from MyCiteV2.packages.state_machine.nimm import (
     CTS_GIS_CANONICAL_ACTIONS,
     CTS_GIS_MUTATION_ACTION_ALIASES,
@@ -1176,12 +1180,57 @@ def _supporting_document_summary(service_surface: dict[str, Any]) -> dict[str, A
     return dict(service_surface.get("selected_document") or {})
 
 
+def _administrative_source_payload_from_sql(
+    *,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
+    tenant_id: str,
+    document_id: str,
+    document_name: str,
+) -> dict[str, Any]:
+    """Build the SAMRAS source payload for the supporting CTS-GIS document from
+    the MOS SQL authority.
+
+    MOS-only runtime: the disk source read was retired (returns empty), which
+    starved the SAMRAS seed reconstruction even though the corpus lives in SQL.
+    Reads the supporting document's rows from the authoritative catalog and
+    shapes them as ``datum_addressing_abstraction_space`` (``{datum_address: raw}``)
+    so ``reconstruct_structure_from_rows`` can rebuild the canonical seed.
+    """
+    if datum_store is None:
+        return {}
+    target_id = _as_text(document_id)
+    target_name = _as_text(document_name)
+    if not target_id and not target_name:
+        return {}
+    try:
+        catalog = datum_store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=_as_text(tenant_id) or "fnd")
+        )
+    except Exception:
+        _log.warning("cts_gis_source_payload_catalog_read_failed", exc_info=True)
+        return {}
+    for document in catalog.documents:
+        doc_id = _as_text(getattr(document, "document_id", ""))
+        doc_name = _as_text(getattr(document, "document_name", ""))
+        if (target_id and doc_id == target_id) or (target_name and doc_name == target_name):
+            doc_dict = document.to_dict() if hasattr(document, "to_dict") else {}
+            space = {
+                _as_text(row.get("datum_address")): row.get("raw")
+                for row in (doc_dict.get("rows") or [])
+                if isinstance(row, dict) and _as_text(row.get("datum_address"))
+            }
+            return {"datum_addressing_abstraction_space": space} if space else {}
+    return {}
+
+
 def _build_source_evidence(
     *,
     data_dir: str | Path | None,
     private_dir: str | Path | None,
     service_surface: dict[str, Any],
     source_layout: dict[str, Any] | None = None,
+    datum_store: SqliteSystemDatumStoreAdapter | None = None,
+    tenant_id: str = "",
 ) -> dict[str, Any]:
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = _supporting_document_summary(service_surface)
@@ -1207,6 +1256,20 @@ def _build_source_evidence(
     administrative_source = _evidence_path_payload(source_path)
     administrative_source["document_id"] = _as_text(supporting_document.get("document_id"))
     administrative_source["document_name"] = supporting_document_name
+    # MOS-only: source the SAMRAS reconstruction payload from the SQL authority
+    # (the retired disk read above returns empty). Without this the canonical
+    # seed cannot reconstruct and navigation reports blocked_invalid_magnitude
+    # even though the applied corpus lives in SQL.
+    if not administrative_source.get("payload"):
+        sql_payload = _administrative_source_payload_from_sql(
+            datum_store=datum_store,
+            tenant_id=tenant_id,
+            document_id=administrative_source["document_id"],
+            document_name=supporting_document_name,
+        )
+        if sql_payload.get("datum_addressing_abstraction_space"):
+            administrative_source["payload"] = sql_payload
+            administrative_source["exists"] = True
     registrar_payload = _evidence_path_payload(registrar_path)
     if registrar_payload["payload"]:
         registrar_payload["payload_id"] = _as_text(registrar_payload["payload"].get("payload_id"))
@@ -1228,7 +1291,10 @@ def _build_source_evidence(
     elif not source_layout_valid:
         readiness_state = "source_layout_invalid"
         readiness_message = "CTS-GIS source layout does not match the required sources/ + sources/precincts/ posture."
-    elif not tool_anchor["exists"] or not registrar_payload["exists"] or samras_seed_status not in {"", "ready"}:
+    elif not administrative_source.get("payload"):
+        # MOS-only: the seed reconstructs from the SQL-sourced administrative
+        # payload, not the retired disk tool-anchor/registrar artifacts (which
+        # are always absent now) and not the stale selected_document flag.
         readiness_state = "samras_seed_missing"
         readiness_message = (
             "CTS-GIS could not resolve the expected SAMRAS seed from the tool anchor, registrar payload, and selected source evidence."
@@ -1250,7 +1316,7 @@ def _build_source_evidence(
         "readiness": {
             "state": readiness_state,
             "message": readiness_message,
-            "samras_seed_status": samras_seed_status or ("ready" if readiness_state == "ready" else "missing"),
+            "samras_seed_status": "ready" if readiness_state == "ready" else (samras_seed_status or "missing"),
         },
     }
 
@@ -2325,7 +2391,7 @@ def _build_directory_dropdown_navigation(
         )
     if decodable_authority is not None:
         structure = getattr(decodable_authority, "structure", None)
-    if structure is None and authorities:
+    if structure is None and (authorities or source_payload):
         try:
             structure = reconstruct_structure_from_rows(
                 source_payload,
@@ -4304,6 +4370,8 @@ def build_portal_cts_gis_surface_bundle(
             private_dir=private_dir,
             service_surface=service_surface,
             source_layout=source_layout,
+            datum_store=datum_store,
+            tenant_id=portal_scope.scope_id,
         )
         phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
         navigation_started_at = perf_counter()
