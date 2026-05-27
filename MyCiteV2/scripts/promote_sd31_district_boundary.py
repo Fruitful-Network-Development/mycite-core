@@ -150,11 +150,12 @@ def _upsert_documents_row(authority_db: Path, document_id: str, version_hash: st
             "DELETE FROM documents WHERE tenant_id=? AND sandbox=? AND name=?",
             (TENANT, SANDBOX, NAME),
         )
+        # legacy_alias column retired 2026-05-27 (kept only in document_metadata).
         conn.execute(
             "INSERT INTO documents (tenant_id, document_id, prefix, msn_id, sandbox, name, "
-            "version_hash, is_anchor, origin, legacy_alias, created_at) "
-            "VALUES (?, ?, 'lv', ?, ?, ?, ?, 0, 'local', ?, ?)",
-            (TENANT, document_id, MSN_ID, SANDBOX, NAME, f"sha256:{version_hash}", LEGACY_ALIAS, now),
+            "version_hash, is_anchor, origin, created_at) "
+            "VALUES (?, ?, 'lv', ?, ?, ?, ?, 0, 'local', ?)",
+            (TENANT, document_id, MSN_ID, SANDBOX, NAME, f"sha256:{version_hash}", now),
         )
         conn.commit()
     finally:

@@ -116,8 +116,8 @@ class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
                 connection.execute(
                     "INSERT INTO documents ("
                     "tenant_id, document_id, prefix, msn_id, sandbox, name, version_hash, "
-                    "is_anchor, origin, legacy_alias, created_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "is_anchor, origin, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         "fnd",
                         "lv.3-2-3-17-77-1-6-4-1-4.system.anchor." + ("c" * 64),
@@ -128,7 +128,6 @@ class CanonicalDocumentNamingArchitectureTests(unittest.TestCase):
                         "c" * 64,
                         0,
                         "local",
-                        None,
                         0,
                     ),
                 )

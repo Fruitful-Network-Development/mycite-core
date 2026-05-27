@@ -120,7 +120,6 @@ def migrate(
                 sandbox = parsed.sandbox
                 name = parsed.name
                 is_anchor = prefix == "lv" and name in ("anchor", "anthology")
-                legacy_alias: str | None = None
             else:
                 try:
                     canonical_id = derive_canonical_id_from_legacy(
@@ -132,7 +131,6 @@ def migrate(
                     rows_unsupported.append(legacy_id)
                     continue
                 prefix, sandbox, name, is_anchor = _classify_legacy_id(legacy_id)
-                legacy_alias = legacy_id
                 rows_canonicalized += 1
 
             if not _CANONICAL_REGEX.fullmatch(canonical_id):
@@ -150,8 +148,8 @@ def migrate(
                 connection.execute(
                     "INSERT INTO documents ("
                     "tenant_id, document_id, prefix, msn_id, sandbox, name, "
-                    "version_hash, is_anchor, origin, legacy_alias, created_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?)",
+                    "version_hash, is_anchor, origin, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'local', ?)",
                     (
                         tenant_id,
                         canonical_id,
@@ -161,16 +159,14 @@ def migrate(
                         name,
                         version_hash,
                         1 if is_anchor else 0,
-                        legacy_alias,
                         _now_unix_ms(),
                     ),
                 )
                 rows_inserted += 1
             elif str(existing["version_hash"]).strip().lower() != version_hash:
                 connection.execute(
-                    "UPDATE documents SET version_hash = ?, legacy_alias = COALESCE(legacy_alias, ?) "
-                    "WHERE document_id = ?",
-                    (version_hash, legacy_alias, canonical_id),
+                    "UPDATE documents SET version_hash = ? WHERE document_id = ?",
+                    (version_hash, canonical_id),
                 )
                 rows_replaced += 1
 
@@ -186,36 +182,6 @@ def migrate(
         "rows_unsupported": rows_unsupported,
         "dry_run": dry_run,
     }
-
-
-def _merge_legacy_aliases(*aliases: str | None) -> str | None:
-    """Merge one or more legacy alias values into a single JSON-array string.
-
-    Accepts strings (plain IDs) and JSON-array strings from prior repair passes.
-    Deduplicates and preserves order.
-    """
-    seen: list[str] = []
-    for raw in aliases:
-        if not raw:
-            continue
-        stripped = raw.strip()
-        if stripped.startswith("["):
-            try:
-                items = json.loads(stripped)
-                for item in items:
-                    s = str(item).strip()
-                    if s and s not in seen:
-                        seen.append(s)
-                continue
-            except (json.JSONDecodeError, TypeError):
-                pass
-        if stripped and stripped not in seen:
-            seen.append(stripped)
-    if not seen:
-        return None
-    if len(seen) == 1:
-        return seen[0]
-    return json.dumps(seen, separators=(",", ":"))
 
 
 def repair(
@@ -248,26 +214,24 @@ def repair(
     with open_sqlite(db_file) as connection:
         cursor = connection.execute(
             "SELECT id, tenant_id, document_id, prefix, msn_id AS row_msn_id, sandbox, "
-            "name, version_hash, is_anchor, origin, legacy_alias, created_at "
+            "name, version_hash, is_anchor, origin, created_at "
             "FROM documents "
-            "WHERE sandbox LIKE '%-%' OR name = 'sc' OR name = '' "
-            "OR (legacy_alias IS NOT NULL AND legacy_alias != '')",
+            "WHERE sandbox LIKE '%-%' OR name = 'sc' OR name = '' ",
         )
         candidate_rows = list(cursor.fetchall())
 
         for row in candidate_rows:
             rows_inspected += 1
             old_document_id = str(row["document_id"]).strip()
-            old_legacy_alias = str(row["legacy_alias"] or "").strip()
             row_msn_id = str(row["row_msn_id"] or msn_id).strip() or msn_id
             version_hash = str(row["version_hash"]).strip().lower()
             tenant_id = str(row["tenant_id"]).strip()
             origin = str(row["origin"] or "local").strip()
             created_at = row["created_at"]
 
-            # The source truth for re-derivation is the original legacy alias.
-            # If no legacy_alias, the document_id itself may be the legacy form.
-            source_id = old_legacy_alias if old_legacy_alias else old_document_id
+            # legacy_alias retired 2026-05-27: the document_id is the re-derivation
+            # source (the only remaining legacy form a malformed row can carry).
+            source_id = old_document_id
 
             # Unwrap JSON-array legacy aliases to find the original legacy id.
             if source_id.startswith("["):
@@ -333,22 +297,6 @@ def repair(
                 continue
 
             new_is_anchor = parsed.prefix == "lv" and parsed.name in ("anchor", "anthology")
-            # Preserve original legacy alias as plain string. The old canonical id
-            # (old_document_id) is handled by the projection layer's canonical_set
-            # lookup and does not belong in legacy_alias.
-            if old_legacy_alias.startswith("["):
-                try:
-                    import json as _repair_json
-                    items = _repair_json.loads(old_legacy_alias)
-                    merged_alias: str | None = next(
-                        (str(i).strip() for i in items
-                         if not is_canonical_document_id(str(i).strip())),
-                        str(items[0]).strip() if items else None,
-                    )
-                except (ValueError, TypeError):
-                    merged_alias = old_legacy_alias
-            else:
-                merged_alias = old_legacy_alias or None
 
             # Check if target id already exists (idempotent).
             existing = connection.execute(
@@ -357,11 +305,12 @@ def repair(
             ).fetchone()
 
             if existing is None:
+                # legacy_alias retired 2026-05-27 — re-key to the canonical id only.
                 connection.execute(
                     "INSERT INTO documents ("
                     "tenant_id, document_id, prefix, msn_id, sandbox, name, "
-                    "version_hash, is_anchor, origin, legacy_alias, created_at"
-                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    "version_hash, is_anchor, origin, created_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         tenant_id,
                         new_document_id,
@@ -372,16 +321,10 @@ def repair(
                         version_hash,
                         1 if new_is_anchor else 0,
                         origin,
-                        merged_alias,
                         created_at,
                     ),
                 )
-            else:
-                # Row exists — update alias bridge only.
-                connection.execute(
-                    "UPDATE documents SET legacy_alias = ? WHERE document_id = ?",
-                    (merged_alias, new_document_id),
-                )
+            # else: target row already exists; nothing to bridge (legacy_alias retired).
 
             # Remove the stale row.
             connection.execute(

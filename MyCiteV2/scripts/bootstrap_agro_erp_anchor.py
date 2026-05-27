@@ -263,17 +263,18 @@ def _replace_documents_table_rows(
         txa_id = format_canonical_document_id(
             prefix="lv", msn_id=msn_id, sandbox=SANDBOX, name="txa", version_hash=txa_hash,
         )
+        # legacy_alias column retired 2026-05-27; anchor_alias/txa_alias dropped.
         conn.execute(
             "INSERT INTO documents (tenant_id, document_id, prefix, msn_id, sandbox, name, "
-            "version_hash, is_anchor, origin, legacy_alias, created_at) "
-            "VALUES (?, ?, 'lv', ?, ?, 'anchor', ?, 1, 'local', ?, ?)",
-            (tenant_id, anchor_id, msn_id, SANDBOX, f"sha256:{anchor_hash}", anchor_alias, now),
+            "version_hash, is_anchor, origin, created_at) "
+            "VALUES (?, ?, 'lv', ?, ?, 'anchor', ?, 1, 'local', ?)",
+            (tenant_id, anchor_id, msn_id, SANDBOX, f"sha256:{anchor_hash}", now),
         )
         conn.execute(
             "INSERT INTO documents (tenant_id, document_id, prefix, msn_id, sandbox, name, "
-            "version_hash, is_anchor, origin, legacy_alias, created_at) "
-            "VALUES (?, ?, 'lv', ?, ?, 'txa', ?, 0, 'local', ?, ?)",
-            (tenant_id, txa_id, msn_id, SANDBOX, f"sha256:{txa_hash}", txa_alias, now),
+            "version_hash, is_anchor, origin, created_at) "
+            "VALUES (?, ?, 'lv', ?, ?, 'txa', ?, 0, 'local', ?)",
+            (tenant_id, txa_id, msn_id, SANDBOX, f"sha256:{txa_hash}", now),
         )
         conn.commit()
         return {"anchor_id": anchor_id, "txa_id": txa_id}

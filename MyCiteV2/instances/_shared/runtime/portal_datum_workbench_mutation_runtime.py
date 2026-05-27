@@ -106,13 +106,14 @@ def _document_sandbox_from_table(
     if not db_path.exists():
         return "", ""
     with sqlite3.connect(db_path) as connection:
+        # Canonical-only lookup (legacy_alias retired 2026-05-27).
         row = connection.execute(
-            "select sandbox, legacy_alias from documents where document_id = ? or legacy_alias = ?",
-            (document_id, document_id),
+            "select sandbox from documents where document_id = ?",
+            (document_id,),
         ).fetchone()
     if row is None:
         return "", ""
-    return _as_text(row[0]), _as_text(row[1])
+    return _as_text(row[0]), ""
 
 
 def _document_sandbox_id(
@@ -136,9 +137,6 @@ def _document_for_mutation(
     catalog = store.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
     for document in catalog.documents:
         if document.document_id == document_id:
-            return document
-        metadata = document.document_metadata if isinstance(document.document_metadata, dict) else {}
-        if _as_text(metadata.get("legacy_alias")) == document_id:
             return document
     raise ValueError("authoritative_document_missing")
 
