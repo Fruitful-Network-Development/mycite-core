@@ -14,10 +14,13 @@ since that's the address the FND portal forwards messages to.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.filesystem import FilesystemNewsletterStateAdapter
+
+_log = logging.getLogger("mycite.portal_host")
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link
 
@@ -60,6 +63,7 @@ def _build_connect_extension_payload(
         contacts_payload = _as_dict(adapter.load_contact_log(domain=domain))
         contacts = _as_list(contacts_payload.get("contacts"))
     except Exception:
+        _log.warning("connect_contact_log_load_failed", exc_info=True)
         contacts = []
 
     submissions: list[dict[str, Any]] = []

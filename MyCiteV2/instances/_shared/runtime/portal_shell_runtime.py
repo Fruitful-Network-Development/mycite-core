@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -58,6 +59,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     initial_portal_shell_state,
     resolve_portal_shell_request,
 )
+
+_log = logging.getLogger("mycite.portal_host")
 
 
 def _as_text(value: object) -> str:
@@ -1684,6 +1687,7 @@ def run_system_profile_basics_action(
 
             LocalAuditService(SqliteAuditLogAdapter(authority_path)).append_record(outcome.to_local_audit_payload())
         except Exception:
+            _log.warning("system_profile_basics_audit_append_failed", exc_info=True)
             pass
     integration_flags = _integration_flags(
         data_dir=data_dir,

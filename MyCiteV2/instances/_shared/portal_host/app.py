@@ -79,6 +79,28 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
+def _current_git_head_build_id() -> str | None:
+    """Return the on-disk git HEAD as ``git-<sha>`` (or None if unavailable).
+
+    Shared by the build-id default and the healthz code-coherence check.
+    """
+    try:
+        import subprocess
+
+        repo_root = Path(__file__).resolve().parents[4]
+        sha = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+        ).decode("ascii").strip()
+        return f"git-{sha}" if sha else None
+    except Exception:
+        # Fail-loud: a missing git tree/binary on the deploy host is unusual,
+        # and silently masking it is how a stale build tag went unnoticed.
+        _log.warning("portal build-id: git HEAD lookup failed", exc_info=True)
+        return None
+
+
 def _default_portal_build_id() -> str:
     """Fall back to the git short SHA when MYCITE_V2_PORTAL_BUILD_ID is unset.
 
@@ -94,20 +116,37 @@ def _default_portal_build_id() -> str:
     explicit = _as_text(os.environ.get("MYCITE_V2_PORTAL_BUILD_ID"))
     if explicit:
         return explicit
-    try:
-        import subprocess
-
-        repo_root = Path(__file__).resolve().parents[4]
-        sha = subprocess.check_output(
-            ["git", "-C", str(repo_root), "rev-parse", "--short", "HEAD"],
-            stderr=subprocess.DEVNULL,
-            timeout=2,
-        ).decode("ascii").strip()
-        if sha:
-            return f"git-{sha}"
-    except Exception:
-        pass
+    head = _current_git_head_build_id()
+    if head:
+        return head
+    # Fail-loud: don't silently return the sentinel — surface that the deployed
+    # code version is unknown so it can be investigated, not masked.
+    _log.warning(
+        "portal build-id: MYCITE_V2_PORTAL_BUILD_ID unset and git HEAD "
+        "unavailable; reporting 'not-set' (deployed code version is unknown)"
+    )
     return "not-set"
+
+
+def _code_coherence(running_build_id: str) -> dict[str, Any]:
+    """Compare the running build to the on-disk git HEAD so a stale-in-memory
+    worker (old code in memory while disk moved ahead) is *visible* in healthz
+    rather than silent — the failure mode behind the 2026-05 contact-form outage.
+
+    status: ``current`` (running == disk HEAD), ``stale`` (running an older git
+    build than disk), ``pinned`` (running an explicit non-git build label that
+    can't equate to a SHA — operator eyeballs ``disk_head``), or ``unknown``.
+    """
+    head = _current_git_head_build_id()
+    if head is None:
+        return {"status": "unknown", "running": running_build_id, "disk_head": None}
+    sha = head.removeprefix("git-")
+    # "current" if the build id is exactly the HEAD git tag OR a deploy label that
+    # embeds the HEAD short-sha (the deploy script stamps ``...-git<sha>``).
+    if running_build_id == head or (sha and sha in running_build_id):
+        return {"status": "current", "running": running_build_id, "disk_head": head}
+    status = "stale" if running_build_id.startswith("git-") else "pinned"
+    return {"status": status, "running": running_build_id, "disk_head": head}
 
 
 PORTAL_BUILD_ID = _default_portal_build_id()
@@ -723,6 +762,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
         "ok": all((static_dir / name).is_file() for name in static_files),
         "host_shape": HOST_SHAPE,
         "portal_build_id": PORTAL_BUILD_ID,
+        "code_coherence": _code_coherence(PORTAL_BUILD_ID),
         "portal_instance_id": config.portal_instance_id,
         "shell_asset_manifest": shell_asset_manifest,
         "root_routes": [

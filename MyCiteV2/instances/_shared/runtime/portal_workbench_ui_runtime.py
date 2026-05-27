@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     sandbox_display_name,
 )
 from MyCiteV2.packages.tools.workbench_ui import WorkbenchUiReadService
+
+_log = logging.getLogger("mycite.portal_host")
 
 # MSN id used when scaffolding new documents. Every sandbox is writable;
 # this map holds the canonical default MSN per sandbox so the new-document
@@ -241,6 +244,7 @@ def _available_templates_for_sandbox(sandbox: str) -> list[dict[str, str]]:
         registry = TemplateRegistry()
         templates = [t for t in registry.all() if t.sandbox == sandbox]
     except Exception:
+        _log.warning("workbench_template_registry_load_failed", exc_info=True)
         return []
     out: list[dict[str, str]] = []
     for template in templates:
