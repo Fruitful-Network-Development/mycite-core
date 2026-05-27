@@ -22,7 +22,7 @@ Document layout (typical FND tenant adapter):
 
 from __future__ import annotations
 
-from datetime import UTC, date as _date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -199,7 +199,7 @@ class MosDatumEmailDeliverabilityAdapter:
         from MyCiteV2.packages.core.document_naming import format_canonical_document_id
         from MyCiteV2.packages.core.mss import compute_mss_hash
 
-        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=True)
+        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=False)
         existing = self._find_doc(domain=domain)
         prior_document_id = existing.document_id if existing is not None else None
         canonical_name = _canonical_name_for(domain)

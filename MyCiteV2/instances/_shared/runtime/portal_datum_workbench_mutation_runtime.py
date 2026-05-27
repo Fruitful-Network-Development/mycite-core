@@ -552,6 +552,9 @@ def run_datum_workbench_mutation_action(
         )
     if authority_db_file is None:
         return _error("authority_db_required", "authority_db_file is required.", status_code=503)
+    # allow_legacy_writes stays True while the legacy-id back-compat contract is
+    # live (legacy_alias reads + legacy-keyed test fixtures). Live data is fully
+    # canonical; flip to False with the 2026-06-05 legacy_alias retirement.
     store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
     try:
         preview = _preview_or_apply(
@@ -1059,6 +1062,9 @@ def run_document_workbench_action(
     document_id = _as_text(normalized.get("document_id"))
     if not document_id:
         return _error("document_id_required", "document_id is required.")
+    # allow_legacy_writes stays True while the legacy-id back-compat contract is
+    # live (legacy_alias reads + legacy-keyed test fixtures). Live data is fully
+    # canonical; flip to False with the 2026-06-05 legacy_alias retirement.
     store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
     tenant_id = _as_text(portal_instance_id) or "fnd"
     try:

@@ -31,7 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.adapters.sql._common import _as_int, _as_text, _domain_token
+from MyCiteV2.packages.adapters.sql._common import _as_text, _domain_token
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
@@ -166,7 +166,7 @@ class MosDatumPayPalOrdersAdapter:
         return orders
 
     def save_orders(self, *, domain: str, orders: list[dict[str, Any]]) -> None:
-        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=True)
+        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=False)
         existing = self._find_doc(domain=domain)
         prior_document_id = existing.document_id if existing is not None else None
         updated_at = _utc_now_iso()
@@ -245,7 +245,7 @@ class MosDatumPayPalWebhookAdapter:
         return header
 
     def save_webhook(self, *, grantee_msn_id: str, webhook_url: str) -> None:
-        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=True)
+        store = SqliteSystemDatumStoreAdapter(self._authority_db_file, allow_legacy_writes=False)
         existing = self._find_doc(grantee_msn_id=grantee_msn_id)
         prior_document_id = existing.document_id if existing is not None else None
         rows: list[AuthoritativeDatumDocumentRow] = [
