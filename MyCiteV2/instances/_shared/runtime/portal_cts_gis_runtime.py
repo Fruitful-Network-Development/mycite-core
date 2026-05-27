@@ -51,13 +51,10 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_compiled_artifact,
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
-    cts_gis_admin_root_source_path,
     evict_compiled_artifact_read_cache,
     read_admin_profile_static_from_mos,
-    read_admin_profile_static_from_source_datum,
     read_compiled_artifact_cached,
     read_district_profile_static_from_mos,
-    read_district_profile_static_from_source_datum,
     validate_compiled_artifact,
     validate_cts_gis_source_layout,
     write_compiled_artifact,
@@ -429,52 +426,24 @@ def _runtime_datum_store(
     return _datum_store_for_authority_db(authority_db_file)
 
 
-def _admin_geospatial_has_real_geometry(admin_profile: dict[str, Any] | None) -> bool:
-    """True when an admin_profile_static carries a non-empty geospatial projection."""
-    gp = (admin_profile or {}).get("geospatial_projection") or {}
-    if int(gp.get("feature_count") or 0) < 1:
-        return False
-    feats = ((gp.get("feature_collection") or {}).get("features")) or []
-    return bool(feats)
-
-
 def _cts_gis_profile_static_payloads(
     *,
-    data_dir: str | Path | None,
     datum_store: SqliteSystemDatumStoreAdapter | None,
     tenant_id: str,
-    prior_artifact: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """Resolve admin_profile_static + district_profile_static for the compile bake.
+    """Resolve admin_profile_static + district_profile_static for the compile bake — MOS-only.
 
-    admin_profile_static: prefers the on-disk admin-root datum (test fixtures /
-    legacy layout); else CARRIES FORWARD the prior compiled artifact's
-    admin_profile_static when it holds a real geometry — this preserves the
-    authentic Ohio state boundary (a Census-shapefile MultiPolygon baked when the
-    disk sources existed; it was NEVER lost, only the map-overlay projection was
-    empty — corrected premise 2026-05-27). Otherwise falls back to MOS identity
-    (empty geometry). The SD-31 district outline in MOS is a DISTRICT geometry and
-    is deliberately NOT used as the admin geometry.
-
-    district_profile_static: disk-first, else MOS (collection + 84-member list).
-
-    Returns (None, None) on any failure so the compile still produces an artifact
-    rather than raising.
+    Admin identity + district collection/membership come from MOS. There is NO
+    disk admin-root read and NO carry-forward of a prior artifact's geometry: the
+    disk sources and the old disk-sourced Ohio state boundary were a reverse-fit of
+    retired CTS-GIS functionality and have been cut (2026-05-27). Admin geometry is
+    whatever MOS provides — currently none, since no admin-state geometry datum
+    lives in MOS. Returns (None, None) on failure so the compile still produces an
+    artifact rather than raising.
     """
     try:
-        admin_root_path = cts_gis_admin_root_source_path(data_dir)
-        if admin_root_path is not None and admin_root_path.exists():
-            admin_profile = read_admin_profile_static_from_source_datum(admin_root_path)
-            district_profile = read_district_profile_static_from_source_datum(admin_root_path)
-        else:
-            district_profile = read_district_profile_static_from_mos(datum_store, tenant_id=tenant_id)
-            prior_admin = (prior_artifact or {}).get("admin_profile_static") if prior_artifact else None
-            if _admin_geospatial_has_real_geometry(prior_admin):
-                # Carry forward the authentic Ohio admin profile (identity + real
-                # state-boundary geometry) so a recompile never regresses it.
-                admin_profile = dict(prior_admin)
-            else:
-                admin_profile = read_admin_profile_static_from_mos(datum_store, tenant_id=tenant_id)
+        admin_profile = read_admin_profile_static_from_mos(datum_store, tenant_id=tenant_id)
+        district_profile = read_district_profile_static_from_mos(datum_store, tenant_id=tenant_id)
     except Exception as exc:
         _log.warning("cts_gis profile_static resolution failed: %s", exc)
         return None, None
@@ -4451,10 +4420,8 @@ def build_portal_cts_gis_surface_bundle(
             # is complete. Disk-first, MOS-fallback. See
             # CTS-GIS-Compile-Pipeline-MOS-Migration-2026-05-27.
             admin_profile_static, district_profile_static = _cts_gis_profile_static_payloads(
-                data_dir=data_dir,
                 datum_store=datum_store,
                 tenant_id=portal_scope.scope_id,
-                prior_artifact=compiled_artifact,
             )
             compiled_out = build_compiled_artifact(
                 portal_scope_id=portal_scope.scope_id,

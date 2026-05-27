@@ -52,8 +52,9 @@ def _validate_artifact(artifact: dict) -> tuple[bool, list[str]]:
     admin = artifact.get("admin_profile_static") or {}
     if not admin.get("node_id"):
         issues.append("admin_profile_static_missing")
-    elif int((admin.get("geospatial_projection") or {}).get("feature_count") or 0) < 1:
-        issues.append("admin_geospatial_empty")
+    # Admin geometry is intentionally empty in MOS-only mode (no admin-state
+    # geometry datum in MOS; the old disk-sourced Ohio boundary was cut), so it
+    # is NOT required here.
     district = artifact.get("district_profile_static") or {}
     if int(district.get("member_count") or 0) < 1:
         issues.append("district_profile_static_missing")
