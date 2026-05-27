@@ -329,7 +329,7 @@ def bootstrap(
         summary["status"] = "dry_run"
         return summary
 
-    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=True)
+    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=False)
     catalog = store.read_authoritative_datum_documents(
         AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
     )

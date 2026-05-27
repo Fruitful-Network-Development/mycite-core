@@ -37,10 +37,8 @@ from cts_gis_geojson_hops_utils import encode_hops_coordinate, normalize_ring_op
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.document_naming import format_canonical_document_id
 from MyCiteV2.packages.core.mss import compute_mss_hash
-from MyCiteV2.packages.core.structures.hops import decode_hops_coordinate_token
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
-    AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
 
@@ -168,7 +166,7 @@ def promote(*, authority_db: Path, geojson_path: Path) -> dict:
     rows = _build_rows(coords)
     document, real_hash = _build_document(rows)
 
-    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=True)
+    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=False)
     prior = _prior_district_id(authority_db)
     store.replace_single_document_efficient(
         tenant_id=TENANT, prior_document_id=prior, updated_document=document
