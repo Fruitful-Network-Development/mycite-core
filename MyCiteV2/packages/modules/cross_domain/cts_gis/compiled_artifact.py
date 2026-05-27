@@ -23,9 +23,8 @@ CTS_GIS_SOURCE_LAYOUT_SCHEMA = "mycite.v2.portal.system.tools.cts_gis.source_lay
 # by the 2026-05-17 MOS-only cleanup). The admin-root identity ("ohio" 3-2-3-17)
 # lives in the `administrative` doc; the district record (5-0-26) + precinct_group
 # (4-84-1) live in the `3-2-3-17` doc — so the admin-root das is reconstructed by
-# MERGING both. The 247_17_77 doc carries the SD-31 district boundary outline.
+# MERGING both. Precinct docs are named 247_17_77_<n>.
 CTS_GIS_ADMIN_ROOT_MOS_DOC_NAMES = ("administrative", "3-2-3-17")
-CTS_GIS_DISTRICT_OUTLINE_MOS_DOC_NAME = "247_17_77"
 CTS_GIS_PRECINCT_DOC_NAME_PREFIX = "247_17_77_"
 # Ohio's capital_msn_id. The MOS admin-root row stores a rf.3-1-3 binary at row[4]
 # (not the capital, unlike the retired disk layout), so this is sourced as a known
@@ -917,52 +916,19 @@ def _merged_admin_root_das_from_mos(documents: list[Any]) -> dict[str, list[Any]
     return das
 
 
-def _district_outline_reference_geojson_from_mos(documents: list[Any]) -> dict[str, Any]:
-    """Decode the 247_17_77 district-boundary doc into a GeoJSON FeatureCollection.
-
-    Returns ``{}`` when the doc is absent or its ring does not decode.
-    """
-    for document in documents:
-        if _cts_gis_doc_name(getattr(document, "document_id", "")) != CTS_GIS_DISTRICT_OUTLINE_MOS_DOC_NAME:
-            continue
-        das = _das_from_document_rows(getattr(document, "rows", []))
-        points = _decode_precinct_ring_points({"datum_addressing_abstraction_space": das})
-        if len(points) < 3:
-            return {}
-        ring = _close_ring(points)
-        return {
-            "type": "FeatureCollection",
-            "features": [
-                {
-                    "type": "Feature",
-                    "id": CTS_GIS_ADMIN_ROOT_NODE_ID,
-                    "geometry": {"type": "Polygon", "coordinates": [ring]},
-                    "properties": {
-                        "name": "ohio",
-                        "profile_label": "Ohio — SD-31 district outline",
-                        "geometry_provenance": "sd31_district_union",
-                    },
-                }
-            ],
-        }
-    return {}
-
-
 def read_admin_profile_static_from_mos(
     datum_store: Any,
     *,
     tenant_id: str = "fnd",
-    reference_geojson: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build admin_profile_static IDENTITY from MOS (replaces the retired disk admin-root).
 
     Identity (node_id / label) comes from the merged admin-root das; capital_msn_id
     is forced to the known constant because the MOS admin-root row[4] is a rf.3-1-3
-    binary. The geospatial_projection is intentionally EMPTY here — the real Ohio
-    state boundary (a Census-shapefile MultiPolygon) is preserved by carry-forward
-    from the prior compiled artifact, NOT rebuilt from MOS (the corrected premise:
-    the Ohio boundary was never lost). A caller may pass an explicit
-    ``reference_geojson`` (e.g. the carried-forward Ohio outline) to populate it.
+    binary. The geospatial_projection is empty: MOS holds no admin-state geometry
+    datum, and the old disk-sourced Ohio boundary is NOT reverse-fit back in. The
+    SD-31 district outline lives in MOS as district data for a future district
+    renderer; it is not forced into the admin slot.
     """
     documents = _read_mos_catalog_documents(datum_store, tenant_id)
     if not documents:
@@ -972,7 +938,7 @@ def read_admin_profile_static_from_mos(
         return {}
     source_datum = {
         "datum_addressing_abstraction_space": das,
-        "reference_geojson": reference_geojson or {},
+        "reference_geojson": {},
         "reference_geojson_node_id": CTS_GIS_ADMIN_ROOT_NODE_ID,
     }
     profile = build_admin_profile_static(source_datum)
