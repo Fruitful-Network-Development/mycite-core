@@ -113,10 +113,14 @@ class PortalShellSqlAuthorityTests(unittest.TestCase):
             )
             self.assertEqual(envelope["surface_id"], "system.root")
             self.assertIsNone(envelope["error"])
-            self.assertEqual(
-                envelope["surface_payload"]["workspace"]["readiness_status"]["authoritative_catalog"],
-                "loaded",
-            )
+            # Plan v2: /portal/system delegates to the unified workbench (see
+            # portal_shell_runtime._bundle_for_surface system.root branch).
+            # The bundle is re-stamped with system-root identity; the seeded
+            # catalog is observable via document_table.rows.
+            payload = envelope["surface_payload"]
+            self.assertEqual(payload["kind"], "system_workspace")
+            rows = payload["workspace"]["document_table"]["rows"]
+            self.assertTrue(rows, "seeded authority should surface at least one document row")
 
     @unittest.skip(
         "Phase 3 (portal_tool_surface_contract.md): test references the retired "

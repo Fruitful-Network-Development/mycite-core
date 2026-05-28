@@ -1356,12 +1356,23 @@ def _bundle_for_surface(
         # The workbench bundle stamps WORKBENCH_UI identifiers on the
         # surface_payload; rewrite them for the SYSTEM root so
         # downstream consumers (envelope schema asserts, JS routing)
-        # still see system-root identity.
+        # still see system-root identity. This includes the
+        # family_contract.surface_id that attach_region_family_contract
+        # stamps on each region — JS routes region actions off that
+        # field, and from the user's perspective the active surface is
+        # /portal/system, not /portal/system/tools/workbench-ui.
         payload = bundle.setdefault("surface_payload", {})
         payload["kind"] = "system_workspace"
         bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
         bundle["route"] = SYSTEM_ROOT_ROUTE
         bundle["tool_rows"] = tool_rows
+        for _region_key in ("control_panel", "workbench", "interface_panel", "visualization_panel"):
+            _region = bundle.get(_region_key)
+            if not isinstance(_region, dict):
+                continue
+            _contract = _region.get("family_contract")
+            if isinstance(_contract, dict) and _contract.get("surface_id"):
+                _contract["surface_id"] = SYSTEM_ROOT_SURFACE_ID
         return bundle
     if selection_surface_id in _TOOL_SURFACE_BUNDLE_BUILDERS:
         bundle = _tool_bundle_for_surface(
