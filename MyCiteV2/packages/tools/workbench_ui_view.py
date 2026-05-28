@@ -20,6 +20,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
+    WORKBENCH_UI_TOOL_ROUTE,
+)
+
 from ._registry import register
 
 
@@ -36,6 +40,7 @@ class WorkbenchUiTool:
     tool_id = "workbench_ui"
     label = "Workbench UI"
     summary = "Read-only SQL datum grid with additive directive-overlay inspection."
+    route = WORKBENCH_UI_TOOL_ROUTE
     applies_to_archetype: tuple[str, ...] = ()
     applies_to_source_kind: tuple[str, ...] = ("sandbox_source", "system_anthology")
 

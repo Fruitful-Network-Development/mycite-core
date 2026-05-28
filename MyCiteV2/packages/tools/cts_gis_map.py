@@ -18,6 +18,9 @@ from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis.service import (
     CtsGisReadOnlyService,
 )
+from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
+    CTS_GIS_TOOL_ROUTE,
+)
 
 from ._registry import register
 
@@ -33,6 +36,7 @@ class CtsGisMapTool:
     tool_id = "cts_gis"
     label = "CTS-GIS Map"
     summary = "Spatial projection of a SAMRAS-family document on an interactive map."
+    route = CTS_GIS_TOOL_ROUTE
     applies_to_archetype: tuple[str, ...] = ("samras_family",)
     applies_to_source_kind: tuple[str, ...] = ("sandbox_source",)
 

@@ -30,6 +30,12 @@ class WorkbenchTool(Protocol):
     tool_id: str
     label: str
     summary: str
+    # Route the menubar palette stamps onto each item's data-route attribute;
+    # ``v2_portal_tool_palette.js`` renderList reads it and dispatches it on
+    # click. Should be the tool's canonical surface route (the shell
+    # ``portal_system_tool`` dispatcher 302-redirects deep-link tool URLs
+    # into the unified ``/portal/system?tool=<id>`` workbench).
+    route: str
     applies_to_archetype: tuple[str, ...]
     applies_to_source_kind: tuple[str, ...]
 
