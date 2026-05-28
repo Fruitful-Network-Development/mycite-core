@@ -409,13 +409,13 @@ def _datum_store_for_authority_db(
     cached = _DATUM_STORE_BY_AUTHORITY_DB.get(cache_key)
     if cached is not None:
         return cached
-    # allow_legacy_writes stays True while the legacy-id back-compat contract is
-    # live. Live data is fully canonical (so production would tolerate False), but
-    # the workbench/mutation suites still seed legacy-keyed fixtures
-    # (system:anthology, sandbox:cts_gis:*) and the legacy_alias read path is live
-    # until the 2026-06-05 retirement. Flip to False with that retirement (migrate
-    # fixtures + drop legacy_alias). See cts_gis_legacy_alias_retirement_timeline.md.
-    store = SqliteSystemDatumStoreAdapter(root, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). The legacy_alias back-compat
+    # was retired ahead of schedule (commit 0c355db); live data is fully
+    # canonical, and the runtime must refuse to re-persist any non-canonical
+    # catalog id. Tests that exercise the apply path seed canonical fixtures;
+    # read-only tests may still reference legacy-keyed seed docs (reads do not
+    # validate canonicality).
+    store = SqliteSystemDatumStoreAdapter(root, allow_legacy_writes=False)
     _DATUM_STORE_BY_AUTHORITY_DB[cache_key] = store
     return store
 

@@ -9,14 +9,30 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+import dataclasses
+
 from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.adapters.sql.datum_semantics import build_document_semantics
+from MyCiteV2.packages.core.document_naming import derive_canonical_id_from_legacy
 from MyCiteV2.packages.ports.audit_log import AuditLogRecentWindowRequest
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
     AuthoritativeDatumDocumentRow,
 )
+
+
+def _canonical(document: AuthoritativeDatumDocument, *, msn_id: str = "3-2-3") -> AuthoritativeDatumDocument:
+    """Rewrite a legacy-id fixture document to its canonical ``lv.`` id, keyed
+    by the document's own content hash. Apply-path tests need this because the
+    runtime persists under the canonical-only write posture; read/stage-only
+    fixtures keep their legacy ids (reads do not validate canonicality)."""
+    version_hash = build_document_semantics(document)["document"]["version_hash"]
+    canonical_id = derive_canonical_id_from_legacy(
+        document.document_id, msn_id=msn_id, version_hash=version_hash
+    )
+    return dataclasses.replace(document, document_id=canonical_id)
 
 
 def _ascii_bits(value: str, *, width: int = 256) -> str:
@@ -126,10 +142,10 @@ def _address_nodes_document() -> AuthoritativeDatumDocument:
 
 
 class PortalCtsGisActionRuntimeTests(unittest.TestCase):
-    def _stage_document(self) -> dict[str, object]:
+    def _stage_document(self, document_id: str = "sandbox:cts_gis:sc.example.json") -> dict[str, object]:
         return {
             "schema": "mycite.v2.cts_gis.stage_insert.v1",
-            "document_id": "sandbox:cts_gis:sc.example.json",
+            "document_id": document_id,
             "document_name": "sc.example.json",
             "operation": "insert_datums",
             "datums": [
@@ -155,6 +171,23 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
                 readiness_status={"authoritative_catalog": "loaded"},
             )
         )
+
+    def _seed_db_canonical(self, db_file: Path) -> str:
+        """Seed the example document with a canonical id and return that id.
+
+        The apply path re-persists the catalog, which the canonical-only write
+        posture rejects for legacy ids; this is the seed for the round-trip
+        apply test."""
+        document = _canonical(_document())
+        SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
+            AuthoritativeDatumDocumentCatalogResult(
+                tenant_id="fnd",
+                documents=(document,),
+                source_files={"sandbox/cts-gis/sources/sc.example.json": {"exists": True}},
+                readiness_status={"authoritative_catalog": "loaded"},
+            )
+        )
+        return document.document_id
 
     def _seed_document(self, db_file: Path, document: AuthoritativeDatumDocument) -> None:
         SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=True).store_authoritative_catalog(
@@ -409,10 +442,14 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
     def test_stage_preview_apply_and_discard_flow_round_trips_through_runtime(self) -> None:
         with TemporaryDirectory() as temp_dir:
             db_file = Path(temp_dir) / "authority.sqlite3"
-            self._seed_db(db_file)
+            canonical_id = self._seed_db_canonical(db_file)
+            canonical_tool_state = {
+                "selected_node_id": "3-2-3-17-77-1",
+                "source": {"attention_document_id": canonical_id},
+            }
 
             staged = run_portal_cts_gis_action(
-                self._request(None, "stage_insert_yaml", {"stage_document": self._stage_document()}),
+                self._request(canonical_tool_state, "stage_insert_yaml", {"stage_document": self._stage_document(canonical_id)}),
                 data_dir=None,
                 authority_db_file=db_file,
                 portal_instance_id="fnd",
@@ -422,7 +459,7 @@ class PortalCtsGisActionRuntimeTests(unittest.TestCase):
             self.assertEqual(staged["surface_payload"]["action_result"]["status"], "accepted")
             self.assertEqual(
                 staged["shell_composition"]["regions"]["interface_panel"]["interface_body"]["staging_widget"]["document_id"],
-                "sandbox:cts_gis:sc.example.json",
+                canonical_id,
             )
             self.assertIn(
                 "Validate Stage",
