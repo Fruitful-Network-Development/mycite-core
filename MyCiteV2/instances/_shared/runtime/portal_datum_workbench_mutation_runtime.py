@@ -550,10 +550,10 @@ def run_datum_workbench_mutation_action(
         )
     if authority_db_file is None:
         return _error("authority_db_required", "authority_db_file is required.", status_code=503)
-    # allow_legacy_writes stays True while the legacy-id back-compat contract is
-    # live (legacy_alias reads + legacy-keyed test fixtures). Live data is fully
-    # canonical; flip to False with the 2026-06-05 legacy_alias retirement.
-    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). legacy_alias back-compat was
+    # retired ahead of schedule (commit 0c355db); apply must refuse to persist a
+    # non-canonical catalog. Apply-path fixtures seed canonical documents.
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=False)
     try:
         preview = _preview_or_apply(
             store,
@@ -1060,10 +1060,11 @@ def run_document_workbench_action(
     document_id = _as_text(normalized.get("document_id"))
     if not document_id:
         return _error("document_id_required", "document_id is required.")
-    # allow_legacy_writes stays True while the legacy-id back-compat contract is
-    # live (legacy_alias reads + legacy-keyed test fixtures). Live data is fully
-    # canonical; flip to False with the 2026-06-05 legacy_alias retirement.
-    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). legacy_alias back-compat was
+    # retired ahead of schedule (commit 0c355db); this mutation entry point must
+    # refuse to persist a non-canonical catalog. Apply-path fixtures seed
+    # canonical documents.
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=False)
     tenant_id = _as_text(portal_instance_id) or "fnd"
     try:
         document = _document_for_mutation(store, tenant_id=tenant_id, document_id=document_id)

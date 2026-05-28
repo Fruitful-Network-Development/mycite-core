@@ -23,6 +23,7 @@ from MyCiteV2.packages.adapters.sql import (
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
+    AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
 from MyCiteV2.packages.state_machine.portal_shell import PortalScope
@@ -855,10 +856,22 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 json.dumps({"datum_addressing_abstraction_space": source_rows}) + "\n",
                 encoding="utf-8",
             )
-            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+            # canonical_ids: apply_stage re-persists the catalog under the
+            # canonical-only write posture, so the seeded cts_gis doc must be
+            # canonical. Resolve its canonical id for the request below.
+            store = SqliteSystemDatumStoreAdapter(db_file)
+            store.bootstrap_from_filesystem(
                 data_dir=data_dir,
                 public_dir=public_dir,
                 tenant_id="fnd",
+                canonical_ids=True,
+            )
+            cts_gis_doc_id = next(
+                doc.document_id
+                for doc in store.read_authoritative_datum_documents(
+                    AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+                ).documents
+                if doc.document_name == "sc.example.json"
             )
 
             staged = run_portal_cts_gis_action(
@@ -867,13 +880,13 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                     "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
                     "tool_state": {
                         "selected_node_id": "3-2-3-17-77-1",
-                        "source": {"attention_document_id": "sandbox:cts_gis:sc.example.json"},
+                        "source": {"attention_document_id": cts_gis_doc_id},
                     },
                     "action_kind": "stage_insert_yaml",
                     "action_payload": {
                         "stage_document": {
                             "schema": "mycite.v2.cts_gis.stage_insert.v1",
-                            "document_id": "sandbox:cts_gis:sc.example.json",
+                            "document_id": cts_gis_doc_id,
                             "document_name": "sc.example.json",
                             "operation": "insert_datums",
                             "datums": [
@@ -927,7 +940,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 {
                     "schema": "mycite.v2.portal.system.tools.workbench_ui.request.v1",
                     "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition"]},
-                    "surface_query": {"document": "sandbox:cts_gis:sc.example.json", "row": "4-2-2"},
+                    "surface_query": {"document": cts_gis_doc_id, "row": "4-2-2"},
                 },
                 portal_instance_id="fnd",
                 portal_domain="fruitfulnetworkdevelopment.com",

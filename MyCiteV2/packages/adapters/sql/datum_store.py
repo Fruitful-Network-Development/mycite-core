@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -19,7 +20,10 @@ from MyCiteV2.packages.adapters.sql.datum_semantics import (
 from MyCiteV2.packages.adapters.sql.datum_semantics import (
     preview_document_move as preview_document_move_mutation,
 )
-from MyCiteV2.packages.core.document_naming import is_canonical_document_id
+from MyCiteV2.packages.core.document_naming import (
+    derive_canonical_id_from_legacy,
+    is_canonical_document_id,
+)
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentCatalogResult,
@@ -498,14 +502,27 @@ class SqliteSystemDatumStoreAdapter(
         public_dir: str | Path | None,
         tenant_id: str,
         tenant_domain: str | None = None,
+        canonical_ids: bool = False,
+        canonical_ids_msn: str = "3-2-3",
     ) -> None:
         filesystem = FilesystemSystemDatumStoreAdapter(Path(data_dir), public_dir=public_dir)
         normalized_tenant_id = _as_text(tenant_id).lower()
+        catalog = filesystem.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=normalized_tenant_id)
+        )
+        # ``canonical_ids`` rewrites each filesystem-derived legacy id
+        # (``system:`` / ``sandbox:`` …) to its canonical ``lv.`` form before
+        # persisting. This is the only knob that lets bootstrap-based fixtures
+        # exercise the canonical-only write path (apply re-persists the full
+        # catalog and refuses non-canonical ids). Default False preserves the
+        # legacy-keyed seed shape that read-only fixtures still assert against.
+        if canonical_ids:
+            catalog = self._canonicalize_catalog_document_ids(
+                catalog, msn_id=canonical_ids_msn
+            )
         self.store_authoritative_catalog(
-            filesystem.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id=normalized_tenant_id)
-            ),
-            allow_non_canonical_catalog_ids=True,
+            catalog,
+            allow_non_canonical_catalog_ids=not canonical_ids,
         )
         self.store_system_workbench(
             filesystem.read_system_resource_workbench(
@@ -523,6 +540,36 @@ class SqliteSystemDatumStoreAdapter(
                 tenant_id=normalized_tenant_id,
                 tenant_domain=tenant_domain,
             )
+
+    def _canonicalize_catalog_document_ids(
+        self,
+        catalog: AuthoritativeDatumDocumentCatalogResult,
+        *,
+        msn_id: str,
+    ) -> AuthoritativeDatumDocumentCatalogResult:
+        """Return ``catalog`` with every legacy document id rewritten to its
+        canonical ``lv.`` form, keyed by the document's own content hash.
+
+        Mirrors the production migration convention (one ``msn_id`` per tenant,
+        ``version_hash`` taken from the document semantics). Documents that are
+        already canonical pass through unchanged. ``source_files`` keys are
+        relative paths, not ids, so they are left intact.
+        """
+
+        canonical_documents = []
+        for document in catalog.documents:
+            doc_id = _as_text(document.document_id)
+            if not doc_id or is_canonical_document_id(doc_id):
+                canonical_documents.append(document)
+                continue
+            version_hash = build_document_semantics(document)["document"]["version_hash"]
+            canonical_id = derive_canonical_id_from_legacy(
+                doc_id, msn_id=msn_id, version_hash=version_hash
+            )
+            canonical_documents.append(
+                dataclasses.replace(document, document_id=canonical_id)
+            )
+        return dataclasses.replace(catalog, documents=tuple(canonical_documents))
 
     def _db_mtime_ns(self) -> int:
         try:
