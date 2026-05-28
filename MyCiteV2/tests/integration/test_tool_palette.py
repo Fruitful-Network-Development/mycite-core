@@ -2,10 +2,13 @@
 
 Covers:
   - the GET /portal/api/tools/eligible endpoint exists and 200s
-  - the endpoint returns an empty tools list when params are missing or the
-    document_id is unknown
+  - with no document context (welcome screen), the palette returns every
+    registered viz tool so the menubar search input is useful immediately
+    (see portal_palette_runtime._viz_tool_matches comment)
   - build_eligible_tools_response() resolves a document via the datum store and
     returns the subset of registry entries whose applies_to_archetype matches
+  - each tool entry carries the dispatch ``route`` the JS palette reads from
+    its ``data-route`` attribute on click
 
 See portal_tool_surface_contract.md and the approved plan
 /home/admin/.claude/plans/temporal-wandering-bengio.md (Phase 3).
@@ -67,13 +70,17 @@ class _StubDatumStore:
 
 
 def _samras_document() -> AuthoritativeDatumDocument:
+    # ``datum_template_archetype`` is the metadata key the palette runtime
+    # reads (portal_palette_runtime.build_eligible_tools_response line ~108);
+    # the older ``archetype`` shorthand is unused and silently misses the
+    # archetype-matching branch.
     return AuthoritativeDatumDocument(
         document_id="lv.fnd.test.samras_fixture.deadbeef",
         source_kind="sandbox_source",
         document_name="samras_fixture",
         relative_path="samras_fixture.json",
         canonical_name="samras_fixture",
-        document_metadata={"archetype": ARCHETYPE_SAMRAS_FAMILY},
+        document_metadata={"datum_template_archetype": ARCHETYPE_SAMRAS_FAMILY},
         rows=(
             AuthoritativeDatumDocumentRow(datum_address="0-0-1", raw={"value": "a"}),
         ),
@@ -95,14 +102,23 @@ def _palette_tool(tool_id: str, archetype: str) -> PortalToolRegistryEntry:
 
 
 class BuildEligibleToolsResponseTests(unittest.TestCase):
-    def test_returns_empty_when_params_missing(self) -> None:
+    def test_returns_all_registered_tools_when_params_missing(self) -> None:
+        # Welcome-screen behavior: with no document context, every registered
+        # viz tool is returned so the menubar search input has options on
+        # first load. See portal_palette_runtime._viz_tool_matches docstring.
         out = build_eligible_tools_response(
             tenant_id="fnd", document_id="", datum_address="", datum_store=None
         )
         self.assertEqual(out["schema"], PORTAL_PALETTE_RESPONSE_SCHEMA)
-        self.assertEqual(out["tools"], [])
+        tool_ids = {tool["tool_id"] for tool in out["tools"]}
+        # cts_gis and workbench_ui are the two viz tools registered today
+        # (MyCiteV2/packages/tools/__init__.py).
+        self.assertIn("cts_gis", tool_ids)
+        self.assertIn("workbench_ui", tool_ids)
 
-    def test_returns_empty_when_document_not_in_catalog(self) -> None:
+    def test_returns_all_registered_tools_when_document_not_in_catalog(self) -> None:
+        # An unknown document_id resolves to None archetypes/source_kinds, so
+        # the same welcome-screen "all tools" behavior applies.
         store = _StubDatumStore(documents=())
         out = build_eligible_tools_response(
             tenant_id="fnd",
@@ -110,7 +126,9 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
             datum_address="0-0-1",
             datum_store=store,
         )
-        self.assertEqual(out["tools"], [])
+        tool_ids = {tool["tool_id"] for tool in out["tools"]}
+        self.assertIn("cts_gis", tool_ids)
+        self.assertIn("workbench_ui", tool_ids)
 
     def test_returns_tool_when_archetype_matches(self) -> None:
         doc = _samras_document()
@@ -119,8 +137,13 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
             _palette_tool("cts_gis_fixture", ARCHETYPE_SAMRAS_FAMILY),
             _palette_tool("other_fixture", "unrelated_archetype"),
         )
+        # The palette reads from the viz-tool registry (_viz_all_tools), not
+        # the shell tool registry — so we patch the bound name in the palette
+        # module. PortalToolRegistryEntry duck-types fine for the four
+        # attributes the runtime reads (tool_id, label, summary,
+        # applies_to_archetype, applies_to_source_kind, route).
         with patch(
-            "MyCiteV2.instances._shared.runtime.portal_palette_runtime.build_portal_tool_registry_entries",
+            "MyCiteV2.instances._shared.runtime.portal_palette_runtime._viz_all_tools",
             return_value=fake_registry,
         ):
             out = build_eligible_tools_response(
@@ -153,22 +176,29 @@ class PaletteEndpointHTTPTests(unittest.TestCase):
         )
         return create_app(config)
 
-    def test_endpoint_registered_and_returns_empty_tools_without_params(self) -> None:
+    def test_endpoint_registered_and_returns_all_tools_without_params(self) -> None:
+        # Endpoint exists and welcome-screen "all viz tools" behavior is in
+        # effect when no document context is supplied.
         client = self._build_app().test_client()
         resp = client.get("/portal/api/tools/eligible")
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json()
         self.assertEqual(payload["schema"], PORTAL_PALETTE_RESPONSE_SCHEMA)
-        self.assertEqual(payload["tools"], [])
+        tool_ids = {tool["tool_id"] for tool in payload["tools"]}
+        self.assertIn("cts_gis", tool_ids)
+        self.assertIn("workbench_ui", tool_ids)
 
-    def test_endpoint_returns_empty_tools_for_unknown_document(self) -> None:
+    def test_endpoint_returns_all_tools_for_unknown_document(self) -> None:
+        # An unknown document_id falls back to the welcome behavior.
         client = self._build_app().test_client()
         resp = client.get(
             "/portal/api/tools/eligible?document_id=lv.fnd.unknown.deadbeef&datum_address=0-0-1"
         )
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json()
-        self.assertEqual(payload["tools"], [])
+        tool_ids = {tool["tool_id"] for tool in payload["tools"]}
+        self.assertIn("cts_gis", tool_ids)
+        self.assertIn("workbench_ui", tool_ids)
 
     def test_palette_module_in_asset_manifest(self) -> None:
         from MyCiteV2.instances._shared.portal_host.app import build_shell_asset_manifest

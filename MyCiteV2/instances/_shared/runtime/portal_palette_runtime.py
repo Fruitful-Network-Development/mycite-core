@@ -25,7 +25,6 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocumentRequest,
 )
 from MyCiteV2.packages.tools import (
-    TOOL_REGISTRY as _VIZ_TOOL_REGISTRY,
     all_tools as _viz_all_tools,
 )
 
@@ -126,7 +125,13 @@ def build_eligible_tools_response(
                 "tool_id": tool.tool_id,
                 "label": tool.label,
                 "summary": tool.summary,
-                "route": "",
+                # ``route`` is what the JS palette stamps on each item's
+                # data-route attribute and dispatches on click
+                # (v2_portal_tool_palette.js renderList). When the iterable
+                # element doesn't carry a route attribute (the lightweight
+                # WorkbenchTool protocol omits it; PortalToolRegistryEntry
+                # provides it), fall back to "" so the schema stays stable.
+                "route": _as_text(getattr(tool, "route", "")),
             }
             for tool in matching
         ],
