@@ -734,6 +734,15 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     except Exception:
         pass
 
+    # Register the compiled-artifact root for the thin CTS-GIS tools (deployment
+    # config, set once — the map tool reads {data_dir}/payloads/compiled/...).
+    try:
+        from MyCiteV2.packages.tools._cts_gis_artifact import configure_data_dir
+
+        configure_data_dir(config.data_dir)
+    except Exception:
+        pass
+
     # CTS-GIS workbench projection cache (datum recognition for 413 documents).
     if config.authority_db_file is not None:
         try:

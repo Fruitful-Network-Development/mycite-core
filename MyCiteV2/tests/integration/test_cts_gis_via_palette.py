@@ -91,17 +91,25 @@ class CtsGisPaletteEligibilityTests(unittest.TestCase):
             source_kind="sandbox_source",
             archetype="samras_family",
         )
-        self.assertEqual(self._eligible_tool_ids(doc), ["cts_gis", "workbench_ui"])
+        # The monolithic CTS-GIS surface now decomposes into three thin tools
+        # (map=cts_gis, district, admin), each matching the same archetype/source.
+        self.assertEqual(
+            self._eligible_tool_ids(doc),
+            ["cts_gis", "cts_gis_admin", "cts_gis_district", "workbench_ui"],
+        )
 
     def test_sandbox_document_without_archetype_still_offers_both_via_source_kind(self) -> None:
         # Pre-archetype-metadata documents (the common case today) match via
-        # applies_to_source_kind=("sandbox_source",). Both tools surface.
+        # applies_to_source_kind=("sandbox_source",). All three cts_gis thin tools surface.
         doc = _document(
             doc_id="lv.fnd.legacy.fixture.cafebabe",
             source_kind="sandbox_source",
             archetype=None,
         )
-        self.assertEqual(self._eligible_tool_ids(doc), ["cts_gis", "workbench_ui"])
+        self.assertEqual(
+            self._eligible_tool_ids(doc),
+            ["cts_gis", "cts_gis_admin", "cts_gis_district", "workbench_ui"],
+        )
 
     def test_system_anthology_offers_only_workbench_ui(self) -> None:
         # cts_gis does not apply to system_anthology source; workbench_ui does.
@@ -143,7 +151,7 @@ class CtsGisPaletteHTTPEndpointTests(unittest.TestCase):
         # this fixture). Patch the resolver to return our stub so we exercise
         # the same code path the production system uses.
         with patch(
-            "MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime._datum_store_for_authority_db",
+            "MyCiteV2.instances._shared.datum_store_accessor._datum_store_for_authority_db",
             return_value=_StubDatumStore(documents=(doc,)),
         ):
             resp = client.get(
