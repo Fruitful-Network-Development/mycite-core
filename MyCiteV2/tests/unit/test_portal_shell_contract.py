@@ -64,11 +64,11 @@ class PortalShellContractTests(unittest.TestCase):
 
     def test_no_surface_requires_the_focus_path_reducer(self) -> None:
         # Phase A (function-forward) retired the reducer as a surface driver:
-        # system.root + cts_gis are query-native (workbench surface_query /
-        # cts_gis tool_state). No surface is reducer-owned.
-        self.assertEqual(canonical_route_for_surface(CTS_GIS_TOOL_SURFACE_ID), "/portal/system/tools/cts-gis")
+        # tool surfaces are query-native (workbench surface_query). No surface is
+        # reducer-owned. (cts_gis retired in Stage C; workbench_ui is the example.)
+        self.assertEqual(canonical_route_for_surface(WORKBENCH_UI_TOOL_SURFACE_ID), "/portal/system/tools/workbench-ui")
         self.assertFalse(requires_shell_state_machine(SYSTEM_ROOT_SURFACE_ID))
-        self.assertFalse(requires_shell_state_machine(CTS_GIS_TOOL_SURFACE_ID))
+        self.assertFalse(requires_shell_state_machine(WORKBENCH_UI_TOOL_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(NETWORK_ROOT_SURFACE_ID))
         self.assertFalse(requires_shell_state_machine(UTILITIES_ROOT_SURFACE_ID))
 
@@ -147,8 +147,9 @@ class PortalShellContractTests(unittest.TestCase):
             for entry in (entry.to_dict() for entry in build_portal_tool_registry_entries())
         }
         self.assertNotIn("fnd_csm", registry_entries)
-        self.assertEqual(registry_entries["cts_gis"]["surface_posture"], SURFACE_POSTURE_PALETTE_TARGET)
-        self.assertTrue(registry_entries["cts_gis"]["default_workbench_visible"])
+        self.assertNotIn("cts_gis", registry_entries)  # retired in Stage C
+        self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_PALETTE_TARGET)
+        self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
         self.assertEqual(registry_entries["workbench_ui"]["surface_posture"], SURFACE_POSTURE_PALETTE_TARGET)
         self.assertTrue(registry_entries["workbench_ui"]["default_workbench_visible"])
 
@@ -235,20 +236,19 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertEqual([segment.id for segment in next_state.focus_path], ["system", SYSTEM_ANCHOR_FILE_KEY])
 
     def test_shell_request_resolution_is_query_native_for_all_surfaces(self) -> None:
-        # Phase A: no surface is reducer-owned; cts_gis (like every surface)
-        # resolves query-native — reducer_owned False, canonical_query derived
-        # from surface_query (cts_gis carries its selection in tool_state via
-        # POST, so its canonical_query is empty).
+        # Phase A: no surface is reducer-owned; a tool surface (like every surface)
+        # resolves query-native — reducer_owned False, canonical_query derived from
+        # surface_query. (cts_gis retired in Stage C; workbench_ui is the example.)
         selection = resolve_portal_shell_request(
             {
                 "schema": "mycite.v2.portal.shell.request.v1",
-                "requested_surface_id": CTS_GIS_TOOL_SURFACE_ID,
+                "requested_surface_id": WORKBENCH_UI_TOOL_SURFACE_ID,
                 "portal_scope": {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]},
             }
         )
         self.assertTrue(selection.allowed)
         self.assertFalse(selection.reducer_owned)
-        self.assertEqual(selection.active_surface_id, CTS_GIS_TOOL_SURFACE_ID)
+        self.assertEqual(selection.active_surface_id, WORKBENCH_UI_TOOL_SURFACE_ID)
         self.assertNotIn("file", selection.canonical_query)
         self.assertNotIn("verb", selection.canonical_query)
 

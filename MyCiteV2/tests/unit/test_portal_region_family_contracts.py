@@ -9,7 +9,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import run_portal_workbench_ui
 from MyCiteV2.packages.state_machine.portal_shell import (
@@ -78,43 +77,3 @@ class PortalRegionFamilyContractTests(unittest.TestCase):
                 )
                 _assert_region_family_contracts(self, envelope, expected_surface_id=surface_id)
 
-    def test_tool_routes_emit_family_contract_markers(self) -> None:
-        # Phase 3 (portal_tool_surface_contract.md): fnd_csm surface retired —
-        # its tabs migrated to utilities extensions. Family-contract coverage
-        # for fnd_csm is no longer required.
-        with TemporaryDirectory():
-            cts_envelope = run_portal_cts_gis(
-                {
-                    "schema": "mycite.v2.portal.system.tools.cts_gis.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                    "shell_state": initial_portal_shell_state(
-                        surface_id=CTS_GIS_TOOL_SURFACE_ID,
-                        portal_scope={"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                    ).to_dict(),
-                },
-                data_dir=None,
-                private_dir=None,
-                tool_exposure_policy=None,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            _assert_region_family_contracts(
-                self,
-                cts_envelope,
-                expected_surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            )
-
-            workbench_ui_envelope = run_portal_workbench_ui(
-                {
-                    "schema": "mycite.v2.portal.system.tools.workbench_ui.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": []},
-                },
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-                authority_db_file=None,
-            )
-            _assert_region_family_contracts(self, workbench_ui_envelope, expected_surface_id="system.tools.workbench_ui")
-
-
-if __name__ == "__main__":
-    unittest.main()

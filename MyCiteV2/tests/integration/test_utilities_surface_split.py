@@ -157,8 +157,10 @@ class UtilitiesToolsSurfaceTests(unittest.TestCase):
         for section in payload.get("sections") or []:
             rows.extend(section.get("items") or [])
         tool_labels = {row.get("tool") for row in rows}
-        # Should contain CTS-GIS (the only current tool); never any extension or workbench_ui.
-        self.assertIn("CTS-GIS", tool_labels)
+        # Should contain a palette tool (Agro-ERP; CTS-GIS retired in Stage C);
+        # never any extension or workbench_ui.
+        self.assertIn("Agro-ERP", tool_labels)
+        self.assertNotIn("CTS-GIS", tool_labels)
         for forbidden in ("Email", "Analytics", "Newsletter", "PayPal", "Grantee Profile", "Workbench UI"):
             self.assertNotIn(
                 forbidden,

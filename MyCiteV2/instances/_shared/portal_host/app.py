@@ -721,26 +721,6 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     except Exception:
         pass
 
-    # CTS-GIS workbench projection cache (datum recognition for 413 documents).
-    if config.authority_db_file is not None:
-        try:
-            from MyCiteV2.instances._shared.datum_store_accessor import (
-                _datum_store_for_authority_db,
-            )
-            from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-                _hydrate_compiled_workbench_documents,
-            )
-
-            datum_store = _datum_store_for_authority_db(config.authority_db_file)
-            if datum_store is not None:
-                _hydrate_compiled_workbench_documents(
-                    service_surface={},
-                    datum_store=datum_store,
-                    tenant_id=config.portal_instance_id,
-                )
-        except Exception:
-            pass
-
 
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = Path(__file__).resolve().parent / "static"

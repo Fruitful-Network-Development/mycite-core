@@ -10,7 +10,6 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis_action
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
     build_portal_workbench_ui_bundle,
@@ -828,127 +827,6 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(next_row["shell_request"]["surface_query"]["document"], "system:anthology")
             self.assertTrue(all(document.get("href") and document.get("shell_request") for document in workspace["document_table"]["rows"]))
             self.assertTrue(all(row.get("href") and row.get("shell_request") for row in workspace["datum_grid"]["rows"]))
-
-    def test_post_apply_rows_are_visible_in_workbench_ui(self) -> None:
-        with TemporaryDirectory() as temp_dir:
-            root = Path(temp_dir)
-            data_dir = root / "data"
-            public_dir = root / "public"
-            db_file = root / "authority.sqlite3"
-            (data_dir / "system").mkdir(parents=True)
-            (data_dir / "system" / "sources").mkdir(parents=True)
-            (data_dir / "sandbox" / "cts-gis" / "sources").mkdir(parents=True)
-            public_dir.mkdir(parents=True)
-            (data_dir / "system" / "anthology.json").write_text(
-                json.dumps(
-                    {
-                        "1-1-1": [["1-1-1", "~", "ROOT"], ["root"]],
-                    }
-                )
-                + "\n",
-                encoding="utf-8",
-            )
-            source_rows = {
-                row.datum_address: row.raw
-                for row in self._cts_gis_authoritative_document().rows
-            }
-            (data_dir / "sandbox" / "cts-gis" / "sources" / "sc.example.json").write_text(
-                json.dumps({"datum_addressing_abstraction_space": source_rows}) + "\n",
-                encoding="utf-8",
-            )
-            # canonical_ids: apply_stage re-persists the catalog under the
-            # canonical-only write posture, so the seeded cts_gis doc must be
-            # canonical. Resolve its canonical id for the request below.
-            store = SqliteSystemDatumStoreAdapter(db_file)
-            store.bootstrap_from_filesystem(
-                data_dir=data_dir,
-                public_dir=public_dir,
-                tenant_id="fnd",
-                canonical_ids=True,
-            )
-            cts_gis_doc_id = next(
-                doc.document_id
-                for doc in store.read_authoritative_datum_documents(
-                    AuthoritativeDatumDocumentRequest(tenant_id="fnd")
-                ).documents
-                if doc.document_name == "sc.example.json"
-            )
-
-            staged = run_portal_cts_gis_action(
-                {
-                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                    "tool_state": {
-                        "selected_node_id": "3-2-3-17-77-1",
-                        "source": {"attention_document_id": cts_gis_doc_id},
-                    },
-                    "action_kind": "stage_insert_yaml",
-                    "action_payload": {
-                        "stage_document": {
-                            "schema": "mycite.v2.cts_gis.stage_insert.v1",
-                            "document_id": cts_gis_doc_id,
-                            "document_name": "sc.example.json",
-                            "operation": "insert_datums",
-                            "datums": [
-                                {
-                                    "family": "administrative_street",
-                                    "valueGroup": 2,
-                                    "targetNodeAddress": "3-2-3-17-77-1",
-                                    "title": "MAIN STREET",
-                                    "references": [
-                                        {"type": "title", "text": "MAIN STREET"},
-                                        {"type": "msn-samras", "nodeAddress": "3-2-3-17-77-1"},
-                                    ],
-                                }
-                            ],
-                        }
-                    },
-                },
-                data_dir=None,
-                authority_db_file=db_file,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            preview = run_portal_cts_gis_action(
-                {
-                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                    "tool_state": staged["surface_payload"]["tool_state"],
-                    "action_kind": "preview_apply",
-                    "action_payload": {},
-                },
-                data_dir=None,
-                authority_db_file=db_file,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-            run_portal_cts_gis_action(
-                {
-                    "schema": "mycite.v2.portal.system.tools.cts_gis.action.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition", "spatial_projection"]},
-                    "tool_state": preview["surface_payload"]["tool_state"],
-                    "action_kind": "apply_stage",
-                    "action_payload": {},
-                },
-                data_dir=None,
-                authority_db_file=db_file,
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-            )
-
-            envelope = run_portal_workbench_ui(
-                {
-                    "schema": "mycite.v2.portal.system.tools.workbench_ui.request.v1",
-                    "portal_scope": {"scope_id": "fnd", "capabilities": ["datum_recognition"]},
-                    "surface_query": {"document": cts_gis_doc_id, "row": "4-2-2"},
-                },
-                portal_instance_id="fnd",
-                portal_domain="fruitfulnetworkdevelopment.com",
-                authority_db_file=db_file,
-            )
-
-            self.assertEqual(envelope["surface_payload"]["workspace"]["selected_row"]["datum_address"], "4-2-2")
-            self.assertEqual(envelope["surface_payload"]["workspace"]["selected_row"]["labels"], "MAIN_STREET")
 
     def test_datum_grid_layers_emit_per_family_column_template(self) -> None:
         """Lock the datum_grid.layers contract the Datum IDE grid (L3) consumes.

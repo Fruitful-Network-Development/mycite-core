@@ -28,7 +28,6 @@ from MyCiteV2.packages.adapters.sql import (
 from MyCiteV2.packages.ports.portal_authority import PortalAuthorityRequest
 from MyCiteV2.packages.state_machine.portal_shell import (
     AGRO_ERP_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
@@ -242,9 +241,7 @@ def _tool_posture_rows(
             if isinstance(enabled_tools, dict)
             else entry.default_enabled
         )
-        integration_name = {
-            "cts_gis": "data_dir",
-        }.get(entry.tool_id, "")
+        integration_name = {}.get(entry.tool_id, "")
         missing_integrations = []
         if integration_name and not integration_flags.get(integration_name, False):
             missing_integrations.append(integration_name)
@@ -1157,36 +1154,6 @@ def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True)
 ToolSurfaceBundleBuilder = Callable[..., dict[str, Any]]
 
 
-def _build_cts_gis_tool_bundle(
-    *,
-    portal_scope: PortalScope,
-    shell_state: PortalShellState | None,
-    request_payload: dict[str, Any] | None,
-    data_dir: str | Path | None,
-    authority_db_file: str | Path | None,
-    private_dir: str | Path | None,
-    tool_exposure_policy: dict[str, Any] | None,
-    tool_rows: list[dict[str, Any]],
-    **_: Any,
-) -> dict[str, Any]:
-    from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-        build_portal_cts_gis_surface_bundle,
-    )
-
-    if shell_state is None:
-        raise ValueError("CTS-GIS shell bundle requires reducer-owned shell_state")
-    return build_portal_cts_gis_surface_bundle(
-        portal_scope=portal_scope,
-        shell_state=shell_state,
-        data_dir=data_dir,
-        authority_db_file=authority_db_file,
-        private_dir=private_dir,
-        tool_exposure_policy=tool_exposure_policy,
-        tool_rows=tool_rows,
-        request_payload=request_payload,
-    )
-
-
 def _build_workbench_ui_tool_bundle(
     *,
     portal_scope: PortalScope,
@@ -1236,7 +1203,6 @@ def _build_agro_erp_tool_bundle(
 
 
 _TOOL_SURFACE_BUNDLE_BUILDERS: dict[str, ToolSurfaceBundleBuilder] = {
-    CTS_GIS_TOOL_SURFACE_ID: _build_cts_gis_tool_bundle,
     WORKBENCH_UI_TOOL_SURFACE_ID: _build_workbench_ui_tool_bundle,
     AGRO_ERP_TOOL_SURFACE_ID: _build_agro_erp_tool_bundle,
 }
