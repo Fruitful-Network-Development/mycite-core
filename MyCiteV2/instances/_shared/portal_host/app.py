@@ -737,8 +737,10 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     # CTS-GIS workbench projection cache (datum recognition for 413 documents).
     if config.authority_db_file is not None:
         try:
-            from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            from MyCiteV2.instances._shared.datum_store_accessor import (
                 _datum_store_for_authority_db,
+            )
+            from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
                 _hydrate_compiled_workbench_documents,
             )
 
@@ -1649,7 +1651,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # endpoint with the currently-selected datum's document_id and
         # datum_address, and receives the subset of tool registry entries
         # whose applies_to_archetype / applies_to_source_kind matches.
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+        from MyCiteV2.instances._shared.datum_store_accessor import (
             _datum_store_for_authority_db,
         )
         from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
@@ -1674,7 +1676,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # of a whole sandbox (ranked by reach), plus the document + sandbox lists.
         # Unlike /portal/api/tools/eligible (which answers "tools for THIS doc"),
         # this answers "what can I view in this sandbox?" for the menubar search.
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+        from MyCiteV2.instances._shared.datum_store_accessor import (
             _datum_store_for_authority_db,
         )
         from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
