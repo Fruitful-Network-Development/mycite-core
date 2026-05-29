@@ -23,6 +23,7 @@ from MyCiteV2.packages.ports.datum_store import (
 )
 
 DATUM_IO_SCHEMA = "mycite.v2.datum_io.document.v1"
+DATUM_IO_WORKBOOK_SCHEMA = "mycite.v2.datum_io.workbook.v1"
 
 _VALID_SOURCE_KINDS = ("system_anthology", "sandbox_source")
 
@@ -35,10 +36,8 @@ def _row_mapping(row: Any) -> dict[str, Any]:
     raise ValueError(f"unserializable datum row: {row!r}")
 
 
-def to_yaml(document: AuthoritativeDatumDocument) -> str:
-    """Render a datum document as conventionalized YAML text."""
-
-    payload: dict[str, Any] = {
+def _document_payload(document: AuthoritativeDatumDocument) -> dict[str, Any]:
+    return {
         "schema": DATUM_IO_SCHEMA,
         "document_id": document.document_id,
         "document_name": document.document_name,
@@ -51,16 +50,15 @@ def to_yaml(document: AuthoritativeDatumDocument) -> str:
         "document_metadata": document.document_metadata or {},
         "rows": [_row_mapping(row) for row in document.rows],
     }
-    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True, default_flow_style=False)
 
 
-def from_yaml(text: str) -> AuthoritativeDatumDocument:
-    """Reconstruct a datum document from conventionalized YAML text."""
+def to_yaml(document: AuthoritativeDatumDocument) -> str:
+    """Render a datum document as conventionalized YAML text."""
 
-    payload = yaml.safe_load(text) or {}
-    if not isinstance(payload, dict):
-        raise ValueError("datum_io payload must be a mapping")
+    return yaml.safe_dump(_document_payload(document), sort_keys=False, allow_unicode=True, default_flow_style=False)
 
+
+def _document_from_payload(payload: dict[str, Any]) -> AuthoritativeDatumDocument:
     source_kind = str(payload.get("source_kind") or "sandbox_source")
     if source_kind not in _VALID_SOURCE_KINDS:
         raise ValueError(f"datum_io source_kind must be one of {_VALID_SOURCE_KINDS}: {source_kind!r}")
@@ -85,3 +83,39 @@ def from_yaml(text: str) -> AuthoritativeDatumDocument:
         is_anchor=bool(payload.get("is_anchor")),
         rows=rows,
     )
+
+
+def from_yaml(text: str) -> AuthoritativeDatumDocument:
+    """Reconstruct a datum document from conventionalized YAML text."""
+
+    payload = yaml.safe_load(text) or {}
+    if not isinstance(payload, dict):
+        raise ValueError("datum_io payload must be a mapping")
+    return _document_from_payload(payload)
+
+
+def workbook_to_yaml(sandbox: str, documents: list[AuthoritativeDatumDocument]) -> str:
+    """Render a whole sandbox as a multi-sheet WORKBOOK YAML (transport only).
+
+    Each sheet is the verbatim per-document payload, so per-sheet round-trip
+    preserves the MSS version identity. Nothing here is persisted to disk — the
+    workbook is an in-memory / over-the-wire form (MOS-only storage rule).
+    """
+    payload = {
+        "schema": DATUM_IO_WORKBOOK_SCHEMA,
+        "sandbox": sandbox,
+        "sheets": [_document_payload(doc) for doc in documents],
+    }
+    return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True, default_flow_style=False)
+
+
+def workbook_from_yaml(text: str) -> tuple[str, list[AuthoritativeDatumDocument]]:
+    """Reconstruct ``(sandbox, [documents])`` from WORKBOOK YAML text."""
+    payload = yaml.safe_load(text) or {}
+    if not isinstance(payload, dict):
+        raise ValueError("datum_io workbook payload must be a mapping")
+    if payload.get("schema") != DATUM_IO_WORKBOOK_SCHEMA:
+        raise ValueError(f"not a datum_io workbook payload: schema={payload.get('schema')!r}")
+    sandbox = str(payload.get("sandbox") or "")
+    sheets = [_document_from_payload(sheet) for sheet in (payload.get("sheets") or [])]
+    return sandbox, sheets

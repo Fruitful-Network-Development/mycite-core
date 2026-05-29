@@ -36,6 +36,7 @@ _ALLOWED_OPERATIONS = {
     "move_datum",
     "scaffold_datum",
     "create_document",
+    "apply_workbook",
 }
 # Operations that mint a brand-new document (no pre-existing document_id).
 # ``create_document`` is the title-only human-facing flow; ``scaffold_datum``
@@ -476,6 +477,65 @@ def _preview_or_apply(
     raise ValueError("unsupported_operation")
 
 
+def _run_workbook_mutation_action(
+    *,
+    action: str,
+    payload: Mapping[str, Any],
+    authority_db_file: str | Path | None,
+    tenant_id: str,
+    sandbox_id: str,
+) -> dict[str, Any]:
+    """Compile an edited workbook YAML into a planned cross-document migration.
+
+    ``stage``/``validate``/``preview`` run the pure planner (no writes) and return
+    the op plan + touched-sheet set + new ids + rule advisories. ``apply`` runs the
+    store-bound executor (backup → write → verify). Bypasses the singular-document
+    checks (this verb operates over a whole sandbox).
+    """
+    from MyCiteV2.packages.adapters.sql.datum_workbook_apply import (
+        WorkbookApplyError,
+        execute_migration,
+        load_workbook,
+    )
+    from MyCiteV2.packages.core.datum_ops import compile_workbook, plan_migration, workbook_codec
+
+    edited_yaml = _as_text(payload.get("edited_workbook_yaml"))
+    if not edited_yaml:
+        return _error("edited_workbook_required", "edited_workbook_yaml is required for apply_workbook.")
+    if authority_db_file is None:
+        return _error("authority_db_required", "authority_db_file is required.", status_code=503)
+
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=False)
+    try:
+        baseline = load_workbook(store, tenant_id=tenant_id, sandbox=sandbox_id)
+        edited = workbook_codec.from_yaml(edited_yaml)
+        # NOTE: compile_workbook handles localized edits (rename/relocate/mint/drop). A
+        # relocate that cascades sibling-renumbers is over-interpreted by its title diff;
+        # bulk structural migration should use an explicit op script (see renest_agro_erp_txa).
+        ops = compile_workbook(baseline, edited)
+        plan = plan_migration(baseline, ops)
+    except Exception as exc:
+        return _error("workbook_plan_failed", str(exc))
+
+    plan_summary = {
+        "ops_total": len(ops),
+        "touched_sheets": sorted(plan.touched),
+        "new_document_ids": {n: ts.new_document.document_id for n, ts in plan.touched.items()},
+        "advisories": plan.advisories[:20],
+    }
+    if action in {"stage", "validate", "preview"}:
+        return _ok(action, {
+            "stage_state": {"stage": "staged", "validate": "validated", "preview": "previewed"}[action],
+            "workbook_plan": plan_summary,
+        })
+    # apply
+    try:
+        result = execute_migration(authority_db_file, plan, tenant_id=tenant_id)
+    except WorkbookApplyError as exc:
+        return _error("workbook_apply_failed", str(exc), status_code=500)
+    return _ok(action, {"stage_state": "applied", "workbook_plan": plan_summary, "apply_result": result})
+
+
 def run_datum_workbench_mutation_action(
     action: str,
     payload: Mapping[str, Any] | None,
@@ -513,6 +573,17 @@ def run_datum_workbench_mutation_action(
     operation = _as_text(normalized.get("operation") or normalized.get("action_kind") or "update_row_raw")
     if operation not in _ALLOWED_OPERATIONS:
         return _error("unsupported_operation", f"Unsupported datum workbench operation: {operation}")
+    if operation == "apply_workbook":
+        # Cross-document workbook apply: an edited multi-sheet YAML is compiled into
+        # an op sequence, planned (rule-checked, ids re-minted), and on apply written
+        # atomically with backup+verify. Bypasses the singular-document checks.
+        return _run_workbook_mutation_action(
+            action=action,
+            payload=normalized,
+            authority_db_file=authority_db_file,
+            tenant_id=_as_text(portal_instance_id) or "fnd",
+            sandbox_id=sandbox_id,
+        )
     if operation in _NEW_DOCUMENT_OPERATIONS:
         # Scaffold (and similar) mint a brand-new document; the existing-doc
         # sandbox check would always miss. Validate by template/sandbox match
