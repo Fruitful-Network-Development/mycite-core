@@ -17,6 +17,7 @@ from __future__ import annotations
 # — ``_registry.all_tools()`` sorts by ``tool_id`` on read.
 from . import (
     cts_gis_map,  # noqa: F401
+    product_document_view,  # noqa: F401
     workbench_ui_view,  # noqa: F401
 )
 from ._contract import WorkbenchTool

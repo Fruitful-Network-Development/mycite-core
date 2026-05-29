@@ -1668,6 +1668,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify(payload), 200
 
+    @app.get("/portal/api/visualizers/for-sandbox")
+    def portal_visualizers_for_sandbox() -> tuple[Any, int]:
+        # Search-bar discovery: return the visualizers eligible for the contents
+        # of a whole sandbox (ranked by reach), plus the document + sandbox lists.
+        # Unlike /portal/api/tools/eligible (which answers "tools for THIS doc"),
+        # this answers "what can I view in this sandbox?" for the menubar search.
+        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+            _datum_store_for_authority_db,
+        )
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
+            build_sandbox_visualizers_response,
+        )
+
+        sandbox_id = _as_text(request.args.get("sandbox_id"))
+        tenant_id = _as_text(request.args.get("tenant_id")) or host_config.portal_instance_id
+        datum_store = _datum_store_for_authority_db(host_config.authority_db_file)
+        payload = build_sandbox_visualizers_response(
+            tenant_id=tenant_id,
+            sandbox_id=sandbox_id,
+            datum_store=datum_store,
+        )
+        return jsonify(payload), 200
+
     @app.post("/portal/api/v2/shell")
     def portal_shell() -> tuple[Any, int]:
         try:

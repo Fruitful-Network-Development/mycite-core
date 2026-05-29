@@ -3571,3 +3571,92 @@
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("workbench_renderers");
   }
 })();
+
+/**
+ * Product-document visualizer renderer (Plan v2).
+ *
+ * Paints the panel_payload from MyCiteV2.packages.tools.product_document_view
+ * (a labelled product table with cross-document-resolved names) into the
+ * workbench visualization panel. Registered into the __MYCITE_V2_TOOL_RENDERERS
+ * registry keyed by tool_id "product_document"; v2_portal_shell_core.js looks it
+ * up when the selected tool's panel_payload lands in regions.visualization_panel.
+ * Includes a client-side name filter — the "search" over the sandbox's products.
+ */
+(function () {
+  function esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function buildTable(payload, query) {
+    var products = Array.isArray(payload.products) ? payload.products : [];
+    var columns = Array.isArray(payload.columns) ? payload.columns : [];
+    var q = String(query || "").trim().toLowerCase();
+    if (q) {
+      products = products.filter(function (p) {
+        return String(p.product_name || "").toLowerCase().indexOf(q) !== -1;
+      });
+    }
+    var head =
+      "<tr><th>product</th>" +
+      columns.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") +
+      "</tr>";
+    var body = products
+      .map(function (p) {
+        var byField = {};
+        (p.fields || []).forEach(function (f) { byField[f.field] = f; });
+        var cells = columns
+          .map(function (c) {
+            var f = byField[c] || {};
+            var resolved = f.resolved ? String(f.resolved) : "";
+            var magnitude = f.magnitude ? String(f.magnitude) : "";
+            // Show the resolved label; reveal the raw magnitude on hover.
+            var text = resolved || magnitude;
+            var title = resolved && magnitude && resolved !== magnitude ? ' title="' + esc(magnitude) + '"' : "";
+            return "<td" + title + ">" + esc(text) + "</td>";
+          })
+          .join("");
+        return '<tr><td class="v2-product__name">' + esc(p.product_name) + "</td>" + cells + "</tr>";
+      })
+      .join("");
+    return (
+      '<div class="v2-product__count">' + esc(products.length) + " shown</div>" +
+      '<div class="v2-product__tableWrap"><table class="v2-product__table"><thead>' +
+      head + "</thead><tbody>" + body + "</tbody></table></div>"
+    );
+  }
+
+  function renderProductDocument(payload, content) {
+    payload = payload || {};
+    if (!content) return;
+    if (payload.error) {
+      content.innerHTML =
+        '<p class="ide-visualizationPanel__error">' + esc(payload.error) + "</p>";
+      return;
+    }
+    var total = payload.product_count != null ? payload.product_count : (payload.products || []).length;
+    content.innerHTML =
+      '<section class="v2-product__viewer">' +
+      '<header class="v2-product__header">' +
+      esc(total) + " products · sandbox " + esc(payload.sandbox_id || "") +
+      " · " + esc(payload.lcl_index_size || 0) + " names indexed" +
+      "</header>" +
+      '<input type="search" class="v2-product__search" data-product-search ' +
+      'placeholder="Filter products by name…" aria-label="Filter products by name" />' +
+      '<div data-product-table>' + buildTable(payload, "") + "</div>" +
+      "</section>";
+    var input = content.querySelector("[data-product-search]");
+    var tableHost = content.querySelector("[data-product-table]");
+    if (input && tableHost) {
+      input.addEventListener("input", function () {
+        tableHost.innerHTML = buildTable(payload, input.value);
+      });
+    }
+  }
+
+  window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  window.__MYCITE_V2_TOOL_RENDERERS["product_document"] = renderProductDocument;
+})();

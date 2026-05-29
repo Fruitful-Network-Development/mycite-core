@@ -64,6 +64,45 @@
       });
   }
 
+  function forSandboxEndpoint(opts) {
+    var params = new URLSearchParams();
+    var tenantId = asText(opts && opts.tenantId);
+    var sandboxId = asText(opts && opts.sandboxId);
+    if (tenantId) params.set("tenant_id", tenantId);
+    if (sandboxId) params.set("sandbox_id", sandboxId);
+    return "/portal/api/visualizers/for-sandbox?" + params.toString();
+  }
+
+  // Search-bar discovery: the visualizers eligible for the contents of the
+  // current sandbox (ranked by reach), normalized to the same item shape
+  // renderList consumes so the menubar search can list them directly.
+  function fetchForSandbox(opts) {
+    return fetch(forSandboxEndpoint(opts), {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error("visualizers: " + resp.status);
+        return resp.json();
+      })
+      .then(function (payload) {
+        var visualizers = payload && Array.isArray(payload.visualizers) ? payload.visualizers : [];
+        return {
+          schema: (payload && payload.schema) || "",
+          sandbox_id: (payload && payload.sandbox_id) || "",
+          sandboxes: (payload && payload.sandboxes) || [],
+          documents: (payload && payload.documents) || [],
+          // alias as `tools` so refresh()/renderList() are agnostic to source.
+          tools: visualizers,
+          visualizers: visualizers,
+        };
+      })
+      .catch(function () {
+        return { schema: "", tools: [], visualizers: [], sandboxes: [], documents: [] };
+      });
+  }
+
   function filterTools(tools, query) {
     var needle = asText(query).toLowerCase();
     if (!needle) return tools.slice();
@@ -121,10 +160,16 @@
     if (!target) return Promise.resolve({ schema: "", tools: [] });
     var listEl = target.querySelector("[data-palette-list]") || target;
     var inputEl = target.querySelector("[data-palette-input]");
-    return fetchEligible(ctx).then(function (payload) {
+    // When a sandbox is in context (and no specific document is selected), the
+    // search bar lists the visualizers eligible for the whole sandbox's
+    // contents; otherwise it lists the tools for the selected datum.
+    var fetcher =
+      ctx && asText(ctx.sandboxId) && !asText(ctx.documentId) ? fetchForSandbox : fetchEligible;
+    return fetcher(ctx).then(function (payload) {
       var query = inputEl ? inputEl.value : "";
-      renderList(listEl, filterTools(payload.tools, query), ctx);
-      target.__paletteTools = payload.tools;
+      var items = payload.tools || payload.visualizers || [];
+      renderList(listEl, filterTools(items, query), ctx);
+      target.__paletteTools = items;
       return payload;
     });
   }
@@ -150,6 +195,7 @@
 
   window.PortalToolPalette = {
     fetch: fetchEligible,
+    fetchForSandbox: fetchForSandbox,
     filter: filterTools,
     renderList: renderList,
     refresh: refresh,

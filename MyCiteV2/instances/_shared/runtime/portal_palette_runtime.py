@@ -138,7 +138,106 @@ def build_eligible_tools_response(
     }
 
 
+PORTAL_SANDBOX_VISUALIZERS_SCHEMA = "mycite.v2.portal.visualizers.for_sandbox.response.v1"
+
+
+def _doc_sandbox(doc: Any) -> str:
+    # Canonical id is lv.<msn>.<sandbox>.<name>.<hash> → sandbox is parts[2].
+    parts = _as_text(getattr(doc, "document_id", "")).split(".")
+    return parts[2] if len(parts) > 4 else ""
+
+
+def _doc_name(doc: Any) -> str:
+    parts = _as_text(getattr(doc, "document_id", "")).split(".")
+    return parts[3] if len(parts) > 4 else ""
+
+
+def _doc_eligibility(doc: Any) -> tuple[set[str], set[str], str]:
+    metadata = getattr(doc, "document_metadata", None) or {}
+    archetypes: set[str] = set()
+    if isinstance(metadata, dict):
+        archetype = _as_text(metadata.get("datum_template_archetype"))
+        if archetype:
+            archetypes.add(archetype)
+        family = _as_text(metadata.get("samras_family"))
+        if family:
+            archetypes.add(family)
+    source_kind = _as_text(getattr(doc, "source_kind", ""))
+    return archetypes, ({source_kind} if source_kind else set()), source_kind
+
+
+def build_sandbox_visualizers_response(
+    *, tenant_id: str, sandbox_id: str, datum_store: Any
+) -> dict[str, Any]:
+    """Return the visualizers eligible for the contents of one sandbox.
+
+    Powers the menubar search bar: rather than answering "which tools fit THIS
+    selected document", it scans every document in ``sandbox_id`` and returns the
+    union of eligible visualizers (ranked by how many of the sandbox's documents
+    each one can render), plus the document list and the set of known sandboxes.
+    When ``sandbox_id`` is empty every document is considered (corpus-wide).
+    """
+    tenant_id = _as_text(tenant_id)
+    sandbox_id = _as_text(sandbox_id)
+
+    docs: list[Any] = []
+    if datum_store is not None:
+        try:
+            catalog = datum_store.read_authoritative_datum_documents(
+                AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+            )
+            docs = list(getattr(catalog, "documents", ()) or ())
+        except Exception:
+            docs = []
+
+    sandboxes = sorted({s for s in (_doc_sandbox(d) for d in docs) if s})
+    in_sandbox = [d for d in docs if (not sandbox_id or _doc_sandbox(d) == sandbox_id)]
+
+    documents_out: list[dict[str, Any]] = []
+    hits: dict[str, dict[str, Any]] = {}
+    for doc in in_sandbox:
+        archetypes, source_kinds, source_kind = _doc_eligibility(doc)
+        doc_id = _as_text(getattr(doc, "document_id", ""))
+        documents_out.append({
+            "document_id": doc_id,
+            "name": _doc_name(doc),
+            "archetype": next(iter(archetypes), ""),
+            "source_kind": source_kind,
+            "row_count": len(getattr(doc, "rows", ()) or ()),
+        })
+        for tool in _viz_all_tools():
+            if _viz_tool_matches(tool, archetypes=archetypes, source_kinds=source_kinds):
+                entry = hits.setdefault(tool.tool_id, {"tool": tool, "documents": []})
+                entry["documents"].append(doc_id)
+
+    visualizers = []
+    for tool_id in sorted(hits):
+        tool = hits[tool_id]["tool"]
+        eligible_docs = hits[tool_id]["documents"]
+        visualizers.append({
+            "tool_id": tool.tool_id,
+            "label": tool.label,
+            "summary": tool.summary,
+            "route": _as_text(getattr(tool, "route", "")),
+            "eligible_count": len(eligible_docs),
+            "eligible_documents": eligible_docs,
+        })
+    # Rank by reach (documents covered) then id, so the most broadly-useful
+    # visualizer for the sandbox sorts to the top of the search list.
+    visualizers.sort(key=lambda v: (-v["eligible_count"], v["tool_id"]))
+
+    return {
+        "schema": PORTAL_SANDBOX_VISUALIZERS_SCHEMA,
+        "sandbox_id": sandbox_id,
+        "sandboxes": sandboxes,
+        "documents": documents_out,
+        "visualizers": visualizers,
+    }
+
+
 __all__ = [
     "PORTAL_PALETTE_RESPONSE_SCHEMA",
+    "PORTAL_SANDBOX_VISUALIZERS_SCHEMA",
     "build_eligible_tools_response",
+    "build_sandbox_visualizers_response",
 ]

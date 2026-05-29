@@ -145,6 +145,17 @@
     var moduleSpec = resolveReflectiveWorkspaceModuleSpec(region, surfacePayload);
 
     if (family === "reflective_workspace") {
+      // A reflective workspace carrying sql_authority_lens content IS the
+      // editable datum workbench (sandbox toggle + document column + row
+      // editor + datum composer). Render it via the workbench-ui surface even
+      // when the system-root bundle has stamped surface_id="system.root" and a
+      // "system_workspace" moduleSpec on the region — otherwise /portal/system
+      // regresses to the legacy read-only anthology renderer. (Plan v2
+      // restoration: the system page = the editable portal database view.)
+      var workbenchKind =
+        asText(region && region.kind) ||
+        asText(surfacePayload && surfacePayload.kind);
+      if (workbenchKind === "sql_authority_lens") return "generic_surface";
       if (moduleSpec.moduleId) return "registered_workspace";
       if (surfaceId === "system.tools.workbench_ui") return "generic_surface";
       if (hasSecondaryEvidencePayload(surfacePayload)) return "secondary_evidence";
