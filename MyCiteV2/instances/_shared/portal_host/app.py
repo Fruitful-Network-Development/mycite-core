@@ -41,8 +41,6 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     run_system_profile_basics_action,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
-    CTS_GIS_TOOL_REQUEST_SCHEMA,
     PORTAL_RUNTIME_ENVELOPE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
@@ -661,26 +659,6 @@ def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
     return _as_text(payload.get("target_authority"))
 
 
-def _tool_payload_for_mutation(action: str, payload: dict[str, Any], *, request_schema: str) -> dict[str, Any]:
-    envelope_payload = payload.get("nimm_envelope")
-    directive_payload: dict[str, Any] = {}
-    if isinstance(envelope_payload, Mapping):
-        from MyCiteV2.packages.state_machine.nimm import NimmDirectiveEnvelope
-
-        envelope = NimmDirectiveEnvelope.from_dict(dict(envelope_payload))
-        directive_payload = dict(envelope.directive.payload or {})
-    action_kind = _as_text(payload.get("action_kind") or directive_payload.get("action_kind") or action)
-    raw_action_payload = payload.get("action_payload")
-    if raw_action_payload is None:
-        raw_action_payload = directive_payload.get("action_payload")
-    return {
-        **dict(payload),
-        "schema": request_schema,
-        "action_kind": action_kind,
-        "action_payload": dict(raw_action_payload) if isinstance(raw_action_payload, Mapping) else {},
-    }
-
-
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
     from MyCiteV2.packages.state_machine.portal_shell import (
         SANDBOX_DISPLAY_NAMES,
@@ -734,23 +712,14 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     except Exception:
         pass
 
-    # CTS-GIS workbench projection cache (datum recognition for 413 documents).
-    if config.authority_db_file is not None:
-        try:
-            from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-                _datum_store_for_authority_db,
-                _hydrate_compiled_workbench_documents,
-            )
+    # Register the compiled-artifact root for the thin CTS-GIS tools (deployment
+    # config, set once — the map tool reads {data_dir}/payloads/compiled/...).
+    try:
+        from MyCiteV2.packages.tools._cts_gis_artifact import configure_data_dir
 
-            datum_store = _datum_store_for_authority_db(config.authority_db_file)
-            if datum_store is not None:
-                _hydrate_compiled_workbench_documents(
-                    service_surface={},
-                    datum_store=datum_store,
-                    tenant_id=config.portal_instance_id,
-                )
-        except Exception:
-            pass
+        configure_data_dir(config.data_dir)
+    except Exception:
+        pass
 
 
 def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
@@ -1649,7 +1618,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # endpoint with the currently-selected datum's document_id and
         # datum_address, and receives the subset of tool registry entries
         # whose applies_to_archetype / applies_to_source_kind matches.
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+        from MyCiteV2.instances._shared.datum_store_accessor import (
             _datum_store_for_authority_db,
         )
         from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
@@ -1674,7 +1643,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # of a whole sandbox (ranked by reach), plus the document + sandbox lists.
         # Unlike /portal/api/tools/eligible (which answers "tools for THIS doc"),
         # this answers "what can I view in this sandbox?" for the menubar search.
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
+        from MyCiteV2.instances._shared.datum_store_accessor import (
             _datum_store_for_authority_db,
         )
         from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
@@ -1736,67 +1705,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
-    @app.post("/portal/api/v2/system/tools/cts-gis")
-    def portal_cts_gis() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import run_portal_cts_gis
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = CTS_GIS_TOOL_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_cts_gis(
-                    payload,
-                    data_dir=host_config.data_dir,
-                    authority_db_file=host_config.authority_db_file,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-        except Exception as exc:
-            _legacy = _check_legacy_maps_error(exc)
-            if _legacy is not None:
-                return _legacy
-            raise
-
-    @app.post("/portal/api/v2/system/tools/cts-gis/actions")
-    def portal_cts_gis_actions() -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-            run_portal_cts_gis_action,
-        )
-
-        try:
-            payload = _json_payload()
-            if "schema" not in payload:
-                payload["schema"] = CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA
-            return _runtime_response(
-                run_portal_cts_gis_action(
-                    payload,
-                    data_dir=host_config.data_dir,
-                    authority_db_file=host_config.authority_db_file,
-                    private_dir=host_config.private_dir,
-                    tool_exposure_policy=host_config.tool_exposure_policy,
-                    portal_instance_id=host_config.portal_instance_id,
-                    portal_domain=host_config.portal_domain,
-                )
-            )
-        except ValueError as exc:
-            return _error_response("invalid_request", str(exc))
-        except Exception as exc:
-            _legacy = _check_legacy_maps_error(exc)
-            if _legacy is not None:
-                return _legacy
-            raise
-
+    # CTS-GIS legacy removal (Stage C): the bespoke /tools/cts-gis surface + its
+    # actions endpoint are retired. CTS-GIS is now a set of thin read-only
+    # WorkbenchTools (cts_gis / cts_gis_district / cts_gis_admin) reached through the
+    # unified workbench, and spatial editing is dropped. The mutation router below
+    # keeps only the unified datum_workbench path.
     @app.post("/portal/api/v2/mutations/<action>")
     def portal_mutation_action(action: str) -> tuple[Any, int]:
-        from MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime import (
-            run_portal_cts_gis_action,
-        )
         from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
             run_datum_workbench_mutation_action,
         )
@@ -1804,22 +1719,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         try:
             payload = _json_payload()
             target_authority = _nimm_target_authority(payload)
-            if target_authority == "cts_gis":
-                return _runtime_response(
-                    run_portal_cts_gis_action(
-                        _tool_payload_for_mutation(
-                            action,
-                            payload,
-                            request_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
-                        ),
-                        data_dir=host_config.data_dir,
-                        authority_db_file=host_config.authority_db_file,
-                        private_dir=host_config.private_dir,
-                        tool_exposure_policy=host_config.tool_exposure_policy,
-                        portal_instance_id=host_config.portal_instance_id,
-                        portal_domain=host_config.portal_domain,
-                    )
-                )
             if target_authority in {"datum_workbench", "datum_document"}:
                 result = run_datum_workbench_mutation_action(
                     action,
@@ -1830,15 +1729,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return jsonify(result), int(result.get("status_code") or (200 if result.get("ok") else 400))
             return _error_response(
                 "unsupported_mutation_target",
-                "Mutation target_authority must be cts_gis or datum_workbench.",
+                "Mutation target_authority must be datum_workbench (cts_gis editing retired).",
             )
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
-        except Exception as exc:
-            _legacy = _check_legacy_maps_error(exc)
-            if _legacy is not None:
-                return _legacy
-            raise
 
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:

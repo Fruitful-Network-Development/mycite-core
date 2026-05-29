@@ -1,4 +1,10 @@
-"""CTS-GIS mediation over authoritative datum recognition and staged inserts."""
+"""CTS-GIS compiled-artifact + profile reads (read-only; thin-tool data core).
+
+The bespoke read/mutation service (CtsGisReadOnlyService / CtsGisMutationService)
+was retired in Stage C — CTS-GIS is now thin read-only WorkbenchTools that read the
+compiled artifact / MOS-direct profiles. Only the compiled_artifact read core
+survives here.
+"""
 
 from .compiled_artifact import (
     CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH,
@@ -25,24 +31,10 @@ from .compiled_artifact import (
     validate_cts_gis_source_layout,
     write_compiled_artifact,
 )
-from .mutation_service import (
-    CTS_GIS_MANIPULATION_STAGE_SCHEMA,
-    CTS_GIS_STAGE_INSERT_SCHEMA,
-    CTS_GIS_STAGED_INSERT_STATE_SCHEMA,
-    CtsGisMutationError,
-    CtsGisMutationService,
-)
-from .service import CtsGisReadOnlyService
 
 __all__ = [
     "CTS_GIS_ADMIN_ROOT_DATUM_RELATIVE_PATH",
-    "CTS_GIS_MANIPULATION_STAGE_SCHEMA",
     "CTS_GIS_PRECINCTS_RELATIVE_PATH",
-    "CTS_GIS_STAGE_INSERT_SCHEMA",
-    "CTS_GIS_STAGED_INSERT_STATE_SCHEMA",
-    "CtsGisMutationError",
-    "CtsGisMutationService",
-    "CtsGisReadOnlyService",
     "build_admin_profile_static",
     "build_compiled_artifact",
     "build_cts_gis_source_layout_summary",

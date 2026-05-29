@@ -402,7 +402,13 @@
     var title = qs("#portalVisualizationPanelTitle");
     var content = qs("#portalVisualizationPanelContent");
     if (!aside || !content) return;
-    var visible = !!region.visible && !!region.tool_id;
+    // Multi-tool: region.panels is an ordered list of {tool_id, tool_label,
+    // panel_payload}. Fall back to the legacy single-tool fields.
+    var panels = Array.isArray(region.panels) ? region.panels : [];
+    if (!panels.length && region.tool_id) {
+      panels = [{ tool_id: region.tool_id, tool_label: region.tool_label, panel_payload: region.panel_payload }];
+    }
+    var visible = !!region.visible && panels.length > 0;
     if (!visible) {
       aside.setAttribute("hidden", "hidden");
       aside.setAttribute("aria-hidden", "true");
@@ -415,25 +421,56 @@
     aside.setAttribute("aria-hidden", "false");
     aside.classList.remove("is-collapsed");
     if (splitter) splitter.removeAttribute("hidden");
-    if (title) title.textContent = region.tool_label || region.tool_id;
-    var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
-    var fn = renderers[region.tool_id];
-    if (typeof fn === "function") {
-      try {
-        fn(region.panel_payload || {}, content);
-      } catch (err) {
-        content.innerHTML =
-          '<p class="ide-visualizationPanel__error">Tool render failed: ' +
-          escapeHtml(err && err.message ? err.message : String(err)) +
-          "</p>";
-      }
-    } else {
-      content.innerHTML =
-        '<p class="ide-visualizationPanel__empty">' +
-        'No client renderer registered for tool <code>' +
-        escapeHtml(region.tool_id) +
-        "</code>.</p>";
+    if (title) {
+      title.textContent = panels.length === 1 ? (panels[0].tool_label || panels[0].tool_id) : "Visualizations";
     }
+    // One uniform removable container box per tool.
+    content.innerHTML = panels
+      .map(function (p) {
+        return (
+          '<article class="ide-vizBox" data-viz-box="' + escapeHtml(p.tool_id) + '">' +
+          '<header class="ide-vizBox__header"><span class="ide-vizBox__title">' +
+          escapeHtml(p.tool_label || p.tool_id) + "</span>" +
+          '<button type="button" class="ide-vizBox__close" data-viz-box-close data-tool-id="' +
+          escapeHtml(p.tool_id) + '" aria-label="Remove ' + escapeHtml(p.tool_label || p.tool_id) +
+          '">×</button></header>' +
+          '<div class="ide-vizBox__content" data-viz-box-content></div>' +
+          "</article>"
+        );
+      })
+      .join("");
+    var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var boxes = content.querySelectorAll("[data-viz-box]");
+    panels.forEach(function (p, i) {
+      var box = boxes[i];
+      var body = box && box.querySelector("[data-viz-box-content]");
+      if (!body) return;
+      var fn = renderers[p.tool_id];
+      if (typeof fn === "function") {
+        try {
+          fn(p.panel_payload || {}, body);
+        } catch (err) {
+          body.innerHTML =
+            '<p class="ide-visualizationPanel__error">Tool render failed: ' +
+            escapeHtml(err && err.message ? err.message : String(err)) + "</p>";
+        }
+      } else {
+        body.innerHTML =
+          '<p class="ide-visualizationPanel__empty">No client renderer registered for tool <code>' +
+          escapeHtml(p.tool_id) + "</code>.</p>";
+      }
+    });
+  }
+
+  // surface_query.tools is a comma-joined, ordered, de-duplicated tool-id list.
+  function vizToolList(surfaceQuery) {
+    var raw = (surfaceQuery && (surfaceQuery.tools || surfaceQuery.tool)) || "";
+    var out = [];
+    String(raw).split(",").forEach(function (t) {
+      var id = t.trim();
+      if (id && out.indexOf(id) === -1) out.push(id);
+    });
+    return out;
   }
 
   function syncHistory(envelope, historyPayload, options) {
@@ -744,17 +781,31 @@
   window.addEventListener("popstate", onPopState);
 
   function bindVisualizationPanelClose() {
-    // Closing the viz panel clears surface_query.tool and re-loads the
-    // shell at the current surface — the panel is hidden purely as a
-    // function of the (absent) tool query parameter.
+    // Each tool box has an 'x' (data-viz-box-close) that removes only that tool
+    // from surface_query.tools; the panel hides when the last tool is removed.
+    // The legacy whole-panel close (data-visualization-panel-close) clears all.
     document.addEventListener("click", function (event) {
-      var btn = event.target && event.target.closest && event.target.closest("[data-visualization-panel-close]");
-      if (!btn) return;
+      var target = event.target;
+      if (!target || !target.closest) return;
+      var boxClose = target.closest("[data-viz-box-close]");
+      var panelClose = target.closest("[data-visualization-panel-close]");
+      if (!boxClose && !panelClose) return;
       var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
       if (!request) return;
       var next = cloneRequest(request);
-      if (next.surface_query && typeof next.surface_query === "object") {
-        delete next.surface_query.tool;
+      next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
+      var tools = vizToolList(next.surface_query);
+      if (boxClose) {
+        var removeId = boxClose.getAttribute("data-tool-id") || "";
+        tools = tools.filter(function (t) { return t !== removeId; });
+      } else {
+        tools = [];
+      }
+      delete next.surface_query.tool;
+      if (tools.length) {
+        next.surface_query.tools = tools.join(",");
+      } else {
+        delete next.surface_query.tools;
       }
       loadShell(next).catch(function () {});
     });
@@ -813,7 +864,13 @@
         if (!request) return;
         var next = cloneRequest(request);
         next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
-        next.surface_query.tool = item.tool_id || "";
+        // APPEND the selected tool to the panel's tool list (dedup); each tool
+        // renders as its own removable box.
+        var tools = vizToolList(next.surface_query);
+        var picked = item.tool_id || "";
+        if (picked && tools.indexOf(picked) === -1) tools.push(picked);
+        delete next.surface_query.tool;
+        next.surface_query.tools = tools.join(",");
         loadShell(next).catch(function () {});
         // Hide the results popover after dispatch.
         var list = mount.querySelector("[data-palette-list]");

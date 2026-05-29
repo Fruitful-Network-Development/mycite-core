@@ -3660,3 +3660,93 @@
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["product_document"] = renderProductDocument;
 })();
+
+// --------------------------------------------------------------------------- //
+// CTS-GIS thin tools (read-only): map / district / admin. Each renders into a
+// uniform visualization box from a compiled-artifact / MOS-direct payload.
+// --------------------------------------------------------------------------- //
+(function () {
+  function esc(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+  function errorOr(payload, content) {
+    if (!content) return true;
+    if (payload && payload.error) {
+      content.innerHTML = '<p class="ide-visualizationPanel__error">' + esc(payload.error) + "</p>";
+      return true;
+    }
+    return false;
+  }
+
+  function renderCtsGisMap(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var fc = payload.feature_collection || {};
+    var features = Array.isArray(fc.features) ? fc.features : [];
+    var rows = features
+      .map(function (f) {
+        var p = (f && f.properties) || {};
+        var id = (f && (f.id != null ? f.id : p.node_id)) || "";
+        var label = p.label || p.name || "";
+        return "<tr><td>" + esc(id) + "</td><td>" + esc(label) +
+          "</td><td>" + esc((f && f.geometry && f.geometry.type) || "") + "</td></tr>";
+      })
+      .join("");
+    content.innerHTML =
+      '<section class="v2-ctsgis v2-ctsgis--map">' +
+      '<header class="v2-ctsgis__header">' + esc(payload.feature_count || features.length) +
+      " features · " + esc(payload.projection_state || "") + "</header>" +
+      (features.length
+        ? '<div class="v2-ctsgis__tableWrap"><table class="v2-ctsgis__table"><thead>' +
+          "<tr><th>feature</th><th>label</th><th>geometry</th></tr></thead><tbody>" + rows +
+          "</tbody></table></div>"
+        : '<p class="v2-ctsgis__empty">No projected geometry — recompile the CTS-GIS artifact.</p>') +
+      "</section>";
+  }
+
+  function renderCtsGisDistrict(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var members = Array.isArray(payload.member_precinct_ids) ? payload.member_precinct_ids : [];
+    var items = members.map(function (m) { return "<li>" + esc(m) + "</li>"; }).join("");
+    content.innerHTML =
+      '<section class="v2-ctsgis v2-ctsgis--district">' +
+      '<header class="v2-ctsgis__header">' + esc(payload.collection_label || payload.collection_id || "district") +
+      " · " + esc(payload.member_count || members.length) + " precincts" +
+      (payload.timeframe ? " · " + esc(payload.timeframe) : "") + "</header>" +
+      '<ul class="v2-ctsgis__members">' + items + "</ul>" +
+      "</section>";
+  }
+
+  function renderCtsGisAdmin(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+    var rows = fields
+      .map(function (f) {
+        var label = (f && (f.label || f.field || f.key)) || "";
+        var value = (f && (f.value != null ? f.value : f.magnitude)) || "";
+        return "<tr><td>" + esc(label) + "</td><td>" + esc(value) + "</td></tr>";
+      })
+      .join("");
+    content.innerHTML =
+      '<section class="v2-ctsgis v2-ctsgis--admin">' +
+      '<header class="v2-ctsgis__header">' + esc(payload.node_label || payload.node_id || "admin root") +
+      " · " + esc(payload.node_id || "") + "</header>" +
+      '<dl class="v2-ctsgis__meta">' +
+      "<dt>capital</dt><dd>" + esc(payload.capital_msn_id || "—") + "</dd>" +
+      "<dt>geometry</dt><dd>" + esc(payload.feature_count || 0) + " features" +
+      (payload.has_real_projection ? "" : " (none — recompile)") + "</dd></dl>" +
+      (fields.length
+        ? '<div class="v2-ctsgis__tableWrap"><table class="v2-ctsgis__table"><tbody>' + rows + "</tbody></table></div>"
+        : "") +
+      "</section>";
+  }
+
+  window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
+  window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
+  window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
+})();

@@ -94,6 +94,7 @@ def _normalize_request(payload: dict[str, Any] | None) -> tuple[PortalScope, dic
             "mode",
             "sandbox_filter",
             "tool",
+            "tools",
         ),
     )
     return portal_scope, surface_query
@@ -926,33 +927,51 @@ def _build_visualization_panel(
     """
     if not isinstance(surface_query, dict):
         return None
-    tool_id = _as_text(surface_query.get("tool"))
-    if not tool_id:
+    # Multi-tool panel: surface_query.tools is a comma-joined, ordered tool-id list
+    # (round-trips as a plain query param). Legacy surface_query.tool (scalar) is
+    # coerced to a single-element list for back-compat.
+    raw = _as_text(surface_query.get("tools")) or _as_text(surface_query.get("tool"))
+    seen: set[str] = set()
+    tool_ids: list[str] = []
+    for token in raw.split(","):
+        tid = token.strip()
+        if tid and tid not in seen:
+            seen.add(tid)
+            tool_ids.append(tid)
+    if not tool_ids:
         return None
     # Import lazily to keep tools package import-side-effects (registry
     # population) localized to where they're actually needed.
     from MyCiteV2.packages.tools import get as _tools_get
-    tool = _tools_get(tool_id)
-    if tool is None:
-        return {
-            "tool_id": tool_id,
-            "tool_label": tool_id,
-            "panel_payload": {"error": f"unknown tool: {tool_id}"},
-        }
     authority_path = _path_or_none(authority_db_file)
-    try:
-        payload = tool.build_panel_payload(
-            authority_db_file=authority_path,
-            sandbox_id=sandbox_id,
-            document_id=document_id,
-            datum_address=datum_address,
-        )
-    except Exception as exc:  # pragma: no cover — tool errors must not crash the shell
-        payload = {"error": f"tool failed: {exc}"}
+    panels: list[dict[str, Any]] = []
+    for tid in tool_ids:
+        tool = _tools_get(tid)
+        if tool is None:
+            panels.append({"tool_id": tid, "tool_label": tid, "panel_payload": {"error": f"unknown tool: {tid}"}})
+            continue
+        try:
+            payload = tool.build_panel_payload(
+                authority_db_file=authority_path,
+                sandbox_id=sandbox_id,
+                document_id=document_id,
+                datum_address=datum_address,
+            )
+        except Exception as exc:  # pragma: no cover — tool errors must not crash the shell
+            payload = {"error": f"tool failed: {exc}"}
+        panels.append({
+            "tool_id": getattr(tool, "tool_id", tid),
+            "tool_label": getattr(tool, "label", tid),
+            "panel_payload": payload,
+        })
+    first = panels[0]
+    # Keep the legacy single-tool fields (= first panel) alongside the new
+    # `panels` list so older readers/tests keep working during the transition.
     return {
-        "tool_id": getattr(tool, "tool_id", tool_id),
-        "tool_label": getattr(tool, "label", tool_id),
-        "panel_payload": payload,
+        "tool_id": first["tool_id"],
+        "tool_label": first["tool_label"],
+        "panel_payload": first["panel_payload"],
+        "panels": panels,
     }
 
 

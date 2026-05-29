@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from MyCiteV2.packages.state_machine.portal_shell import (
-    CTS_GIS_TOOL_ENTRYPOINT_ID,
     CTS_GIS_TOOL_ROUTE,
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_ROUTE,
@@ -277,26 +276,6 @@ def build_portal_runtime_entrypoint_catalog() -> tuple[PortalRuntimeEntrypointDe
             request_schema=PORTAL_SHELL_REQUEST_SCHEMA,
             surface_schema=SYSTEM_ROOT_SURFACE_SCHEMA,
             read_write_posture="read-only",
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id=CTS_GIS_TOOL_ENTRYPOINT_ID,
-            callable_path="MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime.run_portal_cts_gis",
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/cts-gis",
-            request_schema=CTS_GIS_TOOL_REQUEST_SCHEMA,
-            surface_schema=CTS_GIS_TOOL_SURFACE_SCHEMA,
-            read_write_posture="read-only",
-            required_configuration=("data_dir",),
-        ),
-        PortalRuntimeEntrypointDescriptor(
-            entrypoint_id="portal.system.tools.cts_gis.actions",
-            callable_path="MyCiteV2.instances._shared.runtime.portal_cts_gis_runtime.run_portal_cts_gis_action",
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            route="/portal/api/v2/system/tools/cts-gis/actions",
-            request_schema=CTS_GIS_TOOL_ACTION_REQUEST_SCHEMA,
-            surface_schema=CTS_GIS_TOOL_SURFACE_SCHEMA,
-            read_write_posture="write",
-            required_configuration=("authority_db_file",),
         ),
         PortalRuntimeEntrypointDescriptor(
             entrypoint_id=WORKBENCH_UI_TOOL_ENTRYPOINT_ID,

@@ -14,9 +14,6 @@ from .shell_schemas import (
     AGRO_ERP_TOOL_ENTRYPOINT_ID,
     AGRO_ERP_TOOL_ROUTE,
     AGRO_ERP_TOOL_SURFACE_ID,
-    CTS_GIS_TOOL_ENTRYPOINT_ID,
-    CTS_GIS_TOOL_ROUTE,
-    CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_ROUTE,
     NETWORK_ROOT_SURFACE_ID,
     REDUCER_OWNED_SURFACE_IDS,
@@ -121,15 +118,6 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             page_owner="utilities",
         ),
         PortalSurfaceCatalogEntry(
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            label="CTS-GIS",
-            route=CTS_GIS_TOOL_ROUTE,
-            root_surface_id=SYSTEM_ROOT_SURFACE_ID,
-            surface_kind="tool_surface",
-            page_owner="system",
-            tool_id="cts_gis",
-        ),
-        PortalSurfaceCatalogEntry(
             surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             label="Workbench UI",
             route=WORKBENCH_UI_TOOL_ROUTE,
@@ -153,30 +141,6 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
 def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
     from .shell import PortalToolRegistryEntry  # lazy to break import cycle
     return (
-        PortalToolRegistryEntry(
-            tool_id="cts_gis",
-            label="CTS-GIS",
-            surface_id=CTS_GIS_TOOL_SURFACE_ID,
-            entrypoint_id=CTS_GIS_TOOL_ENTRYPOINT_ID,
-            route=CTS_GIS_TOOL_ROUTE,
-            tool_kind=TOOL_KIND_GENERAL,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("datum_recognition", "spatial_projection"),
-            default_workbench_visible=True,
-            # Phase 4 (portal_tool_surface_contract.md): CTS-GIS is a palette
-            # tool applicable to SAMRAS-family datums. source_kind filter pairs
-            # with the archetype filter so documents that pre-date the archetype
-            # metadata field still match via their authoritative source_kind.
-            applies_to_archetype=("samras_family",),
-            applies_to_source_kind=("sandbox_source",),
-            # Phase 11: CTS-GIS is the only first-class tool that mutates the
-            # MOS datum store today (via its mutation_service.execute_manipulation
-            # pipeline). Other tools either read-only or live as utilities
-            # extensions over filesystem grantee JSON.
-            manipulates_datum_kinds=("sandbox_source",),
-            summary="Spatial mediation with staged validation, preview, and apply diagnostics.",
-        ),
         PortalToolRegistryEntry(
             tool_id="agro_erp",
             label="Agro-ERP",

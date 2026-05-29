@@ -1,12 +1,14 @@
-"""CTS-GIS map tool — the first Plan-v2 visualization tool.
+"""CTS-GIS map thin tool (read-only, compiled-artifact fast-read).
 
-Wraps :class:`CtsGisReadOnlyService` so the workbench's visualization
-panel can render a leaflet projection of a SAMRAS-family document
-without owning a dedicated portal surface or activity-bar slot.
+Renders the precinct/district map as a leaflet feature collection read from the
+**compiled artifact's** pre-rendered ``projection_model`` — NOT from the slow
+``CtsGisReadOnlyService.read_projection_bundle`` (~35s / ~700MB → gunicorn SIGKILL
+→ nginx 504). The compiled-artifact root is configured once at app startup
+(:func:`_cts_gis_artifact.configure_data_dir`). Feeds
+``window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"]``.
 
-Mediation (write) is deferred — this read-only tool exists to prove
-the new visualization-panel contract end-to-end against the existing
-projection service.
+(The artifact is rebuilt by ``scripts/compile_cts_gis_artifact.py``; the map renders
+empty until a recompile populates ``projection_model.feature_collection``.)
 """
 
 from __future__ import annotations
@@ -14,29 +16,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.modules.cross_domain.cts_gis.service import (
-    CtsGisReadOnlyService,
-)
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
-    CTS_GIS_TOOL_ROUTE,
+    WORKBENCH_UI_TOOL_ROUTE,
 )
 
+from . import _cts_gis_artifact as artifact
 from ._registry import register
 
-_TENANT_DEFAULT = "fnd"
+_SCHEMA = "mycite.v2.portal.workbench.tool.cts_gis_map.v1"
 
 
 class CtsGisMapTool:
-    """Spatial projection of a SAMRAS-family document as a leaflet feature
-    collection. Returned panel_payload feeds
-    ``window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"]`` in the JS layer.
-    """
+    """Spatial projection of the SAMRAS-family precinct map (compiled fast-read)."""
 
     tool_id = "cts_gis"
     label = "CTS-GIS Map"
-    summary = "Spatial projection of a SAMRAS-family document on an interactive map."
-    route = CTS_GIS_TOOL_ROUTE
+    summary = "Pre-rendered precinct/district map projection."
+    route = WORKBENCH_UI_TOOL_ROUTE
     applies_to_archetype: tuple[str, ...] = ("samras_family",)
     applies_to_source_kind: tuple[str, ...] = ("sandbox_source",)
 
@@ -48,66 +44,30 @@ class CtsGisMapTool:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        if authority_db_file is None:
-            return _error_payload("authority database not configured")
         try:
-            store = SqliteSystemDatumStoreAdapter(authority_db_file)
-        except Exception as exc:  # pragma: no cover — adapter init is defensive
-            return _error_payload(f"datum store unavailable: {exc}")
+            projection = artifact.read_map_projection()
+        except Exception as exc:  # pragma: no cover — defensive
+            return _error_payload(f"projection unavailable: {exc}")
 
-        service = CtsGisReadOnlyService(store)
-        try:
-            bundle = service.read_projection_bundle(
-                tenant_id=_TENANT_DEFAULT,
-                selected_document_id=document_id,
-                selected_row_address=datum_address,
-                attention_document_id=document_id,
-                overlay_mode="auto",
-                project_all_documents=not document_id,
-            )
-        except Exception as exc:  # pragma: no cover — service is defensive
-            return _error_payload(f"projection failed: {exc}")
-
-        documents = list(bundle.get("documents") or [])
-        # Prefer the selected document; fall back to whatever the
-        # service surfaced first (its default-projection logic).
-        target_bundle: dict[str, Any] = {}
-        if document_id:
-            target_bundle = next(
-                (
-                    doc for doc in documents
-                    if str((doc or {}).get("document_id") or "") == document_id
-                ),
-                {},
-            )
-        if not target_bundle and documents:
-            target_bundle = documents[0]
-
-        map_projection = dict(target_bundle.get("map_projection") or {})
-        feature_collection = dict(map_projection.get("feature_collection") or {})
-        focus_node_id = str(map_projection.get("focus_node_id") or "")
-        focus_bounds = list(map_projection.get("focus_bounds") or [])
-        projection_state = str(map_projection.get("projection_state") or "pending")
-        feature_count = int(map_projection.get("feature_count") or 0)
-
+        feature_collection = dict(projection.get("feature_collection") or {})
+        features = list(feature_collection.get("features") or [])
         return {
-            "schema": "mycite.v2.portal.workbench.tool.cts_gis_map.v1",
+            "schema": _SCHEMA,
             "sandbox_id": sandbox_id,
-            "document_id": (
-                str(target_bundle.get("document_id") or document_id or "")
-            ),
+            "document_id": document_id,
             "selected_row_address": datum_address,
-            "focus_node_id": focus_node_id,
-            "focus_bounds": focus_bounds,
-            "projection_state": projection_state,
-            "feature_count": feature_count,
+            "focus_node_id": str(projection.get("focus_node_id") or ""),
+            "focus_bounds": list(projection.get("focus_bounds") or projection.get("bounds") or []),
+            "projection_state": str(projection.get("projection_state") or ("ready" if features else "empty")),
+            "feature_count": int(projection.get("feature_count") or len(features)),
             "feature_collection": feature_collection,
+            "diagnostics": {"resolved": bool(projection), "source": "compiled_artifact"},
         }
 
 
 def _error_payload(message: str) -> dict[str, Any]:
     return {
-        "schema": "mycite.v2.portal.workbench.tool.cts_gis_map.v1",
+        "schema": _SCHEMA,
         "error": message,
         "feature_collection": {"type": "FeatureCollection", "features": []},
         "feature_count": 0,
