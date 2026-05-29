@@ -14,6 +14,7 @@ no MOS authority is consulted.
 
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -21,6 +22,8 @@ from typing import Any
 from datetime import datetime, timedelta, timezone
 
 from MyCiteV2.packages.peripherals.aws import ProbeCache, ProfileStore
+
+_log = logging.getLogger("mycite.portal_host")
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
 
@@ -323,6 +326,7 @@ def _build_email_extension_payload(
         try:
             domain_record = _as_dict(store.get_domain(domain))
         except Exception:
+            _log.warning("email_domain_record_load_failed", exc_info=True)
             domain_record = {}
 
     profiles: list[dict[str, Any]] = []
@@ -378,6 +382,7 @@ def _build_email_extension_payload(
         # so the operator can scan the table predictably.
         profiles.sort(key=lambda r: (r["domain"], r["mailbox"]))
     except Exception:
+        _log.warning("email_mailbox_profiles_load_failed", exc_info=True)
         pass
     return {
         "domain": domain,

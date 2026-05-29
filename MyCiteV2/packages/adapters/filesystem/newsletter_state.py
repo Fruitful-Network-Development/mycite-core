@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import tempfile
 from pathlib import Path
 from typing import Any
+
+_log = logging.getLogger("mycite.portal_host")
 
 from MyCiteV2.packages.ports.newsletter import (
     _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS,
@@ -44,6 +47,9 @@ def _read_json(path: Path) -> dict[str, Any]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
+        _log.warning(
+            "newsletter_state_json_parse_failed path=%s", path, exc_info=True
+        )
         return {}
     return dict(payload) if isinstance(payload, dict) else {}
 
@@ -174,6 +180,16 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
         if _as_text(payload.get("schema")) not in _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS:
             return {}
         return dict(payload)
+
+    def contact_log_present(self, *, domain: str) -> bool:
+        """True when a contact-log file physically exists for the domain.
+
+        Lets a write path distinguish "no log yet" (safe to create fresh) from
+        "a log file exists but didn't load" (unaccepted schema / parse error) so
+        it never silently overwrites and drops a domain's existing contacts.
+        """
+        path = self._contacts_path(domain)
+        return path.exists() and path.is_file()
 
     def save_contact_log(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
         token = _normalized_domain(domain)

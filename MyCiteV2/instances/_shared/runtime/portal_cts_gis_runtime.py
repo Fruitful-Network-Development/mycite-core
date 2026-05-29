@@ -31,6 +31,7 @@ from MyCiteV2.instances._shared.runtime.runtime_platform import (
     tool_exposure_configured,
     tool_exposure_enabled,
 )
+
 # NOTE: FilesystemSystemDatumStoreAdapter is intentionally NOT imported. The
 # runtime is MOS-only per docs/contracts/mos_authority_enforcement.md.
 from MyCiteV2.packages.adapters.sql import SqliteAuditLogAdapter, SqliteSystemDatumStoreAdapter
@@ -51,7 +52,9 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
     evict_compiled_artifact_read_cache,
+    read_admin_profile_static_from_mos,
     read_compiled_artifact_cached,
+    read_district_profile_static_from_mos,
     validate_compiled_artifact,
     validate_cts_gis_source_layout,
     write_compiled_artifact,
@@ -97,8 +100,12 @@ from MyCiteV2.packages.modules.cross_domain.local_audit import LocalAuditService
 # falls below it (i.e. when the artifact's default lands on a child
 # node such as a county).
 CTS_GIS_PRESUMED_ATTENTION_NODE_ID = "3-2-3-17"
+import logging
+
 from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.lens import SamrasTitleLens
+
+_log = logging.getLogger("mycite.portal_host")
 from MyCiteV2.packages.state_machine.nimm import (
     CTS_GIS_CANONICAL_ACTIONS,
     CTS_GIS_MUTATION_ACTION_ALIASES,
@@ -402,14 +409,20 @@ def _datum_store_for_authority_db(
     cached = _DATUM_STORE_BY_AUTHORITY_DB.get(cache_key)
     if cached is not None:
         return cached
-    store = SqliteSystemDatumStoreAdapter(root, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). The legacy_alias back-compat
+    # was retired ahead of schedule (commit 0c355db); live data is fully
+    # canonical, and the runtime must refuse to re-persist any non-canonical
+    # catalog id. Tests that exercise the apply path seed canonical fixtures;
+    # read-only tests may still reference legacy-keyed seed docs (reads do not
+    # validate canonicality).
+    store = SqliteSystemDatumStoreAdapter(root, allow_legacy_writes=False)
     _DATUM_STORE_BY_AUTHORITY_DB[cache_key] = store
     return store
 
 
 def _runtime_datum_store(
     *,
-    data_dir: str | Path | None,  # noqa: ARG001 — kept for ABI; ignored
+    data_dir: str | Path | None,
     authority_db_file: str | Path | None,
 ) -> SqliteSystemDatumStoreAdapter | None:
     # MOS-only per docs/contracts/mos_authority_enforcement.md. The
@@ -417,6 +430,30 @@ def _runtime_datum_store(
     # compatibility with callers but is no longer consulted; the
     # filesystem-backed datum store has been retired from runtime.
     return _datum_store_for_authority_db(authority_db_file)
+
+
+def _cts_gis_profile_static_payloads(
+    *,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
+    tenant_id: str,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Resolve admin_profile_static + district_profile_static for the compile bake — MOS-only.
+
+    Admin identity + district collection/membership come from MOS. There is NO
+    disk admin-root read and NO carry-forward of a prior artifact's geometry: the
+    disk sources and the old disk-sourced Ohio state boundary were a reverse-fit of
+    retired CTS-GIS functionality and have been cut (2026-05-27). Admin geometry is
+    whatever MOS provides — currently none, since no admin-state geometry datum
+    lives in MOS. Returns (None, None) on failure so the compile still produces an
+    artifact rather than raising.
+    """
+    try:
+        admin_profile = read_admin_profile_static_from_mos(datum_store, tenant_id=tenant_id)
+        district_profile = read_district_profile_static_from_mos(datum_store, tenant_id=tenant_id)
+    except Exception as exc:
+        _log.warning("cts_gis profile_static resolution failed: %s", exc)
+        return None, None
+    return (admin_profile or None), (district_profile or None)
 
 
 def _safe_json_object(path: Path | None) -> dict[str, Any]:
@@ -1176,12 +1213,57 @@ def _supporting_document_summary(service_surface: dict[str, Any]) -> dict[str, A
     return dict(service_surface.get("selected_document") or {})
 
 
+def _administrative_source_payload_from_sql(
+    *,
+    datum_store: SqliteSystemDatumStoreAdapter | None,
+    tenant_id: str,
+    document_id: str,
+    document_name: str,
+) -> dict[str, Any]:
+    """Build the SAMRAS source payload for the supporting CTS-GIS document from
+    the MOS SQL authority.
+
+    MOS-only runtime: the disk source read was retired (returns empty), which
+    starved the SAMRAS seed reconstruction even though the corpus lives in SQL.
+    Reads the supporting document's rows from the authoritative catalog and
+    shapes them as ``datum_addressing_abstraction_space`` (``{datum_address: raw}``)
+    so ``reconstruct_structure_from_rows`` can rebuild the canonical seed.
+    """
+    if datum_store is None:
+        return {}
+    target_id = _as_text(document_id)
+    target_name = _as_text(document_name)
+    if not target_id and not target_name:
+        return {}
+    try:
+        catalog = datum_store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=_as_text(tenant_id) or "fnd")
+        )
+    except Exception:
+        _log.warning("cts_gis_source_payload_catalog_read_failed", exc_info=True)
+        return {}
+    for document in catalog.documents:
+        doc_id = _as_text(getattr(document, "document_id", ""))
+        doc_name = _as_text(getattr(document, "document_name", ""))
+        if (target_id and doc_id == target_id) or (target_name and doc_name == target_name):
+            doc_dict = document.to_dict() if hasattr(document, "to_dict") else {}
+            space = {
+                _as_text(row.get("datum_address")): row.get("raw")
+                for row in (doc_dict.get("rows") or [])
+                if isinstance(row, dict) and _as_text(row.get("datum_address"))
+            }
+            return {"datum_addressing_abstraction_space": space} if space else {}
+    return {}
+
+
 def _build_source_evidence(
     *,
     data_dir: str | Path | None,
     private_dir: str | Path | None,
     service_surface: dict[str, Any],
     source_layout: dict[str, Any] | None = None,
+    datum_store: SqliteSystemDatumStoreAdapter | None = None,
+    tenant_id: str = "",
 ) -> dict[str, Any]:
     selected_document = dict(service_surface.get("selected_document") or {})
     supporting_document = _supporting_document_summary(service_surface)
@@ -1195,7 +1277,6 @@ def _build_source_evidence(
     # artifacts are absent.
     spec_path = None if private_tool_root is None else private_tool_root / "spec.json"
     tool_anchor_path: Path | None = None
-    tool_anchor_payload: dict[str, Any] = {}
     member_files: list[str] = []
     source_path: Path | None = None
     registrar_path: Path | None = None
@@ -1207,6 +1288,20 @@ def _build_source_evidence(
     administrative_source = _evidence_path_payload(source_path)
     administrative_source["document_id"] = _as_text(supporting_document.get("document_id"))
     administrative_source["document_name"] = supporting_document_name
+    # MOS-only: source the SAMRAS reconstruction payload from the SQL authority
+    # (the retired disk read above returns empty). Without this the canonical
+    # seed cannot reconstruct and navigation reports blocked_invalid_magnitude
+    # even though the applied corpus lives in SQL.
+    if not administrative_source.get("payload"):
+        sql_payload = _administrative_source_payload_from_sql(
+            datum_store=datum_store,
+            tenant_id=tenant_id,
+            document_id=administrative_source["document_id"],
+            document_name=supporting_document_name,
+        )
+        if sql_payload.get("datum_addressing_abstraction_space"):
+            administrative_source["payload"] = sql_payload
+            administrative_source["exists"] = True
     registrar_payload = _evidence_path_payload(registrar_path)
     if registrar_payload["payload"]:
         registrar_payload["payload_id"] = _as_text(registrar_payload["payload"].get("payload_id"))
@@ -1228,7 +1323,10 @@ def _build_source_evidence(
     elif not source_layout_valid:
         readiness_state = "source_layout_invalid"
         readiness_message = "CTS-GIS source layout does not match the required sources/ + sources/precincts/ posture."
-    elif not tool_anchor["exists"] or not registrar_payload["exists"] or samras_seed_status not in {"", "ready"}:
+    elif not administrative_source.get("payload"):
+        # MOS-only: the seed reconstructs from the SQL-sourced administrative
+        # payload, not the retired disk tool-anchor/registrar artifacts (which
+        # are always absent now) and not the stale selected_document flag.
         readiness_state = "samras_seed_missing"
         readiness_message = (
             "CTS-GIS could not resolve the expected SAMRAS seed from the tool anchor, registrar payload, and selected source evidence."
@@ -1250,7 +1348,7 @@ def _build_source_evidence(
         "readiness": {
             "state": readiness_state,
             "message": readiness_message,
-            "samras_seed_status": samras_seed_status or ("ready" if readiness_state == "ready" else "missing"),
+            "samras_seed_status": "ready" if readiness_state == "ready" else (samras_seed_status or "missing"),
         },
     }
 
@@ -2325,7 +2423,7 @@ def _build_directory_dropdown_navigation(
         )
     if decodable_authority is not None:
         structure = getattr(decodable_authority, "structure", None)
-    if structure is None and authorities:
+    if structure is None and (authorities or source_payload):
         try:
             structure = reconstruct_structure_from_rows(
                 source_payload,
@@ -4047,7 +4145,11 @@ def build_portal_cts_gis_surface_bundle(
     ]
     datum_store = _runtime_datum_store(data_dir=data_dir, authority_db_file=authority_db_file)
     compiled_path = compiled_artifact_path(data_dir, portal_scope_id=portal_scope.scope_id)
-    source_layout = build_cts_gis_source_layout_summary(data_dir)
+    # MOS-aware: the disk sandbox/cts-gis/sources/ tree was retired (2026-05-17);
+    # fall back to a MOS-backed summary so source_layout_valid reflects the live store.
+    source_layout = build_cts_gis_source_layout_summary(
+        data_dir, datum_store=datum_store, tenant_id=portal_scope.scope_id
+    )
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
     compiled_artifact = read_compiled_artifact_cached(compiled_path)
     compiled_valid, compiled_issues = validate_compiled_artifact(
@@ -4304,6 +4406,8 @@ def build_portal_cts_gis_surface_bundle(
             private_dir=private_dir,
             service_surface=service_surface,
             source_layout=source_layout,
+            datum_store=datum_store,
+            tenant_id=portal_scope.scope_id,
         )
         phase_timings_ms["source_evidence"] = round((perf_counter() - source_evidence_started_at) * 1000.0, 3)
         navigation_started_at = perf_counter()
@@ -4317,6 +4421,14 @@ def build_portal_cts_gis_surface_bundle(
         phase_timings_ms["navigation_canvas"] = round((perf_counter() - navigation_started_at) * 1000.0, 3)
         resolved_tool_state = _tool_state_for_navigation(resolved_tool_state, navigation_canvas)
         if compiled_refresh_requested and source_layout_valid:
+            # Bake the sandbox-rooted profile_static (admin identity + district
+            # outline geometry, district membership) so the persisted artifact
+            # is complete. Disk-first, MOS-fallback. See
+            # CTS-GIS-Compile-Pipeline-MOS-Migration-2026-05-27.
+            admin_profile_static, district_profile_static = _cts_gis_profile_static_payloads(
+                datum_store=datum_store,
+                tenant_id=portal_scope.scope_id,
+            )
             compiled_out = build_compiled_artifact(
                 portal_scope_id=portal_scope.scope_id,
                 source_evidence=source_evidence,
@@ -4325,6 +4437,8 @@ def build_portal_cts_gis_surface_bundle(
                 default_tool_state=resolved_tool_state,
                 source_layout=source_layout,
                 build_mode=_CTS_GIS_RUNTIME_MODE_AUDIT_FORENSIC,
+                admin_profile_static=admin_profile_static,
+                district_profile_static=district_profile_static,
             )
             written_path = write_compiled_artifact(compiled_path, compiled_out)
             compiled_refresh_status = {

@@ -100,7 +100,7 @@ def bootstrap_anchor(
     if not authority_db.exists():
         raise SystemExit(f"authority db does not exist: {authority_db}")
 
-    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=True)
+    store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=False)
     catalog = store.read_authoritative_datum_documents(
         AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
     )

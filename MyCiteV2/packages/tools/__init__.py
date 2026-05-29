@@ -13,11 +13,14 @@ when consumers import :mod:`MyCiteV2.packages.tools`.
 
 from __future__ import annotations
 
+# Self-registering tool modules (import for side effect). Order is irrelevant
+# — ``_registry.all_tools()`` sorts by ``tool_id`` on read.
+from . import (
+    cts_gis_map,  # noqa: F401
+    workbench_ui_view,  # noqa: F401
+)
 from ._contract import WorkbenchTool
 from ._registry import TOOL_REGISTRY, all_tools, describe_for_palette, get, register
-
-# Self-registering tool modules (import for side effect).
-from . import cts_gis_map  # noqa: F401
 
 __all__ = [
     "WorkbenchTool",

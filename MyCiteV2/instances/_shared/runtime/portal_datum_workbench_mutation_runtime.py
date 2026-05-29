@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_rules import classify_row
 from MyCiteV2.packages.core.datum_templates import (
     TemplateRegistry,
     scaffold_from_template,
@@ -67,6 +68,21 @@ def _ok(action: str, payload: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _reject_malformed_row(datum_address: str, raw: Any) -> None:
+    """Reject writes of structurally malformed datum rows.
+
+    Consistent with the engine's reject-non-canonical stance (datum_semantics
+    refuses non-canonical families): only HARD malformity blocks. Advisory
+    issues such as ``value_group_pair_mismatch`` are well-formed and allowed,
+    and legacy ragged rows already in the catalog stay readable — they are
+    simply not newly creatable in a malformed shape.
+    """
+    shape = classify_row(datum_address, raw)
+    if not shape.well_formed:
+        detail = ", ".join(shape.issues) or shape.shape
+        raise ValueError(f"datum row shape is malformed ({detail})")
+
+
 def _parse_payload_text(payload: Mapping[str, Any]) -> Any:
     if "raw" in payload:
         return payload.get("raw")
@@ -90,13 +106,14 @@ def _document_sandbox_from_table(
     if not db_path.exists():
         return "", ""
     with sqlite3.connect(db_path) as connection:
+        # Canonical-only lookup (legacy_alias retired 2026-05-27).
         row = connection.execute(
-            "select sandbox, legacy_alias from documents where document_id = ? or legacy_alias = ?",
-            (document_id, document_id),
+            "select sandbox from documents where document_id = ?",
+            (document_id,),
         ).fetchone()
     if row is None:
         return "", ""
-    return _as_text(row[0]), _as_text(row[1])
+    return _as_text(row[0]), ""
 
 
 def _document_sandbox_id(
@@ -120,9 +137,6 @@ def _document_for_mutation(
     catalog = store.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=tenant_id))
     for document in catalog.documents:
         if document.document_id == document_id:
-            return document
-        metadata = document.document_metadata if isinstance(document.document_metadata, dict) else {}
-        if _as_text(metadata.get("legacy_alias")) == document_id:
             return document
     raise ValueError("authoritative_document_missing")
 
@@ -413,17 +427,20 @@ def _preview_or_apply(
 ) -> dict[str, Any]:
     apply = action == "apply"
     if operation == "update_row_raw":
+        raw = _parse_payload_text(payload)
+        _reject_malformed_row(datum_address, raw)
         return _replace_row_raw(
             store,
             tenant_id=tenant_id,
             document_id=document_id,
             datum_address=datum_address,
-            raw=_parse_payload_text(payload),
+            raw=raw,
             apply=apply,
         )
     if operation == "insert_datum":
         raw = _parse_payload_text(payload)
         target_address = _as_text(payload.get("target_address")) or datum_address
+        _reject_malformed_row(target_address, raw)
         method = store.apply_document_insert if apply else store.preview_document_insert
         return method(tenant_id=tenant_id, document_id=document_id, target_address=target_address, raw=raw)
     if operation == "delete_datum":
@@ -533,7 +550,10 @@ def run_datum_workbench_mutation_action(
         )
     if authority_db_file is None:
         return _error("authority_db_required", "authority_db_file is required.", status_code=503)
-    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). legacy_alias back-compat was
+    # retired ahead of schedule (commit 0c355db); apply must refuse to persist a
+    # non-canonical catalog. Apply-path fixtures seed canonical documents.
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=False)
     try:
         preview = _preview_or_apply(
             store,
@@ -698,11 +718,15 @@ def _newsletter_apply_or_preview(
                 first_name, middle_name, last_name = split_legacy_name(name)
             now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
-            log = adapter.load_contact_log(domain=domain) or {
-                "domain": domain,
-                "contacts": [],
-                "dispatches": [],
-            }
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                # Empty means either no file yet (safe to start fresh) or a file
+                # exists but didn't load (unaccepted schema / parse error). In the
+                # latter case, saving a fresh list would DROP every existing
+                # contact, so refuse rather than silently lose data.
+                if adapter.contact_log_present(domain=domain):
+                    raise ValueError("contact_log_unreadable")
+                log = {"domain": domain, "contacts": [], "dispatches": []}
             contacts = list(log.get("contacts") or [])
             index = next(
                 (
@@ -814,11 +838,15 @@ def _newsletter_apply_or_preview(
                 raise ValueError("email is required for submit_connect_form")
             now_iso = _now_iso()
             today_date = now_iso[:10] if len(now_iso) >= 10 else now_iso
-            log = adapter.load_contact_log(domain=domain) or {
-                "domain": domain,
-                "contacts": [],
-                "dispatches": [],
-            }
+            log = adapter.load_contact_log(domain=domain)
+            if not log:
+                # Empty means either no file yet (safe to start fresh) or a file
+                # exists but didn't load (unaccepted schema / parse error). In the
+                # latter case, saving a fresh list would DROP every existing
+                # contact, so refuse rather than silently lose data.
+                if adapter.contact_log_present(domain=domain):
+                    raise ValueError("contact_log_unreadable")
+                log = {"domain": domain, "contacts": [], "dispatches": []}
             contacts = list(log.get("contacts") or [])
             index = next(
                 (
@@ -1032,7 +1060,11 @@ def run_document_workbench_action(
     document_id = _as_text(normalized.get("document_id"))
     if not document_id:
         return _error("document_id_required", "document_id is required.")
-    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=True)
+    # Canonical-only write posture (2026-05-28). legacy_alias back-compat was
+    # retired ahead of schedule (commit 0c355db); this mutation entry point must
+    # refuse to persist a non-canonical catalog. Apply-path fixtures seed
+    # canonical documents.
+    store = SqliteSystemDatumStoreAdapter(authority_db_file, allow_legacy_writes=False)
     tenant_id = _as_text(portal_instance_id) or "fnd"
     try:
         document = _document_for_mutation(store, tenant_id=tenant_id, document_id=document_id)

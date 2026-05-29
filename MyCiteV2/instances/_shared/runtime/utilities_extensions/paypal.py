@@ -18,9 +18,12 @@ a download anchor.
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
+
+_log = logging.getLogger("mycite.portal_host")
 
 from MyCiteV2.packages.core.grantee import PaypalConfig
 
@@ -112,6 +115,7 @@ def _build_paypal_extension_payload(
                     if hook:
                         webhook_url = _as_text(hook.get("webhook_url"))
         except Exception:
+            _log.warning("paypal_mos_orders_webhook_load_failed", exc_info=True)
             orders = []
             # Preserve a grantee-inline webhook_url even if the MOS adapter
             # threw; it was set before this try block ran.
@@ -167,8 +171,10 @@ def _build_paypal_extension_payload(
                             if len(orders) >= 30:
                                 break
                     except Exception:
+                        _log.warning("paypal_order_line_parse_failed", exc_info=True)
                         pass
         except Exception:
+            _log.warning("paypal_orders_ndjson_read_failed", exc_info=True)
             pass
         # Optional per-grantee webhook config — only consulted when no
         # grantee-inline webhook_url (Phase 8 precedence).
@@ -180,6 +186,7 @@ def _build_paypal_extension_payload(
                     wh = json.loads(webhook_path.read_text(encoding="utf-8"))
                     webhook_url = _as_text(_as_dict(wh).get("webhook_url"))
             except Exception:
+                _log.warning("paypal_webhook_sidecar_read_failed", exc_info=True)
                 pass
     return {
         "domain": domain,

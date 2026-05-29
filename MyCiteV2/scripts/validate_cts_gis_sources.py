@@ -9,6 +9,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.modules.cross_domain.cts_gis import (
     build_cts_gis_source_layout_summary,
     compiled_artifact_path,
@@ -21,7 +22,13 @@ from MyCiteV2.packages.modules.cross_domain.cts_gis import (
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate CTS-GIS source layout and optional compiled-artifact freshness.")
     parser.add_argument("--data-dir", required=True, help="Path to portal data directory.")
+    parser.add_argument("--private-dir", default="", help="Path to portal private directory (for MOS-backed source layout).")
     parser.add_argument("--scope-id", default="fnd", help="Portal scope id.")
+    parser.add_argument(
+        "--authority-db",
+        default="",
+        help="Path to mos_authority.sqlite3 (default: <private-dir>/mos_authority.sqlite3).",
+    )
     parser.add_argument(
         "--require-compiled-match",
         action="store_true",
@@ -29,7 +36,22 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    source_layout = build_cts_gis_source_layout_summary(args.data_dir)
+    # MOS-aware: the disk sandbox/cts-gis/sources/ tree was retired (2026-05-17);
+    # resolve the authority DB so the source layout summarizes the MOS-backed docs.
+    authority_db: Path | None = None
+    if args.authority_db:
+        authority_db = Path(args.authority_db)
+    elif args.private_dir:
+        authority_db = Path(args.private_dir) / "mos_authority.sqlite3"
+    datum_store = (
+        SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=False)
+        if authority_db is not None and authority_db.exists()
+        else None
+    )
+
+    source_layout = build_cts_gis_source_layout_summary(
+        args.data_dir, datum_store=datum_store, tenant_id=args.scope_id
+    )
     source_layout_valid, source_layout_issues = validate_cts_gis_source_layout(source_layout)
     compiled_path = compiled_artifact_path(args.data_dir, portal_scope_id=args.scope_id)
     compiled_artifact = read_compiled_artifact(compiled_path)

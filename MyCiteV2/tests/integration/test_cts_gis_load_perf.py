@@ -98,7 +98,14 @@ def portal_app():
 @pytest.fixture(scope="module")
 def cts_gis_bootstrap(portal_app):
     client = portal_app.test_client()
-    response = client.get("/portal/system/tools/cts-gis?file=anchor&verb=mediate")
+    # Plan v2: /portal/system/tools/cts-gis 302-redirects to
+    # /portal/system?tool=cts_gis&<canonical query> (see app.py
+    # portal_system_tool dispatcher). Follow the redirect to land on the
+    # unified workbench HTML that carries the bootstrap shell request.
+    response = client.get(
+        "/portal/system/tools/cts-gis?file=anchor&verb=mediate",
+        follow_redirects=True,
+    )
     assert response.status_code == 200
     match = re.search(rb'v2-bootstrap-shell-request[^>]*>([^<]*)<', response.data)
     assert match is not None, "bootstrap shell request script not found in portal HTML"
@@ -123,7 +130,10 @@ def test_cts_gis_shell_hydration_under_perf_budget(portal_app, cts_gis_bootstrap
         durations.append((time.perf_counter() - started) * 1000.0)
         assert response.status_code in (200, 503), response.status_code
     body = json.loads(response.data)
-    assert body["requested_surface_id"] == "system.tools.cts_gis"
+    # Plan v2: cts_gis is a palette tool layered on /portal/system; the
+    # requested surface is system.root with surface_query.tool=cts_gis.
+    assert body["requested_surface_id"] == "system.root"
+    assert (body.get("canonical_query") or {}).get("tool") == "cts_gis", body.get("canonical_query")
     timings = (
         body.get("surface_payload", {})
         .get("runtime_diagnostics", {})

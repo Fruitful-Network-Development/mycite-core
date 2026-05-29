@@ -113,10 +113,13 @@ class CreateDocumentOperationTests(unittest.TestCase):
                 '{\n  "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]]\n}\n',
                 encoding="utf-8",
             )
+            # canonical_ids: apply re-persists the whole catalog under the
+            # canonical-only write posture, so the seed anchor must be canonical.
             SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
                 data_dir=data_dir,
                 public_dir=public_dir,
                 tenant_id="fnd",
+                canonical_ids=True,
             )
 
     def _create(self, db_file: Path, *, title: str, action: str = "apply", sandbox_id: str = "agro_erp") -> dict:
