@@ -287,11 +287,35 @@ def _parse_yaml() -> list[Entry]:
 # --------------------------------------------------------------------------- #
 # TXA taxonomy resolution / minting
 # --------------------------------------------------------------------------- #
-_VAR_SPLIT = re.compile(r"_var\._|_subsp\._|_ssp\._")
+# Allow one-or-more underscores before the rank abbreviation so both ``_var._``
+# and the doubled ``__var._`` (seen in a few raw keys) collapse to the base species.
+_VAR_SPLIT = re.compile(r"_+var\._|_+subsp\._|_+ssp\._")
+
+# Curated synonym → canonical species. Common names and dot-cultivars in the raw
+# catalogue that should resolve to a real taxon rather than minting a catch-all
+# node. Targets were verified present in the live agro_erp txa tree at authoring
+# time (botanical facts, operator-confirmable). Entries whose canonical target is
+# itself uncatalogued (arctium_lappa/pisum_sativum/tragopogon_porrifolius) simply
+# DEDUPLICATE the synonym onto one catch-all node instead of two.
+_SPECIES_ALIAS: dict[str, str] = {
+    "collards": "brassica_oleracea",
+    "turnip": "brassica_rapa",
+    "rutabaga": "brassica_napus",
+    "greens,_mustard": "brassica_juncea",
+    "leeks": "allium_porrum",
+    "endive": "cichorium_endivia",
+    "parsnip": "pastinaca_sativa",
+    "burdock": "arctium_lappa",
+    "peas,_fresh": "pisum_sativum",
+    "salsify": "tragopogon_porrifolius",
+    "asparagus_officinalis.mary_washington": "asparagus_officinalis",
+    "asparagus_officinalis.purple_passion": "asparagus_officinalis",
+}
 
 
 def _species_of(key: str) -> str:
-    return key.split("-", 1)[0]
+    base = key.split("-", 1)[0]
+    return _SPECIES_ALIAS.get(base.lower(), base)
 
 
 def _label_for_encoding(label: str) -> str:
