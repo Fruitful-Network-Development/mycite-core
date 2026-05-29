@@ -1201,9 +1201,11 @@ def canonical_query_for_surface_query(
             sandbox_filter = _sandbox_filter_from_document_id(document_id)
         if sandbox_filter:
             query["sandbox_filter"] = sandbox_filter
-        tool = _as_text(normalized.get("tool"))
-        if tool:
-            query["tool"] = tool
+        # Multi-tool visualization panel: `tools` is a comma-joined tool-id list.
+        # Accept the legacy scalar `tool` and fold it in for back-compat.
+        tools = _as_text(normalized.get("tools")) or _as_text(normalized.get("tool"))
+        if tools:
+            query["tools"] = tools
         return query
     return {}
 
