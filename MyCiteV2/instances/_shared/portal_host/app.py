@@ -2318,19 +2318,59 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             # honestly; the contact still lands in the Connect tab.
             return "not_configured"
         display_subject = subject or f"Connect message from {visitor_email}"
+        display_from = visitor_name or visitor_email
         body_text = (
-            f"From: {visitor_name or visitor_email} <{visitor_email}>\n"
+            f"From: {display_from} <{visitor_email}>\n"
             f"Domain: {domain}\n"
             f"Subject: {display_subject}\n\n"
             f"{message}\n"
         )
+        # multipart/alternative HTML companion — Gmail penalises text-only
+        # messages from low-volume senders. Same content, escaped, with
+        # the message body preserved as paragraphs so line-breaks survive.
+        from html import escape as _html_escape
+        message_html = "".join(
+            f"<p>{_html_escape(line) or '&nbsp;'}</p>" for line in (message.splitlines() or [""])
+        )
+        body_html = (
+            "<!doctype html><html><body style=\"font-family:system-ui,Arial,sans-serif;"
+            "line-height:1.45;color:#222;\">"
+            f"<p style=\"margin:0 0 0.4em\"><strong>From:</strong> "
+            f"{_html_escape(display_from)} &lt;<a href=\"mailto:{_html_escape(visitor_email)}\">"
+            f"{_html_escape(visitor_email)}</a>&gt;</p>"
+            f"<p style=\"margin:0 0 0.4em\"><strong>Domain:</strong> {_html_escape(domain)}</p>"
+            f"<p style=\"margin:0 0 1em\"><strong>Subject:</strong> "
+            f"{_html_escape(display_subject)}</p>"
+            f"<hr style=\"border:0;border-top:1px solid #ccc;margin:1em 0\">"
+            f"{message_html}"
+            "</body></html>"
+        )
+        # Transactional-message hygiene headers Gmail looks for:
+        #  - List-Id identifies the message stream so receivers can group
+        #    and score by stream rather than by individual sender.
+        #  - List-Unsubscribe + List-Unsubscribe-Post (RFC 8058) is required
+        #    for bulk and harmless on transactional; signals
+        #    standards-conformance. Points at a mailto: for now — wiring a
+        #    one-click HTTP endpoint is a follow-up.
+        #  - Auto-Submitted distinguishes machine-generated from human mail
+        #    so receivers don't classify as a personal-correspondence outlier.
+        list_id = f"connect-form.{domain}"
+        extra_headers = {
+            "List-Id": f"<{list_id}>",
+            "List-Unsubscribe": f"<mailto:{forward_to}?subject=unsubscribe-connect-{domain}>",
+            "Auto-Submitted": "auto-generated",
+            "X-FND-Stream": "connect-form",
+            "X-FND-Source-Domain": domain,
+        }
         try:
             _aws_peripheral.send_email(
                 aws_ses_profile=aws_cfg,
                 to=[forward_to],
                 subject=f"[Connect] {display_subject}",
                 body_text=body_text,
+                body_html=body_html,
                 reply_to=[visitor_email] if visitor_email else None,
+                extra_headers=extra_headers,
             )
         except SesSendError as exc:
             _log.error(
