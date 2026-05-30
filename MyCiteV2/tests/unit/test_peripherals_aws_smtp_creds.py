@@ -116,13 +116,16 @@ class ScopedPolicyTests(unittest.TestCase):
 
 class IamUserNameTests(unittest.TestCase):
     def test_form(self) -> None:
+        # IAM user names: <domain-with-dots-as-hyphens>-<local>. The
+        # /aws-cms/smtp/ path is set on create-user; the name itself must
+        # be account-unique so it carries the full domain.
         self.assertEqual(
             slugify_iam_user_name("marilyn@cvccboard.org"),
-            "ses-smtp-cvccboard-org-marilyn",
+            "cvccboard-org-marilyn",
         )
         self.assertEqual(
             slugify_iam_user_name("first.last@fruitfulnetworkdevelopment.com"),
-            "ses-smtp-fruitfulnetworkdevelopment-com-first-last",
+            "fruitfulnetworkdevelopment-com-first-last",
         )
 
     def test_rejects_non_email(self) -> None:

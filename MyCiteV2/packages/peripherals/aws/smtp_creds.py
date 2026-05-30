@@ -89,12 +89,24 @@ def scoped_send_policy_document(from_address: str) -> dict:
     }
 
 
+# IAM users for per-mailbox SMTP credentials live under this path. The
+# EC2-AWSCMS-Admin role's AWSCMSMailboxIamManagement inline policy grants
+# full IAM lifecycle (CreateUser / CreateAccessKey / PutUserPolicy /
+# DeleteAccessKey / etc.) on Resource arn:aws:iam::*:user/aws-cms/smtp/*
+# — so creating users under THIS path keeps the EC2 host self-sufficient
+# for ongoing user lifecycle. Creating users at any other path requires
+# an operator session with broader IAM.
+IAM_PATH = "/aws-cms/smtp/"
+
+
 def slugify_iam_user_name(address: str) -> str:
     """Return the IAM user name used for the SMTP credentials backing
     ``address``.
 
-    Form: ``ses-smtp-<domain-with-dots-as-hyphens>-<local>``. Stable across
-    runs so re-running ``onboard-user`` is idempotent (we either find the
+    Form: ``<domain-with-dots-as-hyphens>-<local>``. IAM user names must
+    be unique within an account (path doesn't affect uniqueness), so we
+    include the full domain in the name. Stable across runs so
+    re-running ``onboard-user`` is idempotent (we either find the
     existing user or know to skip creation).
     """
     if "@" not in address:
@@ -102,4 +114,4 @@ def slugify_iam_user_name(address: str) -> str:
     local, domain = address.split("@", 1)
     safe_local = local.strip().lower().replace(".", "-")
     safe_domain = domain.strip().lower().replace(".", "-")
-    return f"ses-smtp-{safe_domain}-{safe_local}"
+    return f"{safe_domain}-{safe_local}"

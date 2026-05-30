@@ -34,6 +34,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from .smtp_creds import (
+    IAM_PATH,
     derive_smtp_password,
     scoped_send_policy_document,
     slugify_iam_user_name,
@@ -238,7 +239,7 @@ def issue_smtp_credentials(
     else:
         iam = boto3.client("iam")
         try:
-            iam.create_user(UserName=iam_user)
+            iam.create_user(UserName=iam_user, Path=IAM_PATH)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if code == "EntityAlreadyExists":
