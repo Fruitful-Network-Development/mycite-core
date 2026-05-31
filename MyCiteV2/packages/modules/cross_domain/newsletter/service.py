@@ -550,7 +550,7 @@ class NewsletterService:
         if (
             not force_reprocess
             and _as_text(profile.get("last_inbound_message_id")) == _as_text(ses_message_id)
-            and _as_text(profile.get("last_inbound_status")) == "processed"
+            and _as_text(profile.get("last_inbound_status")) in ("processed", "processing")
         ):
             return {
                 "ok": True,
@@ -589,6 +589,17 @@ class NewsletterService:
             raise ValueError("newsletter dispatch queue is not configured")
         sender_address = _optional_email(profile.get("sender_address")) or list_address
         reply_to_address = expected_sender
+
+        # Claim this inbound message BEFORE enqueueing so a Lambda retry (which
+        # re-invokes this method) cannot re-blast the whole subscriber list. The
+        # dup-check above short-circuits once last_inbound_message_id matches and
+        # the status is processing|processed. A crash mid-enqueue therefore
+        # UNDER-sends (recoverable via reprocess_latest_inbound(force_reprocess=
+        # True)) instead of double-sending — the safer failure for a broadcast.
+        profile["last_inbound_message_id"] = _as_text(ses_message_id)
+        profile["last_inbound_status"] = "processing"
+        profile["last_inbound_checked_at"] = utc_now_iso()
+        self._state_port.save_profile(domain=domain_token, payload=profile)
 
         for recipient_row in subscribers:
             email = _optional_email(recipient_row.get("email"))

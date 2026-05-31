@@ -7,6 +7,7 @@ from email.parser import BytesParser
 from email.utils import getaddresses
 from typing import Any
 
+from MyCiteV2.packages.domain.contact_entry import blank_contact_entry
 from MyCiteV2.packages.modules.shared import as_text, utc_now_iso
 from MyCiteV2.packages.ports.newsletter import NEWSLETTER_CONTACT_LOG_SCHEMA
 
@@ -105,20 +106,29 @@ def normalize_contact(contact: Any) -> dict[str, Any] | None:
         return None
     created_at = as_text(contact.get("created_at")) or utc_now_iso()
     subscribed = bool(contact.get("subscribed", True))
-    return {
-        "email": email,
-        "name": as_text(contact.get("name")),
-        "zip": as_text(contact.get("zip")),
-        "source": as_text(contact.get("source")) or "unknown",
-        "subscribed": subscribed,
-        "created_at": created_at,
-        "subscribed_at": as_text(contact.get("subscribed_at")) or (created_at if subscribed else ""),
-        "unsubscribed_at": as_text(contact.get("unsubscribed_at")),
-        "updated_at": as_text(contact.get("updated_at")) or created_at,
-        "last_newsletter_sent_at": as_text(contact.get("last_newsletter_sent_at")),
-        "send_count": int(contact.get("send_count") or 0),
-        "notes": as_text(contact.get("notes")),
-    }
+    # Preserve the FULL canonical contact row. The previous version rebuilt a
+    # 12-field subset and silently dropped phone / first_name / middle_name /
+    # last_name / organization / forward_status / subject / message / etc. on
+    # every inbound dispatch (normalize_contact_log -> save_contact_log) — the
+    # newsletter contact-list data-loss bug. blank_contact_entry() supplies the
+    # canonical field set at defaults; the stored row is layered on top so no
+    # field is lost (internal ``_`` keys excluded), then the lifecycle
+    # invariants are normalized. ``updated_at`` is NOT stamped to now here —
+    # this is a read normalizer, not a writer.
+    row = blank_contact_entry()
+    for key, value in contact.items():
+        if not str(key).startswith("_"):
+            row[key] = value
+    row["email"] = email
+    row["subscribed"] = subscribed
+    row["send_count"] = int(contact.get("send_count") or 0)
+    row["source"] = as_text(contact.get("source")) or "unknown"
+    row["created_at"] = created_at
+    row["subscribed_at"] = as_text(contact.get("subscribed_at")) or (
+        created_at if subscribed else ""
+    )
+    row["updated_at"] = as_text(contact.get("updated_at")) or created_at
+    return row
 
 
 def normalize_contact_log(payload: dict[str, Any], *, domain: str) -> dict[str, Any]:
