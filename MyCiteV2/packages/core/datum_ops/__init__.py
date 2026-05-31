@@ -2,7 +2,7 @@
 
 A pure (store-agnostic) library of composable operations over MOS datum
 documents, built on the trusted intra-document reorder engine
-(:mod:`MyCiteV2.packages.adapters.sql.datum_semantics`) and the SAMRAS codec.
+(:mod:`MyCiteV2.packages.core.datum_semantics`) and the SAMRAS codec.
 A sandbox loads as a :class:`Workbook` (named sheets); operations transform it
 in memory and a single store-bound executor persists the cascade.
 
