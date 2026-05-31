@@ -2735,6 +2735,50 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "domain_not_owned"}), 403
         return None
 
+    def _email_admin_scope_error(*, profile_id: str = "", domain: str = ""):
+        """Cross-tenant guard for the operator email-admin routes — mirrors
+        ``_newsletter_admin_scope_error``. These routes are also reachable
+        through the per-grantee ``/dashboard/api/`` proxy, which injects the
+        caller's grantee header. When that header is present the caller may
+        only act on a profile/domain it OWNS; otherwise (operator portal, no
+        grantee header) full access is allowed. Closes the cross-tenant
+        mailbox-takeover hole (a client dashboard POSTing another tenant's
+        profile_id). A scoped caller targeting an unknown or unowned profile
+        gets a uniform 403 — no existence leak."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            resolve_grantee_from_headers,
+        )
+
+        if host_config.private_dir is None:
+            return None
+        caller = resolve_grantee_from_headers(
+            request.headers,
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+        )
+        if caller is None:
+            return None  # operator context (no grantee header)
+        owned = {
+            _normalize_domain(str(d))
+            for d in caller.get("domains") or []
+            if str(d).strip()
+        }
+        target_domain = _normalize_domain(domain)
+        if not target_domain and profile_id:
+            from MyCiteV2.packages.peripherals.aws import ProfileStore
+
+            store = ProfileStore(
+                root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+            )
+            prof = store.get_profile(profile_id)
+            target_domain = (
+                _normalize_domain((prof.get("identity") or {}).get("domain"))
+                if prof
+                else ""
+            )
+        if not target_domain or target_domain not in owned:
+            return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+        return None
+
     @app.post("/__fnd/newsletter/admin/add")
     def fnd_newsletter_admin_add() -> tuple[Any, int]:
         payload = _json_payload()
@@ -3066,6 +3110,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not profile_id:
             return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        scope_err = _email_admin_scope_error(profile_id=profile_id)
+        if scope_err:
+            return scope_err
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
@@ -3128,6 +3175,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         domain = _normalize_domain(_as_text(payload.get("domain")))
         if not domain:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
+        scope_err = _email_admin_scope_error(domain=domain)
+        if scope_err:
+            return scope_err
         confirm = bool(payload.get("confirm"))
         alignment_pct = payload.get("alignment_pct")
         days_at_current = payload.get("days_at_current")
@@ -3328,6 +3378,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not profile_id:
             return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        scope_err = _email_admin_scope_error(profile_id=profile_id)
+        if scope_err:
+            return scope_err
         if not isinstance(fields, dict) or not fields:
             return jsonify({"ok": False, "error": "missing_fields"}), 400
         if host_config.private_dir is None:
@@ -3407,6 +3460,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not profile_id:
             return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        scope_err = _email_admin_scope_error(profile_id=profile_id)
+        if scope_err:
+            return scope_err
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
@@ -3477,6 +3533,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not profile_id:
             return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        scope_err = _email_admin_scope_error(profile_id=profile_id)
+        if scope_err:
+            return scope_err
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
@@ -3619,6 +3678,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         if not profile_id:
             return jsonify({"ok": False, "error": "missing_profile_id"}), 400
+        scope_err = _email_admin_scope_error(profile_id=profile_id)
+        if scope_err:
+            return scope_err
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 

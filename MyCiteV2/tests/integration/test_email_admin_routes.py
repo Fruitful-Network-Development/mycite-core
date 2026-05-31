@@ -564,5 +564,90 @@ class EmailExtensionPayloadEditAndLegendTests(unittest.TestCase):
         self.assertEqual(len(payload.get("onboarding_legend") or []), 6)
 
 
+def _seed_grantee(fnd_csm_dir: Path, msn_id: str, short_name: str, domains) -> None:
+    fnd_csm_dir.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "msn_id": msn_id,
+        "short_name": short_name,
+        "label": short_name,
+        "domains": list(domains),
+    }
+    (fnd_csm_dir / f"grantee.fnd.{msn_id}.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class EmailAdminCrossTenantScopeTests(unittest.TestCase):
+    """Regression: the operator email-admin routes are reachable through the
+    per-grantee ``/dashboard/api/`` proxy, which injects the caller's grantee
+    header. A scoped (client) caller must NOT be able to act on another
+    tenant's profile (the cross-tenant mailbox-takeover hole). The operator
+    (no grantee header) retains full access."""
+
+    def _build(self):
+        tmp = Path(tempfile.mkdtemp(prefix="email_admin_xtenant_"))
+        for sub in ("public", "private", "data", "webapps"):
+            (tmp / sub).mkdir()
+        aws = tmp / "private" / "utilities" / "tools" / "aws-csm"
+        fnd_csm = tmp / "private" / "utilities" / "tools" / "fnd-csm"
+        _seed_profile(
+            aws,
+            "aws-csm.fnd.support",
+            tenant_id="fnd",
+            domain="fnd.example.test",
+            mailbox="support",
+        )
+        _seed_grantee(fnd_csm, "msn-fnd", "FND", ["fnd.example.test"])
+        _seed_grantee(fnd_csm, "msn-cvcc", "CVCC", ["cvcc.example.test"])
+        config = V2PortalHostConfig(
+            portal_instance_id="fnd",
+            public_dir=tmp / "public",
+            private_dir=tmp / "private",
+            data_dir=tmp / "data",
+            portal_domain="example.test",
+            webapps_root=tmp / "webapps",
+        )
+        return create_app(config).test_client(), aws
+
+    def test_cross_tenant_suspend_denied(self) -> None:
+        client, aws = self._build()
+        resp = client.post(
+            "/__fnd/email/admin/suspend",
+            data=json.dumps({"profile_id": "aws-csm.fnd.support", "suspended": True}),
+            content_type="application/json",
+            headers={"X-Auth-Request-Grantee": "msn-cvcc"},
+        )
+        self.assertEqual(resp.status_code, 403, resp.get_data(as_text=True))
+        self.assertEqual(resp.get_json()["error"], "domain_not_owned")
+        # The FND profile was NOT mutated.
+        on_disk = json.loads(
+            (aws / "aws-csm.fnd.support.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(on_disk["workflow"]["lifecycle_state"], "operational")
+
+    def test_cross_tenant_remove_denied(self) -> None:
+        client, aws = self._build()
+        resp = client.post(
+            "/__fnd/email/admin/remove",
+            data=json.dumps({"profile_id": "aws-csm.fnd.support"}),
+            content_type="application/json",
+            headers={"X-Auth-Request-Grantee": "msn-cvcc"},
+        )
+        self.assertEqual(resp.status_code, 403, resp.get_data(as_text=True))
+        self.assertEqual(resp.get_json()["error"], "domain_not_owned")
+        self.assertTrue((aws / "aws-csm.fnd.support.json").exists())
+
+    def test_operator_no_header_still_allowed(self) -> None:
+        client, _ = self._build()
+        resp = client.post(
+            "/__fnd/email/admin/suspend",
+            data=json.dumps({"profile_id": "aws-csm.fnd.support", "suspended": True}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        self.assertTrue(resp.get_json()["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()
