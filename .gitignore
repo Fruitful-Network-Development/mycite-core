@@ -38,6 +38,11 @@ env/
 **/*.key
 **/secrets/**
 **/state/**
+# Operational + PII state: aws-csm mailbox profiles carry real board-member
+# names/emails. The canonical store is the LIVE tree
+# (/srv/webapps/mycite/<grantee>/private/.../aws-csm); deployed/ is a DR
+# snapshot and must never be versioned (PII + operational drift).
+deployed/*/private/utilities/tools/aws-csm/
 
 # Build artifacts
 dist/
