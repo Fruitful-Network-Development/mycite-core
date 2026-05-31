@@ -3359,6 +3359,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         next_payload = dict(current)
         next_payload["identity"] = identity
+        # The forwarder reconciler (iter_profile_recipient_targets) prefers
+        # inbound.receive_routing_target over identity.operator_inbox_target, so
+        # a forward-to edit that only touched identity silently didn't take
+        # effect. Keep them in lockstep (mirrors onboard_alias's dual-write).
+        if "operator_inbox_target" in fields:
+            inbound = dict(next_payload.get("inbound") or {})
+            inbound["receive_routing_target"] = _as_text(fields.get("operator_inbox_target"))
+            next_payload["inbound"] = inbound
         try:
             store.save_profile(
                 tenant_scope_id=profile_id,
@@ -5782,6 +5790,211 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         view = _contacts_identity_view(contacts[index])
         view["domain"] = domain
         return jsonify({"ok": True, "contact": view}), 200
+
+    # ------------------------------------------------------------------
+    # Grantee self-service email management — add / edit / remove a
+    # client's own personal *user* aliases from the dashboard.
+    # ------------------------------------------------------------------
+    # Domain-scoped exactly like /__fnd/contacts/*. Operator-RESERVED
+    # functional addresses (admin@, postmaster@, news@, …) and any profile
+    # explicitly marked role="role" are NEVER grantee-mutable — only the
+    # operator (onboard-role) touches those. Writes go to the canonical
+    # (live) aws-csm store and re-sync the forwarder via onboard_alias /
+    # _post_profile_save_hook — the same paths the operator routes use.
+    _LOCAL_PART_RE = re.compile(r"[a-z0-9._-]+")
+
+    def _normalize_local(value: object) -> str:
+        return _as_text(value).lower()
+
+    def _grantee_email_ctx() -> tuple[dict[str, Any] | None, tuple[Any, int] | None]:
+        if host_config.private_dir is None:
+            return None, (jsonify({"ok": False, "error": "no_private_dir"}), 500)
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return None, err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
+        owned = {
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        }
+        from MyCiteV2.packages.peripherals.aws import ProfileStore
+
+        store = ProfileStore(
+            root=Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm"
+        )
+        return {"msn": msn, "grantee": grantee, "owned": owned, "store": store}, None
+
+    def _grantee_alias_guard(
+        local: str, domain: str, owned: set[str], reserved
+    ) -> tuple[Any, int] | None:
+        if not local:
+            return jsonify({"ok": False, "error": "missing_local"}), 400
+        # Strict charset defeats casing/whitespace/`@`/path-traversal tricks;
+        # reject bare-dot / leading-dot too. Normalisation already lowercased.
+        if (
+            local in (".", "..")
+            or local.startswith(".")
+            or not _LOCAL_PART_RE.fullmatch(local)
+        ):
+            return jsonify({"ok": False, "error": "invalid_local_part"}), 400
+        if not domain:
+            return jsonify({"ok": False, "error": "missing_domain"}), 400
+        if domain not in owned:
+            return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+        if local in reserved:
+            return jsonify({"ok": False, "error": "reserved_local_part"}), 403
+        return None
+
+    def _grantee_owned_user_alias(store, domain: str, local: str):
+        """Return the on-disk profile for (domain, local) if it is a grantee-
+        manageable user alias, else (None, error_response)."""
+        match = next(
+            (
+                p
+                for p in store.profiles_by_domain(domain)
+                if _normalize_local((p.get("identity") or {}).get("mailbox_local_part"))
+                == local
+            ),
+            None,
+        )
+        if match is None:
+            return None, (jsonify({"ok": False, "error": "alias_not_found"}), 404)
+        # Allowlist, not denylist: only explicitly user-tagged aliases are
+        # grantee-managed. Operator / functional profiles use role=operator |
+        # technical_contact | role | "" and stay operator-only even when their
+        # local-part is not in the reserved name denylist (e.g. tech@, finance@,
+        # an operator-tagged marilyn@). Fail closed.
+        if _as_text((match.get("identity") or {}).get("role")).lower() != "user":
+            return None, (jsonify({"ok": False, "error": "not_user_alias"}), 403)
+        return match, None
+
+    @app.post("/__fnd/email/grantee/add")
+    def fnd_email_grantee_add() -> tuple[Any, int]:
+        from MyCiteV2.packages.peripherals.aws.onboard import (
+            RESERVED_ROLE_LOCALPARTS,
+            onboard_alias,
+        )
+
+        ctx, err = _grantee_email_ctx()
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        domain = _normalize_domain(_as_text(body.get("domain")))
+        local = _normalize_local(body.get("local"))
+        guard = _grantee_alias_guard(local, domain, ctx["owned"], RESERVED_ROLE_LOCALPARTS)
+        if guard:
+            return guard
+        forward_to = _validate_email(body.get("forward_to"))
+        if not forward_to:
+            return jsonify({"ok": False, "error": "invalid_forward_to"}), 400
+        # onboard_alias is an UPSERT — guard against an "add" silently
+        # overwriting an existing operator/functional profile on that address.
+        # A grantee may only (re)create a user-tagged alias; anything else is
+        # operator-managed (same allowlist as edit/remove).
+        existing = next(
+            (
+                p
+                for p in ctx["store"].profiles_by_domain(domain)
+                if _normalize_local((p.get("identity") or {}).get("mailbox_local_part")) == local
+            ),
+            None,
+        )
+        if existing is not None and _as_text((existing.get("identity") or {}).get("role")).lower() != "user":
+            return jsonify({"ok": False, "error": "reserved_local_part"}), 403
+        try:
+            # kind="user" is hard-coded server-side — never read from the body,
+            # so a grantee can never mint a role alias by smuggling `kind`.
+            result = onboard_alias(
+                adapter=_aws_peripheral, store=ctx["store"], kind="user",
+                domain=domain, local=local, forward_to=forward_to,
+                display_name=_as_text(body.get("display_name")), tenant_slug=None,
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "tenant_slug_required", "detail": str(exc)}), 400
+        except Exception as exc:  # noqa: BLE001 — fail closed with JSON, not a 500
+            _log.error("grantee_alias_add_failed", extra={"err": str(exc)})
+            return jsonify({"ok": False, "error": "sync_failed", "detail": str(exc)}), 502
+        return jsonify({"ok": True, **result}), 200
+
+    @app.post("/__fnd/email/grantee/edit")
+    def fnd_email_grantee_edit() -> tuple[Any, int]:
+        from MyCiteV2.packages.peripherals.aws.onboard import (
+            RESERVED_ROLE_LOCALPARTS,
+            onboard_alias,
+        )
+
+        ctx, err = _grantee_email_ctx()
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        domain = _normalize_domain(_as_text(body.get("domain")))
+        local = _normalize_local(body.get("local"))
+        guard = _grantee_alias_guard(local, domain, ctx["owned"], RESERVED_ROLE_LOCALPARTS)
+        if guard:
+            return guard
+        forward_to = _validate_email(body.get("forward_to"))
+        if not forward_to:
+            return jsonify({"ok": False, "error": "invalid_forward_to"}), 400
+        match, merr = _grantee_owned_user_alias(ctx["store"], domain, local)
+        if merr:
+            return merr
+        # Re-onboard with the new forward_to. onboard_alias dual-writes
+        # inbound.receive_routing_target + identity.operator_inbox_target and
+        # re-syncs the forwarder — the operator admin/edit route only writes
+        # the latter, so this is the more-correct path.
+        try:
+            result = onboard_alias(
+                adapter=_aws_peripheral, store=ctx["store"], kind="user",
+                domain=domain, local=local, forward_to=forward_to,
+                display_name=_as_text((match.get("identity") or {}).get("display_name")),
+                tenant_slug=None,
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "edit_failed", "detail": str(exc)}), 400
+        except Exception as exc:  # noqa: BLE001 — fail closed with JSON, not a 500
+            _log.error("grantee_alias_edit_failed", extra={"err": str(exc)})
+            return jsonify({"ok": False, "error": "sync_failed", "detail": str(exc)}), 502
+        return jsonify({"ok": True, **result}), 200
+
+    @app.post("/__fnd/email/grantee/remove")
+    def fnd_email_grantee_remove() -> tuple[Any, int]:
+        from MyCiteV2.packages.peripherals.aws.onboard import RESERVED_ROLE_LOCALPARTS
+
+        ctx, err = _grantee_email_ctx()
+        if err:
+            return err
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        domain = _normalize_domain(_as_text(body.get("domain")))
+        local = _normalize_local(body.get("local"))
+        guard = _grantee_alias_guard(local, domain, ctx["owned"], RESERVED_ROLE_LOCALPARTS)
+        if guard:
+            return guard
+        match, merr = _grantee_owned_user_alias(ctx["store"], domain, local)
+        if merr:
+            return merr
+        source_path = _as_text(match.get("_source_path"))
+        profile_id = _as_text((match.get("identity") or {}).get("profile_id"))
+        if not source_path:
+            return jsonify({"ok": False, "error": "source_path_missing"}), 500
+        try:
+            Path(source_path).unlink()
+        except OSError as exc:
+            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
+        # Drop the route from FORWARD_TO_MAP_JSON (same hook the operator
+        # remove route uses).
+        _post_profile_save_hook(profile_id, op="remove")
+        return jsonify(
+            {"ok": True, "address": f"{local}@{domain}", "removed_path": source_path}
+        ), 200
 
     @app.get("/__fnd/email/dashboard")
     def fnd_email_dashboard() -> tuple[Any, int]:

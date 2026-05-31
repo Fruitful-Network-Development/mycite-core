@@ -52,10 +52,28 @@ SES_REGION_DEFAULT = "us-east-1"
 # Where credentials packets land. Operator-private; never committed.
 EVIDENCE_ROOT = Path("/srv/agentic/evidence")
 
-# Template lives under the shared site-core docs so it's editable in one
-# place and surfaces in the convention bundle.
-WALKTHROUGH_TEMPLATE = Path(
-    "/srv/webapps/clients/_shared/site-core/docs/email_send_as_setup_gmail.md"
+# Send-As walkthrough templates live under the shared site-core docs so they
+# are editable in one place and surface in the convention bundle. Gmail uses
+# its built-in "Send mail as" (external SMTP); every other provider (Yahoo,
+# iCloud, Outlook.com, …) can't do that in webmail, so those users follow the
+# generic mail-client (Thunderbird/Outlook/Apple Mail) guide instead. Same
+# {{placeholders}}; the operator picks per user via issue_smtp_credentials.
+_DOCS_DIR = Path("/srv/webapps/clients/_shared/site-core/docs")
+WALKTHROUGH_TEMPLATES = {
+    "gmail": _DOCS_DIR / "email_send_as_setup_gmail.md",
+    "imap": _DOCS_DIR / "email_send_as_setup_imap_client.md",
+}
+# Back-compat alias — the Gmail walkthrough remains the default single template.
+WALKTHROUGH_TEMPLATE = WALKTHROUGH_TEMPLATES["gmail"]
+
+# RFC 2142 / convention functional ("role") addresses. These are OPERATOR-ONLY:
+# a grantee self-service flow may never create/edit/remove them — only the
+# operator (via onboard-role) provisions them. Single source of truth for both
+# cli.py's onboard-role --role choices and the portal grantee-email guards, so
+# the operator-onboardable set and the grantee-blocked set are provably equal.
+RESERVED_ROLE_LOCALPARTS = (
+    "postmaster", "abuse", "info", "admin", "support",
+    "noreply", "news", "donate", "sales", "webmaster",
 )
 
 
@@ -235,10 +253,22 @@ def issue_smtp_credentials(
     address: str,
     region: str = SES_REGION_DEFAULT,
     packet_dir: str | None = None,
+    clients: tuple[str, ...] = ("gmail", "imap"),
 ) -> dict[str, Any]:
-    """Provision IAM + SMTP credentials for ``address``; write the packet."""
+    """Provision IAM + SMTP credentials for ``address``; write the packet(s).
+
+    ``clients`` selects which Send-As walkthrough(s) to render alongside the
+    credentials — ``"gmail"`` (Gmail "Send mail as") and/or ``"imap"`` (generic
+    Thunderbird/Outlook/Apple Mail guide, for Yahoo/iCloud/Outlook.com users).
+    Defaults to both so the operator can hand the user whichever fits.
+    """
     if "@" not in address:
         raise ValueError("address must be an email")
+    selected = [c for c in clients if c in WALKTHROUGH_TEMPLATES]
+    if not selected:
+        raise ValueError(
+            f"clients must be a non-empty subset of {sorted(WALKTHROUGH_TEMPLATES)}"
+        )
     iam_user = slugify_iam_user_name(address)
     policy_name = "SesSendOnlyAsThisAddress"
     policy_doc = scoped_send_policy_document(address)
@@ -327,23 +357,31 @@ def issue_smtp_credentials(
     )
     dest.mkdir(parents=True, exist_ok=True)
 
-    # Render the walkthrough by substituting {{placeholders}}.
-    try:
-        template = WALKTHROUGH_TEMPLATE.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        template = ""
-    rendered = (
-        template
-        .replace("{{ADDRESS}}", address)
-        .replace("{{SMTP_HOST}}", smtp_host)
-        .replace("{{SMTP_PORT}}", "587")
-        .replace("{{SMTP_USERNAME}}", access_key_id)
-        .replace("{{SMTP_PASSWORD}}", smtp_password)
-        .replace("{{DOMAIN}}", domain)
-        .replace("{{LOCAL}}", local)
-    )
-    packet_path = dest / f"{local}_send_as_packet.md"
-    packet_path.write_text(rendered, encoding="utf-8")
+    # Render the selected walkthrough(s) by substituting {{placeholders}}. One
+    # packet file per client; with a single client the filename stays the plain
+    # ``<local>_send_as_packet.md`` for back-compat.
+    def _render(template_text: str) -> str:
+        return (
+            template_text
+            .replace("{{ADDRESS}}", address)
+            .replace("{{SMTP_HOST}}", smtp_host)
+            .replace("{{SMTP_PORT}}", "587")
+            .replace("{{SMTP_USERNAME}}", access_key_id)
+            .replace("{{SMTP_PASSWORD}}", smtp_password)
+            .replace("{{DOMAIN}}", domain)
+            .replace("{{LOCAL}}", local)
+        )
+
+    packet_paths: dict[str, str] = {}
+    for client in selected:
+        try:
+            template_text = WALKTHROUGH_TEMPLATES[client].read_text(encoding="utf-8")
+        except FileNotFoundError:
+            template_text = ""
+        suffix = "" if len(selected) == 1 else f"_{client}"
+        packet_path = dest / f"{local}_send_as_packet{suffix}.md"
+        packet_path.write_text(_render(template_text), encoding="utf-8")
+        packet_paths[client] = str(packet_path)
 
     # A separate machine-readable summary the operator can grep/audit.
     summary = {
@@ -355,7 +393,10 @@ def issue_smtp_credentials(
         "smtp_port": 587,
         "smtp_username": access_key_id,
         "smtp_password": smtp_password,  # only present in this in-memory return; not logged
-        "packet_path": str(packet_path),
+        "clients": selected,
+        "packet_paths": packet_paths,
+        # Back-compat: first selected client's packet as the singular field.
+        "packet_path": packet_paths[selected[0]],
         "issued_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
     }
     return summary

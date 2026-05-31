@@ -116,10 +116,38 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         if dry_run:
             return True
         env[key] = new_value_json
-        lam.update_function_configuration(
-            FunctionName=function_name,
-            Environment={"Variables": env},
-        )
+
+        import time as _time
+
+        from botocore.exceptions import ClientError
+
+        # Lambda rejects overlapping config updates with ResourceConflictException
+        # while a prior update is still settling (a couple seconds). Wait for the
+        # function to be ready, then retry on conflict, so rapid successive
+        # forwarder syncs — e.g. two quick dashboard edits, or an add+edit —
+        # don't surface a 500.
+        for attempt in range(6):
+            try:
+                status = lam.get_function_configuration(
+                    FunctionName=function_name
+                ).get("LastUpdateStatus", "")
+            except ClientError:
+                status = ""
+            if status == "InProgress" and attempt < 5:
+                _time.sleep(2.0)
+                continue
+            try:
+                lam.update_function_configuration(
+                    FunctionName=function_name,
+                    Environment={"Variables": env},
+                )
+                return True
+            except ClientError as exc:
+                code = exc.response.get("Error", {}).get("Code")
+                if code == "ResourceConflictException" and attempt < 5:
+                    _time.sleep(2.0)
+                    continue
+                raise
         return True
 
     # ------------------------------------------------------------------

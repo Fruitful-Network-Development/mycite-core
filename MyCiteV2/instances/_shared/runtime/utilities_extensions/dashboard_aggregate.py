@@ -327,6 +327,11 @@ def build_email_dashboard(
     # by grantee short_name; one grantee may own multiple tenant tokens
     # (e.g. CVCC owns both `cvcc.*` and `cvccboard.*`), so include any
     # token whose identity.domain falls in the grantee's domain list.
+    # Reserved functional local-parts (admin@/news@/…) are operator-only and
+    # rendered locked in the dashboard; the editable flag below is the server
+    # authority the grantee email-management endpoints re-enforce.
+    from MyCiteV2.packages.peripherals.aws.onboard import RESERVED_ROLE_LOCALPARTS
+
     forward_map: list[dict[str, Any]] = []
     aws_csm_root = private_dir / "utilities" / "tools" / "aws-csm"
     domain_set = {d.lower() for d in domains}
@@ -348,12 +353,28 @@ def build_email_dashboard(
                 except (OSError, ValueError):
                     continue
                 identity = data.get("identity") or {}
-                if _as_text(identity.get("domain")).lower() not in domain_set:
+                domain_l = _as_text(identity.get("domain")).lower()
+                if domain_l not in domain_set:
                     continue
                 alias = _as_text(identity.get("send_as_email"))
                 dest  = _as_text(identity.get("operator_inbox_target"))
+                local = _as_text(identity.get("mailbox_local_part")).lower()
+                role  = _as_text(identity.get("role")).lower()
                 if alias and dest:
-                    forward_map.append({"alias": alias, "send_as_email": dest})
+                    forward_map.append({
+                        "alias": alias,
+                        "send_as_email": dest,
+                        # domain + local are the natural key the grantee
+                        # add/edit/remove endpoints use (not the operator
+                        # profile_id, which the grantee never sees).
+                        "domain": domain_l,
+                        "local": local,
+                        "kind": role or "user",
+                        # Allowlist: only user-tagged, non-reserved aliases are
+                        # grantee-editable. Operator/functional profiles (role=
+                        # operator|technical_contact|role|"") render locked.
+                        "editable": role == "user" and local not in RESERVED_ROLE_LOCALPARTS,
+                    })
     forward_map.sort(key=lambda r: r["alias"])
 
     # Allowed submitters — per-domain newsletter-admin profiles carry

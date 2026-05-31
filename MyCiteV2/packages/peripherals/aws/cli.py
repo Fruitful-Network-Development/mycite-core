@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from .cloud_adapter import AwsPeripheralCloudAdapter
+from .onboard import RESERVED_ROLE_LOCALPARTS
 from .profile_store import ProfileStore
 
 
@@ -66,8 +67,7 @@ def main() -> int:
         help="provision a role alias (admin/info/support/...) per the email convention")
     orole.add_argument("--domain", required=True)
     orole.add_argument("--role", required=True,
-        choices=["postmaster", "abuse", "info", "admin", "support",
-                 "noreply", "news", "donate", "sales", "webmaster"],
+        choices=list(RESERVED_ROLE_LOCALPARTS),
         help="RFC 2142 / convention role; see docs/email_convention.md")
     orole.add_argument("--forward-to", required=True)
     orole.add_argument("--tenant-slug", default=None,
@@ -86,6 +86,9 @@ def main() -> int:
     isc.add_argument("--region", default="us-east-1")
     isc.add_argument("--packet-dir", default=None,
         help="dir to write the packet; default /srv/agentic/evidence/SMTP-Creds-<address>-<date>/")
+    isc.add_argument("--client", default="both", choices=["gmail", "imap", "both"],
+        help="which Send-As walkthrough to render: gmail (Gmail), imap (Thunderbird/"
+             "Outlook/Apple Mail — for Yahoo/iCloud/Outlook.com users), or both (default)")
 
     args = parser.parse_args()
     adapter = _adapter(args.grantee, args.profile_root)
@@ -152,9 +155,11 @@ def main() -> int:
         return 0
     if args.command == "issue-smtp-credentials":
         from .onboard import issue_smtp_credentials, OperatorIamRequiredError
+        clients = ("gmail", "imap") if args.client == "both" else (args.client,)
         try:
             result = issue_smtp_credentials(
                 address=args.address, region=args.region, packet_dir=args.packet_dir,
+                clients=clients,
             )
         except OperatorIamRequiredError as exc:
             # Clean output — no traceback. The exception body IS the

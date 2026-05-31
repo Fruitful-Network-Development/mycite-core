@@ -21,8 +21,17 @@ from ._normalize import as_text, normalized_domain
 
 
 DEFAULT_GRANTEE = "fnd"
+# Canonical email-profile store = the LIVE runtime tree, NOT the git-tracked
+# repo copy under deployed/. The runtime tree holds the true operational state
+# (provisioned SMTP usernames, handoff-sent records, inbound captures); the
+# deployed/ copy is a re-bootstrapped skeleton (reset runtime fields) and was
+# the source of a split-brain where the CLI/forwarder read deployed/ while the
+# portal+dashboard read+wrote live — a portal edit and a CLI onboard landed in
+# different stores. Unified on live 2026-05-31 so every reader/writer (CLI,
+# _aws_peripheral, forwarder sync, portal admin + grantee routes, dashboard)
+# agrees. deployed/ is now a periodic git snapshot for DR only.
 DEFAULT_PROFILE_ROOT = Path(
-    "/srv/repo/mycite-core/deployed/{grantee}/private/utilities/tools/aws-csm"
+    "/srv/webapps/mycite/{grantee}/private/utilities/tools/aws-csm"
 )
 PROFILE_GLOB = "aws-csm.*.json"
 DOMAIN_GLOB = "aws-csm-domain.*.json"
