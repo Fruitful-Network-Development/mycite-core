@@ -56,10 +56,10 @@ EXPECTED_ROOT_SPF       = "v=spf1 include:amazonses.com"
 EXPECTED_MAILFROM_SPF   = "v=spf1 include:amazonses.com"
 EXPECTED_MAILFROM_MX    = "feedback-smtp.us-east-1.amazonses.com"
 EXPECTED_INBOUND_MX     = "inbound-smtp.us-east-1.amazonaws.com"
-EXPECTED_DMARC_POLICY   = "p=quarantine"
-EXPECTED_DMARC_SP       = "sp=quarantine"
-EXPECTED_DMARC_ADKIM    = "adkim=s"
-EXPECTED_DMARC_ASPF     = "aspf=s"
+# DMARC is checked tag-by-tag (see check_dns) rather than by substring —
+# substring matching conflated p= with sp= (a revert to p=none while
+# sp=quarantine remained would falsely pass) and demanded an sp= tag that
+# is optional per RFC 7489 (it inherits p when absent).
 
 # AWS publishes review thresholds at 5% bounce / 0.1% complaint —
 # we alert below those (3% / 0.05%) so we have headroom to investigate
@@ -109,9 +109,15 @@ def check_forwarder_map(report: AuditReport) -> None:
         return
     try:
         data = json.loads(out.stdout)
-    except Exception as exc:
-        report.add(CheckResult("forwarder-map", False, f"unparseable cli output: {exc}: {out.stdout[:200]}"))
-        return
+    except Exception:
+        # Tolerate a stray log/deprecation line on stdout: parse the JSON
+        # object span rather than assuming stdout is pure JSON.
+        start, end = out.stdout.find("{"), out.stdout.rfind("}")
+        try:
+            data = json.loads(out.stdout[start:end + 1]) if 0 <= start < end else {}
+        except Exception as exc:
+            report.add(CheckResult("forwarder-map", False, f"unparseable cli output: {exc}: {out.stdout[:200]}"))
+            return
     if data.get("route_changed"):
         report.add(CheckResult(
             "forwarder-map", False,
@@ -167,16 +173,31 @@ def check_dns(report: AuditReport) -> None:
         if not any(EXPECTED_INBOUND_MX in m for m in inbound_mx):
             issues.append(f"inbound MX missing/changed: {inbound_mx!r}")
 
+        # Tag-aware DMARC parse — reuse the same parser the adapter uses so
+        # the audit and the live deliverability ramp agree on tag semantics.
+        from MyCiteV2.packages.peripherals.aws.dmarc_ramp import parse_dmarc_policy
         dmarc = _dig_txt(f"_dmarc.{domain}")
-        dmarc_joined = " ".join(dmarc)
-        for needle, label in (
-            (EXPECTED_DMARC_POLICY, "policy not quarantine"),
-            (EXPECTED_DMARC_SP, "subdomain policy missing"),
-            (EXPECTED_DMARC_ADKIM, "strict DKIM alignment missing"),
-            (EXPECTED_DMARC_ASPF, "strict SPF alignment missing"),
-        ):
-            if needle not in dmarc_joined:
-                issues.append(f"DMARC {label}: {dmarc!r}")
+        tags: dict[str, str] = {}
+        for record in dmarc:
+            parsed = parse_dmarc_policy(record)
+            if parsed:
+                tags = parsed
+                break
+        if not tags:
+            issues.append(f"DMARC record missing/unparseable: {dmarc!r}")
+        else:
+            p = tags.get("p", "").lower()
+            if p not in ("quarantine", "reject"):
+                issues.append(f"DMARC policy p={p or 'absent'} (want quarantine/reject)")
+            # sp is OPTIONAL (inherits p when absent); only flag an explicit
+            # sp that weakens enforcement below quarantine.
+            sp = tags.get("sp")
+            if sp is not None and sp.lower() not in ("quarantine", "reject"):
+                issues.append(f"DMARC subdomain policy sp={sp} weaker than quarantine")
+            if tags.get("adkim", "").lower() != "s":
+                issues.append("DMARC strict DKIM alignment (adkim=s) missing")
+            if tags.get("aspf", "").lower() != "s":
+                issues.append("DMARC strict SPF alignment (aspf=s) missing")
 
         if issues:
             report.add(CheckResult(f"dns:{domain}", False, "; ".join(issues)))
@@ -291,6 +312,21 @@ def send_alert(report: AuditReport) -> None:
         print(f"WARN: failed to dispatch alert email: {exc}", file=sys.stderr)
 
 
+def run_checks() -> AuditReport:
+    """Run every email-health check and return the populated report.
+
+    Shared by ``main()`` (CLI + systemd timer) and the portal
+    ``/portal/email-health`` surface so both see identical results from a
+    single source of truth.
+    """
+    report = AuditReport()
+    check_forwarder_map(report)
+    check_dns(report)
+    check_ses_identities(report)
+    check_reputation(report)
+    return report
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
@@ -300,11 +336,7 @@ def main(argv: list[str] | None = None) -> int:
         help="emit machine-readable JSON instead of human-readable text")
     args = parser.parse_args(argv)
 
-    report = AuditReport()
-    check_forwarder_map(report)
-    check_dns(report)
-    check_ses_identities(report)
-    check_reputation(report)
+    report = run_checks()
 
     if args.json:
         print(json.dumps(

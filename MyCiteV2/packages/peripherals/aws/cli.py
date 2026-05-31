@@ -73,12 +73,15 @@ def main() -> int:
     orole.add_argument("--tenant-slug", default=None,
         help="see --tenant-slug on onboard-user")
 
-    # issue-smtp-credentials — requires iam:CreateUser/CreateAccessKey/PutUserPolicy,
-    # which the EC2 instance role does NOT have by design. Run from a session
-    # with broader IAM (your local console + admin profile). The output packet
-    # is operator-private and is NEVER committed.
+    # issue-smtp-credentials — mints a per-user IAM user (scoped to one SES
+    # From: address) + access key and derives the SES SMTP password. The
+    # EC2-AWSCMS-Admin role's AWSCMSMailboxIamManagement policy grants the
+    # IAM lifecycle on users under /aws-cms/smtp/*, so this self-provisions
+    # UNATTENDED from the EC2 host; it only falls back to an operator snippet
+    # (OperatorIamRequiredError) if that grant is ever absent. The output
+    # packet is operator-private and is NEVER committed.
     isc = sub.add_parser("issue-smtp-credentials",
-        help="create per-user IAM + SES SMTP credentials for Send-As (requires iam:*)")
+        help="create per-user IAM + SES SMTP credentials for Send-As (self-provisions from the EC2 host)")
     isc.add_argument("--address", required=True, help="e.g. marilyn@cvccboard.org")
     isc.add_argument("--region", default="us-east-1")
     isc.add_argument("--packet-dir", default=None,

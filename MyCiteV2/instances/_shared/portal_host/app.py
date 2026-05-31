@@ -77,6 +77,98 @@ def _as_text(value: object) -> str:
     return str(value).strip()
 
 
+def _render_email_health_page(snapshot: dict, routes: list) -> str:
+    """Render the operator-facing email-health page as a self-contained
+    HTML string (no JS-shell dependency). Used by GET /portal/email-health."""
+    from html import escape as _esc
+
+    failed = int(snapshot.get("failed", 0) or 0)
+    passed = int(snapshot.get("passed", 0) or 0)
+    generated_at = _esc(str(snapshot.get("generated_at", "")))
+    overall_ok = failed == 0
+    banner_bg = "#1b7f3b" if overall_ok else "#b3261e"
+    banner_txt = (
+        "All email checks passing"
+        if overall_ok
+        else f"{failed} email check(s) FAILING — action needed"
+    )
+
+    check_rows = []
+    for r in snapshot.get("results", []):
+        ok = bool(r.get("ok"))
+        mark = "✓" if ok else "✗"
+        color = "#1b7f3b" if ok else "#b3261e"
+        bg = "" if ok else ' style="background:#fdeceb"'
+        check_rows.append(
+            f"<tr{bg}>"
+            f'<td style="text-align:center;color:{color};font-weight:700">{mark}</td>'
+            f'<td style="font-family:ui-monospace,monospace;white-space:nowrap">{_esc(str(r.get("name", "")))}</td>'
+            f"<td>{_esc(str(r.get('detail', '')))}</td>"
+            "</tr>"
+        )
+    check_rows_html = "\n".join(check_rows) or (
+        '<tr><td colspan="3">no checks ran</td></tr>'
+    )
+
+    route_rows = []
+    for rt in routes:
+        route_rows.append(
+            f'<tr><td style="font-family:ui-monospace,monospace">{_esc(str(rt.get("address", "")))}</td>'
+            "<td>→</td>"
+            f'<td style="font-family:ui-monospace,monospace">{_esc(str(rt.get("forwards_to") or "—"))}</td>'
+            f"<td>{_esc(str(rt.get('lifecycle') or ''))}</td></tr>"
+        )
+    route_rows_html = "\n".join(route_rows) or (
+        '<tr><td colspan="4">no forwarding routes found</td></tr>'
+    )
+
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>FND Email Health</title>
+<style>
+  body {{ font-family: system-ui, -apple-system, Arial, sans-serif; color:#1a1a1a;
+          margin:0; background:#f5f6f7; line-height:1.45; }}
+  .wrap {{ max-width: 60rem; margin: 0 auto; padding: 1.5rem 1rem 4rem; }}
+  h1 {{ font-size: 1.4rem; margin: 0 0 0.2rem; }}
+  .banner {{ color:#fff; background:{banner_bg}; padding:0.7rem 1rem; border-radius:8px;
+             font-weight:700; margin:1rem 0; }}
+  .meta {{ color:#555; font-size:0.85rem; margin-bottom:1rem; }}
+  table {{ width:100%; border-collapse:collapse; background:#fff; border-radius:8px;
+           overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08); margin-bottom:2rem; }}
+  th, td {{ text-align:left; padding:0.5rem 0.7rem; border-bottom:1px solid #eee;
+            font-size:0.9rem; vertical-align:top; }}
+  th {{ background:#fafafa; font-size:0.78rem; text-transform:uppercase; letter-spacing:0.04em; color:#666; }}
+  h2 {{ font-size:1.05rem; margin:0 0 0.5rem; }}
+  a.btn {{ display:inline-block; background:#1a1a1a; color:#fff; text-decoration:none;
+           padding:0.4rem 0.9rem; border-radius:6px; font-size:0.85rem; }}
+</style></head>
+<body><div class="wrap">
+  <h1>FND Email Health</h1>
+  <div class="meta">Last checked {generated_at} UTC · {passed} passing, {failed} failing
+     · <a class="btn" href="/portal/email-health?refresh=1">Re-run checks now</a></div>
+  <div class="banner">{_esc(banner_txt)}</div>
+
+  <h2>Deliverability checks</h2>
+  <table>
+    <thead><tr><th></th><th>Check</th><th>Detail</th></tr></thead>
+    <tbody>
+{check_rows_html}
+    </tbody>
+  </table>
+
+  <h2>Forwarding routes (mailbox &rarr; destination)</h2>
+  <table>
+    <thead><tr><th>Address</th><th></th><th>Forwards to</th><th>Lifecycle</th></tr></thead>
+    <tbody>
+{route_rows_html}
+    </tbody>
+  </table>
+</div></body></html>
+"""
+
+
 def _current_git_head_build_id() -> str | None:
     """Return the on-disk git HEAD as ``git-<sha>`` (or None if unavailable).
 
@@ -1659,6 +1751,73 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             datum_store=datum_store,
         )
         return jsonify(payload), 200
+
+    # ---- Email health surface -----------------------------------------
+    # Operator-facing view of the email stack (forwarder routes + DNS/SES
+    # deliverability) so a silent outage like the 11-day forwarder drop is
+    # VISIBLE from the portal, not just announced by the daily SES alert.
+    # Reuses the same checks as the email-health-audit timer. Gated by the
+    # oauth2-proxy ^~ /portal block in nginx — never publicly exposed.
+    _email_health_cache: dict[str, Any] = {"at": 0.0, "snapshot": None}
+
+    def _email_health_snapshot(force: bool = False) -> dict[str, Any]:
+        import time
+
+        from MyCiteV2.scripts.email_health_audit import run_checks
+
+        now = time.time()
+        cached = _email_health_cache["snapshot"]
+        # The checks shell out to dig + SES (a few seconds); memo briefly so
+        # a reload doesn't re-run them. ?refresh=1 forces a fresh run.
+        if not force and cached is not None and (now - _email_health_cache["at"]) < 90:
+            return cached
+        report = run_checks()
+        snapshot = {
+            "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "passed": len(report.passed),
+            "failed": len(report.failed),
+            "results": [
+                {"name": r.name, "ok": r.ok, "detail": r.detail}
+                for r in report.results
+            ],
+        }
+        _email_health_cache["snapshot"] = snapshot
+        _email_health_cache["at"] = now
+        return snapshot
+
+    def _email_routes_snapshot() -> list[dict[str, Any]]:
+        # The live mailbox -> destination map the forwarder enforces, read
+        # from the same operator profile store the reconciler uses.
+        rows: list[dict[str, Any]] = []
+        try:
+            for profile in _aws_peripheral._profiles.list_profiles():
+                ident = profile.get("identity") or {}
+                inbound = profile.get("inbound") or {}
+                send_as = _as_text(ident.get("send_as_email"))
+                if not send_as:
+                    continue
+                rows.append({
+                    "address": send_as,
+                    "forwards_to": _as_text(inbound.get("receive_routing_target"))
+                    or _as_text(ident.get("operator_inbox_target")),
+                    "lifecycle": _as_text((profile.get("workflow") or {}).get("lifecycle_state")),
+                })
+        except Exception as exc:  # never let the panel 500 on a profile read
+            _log.warning("email-health: profile list failed: %s", exc)
+        return sorted(rows, key=lambda r: r["address"])
+
+    @app.get("/portal/api/v2/admin/aws/email-health")
+    def portal_email_health_json() -> tuple[Any, int]:
+        force = _as_text(request.args.get("refresh")) in ("1", "true", "yes")
+        snap = _email_health_snapshot(force=force)
+        return jsonify({**snap, "routes": _email_routes_snapshot()}), 200
+
+    @app.get("/portal/email-health")
+    def portal_email_health_page() -> Any:
+        force = _as_text(request.args.get("refresh")) in ("1", "true", "yes")
+        snap = _email_health_snapshot(force=force)
+        html = _render_email_health_page(snap, _email_routes_snapshot())
+        return html, 200, {"Content-Type": "text/html; charset=utf-8"}
 
     @app.post("/portal/api/v2/shell")
     def portal_shell() -> tuple[Any, int]:
@@ -3295,13 +3454,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # button hit ``module_load_failed`` (500).
     #
     # The rewire below uses the existing ``_aws_peripheral`` send surface
-    # directly. Because ``read_handoff_secret`` is gone (and rebuilding it
-    # requires iam:* which the EC2-AWSCMS-Admin role intentionally lacks),
-    # the resent message is the *handoff notice* body only — it does NOT
-    # re-embed an SMTP password. Operators who lost the original
-    # credential package should be issued fresh credentials via the AWS
-    # console / admin session and the profile JSON updated; this button
-    # nudges them with the same instructions otherwise.
+    # directly. ``read_handoff_secret`` is gone and a derived SMTP password
+    # is unrecoverable once issued (IAM returns the secret only at creation),
+    # so the resent message is the *handoff notice* body only — it does NOT
+    # re-embed an SMTP password. Operators who lost the original credential
+    # package should re-run ``issue-smtp-credentials`` (which self-provisions
+    # fresh creds from the EC2 host under /aws-cms/smtp/ and rotates the key);
+    # this button just nudges them otherwise.
 
     @app.post("/__fnd/email/admin/resend-handoff")
     def fnd_email_admin_resend_handoff() -> tuple[Any, int]:

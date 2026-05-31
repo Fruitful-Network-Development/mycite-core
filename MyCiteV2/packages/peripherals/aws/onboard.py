@@ -10,12 +10,15 @@ Two flows here:
   single SES From: address, creates an access key, derives the SES SMTP
   password, writes an operator-private packet under
   ``/srv/agentic/evidence/SMTP-Creds-<address>-<date>/`` containing the
-  credentials + the user-facing Gmail Send-As walkthrough. Requires
-  ``iam:CreateUser`` / ``iam:CreateAccessKey`` / ``iam:PutUserPolicy`` —
-  the EC2 instance role intentionally lacks these (see srv-infra docs),
-  so this runs from an operator session with broader IAM. The function
-  raises a clear ``OperatorIamRequiredError`` when run without those
-  perms, with the exact paste-and-run snippet to use instead.
+  credentials + the user-facing Gmail Send-As walkthrough. Needs
+  ``iam:CreateUser`` / ``iam:CreateAccessKey`` / ``iam:PutUserPolicy`` on
+  ``arn:…:user/aws-cms/smtp/*`` — which the EC2-AWSCMS-Admin instance
+  role's ``AWSCMSMailboxIamManagement`` inline policy already grants (see
+  ``smtp_creds.IAM_PATH``), so the whole flow runs UNATTENDED from the
+  EC2 host. ``OperatorIamRequiredError`` is only a fallback — raised if
+  that grant is ever absent, or the user is created outside
+  ``/aws-cms/smtp/`` — carrying the exact paste-and-run snippet to
+  recover from a broader-IAM session.
 
 See ``clients/_shared/site-core/docs/email_convention.md`` for the
 convention this implements and the user-facing walkthrough template at
@@ -57,10 +60,12 @@ WALKTHROUGH_TEMPLATE = Path(
 
 
 class OperatorIamRequiredError(RuntimeError):
-    """Raised when ``issue_smtp_credentials`` is invoked under a session
-    that lacks ``iam:CreateUser`` / ``iam:CreateAccessKey`` /
-    ``iam:PutUserPolicy``. Message body includes the exact snippet to run
-    from a session that has those perms."""
+    """Fallback raised only when ``issue_smtp_credentials`` hits
+    AccessDenied on the IAM calls — i.e. the EC2-AWSCMS-Admin role's
+    ``AWSCMSMailboxIamManagement`` grant on ``user/aws-cms/smtp/*`` is
+    absent, or the target user lives outside that path. In the normal
+    path the EC2 host provisions these itself. Message body includes the
+    exact snippet to run from a session that has those perms."""
 
 
 # ---------------------------------------------------------------------------
@@ -122,6 +127,14 @@ def _profile_payload(
             "send_as_email": address,
             "display_name": display_name,
         },
+        "inbound": {
+            # The reconciler (iter_profile_recipient_targets) prefers
+            # inbound.receive_routing_target over identity.operator_inbox_target,
+            # so the forward destination MUST live here too — otherwise a
+            # changed --forward-to on re-onboard lands only in the lower-
+            # priority identity field and the old route silently sticks.
+            "receive_routing_target": forward_to,
+        },
         "workflow": {
             "lifecycle_state": "operational",
             "onboarded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
@@ -174,6 +187,7 @@ def onboard_alias(
         except Exception:
             old = {}
         old.setdefault("identity", {}).update(payload["identity"])
+        old.setdefault("inbound", {}).update(payload["inbound"])
         old.setdefault("workflow", {}).update(payload["workflow"])
         out = old
     else:
@@ -196,12 +210,16 @@ def onboard_alias(
 
 
 # ---------------------------------------------------------------------------
-# IAM + SMTP credentials issuance — requires broader IAM than the EC2 role.
+# IAM + SMTP credentials issuance — self-provisions from the EC2 host via
+# the AWSCMSMailboxIamManagement grant on user/aws-cms/smtp/*. The snippet
+# below is only surfaced as a fallback if that grant is ever missing.
 
 _OPERATOR_SNIPPET = (
+    "AccessDenied on the IAM calls — the EC2 host could not self-provision.\n"
     "Run this from a session with iam:CreateUser / iam:CreateAccessKey / "
-    "iam:PutUserPolicy (e.g. your local console with the admin profile):\n\n"
-    "    aws iam create-user --user-name {user}\n"
+    "iam:PutUserPolicy (e.g. your local console with the admin profile).\n"
+    "Keep the user under /aws-cms/smtp/ so the EC2 role can manage it later:\n\n"
+    "    aws iam create-user --user-name {user} --path /aws-cms/smtp/\n"
     "    aws iam put-user-policy --user-name {user} --policy-name {policy} \\\n"
     "        --policy-document '{policy_doc}'\n"
     "    aws iam create-access-key --user-name {user}\n\n"
@@ -238,52 +256,61 @@ def issue_smtp_credentials(
         iam_provisioned_here = False
     else:
         iam = boto3.client("iam")
+
+        def _on_denied() -> None:
+            # Single place that turns an IAM AccessDenied into the
+            # operator-fallback error carrying the paste-and-run snippet.
+            raise OperatorIamRequiredError(
+                _OPERATOR_SNIPPET.format(
+                    user=iam_user,
+                    policy=policy_name,
+                    policy_doc=json.dumps(policy_doc).replace("'", "'\\''"),
+                    cli_self="python -m MyCiteV2.packages.peripherals.aws.cli --grantee fnd",
+                    address=address,
+                )
+            )
+
+        def _is_denied(exc: ClientError) -> bool:
+            return exc.response.get("Error", {}).get("Code", "") in (
+                "AccessDenied", "AccessDeniedException",
+            )
+
         try:
             iam.create_user(UserName=iam_user, Path=IAM_PATH)
         except ClientError as exc:
             code = exc.response.get("Error", {}).get("Code", "")
             if code == "EntityAlreadyExists":
                 pass  # idempotent
-            elif code in ("AccessDenied", "AccessDeniedException"):
-                raise OperatorIamRequiredError(
-                    _OPERATOR_SNIPPET.format(
-                        user=iam_user,
-                        policy=policy_name,
-                        policy_doc=json.dumps(policy_doc).replace("'", "'\\''"),
-                        cli_self="python -m MyCiteV2.packages.peripherals.aws.cli --grantee fnd",
-                        address=address,
-                    )
-                )
+            elif _is_denied(exc):
+                _on_denied()
             else:
                 raise
+
         try:
             iam.put_user_policy(
                 UserName=iam_user, PolicyName=policy_name,
                 PolicyDocument=json.dumps(policy_doc),
             )
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code", "") in ("AccessDenied", "AccessDeniedException"):
-                raise OperatorIamRequiredError(
-                    _OPERATOR_SNIPPET.format(
-                        user=iam_user, policy=policy_name,
-                        policy_doc=json.dumps(policy_doc).replace("'", "'\\''"),
-                        cli_self="python -m MyCiteV2.packages.peripherals.aws.cli --grantee fnd",
-                        address=address,
-                    )
-                )
+            if _is_denied(exc):
+                _on_denied()
             raise
+
+        # IAM caps a user at 2 access keys, and an existing key's secret is
+        # unrecoverable (returned once at creation) — so re-issuing must mint
+        # a fresh key. Prune the oldest key(s) down to a free slot first so a
+        # re-run is idempotent instead of dying on LimitExceeded.
         try:
+            existing = iam.list_access_keys(UserName=iam_user).get("AccessKeyMetadata", [])
+            _epoch = _dt.datetime.min.replace(tzinfo=_dt.timezone.utc)
+            existing.sort(key=lambda k: k.get("CreateDate") or _epoch)
+            while len(existing) >= 2:
+                stale = existing.pop(0)
+                iam.delete_access_key(UserName=iam_user, AccessKeyId=stale["AccessKeyId"])
             ak = iam.create_access_key(UserName=iam_user)
         except ClientError as exc:
-            if exc.response.get("Error", {}).get("Code", "") in ("AccessDenied", "AccessDeniedException"):
-                raise OperatorIamRequiredError(
-                    _OPERATOR_SNIPPET.format(
-                        user=iam_user, policy=policy_name,
-                        policy_doc=json.dumps(policy_doc).replace("'", "'\\''"),
-                        cli_self="python -m MyCiteV2.packages.peripherals.aws.cli --grantee fnd",
-                        address=address,
-                    )
-                )
+            if _is_denied(exc):
+                _on_denied()
             raise
         access_key_id = ak["AccessKey"]["AccessKeyId"]
         secret_access_key = ak["AccessKey"]["SecretAccessKey"]
