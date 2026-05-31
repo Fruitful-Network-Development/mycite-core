@@ -76,6 +76,12 @@ class CheckResult:
     name: str
     ok: bool
     detail: str = ""
+    # `auto_recovered=True` marks a check that was failing but was fixed in
+    # the same audit pass (currently only forwarder-map). The check ends up
+    # in `passed` for exit-code purposes (no human action required) but is
+    # surfaced loudly in the alert email so the operator knows what
+    # happened — a silent self-heal would hide the underlying instability.
+    auto_recovered: bool = False
 
 @dataclass
 class AuditReport:
@@ -87,50 +93,95 @@ class AuditReport:
     @property
     def passed(self) -> list[CheckResult]:
         return [r for r in self.results if r.ok]
+    @property
+    def auto_recovered(self) -> list[CheckResult]:
+        return [r for r in self.results if r.auto_recovered]
 
 
 # ---------------------------------------------------------------------------
 # 1. Forwarder routing-map drift
 
-def check_forwarder_map(report: AuditReport) -> None:
-    """Dry-run sync-forwarding-routes; fail if route_changed True."""
-    try:
-        out = subprocess.run(
-            [sys.executable, "-m", "MyCiteV2.packages.peripherals.aws.cli",
-             "--grantee", "fnd", "sync-forwarding-routes", "--dry-run"],
-            capture_output=True, text=True, check=False, timeout=60,
-            env={**os.environ, "PYTHONPATH": "/srv/repo/mycite-core"},
-        )
-    except subprocess.TimeoutExpired as exc:
-        report.add(CheckResult("forwarder-map", False, f"timeout: {exc}"))
-        return
+def _run_sync_cli(dry_run: bool) -> tuple[int, dict | None, str]:
+    """Invoke the sync CLI; tolerate non-JSON noise on stdout (the
+    profile-store validator landed on 2026-05-31 prints
+    'aws_profile_drift' lines before the JSON object). Returns
+    (returncode, parsed_data_or_None, stderr)."""
+    args = [sys.executable, "-m", "MyCiteV2.packages.peripherals.aws.cli",
+            "--grantee", "fnd", "sync-forwarding-routes"]
+    if dry_run:
+        args.append("--dry-run")
+    out = subprocess.run(
+        args, capture_output=True, text=True, check=False, timeout=90,
+        env={**os.environ, "PYTHONPATH": "/srv/repo/mycite-core"},
+    )
     if out.returncode != 0:
-        report.add(CheckResult("forwarder-map", False, f"cli exit {out.returncode}: {out.stderr[:400]}"))
-        return
+        return out.returncode, None, out.stderr
+    text = out.stdout
     try:
-        data = json.loads(out.stdout)
+        return 0, json.loads(text), out.stderr
     except Exception:
-        # Tolerate a stray log/deprecation line on stdout: parse the JSON
-        # object span rather than assuming stdout is pure JSON.
-        start, end = out.stdout.find("{"), out.stdout.rfind("}")
-        try:
-            data = json.loads(out.stdout[start:end + 1]) if 0 <= start < end else {}
-        except Exception as exc:
-            report.add(CheckResult("forwarder-map", False, f"unparseable cli output: {exc}: {out.stdout[:200]}"))
-            return
-    if data.get("route_changed"):
-        report.add(CheckResult(
-            "forwarder-map", False,
-            f"live FORWARD_TO_MAP_JSON drifts from on-disk profiles "
-            f"(route_count={data.get('route_count')}). "
-            f"Recover with: PYTHONPATH=/srv/repo/mycite-core "
-            f"/srv/venvs/fnd_portal/bin/python -m "
-            f"MyCiteV2.packages.peripherals.aws.cli --grantee fnd "
-            f"sync-forwarding-routes",
-        ))
-    else:
+        start, end = text.find("{"), text.rfind("}")
+        if 0 <= start < end:
+            try:
+                return 0, json.loads(text[start:end + 1]), out.stderr
+            except Exception:
+                pass
+        return 0, None, out.stderr
+
+
+def check_forwarder_map(report: AuditReport, *, auto_recover: bool = True) -> None:
+    """Dry-run sync-forwarding-routes; on drift, apply the sync (idempotent,
+    safe — on-disk profiles are canonical per the email convention) and
+    record an auto-recovered result. With ``auto_recover=False`` the check
+    behaves as the old hard-fail (used by --no-auto-recover for one-off
+    audits where the operator wants to inspect drift without touching the
+    Lambda env)."""
+    rc, data, stderr = _run_sync_cli(dry_run=True)
+    if rc != 0 or data is None:
+        report.add(CheckResult("forwarder-map", False,
+            f"cli exit {rc} or unparseable output: {stderr[:300]}"))
+        return
+    if not data.get("route_changed"):
         report.add(CheckResult("forwarder-map", True,
             f"in sync ({data.get('route_count')} routes)"))
+        return
+    # Drift detected. If auto-recover is enabled, run the sync for real.
+    expected_count = data.get("route_count")
+    if not auto_recover:
+        report.add(CheckResult("forwarder-map", False,
+            f"live FORWARD_TO_MAP_JSON drifts from on-disk profiles "
+            f"(expected {expected_count} routes). --no-auto-recover set; "
+            f"fix with: PYTHONPATH=/srv/repo/mycite-core "
+            f"/srv/venvs/fnd_portal/bin/python -m "
+            f"MyCiteV2.packages.peripherals.aws.cli --grantee fnd "
+            f"sync-forwarding-routes"))
+        return
+    rc2, data2, stderr2 = _run_sync_cli(dry_run=False)
+    if rc2 != 0:
+        # Failed to auto-recover — escalate to operator.
+        report.add(CheckResult("forwarder-map", False,
+            f"DRIFT detected (expected {expected_count} routes) AND "
+            f"auto-recover failed: cli exit {rc2}: {stderr2[:300]}. "
+            f"Manual recovery required."))
+        return
+    # Verify post-fix: re-dry-run; should be in sync.
+    rc3, data3, _ = _run_sync_cli(dry_run=True)
+    post_changed = (data3 or {}).get("route_changed", True) if rc3 == 0 else True
+    if post_changed:
+        report.add(CheckResult("forwarder-map", False,
+            f"DRIFT detected (expected {expected_count} routes); applied "
+            f"sync but still differs (cli exit {rc3}). Manual investigation "
+            f"required."))
+        return
+    # Auto-recovered cleanly. Pass for exit-code purposes; surfaced
+    # loudly in the alert so the operator knows something unstable
+    # touched the Lambda env between audit runs.
+    report.add(CheckResult("forwarder-map", True,
+        f"AUTO-RECOVERED — drift detected ({expected_count} routes), "
+        f"sync re-applied successfully, post-check in sync. "
+        f"Something external touched the Lambda env between this run "
+        f"and the previous one; investigate if this happens repeatedly.",
+        auto_recovered=True))
 
 
 # ---------------------------------------------------------------------------
@@ -273,27 +324,45 @@ def check_reputation(report: AuditReport) -> None:
 # Alert dispatcher (SES, eats own dog food)
 
 def send_alert(report: AuditReport) -> None:
+    """Send an SES alert email if either a hard failure or an auto-recovery
+    is present. Auto-recoveries get a separate header so the operator can
+    distinguish 'no action required, but be aware' from 'fix this now'."""
     import boto3
-    if not report.failed:
+    if not (report.failed or report.auto_recovered):
         return
+    subject_bits = []
+    if report.failed:
+        subject_bits.append(f"{len(report.failed)} drift(s) need action")
+    if report.auto_recovered:
+        subject_bits.append(f"{len(report.auto_recovered)} auto-recovered")
+    subject = f"[FND email-health-audit] {' + '.join(subject_bits)}"
+
     body_lines = [
-        f"Email-health audit detected {len(report.failed)} drift(s) on the FND/cvcc/cvccboard/bpw/tff stack.",
+        "Email-health audit summary for the FND/cvcc/cvccboard/bpw/tff stack.",
         "",
-        "Failing checks:",
     ]
-    for r in report.failed:
-        body_lines.append(f"  ✗ {r.name}")
-        body_lines.append(f"      {r.detail}")
-    body_lines.extend([
-        "",
-        "Passing checks:",
-    ])
+    if report.failed:
+        body_lines.append("✗ NEEDS ACTION:")
+        for r in report.failed:
+            body_lines.append(f"  ✗ {r.name}")
+            body_lines.append(f"      {r.detail}")
+        body_lines.append("")
+    if report.auto_recovered:
+        body_lines.append("↻ AUTO-RECOVERED (no action required, but be aware):")
+        for r in report.auto_recovered:
+            body_lines.append(f"  ↻ {r.name}")
+            body_lines.append(f"      {r.detail}")
+        body_lines.append("")
+    body_lines.append("✓ Passing checks:")
     for r in report.passed:
+        if r.auto_recovered:
+            continue  # already listed in the auto-recovered section above
         body_lines.append(f"  ✓ {r.name} — {r.detail}")
     body_lines.extend([
         "",
         "Source: /srv/repo/mycite-core/MyCiteV2/scripts/email_health_audit.py",
-        "Runs daily via systemd email-health-audit.timer.",
+        "Runs hourly via systemd email-health-audit.timer.",
+        "Operator handbook: /srv/webapps/clients/_shared/site-core/docs/email_operator_handbook.md",
     ])
     body = "\n".join(body_lines)
     ses = boto3.client("ses", region_name="us-east-1")
@@ -301,10 +370,7 @@ def send_alert(report: AuditReport) -> None:
         ses.send_email(
             Source=ALERT_FROM,
             Destination={"ToAddresses": [ALERT_TO]},
-            Message={
-                "Subject": {"Data": f"[FND email-health-audit] {len(report.failed)} drift(s) detected"},
-                "Body": {"Text": {"Data": body}},
-            },
+            Message={"Subject": {"Data": subject}, "Body": {"Text": {"Data": body}}},
         )
     except Exception as exc:
         # Log to stderr; systemd will surface in journal. Audit exit
@@ -312,15 +378,19 @@ def send_alert(report: AuditReport) -> None:
         print(f"WARN: failed to dispatch alert email: {exc}", file=sys.stderr)
 
 
-def run_checks() -> AuditReport:
+def run_checks(*, auto_recover: bool = True) -> AuditReport:
     """Run every email-health check and return the populated report.
 
     Shared by ``main()`` (CLI + systemd timer) and the portal
     ``/portal/email-health`` surface so both see identical results from a
     single source of truth.
+
+    `auto_recover` defaults to True (the cron path); pass False for
+    one-off audits where the operator wants to inspect drift without
+    touching the live Lambda env.
     """
     report = AuditReport()
-    check_forwarder_map(report)
+    check_forwarder_map(report, auto_recover=auto_recover)
     check_dns(report)
     check_ses_identities(report)
     check_reputation(report)
@@ -332,24 +402,34 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--no-alert", action="store_true",
         help="run checks + print summary; do NOT send the SES alert email even on drift")
+    parser.add_argument("--no-auto-recover", action="store_true",
+        help="disable forwarder-map auto-recover (drift becomes a hard fail). "
+             "Use for one-off inspection; the cron path always auto-recovers.")
     parser.add_argument("--json", action="store_true",
         help="emit machine-readable JSON instead of human-readable text")
     args = parser.parse_args(argv)
 
-    report = run_checks()
+    report = run_checks(auto_recover=not args.no_auto_recover)
 
     if args.json:
         print(json.dumps(
-            {"results": [{"name": r.name, "ok": r.ok, "detail": r.detail} for r in report.results]},
+            {"results": [
+                {"name": r.name, "ok": r.ok, "detail": r.detail,
+                 "auto_recovered": r.auto_recovered}
+                for r in report.results
+            ]},
             indent=2,
         ))
     else:
         for r in report.results:
-            mark = "✓" if r.ok else "✗"
+            mark = "↻" if r.auto_recovered else ("✓" if r.ok else "✗")
             print(f"  {mark} {r.name:48s} {r.detail}")
-        print(f"\n{len(report.passed)} passed, {len(report.failed)} failed")
+        summary = f"\n{len(report.passed)} passed, {len(report.failed)} failed"
+        if report.auto_recovered:
+            summary += f" ({len(report.auto_recovered)} auto-recovered)"
+        print(summary)
 
-    if report.failed and not args.no_alert:
+    if (report.failed or report.auto_recovered) and not args.no_alert:
         send_alert(report)
 
     return len(report.failed)
