@@ -470,6 +470,27 @@ def build_email_dashboard(
     }
 
 
+def dashboard_response(*, data: Any = None, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Canonical dashboard success envelope: {ok, data, error, meta}.
+
+    The unified shape every dashboard endpoint should converge on (frontend
+    `unwrap()` consumes it). Introduced as the foundation; endpoints migrate to
+    it incrementally (lockstep with their tab) — see the dashboard-overhaul
+    evidence for the rollout order.
+    """
+    return {"ok": True, "data": data if data is not None else {}, "error": None, "meta": meta or {}}
+
+
+def dashboard_error(code: str, message: str = "", *, meta: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Canonical dashboard error envelope (pair with an HTTP status at the route)."""
+    return {
+        "ok": False,
+        "data": None,
+        "error": {"code": _as_text(code), "message": _as_text(message) or _as_text(code)},
+        "meta": meta or {},
+    }
+
+
 def build_resources_summary(
     *,
     msn_id: str,
@@ -535,4 +556,6 @@ __all__ = [
     "build_grantee_summary",
     "build_email_dashboard",
     "build_resources_summary",
+    "dashboard_response",
+    "dashboard_error",
 ]
