@@ -4200,6 +4200,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         client_id = _as_text(paypal.client_id) if paypal else ""
         secret = _as_text(paypal.client_secret) if paypal else ""
         return {
+            "mode": (_as_text(getattr(paypal, "mode", "")) or "link") if paypal else "link",
+            "payment_link": _as_text(getattr(paypal, "payment_link", "")) if paypal else "",
             "client_id": client_id,
             "environment": _as_text(paypal.environment) if paypal else "sandbox",
             "webhook_url": _as_text(paypal.webhook_url) if paypal else "",
@@ -4264,23 +4266,42 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         environment = _as_text(body.get("environment")).lower() or "sandbox"
         if environment not in {"sandbox", "live"}:
             return jsonify({"ok": False, "error": "invalid_environment"}), 400
+        mode = _as_text(body.get("mode")).lower()
+        if mode and mode not in {"link", "rest"}:
+            return jsonify({"ok": False, "error": "invalid_mode"}), 400
 
         try:
             profile = load_grantee_profile(path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
+        if not mode:
+            # Back-compat: respect the stored mode (already migrated on load);
+            # a credentialed save with no explicit mode is REST; otherwise link.
+            stored_mode = _as_text(profile.paypal.mode) if profile.paypal else ""
+            mode = stored_mode or (
+                "rest"
+                if (_as_text(body.get("client_id")) or _as_text(body.get("client_secret")))
+                else "link"
+            )
+
         merged = profile.paypal.to_dict() if profile.paypal else {}
         merged["environment"] = environment
-        # webhook_url / webhook_id are NOT accepted from the client — they are
-        # auto-provisioned below from the grantee's own domain.
-        # Empty client_id / client_secret => leave the stored value unchanged.
-        new_client_id = _as_text(body.get("client_id"))
-        if new_client_id:
-            merged["client_id"] = new_client_id
-        new_client_secret = _as_text(body.get("client_secret"))
-        if new_client_secret:
-            merged["client_secret"] = new_client_secret
+        merged["mode"] = mode
+        if mode == "link":
+            # Link mode: a hosted donate URL — zero secret custody, no webhook.
+            # PaypalConfig.from_dict validates payment_link as an http(s) URL.
+            merged["payment_link"] = _as_text(body.get("payment_link"))
+        else:
+            # REST mode. webhook_url / webhook_id are NOT accepted from the
+            # client — auto-provisioned below. Empty client_id / client_secret
+            # => leave the stored value unchanged (the GET never returns the secret).
+            new_client_id = _as_text(body.get("client_id"))
+            if new_client_id:
+                merged["client_id"] = new_client_id
+            new_client_secret = _as_text(body.get("client_secret"))
+            if new_client_secret:
+                merged["client_secret"] = new_client_secret
 
         try:
             next_profile = _dc_replace(profile, paypal=PaypalConfig.from_dict(merged))
@@ -4299,7 +4320,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         pp = next_profile.paypal
         client_id = _as_text(pp.client_id) if pp else ""
         client_secret = _as_text(pp.client_secret) if pp else ""
-        if not (client_id and client_secret):
+        if mode != "rest":
+            pass  # link mode: no REST credentials, no webhook to provision
+        elif not (client_id and client_secret):
             webhook_warning = "credentials_incomplete"
         else:
             # Prefer the domain already carried by a stored webhook_url so a
@@ -4354,6 +4377,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         donor_name = _as_text(payload.get("donor_name"))
         donor_email = _as_text(payload.get("donor_email"))
         designation = _as_text(payload.get("designation"))
+
+        # Link mode: the grantee uses a hosted PayPal donate link (no server
+        # mediation / secret custody). Return it for the donor JS to redirect
+        # to — the amount is collected on PayPal's hosted page, so no amount is
+        # required here. Short-circuits before any credential/order logic.
+        link_grantee = _load_grantee_for_domain(host_config.private_dir, domain)
+        link_cfg = (
+            link_grantee.get("paypal")
+            if link_grantee and isinstance(link_grantee.get("paypal"), dict)
+            else {}
+        )
+        if _as_text(link_cfg.get("mode")).lower() == "link":
+            link = _as_text(link_cfg.get("payment_link"))
+            if not link:
+                return jsonify({"ok": False, "error": "payment_link_not_set"}), 503
+            return jsonify({"ok": True, "mode": "link", "payment_link": link}), 200
 
         if not amount:
             return jsonify({"ok": False, "error": "missing_amount"}), 400

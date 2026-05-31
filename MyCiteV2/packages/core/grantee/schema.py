@@ -20,6 +20,10 @@ from typing import Any
 GRANTEE_PROFILE_SCHEMA = "mycite.v2.grantee.profile.v1"
 
 _VALID_PAYPAL_ENVIRONMENTS = frozenset({"sandbox", "live"})
+# Integration mode: "link" = a hosted PayPal donate link / PayPal.me URL (zero
+# secret custody, no server mediation — the default); "rest" = server-mediated
+# REST credentials (client_id/secret) for receipts + a donation ledger.
+_VALID_PAYPAL_MODES = frozenset({"link", "rest"})
 _URL_PREFIX_RE = re.compile(r"^https?://", re.IGNORECASE)
 # Loose email shape — defers strict RFC 5322 to the SMTP layer.
 _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -56,6 +60,10 @@ class PaypalConfig:
     client_id: str = ""
     client_secret: str = ""
     environment: str = "sandbox"
+    # "link" (default) = hosted donate link, no secret custody; "rest" = server
+    # REST mediation. payment_link is the donate URL used in link mode.
+    mode: str = "link"
+    payment_link: str = ""
 
     def __post_init__(self) -> None:
         env = _as_text(self.environment).lower() or "sandbox"
@@ -63,7 +71,14 @@ class PaypalConfig:
             raise ValueError(
                 f"paypal.environment must be one of {sorted(_VALID_PAYPAL_ENVIRONMENTS)}; got {env!r}"
             )
+        mode = _as_text(self.mode).lower() or "link"
+        if mode not in _VALID_PAYPAL_MODES:
+            raise ValueError(
+                f"paypal.mode must be one of {sorted(_VALID_PAYPAL_MODES)}; got {mode!r}"
+            )
         object.__setattr__(self, "environment", env)
+        object.__setattr__(self, "mode", mode)
+        object.__setattr__(self, "payment_link", _validate_url(self.payment_link, field_label="paypal.payment_link"))
         object.__setattr__(self, "webhook_url", _validate_url(self.webhook_url, field_label="paypal.webhook_url"))
         object.__setattr__(self, "webhook_id", _as_text(self.webhook_id))
         object.__setattr__(self, "client_id", _as_text(self.client_id))
@@ -76,17 +91,26 @@ class PaypalConfig:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "environment": self.environment,
+            "mode": self.mode,
+            "payment_link": self.payment_link,
         }
 
     @classmethod
     def from_dict(cls, payload: Any) -> PaypalConfig:
         data = payload if isinstance(payload, dict) else {}
+        mode = _as_text(data.get("mode")).lower()
+        if not mode:
+            # Migrate legacy profiles: a stored secret => REST (the prior
+            # behaviour); an otherwise-empty config => link (the new default).
+            mode = "rest" if _as_text(data.get("client_secret")) else "link"
         return cls(
             webhook_url=_as_text(data.get("webhook_url")),
             webhook_id=_as_text(data.get("webhook_id")),
             client_id=_as_text(data.get("client_id")),
             client_secret=_as_text(data.get("client_secret")),
             environment=_as_text(data.get("environment")) or "sandbox",
+            mode=mode,
+            payment_link=_as_text(data.get("payment_link")),
         )
 
 

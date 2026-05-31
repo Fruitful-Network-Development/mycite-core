@@ -154,6 +154,55 @@ class PaypalManagementTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["error"], "invalid_environment")
 
+    # ---- link mode -------------------------------------------------------
+
+    def test_update_link_mode_stores_payment_link(self) -> None:
+        client, _ = self._build_client(paypal=None)
+        # No webhook patching — link mode must NOT call PayPal at all.
+        resp = client.post(
+            "/__fnd/paypal/admin/update?grantee=alpha",
+            data=json.dumps({"mode": "link", "payment_link": "https://paypal.me/alpha"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        self.assertEqual(resp.get_json().get("webhook_warning"), "")
+        cfg = client.get("/__fnd/paypal/admin/config?grantee=alpha").get_json()["paypal"]
+        self.assertEqual(cfg["mode"], "link")
+        self.assertEqual(cfg["payment_link"], "https://paypal.me/alpha")
+
+    def test_update_link_mode_rejects_bad_url(self) -> None:
+        client, _ = self._build_client(paypal=None)
+        resp = client.post(
+            "/__fnd/paypal/admin/update?grantee=alpha",
+            data=json.dumps({"mode": "link", "payment_link": "notaurl"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"], "validation_failed")
+
+    def test_legacy_credentialed_profile_reads_as_rest(self) -> None:
+        # A pre-existing profile with a secret but no `mode` migrates to rest.
+        client, _ = self._build_client(
+            paypal={"client_id": "id", "client_secret": "sek99", "environment": "sandbox"}
+        )
+        cfg = client.get("/__fnd/paypal/admin/config?grantee=alpha").get_json()["paypal"]
+        self.assertEqual(cfg["mode"], "rest")
+
+    def test_create_order_link_mode_returns_link(self) -> None:
+        client, _ = self._build_client(
+            paypal={"mode": "link", "payment_link": "https://paypal.me/alpha"}
+        )
+        resp = client.post(
+            "/__fnd/paypal/create-order",
+            data=json.dumps({}),  # link mode needs no amount
+            content_type="application/json",
+            headers={"Host": DOMAIN},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertEqual(body["mode"], "link")
+        self.assertEqual(body["payment_link"], "https://paypal.me/alpha")
+
     def test_update_empty_secret_leaves_unchanged(self) -> None:
         client, _ = self._build_client(
             paypal={"client_id": "oldid", "client_secret": "keepme1234", "environment": "sandbox"}
