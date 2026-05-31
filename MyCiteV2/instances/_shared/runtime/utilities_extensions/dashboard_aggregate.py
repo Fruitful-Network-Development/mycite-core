@@ -470,7 +470,69 @@ def build_email_dashboard(
     }
 
 
+def build_resources_summary(
+    *,
+    msn_id: str,
+    fnd_csm_root: str | Path,
+    webapps_clients_root: str | Path,
+) -> dict[str, Any]:
+    """Per-grantee asset/resource inventory for the dashboard RESOURCES tab.
+
+    Reads each owned domain's record-manifests
+    (``…/frontend/assets/*record-manifest*.{image,icon,document,profile}_use.yaml``)
+    and returns the grantee's images / icons / documents / profiles. SCOPED:
+    only the caller grantee's own domains are read, and a manifest whose declared
+    ``site_domain`` is not one the caller owns is skipped (defence-in-depth — a
+    grantee must never enumerate another site's assets).
+    """
+    import yaml
+
+    profile = _profile_for(msn_id, fnd_csm_root) or {}
+    domains = [d.lower() for d in domains_for_grantee(msn_id, fnd_csm_root)]
+    owned = set(domains)
+    kinds = ("image", "icon", "document", "profile")
+    resources: dict[str, list[dict[str, Any]]] = {f"{k}s": [] for k in kinds}
+    clients_root = Path(webapps_clients_root)
+
+    for domain in domains:
+        assets_dir = clients_root / domain / "frontend" / "assets"
+        if not assets_dir.is_dir():
+            continue
+        for kind in kinds:
+            for path in sorted(assets_dir.glob(f"*record-manifest*.{kind}_use.yaml")):
+                try:
+                    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                except (OSError, yaml.YAMLError):
+                    continue
+                man_domain = _as_text(data.get("site_domain")).lower()
+                if man_domain and man_domain not in owned:
+                    continue  # scope guard
+                for entry in data.get("entries") or []:
+                    if not isinstance(entry, dict):
+                        continue
+                    resources[f"{kind}s"].append({
+                        "asset_id": _as_text(entry.get("asset_id")),
+                        "asset_path": _as_text(entry.get("asset_path")),
+                        "entity_scope": _as_text(entry.get("entity_scope")),
+                        "notes": _as_text(entry.get("notes")),
+                        "consumers": entry.get("consumers") or [],
+                        "domain": domain,
+                    })
+
+    return {
+        "grantee": {
+            "msn_id": msn_id,
+            "short_name": _as_text(profile.get("short_name")),
+            "label": _as_text(profile.get("label")),
+            "domains": domains,
+        },
+        "resources": resources,
+        "counts": {key: len(items) for key, items in resources.items()},
+    }
+
+
 __all__ = [
     "build_grantee_summary",
     "build_email_dashboard",
+    "build_resources_summary",
 ]

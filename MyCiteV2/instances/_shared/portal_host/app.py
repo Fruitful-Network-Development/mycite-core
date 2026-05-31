@@ -5633,6 +5633,27 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return None, None, (jsonify({"ok": False, "error": "bad_period"}), 400)
         return start_d, end_d, None
 
+    @app.get("/__fnd/resources/summary")
+    def fnd_resources_summary() -> tuple[Any, int]:
+        """Grantee-scoped asset/resource inventory for the RESOURCES tab —
+        the caller's own site images/icons/documents/profiles from its
+        record-manifests. Scoped by _resolve_grantee_scope (a grantee never
+        sees another site's assets)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
+            build_resources_summary,
+        )
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        payload = build_resources_summary(
+            msn_id=msn,
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+            webapps_clients_root=Path(host_config.webapps_root) / "clients",
+        )
+        return jsonify({"ok": True, **payload}), 200
+
     @app.get("/__fnd/grantee/summary")
     def fnd_grantee_summary() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
