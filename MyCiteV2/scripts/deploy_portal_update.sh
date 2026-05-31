@@ -19,15 +19,20 @@ Options:
                            (copies deployed/<instance>/data -> live/data)
   --public                 Sync deployed public files into live state.
                            (copies deployed/<instance>/public -> live/public)
-  --private                Sync deployed private files into live state.
-                           (copies deployed/<instance>/private -> live/private)
+  --private                DISASTER RESTORE ONLY — refused without
+                           --force-restore-private. The live private store is
+                           CANONICAL (aws-csm mailbox truth, contacts, PayPal);
+                           deployed/ is a DR skeleton, so deployed->live clobbers
+                           live. To snapshot for DR, rsync live -> deployed.
+  --force-restore-private  Confirm the destructive deployed->live private restore.
   --tools-only             Sync only private/utilities/tools via existing helper.
                            Safe package-only mode unless --include-tool-state is also set.
   --tool <slug>            Tool slug to sync when --tools-only is used. Repeatable.
   --include-tool-state     With --tools-only, sync full tool tree including state.
 
   --code                   Deploy portal code changes (build bump + restart + health).
-  --all                    Equivalent to: --data --public --private --code
+  --all                    Equivalent to: --data --public --code
+                           (NOT --private — that is disaster-restore-only now)
 
   --build-label <label>    Build id label for code deploy. Default: manual-update
   --skip-build-bump        Do not write /srv/compose/portals/v2_portal_build.env
@@ -361,6 +366,7 @@ INSTANCE="fnd"
 DO_DATA="0"
 DO_PUBLIC="0"
 DO_PRIVATE="0"
+FORCE_RESTORE_PRIVATE="0"
 DO_TOOLS_ONLY="0"
 DO_CODE="0"
 BUILD_LABEL="manual-update"
@@ -394,6 +400,12 @@ while [[ $# -gt 0 ]]; do
       DO_PRIVATE="1"
       shift
       ;;
+    --force-restore-private)
+      # Explicit opt-in for the DESTRUCTIVE deployed->live private restore.
+      DO_PRIVATE="1"
+      FORCE_RESTORE_PRIVATE="1"
+      shift
+      ;;
     --tools-only)
       DO_TOOLS_ONLY="1"
       shift
@@ -412,9 +424,12 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --all)
+      # NOTE: --all intentionally NO LONGER includes --private. The
+      # deployed->live private sync clobbers the canonical live store
+      # (aws-csm mailbox truth, contacts, PayPal) and must be opted into
+      # explicitly via --force-restore-private (disaster restore only).
       DO_DATA="1"
       DO_PUBLIC="1"
-      DO_PRIVATE="1"
       DO_CODE="1"
       shift
       ;;
@@ -499,9 +514,13 @@ if [[ "$DO_PUBLIC" == "1" ]]; then
   fi
 fi
 if [[ "$DO_PRIVATE" == "1" ]]; then
-  sync_tree "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files"
+  if [[ "$FORCE_RESTORE_PRIVATE" != "1" ]]; then
+    fail "Refusing deployed->live private sync. The LIVE store (${LIVE_ROOT}/private) is CANONICAL — it holds the operational truth (aws-csm mailbox routing, provisioned SMTP usernames, contacts, PayPal state). deployed/ is a re-bootstrapped DR skeleton; an 'rsync -a --delete' from it would clobber live and re-introduce the split-brain that silently dropped mail. For a deliberate DISASTER RESTORE, re-run with --force-restore-private. To capture a DR snapshot, rsync live -> deployed (never the reverse)."
+  fi
+  log "DISASTER RESTORE: --force-restore-private set; overwriting live/private from deployed/private"
+  sync_tree "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files (FORCED RESTORE)"
   if [[ "$SKIP_VERIFY" != "1" ]]; then
-    verify_sync "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files"
+    verify_sync "${DEPLOYED_ROOT}/private" "${LIVE_ROOT}/private" "private files (FORCED RESTORE)"
   fi
 fi
 
