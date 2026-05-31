@@ -14,10 +14,68 @@ ProfileStore for the lifetime of a request — it does not pre-load files.
 from __future__ import annotations
 
 import json
+import logging
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
 from ._normalize import as_text, normalized_domain
+
+_log = logging.getLogger(__name__)
+
+# Known schema-version prefix + role vocabulary. Drift outside these is the
+# class of bug that produced the grantee->operator escalation hole: a profile
+# with an unexpected/missing role being mistaken for grantee-manageable. We
+# fail SAFE — an unknown role is coerced to "" (operator-only, never
+# grantee-manageable) on read, so drift can only ever NARROW access.
+_KNOWN_SCHEMA_PREFIX = "mycite.service_tool.aws.profile."
+_KNOWN_ROLES = frozenset({"user", "operator", "technical_contact", "role", ""})
+
+
+def validate_profile_record(profile: dict) -> list[str]:
+    """Return schema/role drift issues for a profile (empty list == clean).
+    Pure; never raises."""
+    issues: list[str] = []
+    schema = as_text(profile.get("schema"))
+    if schema and not schema.startswith(_KNOWN_SCHEMA_PREFIX):
+        issues.append(f"unknown_schema:{schema}")
+    role = as_text((profile.get("identity") or {}).get("role")).lower()
+    if role not in _KNOWN_ROLES:
+        issues.append(f"unknown_role:{role}")
+    return issues
+
+
+def _atomic_write_json(path: Path, payload: dict) -> None:
+    """Write JSON atomically (temp + fsync + os.replace) with a single .bak of
+    the prior version. Mirrors packages/core/grantee/store.py:77-83 — replaces
+    the previous non-atomic ``write_text`` that could leave a half-written
+    (corrupt) profile if the process died mid-write."""
+    path = Path(path)
+    parent = path.parent
+    parent.mkdir(parents=True, exist_ok=True)
+    serialized = json.dumps(payload, indent=2) + "\n"
+    if path.exists():
+        try:
+            shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
+        except OSError:
+            pass
+    temp_fd, temp_name = tempfile.mkstemp(
+        prefix=".aws_csm_", suffix=".tmp", dir=str(parent)
+    )
+    try:
+        with os.fdopen(temp_fd, "w", encoding="utf-8") as fp:
+            fp.write(serialized)
+            fp.flush()
+            os.fsync(fp.fileno())
+        os.replace(temp_name, path)
+    except OSError:
+        try:
+            os.unlink(temp_name)
+        except OSError:
+            pass
+        raise
 
 
 DEFAULT_GRANTEE = "fnd"
@@ -58,6 +116,16 @@ class ProfileStore:
             if data is None:
                 continue
             data["_source_path"] = str(path)
+            # Fail-safe schema/role validation: an unknown role is coerced to
+            # "" (operator-only) so drift can never be mistaken for a
+            # grantee-manageable "user" alias (the escalation-hole class).
+            issues = validate_profile_record(data)
+            if issues:
+                _log.warning("aws_profile_drift", extra={"path": str(path), "issues": issues})
+                if any(i.startswith("unknown_role:") for i in issues):
+                    ident = data.get("identity")
+                    if isinstance(ident, dict):
+                        ident["role"] = ""
             out.append(data)
         return out
 
@@ -133,7 +201,7 @@ class ProfileStore:
             local = as_text(ident.get("mailbox_local_part")) or as_text(profile_id).split(".")[-1]
             path = self._root / f"aws-csm.{tenant_scope_id}.{local}.json"
         clean = {k: v for k, v in payload.items() if k != "_source_path"}
-        path.write_text(json.dumps(clean, indent=2), encoding="utf-8")
+        _atomic_write_json(path, clean)
         return clean
 
     def profiles_by_domain(self, domain: str) -> list[dict]:
@@ -188,4 +256,4 @@ def iter_profile_recipient_targets(profiles: Iterable[dict]) -> list[tuple[str, 
     return out
 
 
-__all__ = ["ProfileStore", "iter_profile_recipient_targets"]
+__all__ = ["ProfileStore", "iter_profile_recipient_targets", "validate_profile_record"]
