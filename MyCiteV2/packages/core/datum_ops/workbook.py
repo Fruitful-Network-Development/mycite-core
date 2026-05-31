@@ -9,6 +9,10 @@ persisted (MOS-only storage rule).
 from __future__ import annotations
 
 from MyCiteV2.packages.core.datum_io import workbook_from_yaml, workbook_to_yaml
+from MyCiteV2.packages.core.document_naming import (
+    CanonicalNameError,
+    parse_canonical_document_id,
+)
 
 from .ops import Workbook, order_sheets
 
@@ -21,8 +25,10 @@ def to_yaml(workbook: Workbook) -> str:
 def _sheet_key(doc) -> str:
     """Sheet key = the canonical name segment of the document id (matches
     ``datum_workbook_apply.load_workbook``); falls back to ``document_name``."""
-    parts = doc.document_id.split(".")
-    return parts[3] if len(parts) >= 5 else (doc.document_name or doc.document_id)
+    try:
+        return parse_canonical_document_id(doc.document_id).name
+    except CanonicalNameError:
+        return doc.document_name or doc.document_id
 
 
 def from_yaml(text: str) -> Workbook:
