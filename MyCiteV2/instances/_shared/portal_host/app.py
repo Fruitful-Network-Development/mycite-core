@@ -4844,9 +4844,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/__fnd/tolling/overview")
     def fnd_tolling_overview() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            OPERATOR_MSN_ID,
             bandwidth_share_by_domain,
             load_grantee_directory,
+            resolve_grantee_from_headers,
         )
+
+        # Operator-only: this returns EVERY grantee's costs + the full roster.
+        # A scoped (client) caller arrives through the per-grantee /dashboard/api/
+        # proxy carrying its own X-Auth-Request-Grantee header, so reject anyone
+        # who resolves to a non-operator grantee. (Mirrors the ledger/billing-rules
+        # gate; the operator surface is header-absent and still passes.)
+        caller = resolve_grantee_from_headers(request.headers)
+        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
 
         start_d, end_d, err = _parse_period_args()
         if err:
