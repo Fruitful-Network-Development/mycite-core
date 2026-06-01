@@ -1,15 +1,18 @@
-"""Back-compat shim. Canonical home is now
-:mod:`MyCiteV2.packages.core.datum_semantics`.
+"""Datum-address / hyphae / MSS-semantics engine (canonical home).
 
-The datum-address / hyphae / MSS-semantics engine was relocated into ``core``
-(it depends only on ``ports`` + the standard library, so it was never SQL-
-coupled). This module is preserved so existing and external importers keep
-working; new code should import from ``MyCiteV2.packages.core.datum_semantics``.
+This is the pure, store-agnostic intra-document datum-address engine: address
+parsing/formatting, MSS version identity, hyphae-chain semantics, and the
+iteration-shift edit-remap previews (insert / delete / move). It depends only
+on :mod:`MyCiteV2.packages.ports.datum_store` (datum-document value types) plus
+the standard library, so it belongs in ``core``.
+
+It previously lived at ``MyCiteV2.packages.adapters.sql.datum_semantics``; that
+path is now a thin back-compat shim re-exporting from here.
 """
 
 from __future__ import annotations
 
-from MyCiteV2.packages.core.datum_semantics import (
+from .engine import (
     EDIT_REMAP_POLICY,
     HYPHAE_CHAIN_POLICY,
     MSS_VERSION_HASH_POLICY,

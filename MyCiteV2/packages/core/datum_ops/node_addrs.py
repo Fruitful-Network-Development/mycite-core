@@ -3,7 +3,7 @@
 A *node address* (``4``, ``4-9``, ``1-3-2-5-1``) is a position in a SAMRAS tree
 stored as a magnitude *value* inside a datum row's head — distinct from a *datum
 address* (``4-2-17``), the 3-segment ``layer-value_group-iteration`` key of a row.
-``packages/adapters/sql/datum_semantics`` reorders datum addresses; this module
+``packages/core/datum_semantics`` reorders datum addresses; this module
 provides the parallel algebra for node addresses (parent/child, contiguous child
 allocation, and the re-parent remap that rides descendants along).
 

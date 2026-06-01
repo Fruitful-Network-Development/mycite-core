@@ -9,7 +9,7 @@ store-bound executor (:mod:`adapters.sql.datum_workbook_apply`) persists them.
 
 Row-level ops (``InsertRow``/``DeleteRow``/``MoveRow``/``ReorderRow``) are thin
 wrappers over the trusted intra-document reorder engine in
-:mod:`MyCiteV2.packages.adapters.sql.datum_semantics` — they inherit its
+:mod:`MyCiteV2.packages.core.datum_semantics` — they inherit its
 iteration-shift, intra-document reference remap, contiguity guard, and
 delete-while-referenced block. Node-address ops (mint/relocate/repoint/…) and
 the cross-sheet ops (RewriteRefs/RecompileMagnitude/RebuildCollection) live in
@@ -21,7 +21,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql.datum_semantics import (
+from MyCiteV2.packages.core.datum_semantics import (
     parse_datum_address,
     preview_document_delete,
     preview_document_insert,

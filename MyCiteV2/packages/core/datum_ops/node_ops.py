@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from MyCiteV2.packages.adapters.sql.datum_semantics import parse_datum_address
+from MyCiteV2.packages.core.datum_semantics import parse_datum_address
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRow,

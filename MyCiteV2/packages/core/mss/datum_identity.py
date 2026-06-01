@@ -1,101 +1,29 @@
 from __future__ import annotations
 
-import hashlib
-import json
-import re
 from typing import Any
 
+# Address-parsing / hashing / reference-walk helpers are single-sourced from the
+# canonical datum-semantics engine in core, so this module cannot drift from it.
+# The engine exposes the public spellings of what used to be local underscored
+# copies here; aliasing keeps this module's internal call sites unchanged.
+from MyCiteV2.packages.core.datum_semantics.engine import (
+    MSS_VERSION_HASH_POLICY,
+    _row_local_refs,
+    _sha256_token,
+)
+from MyCiteV2.packages.core.datum_semantics.engine import (
+    datum_address_sort_key as _datum_address_sort_key,
+)
+from MyCiteV2.packages.core.datum_semantics.engine import (
+    format_datum_address as _format_datum_address,
+)
+from MyCiteV2.packages.core.datum_semantics.engine import (
+    parse_datum_address as _parse_datum_address,
+)
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRow,
 )
-
-MSS_VERSION_HASH_POLICY = "mos.mss_sha256_v1"
-
-_DATUM_ADDRESS_RE = re.compile(r"^[0-9]+-[0-9]+-[0-9]+$")
-_RF_TOKEN_RE = re.compile(r"^rf\.([0-9]+-[0-9]+-[0-9]+)$", re.IGNORECASE)
-_NUMERIC_HYPHEN_RE = re.compile(r"^[0-9]+(?:-[0-9]+)+$")
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
-
-
-def _is_datum_address(value: object) -> bool:
-    return bool(_DATUM_ADDRESS_RE.fullmatch(_as_text(value)))
-
-
-def _is_numeric_hyphen_token(value: object) -> bool:
-    return bool(_NUMERIC_HYPHEN_RE.fullmatch(_as_text(value)))
-
-
-def _parse_datum_address(value: object) -> tuple[int, int, int]:
-    token = _as_text(value)
-    if not _is_datum_address(token):
-        raise ValueError(f"invalid datum address: {token!r}")
-    layer, vg, iteration = token.split("-", 2)
-    return int(layer), int(vg), int(iteration)
-
-
-def _format_datum_address(layer: int, value_group: int, iteration: int) -> str:
-    return f"{layer}-{value_group}-{iteration}"
-
-
-def _datum_address_sort_key(value: object) -> tuple[int, int, int]:
-    return _parse_datum_address(value)
-
-
-def _dumps_json(value: Any) -> str:
-    return json.dumps(value, separators=(",", ":"), sort_keys=True)
-
-
-def _sha256_token(*, prefix: str, payload: Any) -> str:
-    digest = hashlib.sha256(f"{prefix}:{_dumps_json(payload)}".encode()).hexdigest()
-    return f"sha256:{digest}"
-
-
-def _row_tokens(raw: Any, *, datum_address: str) -> tuple[str, ...]:
-    if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return tuple(_as_text(item) for item in raw[0] if _as_text(item))
-    if isinstance(raw, dict):
-        values = (
-            raw.get("datum_address"),
-            raw.get("subject_ref") or raw.get("subject") or datum_address,
-            raw.get("relation") or raw.get("predicate"),
-            raw.get("object_ref") or raw.get("object"),
-        )
-        return tuple(_as_text(item) for item in values if _as_text(item))
-    return ()
-
-
-def _row_local_refs(
-    row: AuthoritativeDatumDocumentRow,
-    *,
-    known_addresses: set[str],
-) -> tuple[str, ...]:
-    out: list[str] = []
-    seen: set[str] = set()
-    tokens = _row_tokens(row.raw, datum_address=row.datum_address)
-    for index, token in enumerate(tokens):
-        if not token:
-            continue
-        if index == 0 and token == row.datum_address:
-            continue
-        if _RF_TOKEN_RE.fullmatch(token):
-            continue
-        if _is_datum_address(token) and token in known_addresses and token != row.datum_address and token not in seen:
-            seen.add(token)
-            out.append(token)
-            continue
-        if "." in token:
-            prefix, suffix = token.split(".", 1)
-            if _is_numeric_hyphen_token(prefix) and _is_datum_address(suffix) and suffix in known_addresses:
-                if suffix != row.datum_address and suffix not in seen:
-                    seen.add(suffix)
-                    out.append(suffix)
-    return tuple(out)
 
 
 def compute_mss_hash(datum_document: AuthoritativeDatumDocument) -> dict[str, Any]:
