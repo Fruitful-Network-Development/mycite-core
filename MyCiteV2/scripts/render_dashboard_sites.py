@@ -27,6 +27,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
 CANONICAL_DIR = Path("/srv/webapps/clients/_shared/dashboard")
 CLIENTS_ROOT  = Path("/srv/webapps/clients")
 GRANTEE_DIR   = Path("/srv/webapps/mycite/fnd/private/utilities/tools/fnd-csm")

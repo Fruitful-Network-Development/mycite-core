@@ -23,7 +23,6 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate
     build_grantee_summary,
 )
 
-
 GRANTEE_MSN = "9-9-9"
 DOMAIN = "example.com"
 

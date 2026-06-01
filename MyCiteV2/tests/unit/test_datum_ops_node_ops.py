@@ -22,8 +22,9 @@ from MyCiteV2.packages.core.datum_ops import (
     build_reference_index,
     check_step,
     defined_node_addrs,
+    labels,
+    samras_deps,
 )
-from MyCiteV2.packages.core.datum_ops import labels, samras_deps
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRow,

@@ -17,7 +17,8 @@ jobs:
         with:
           python-version: "3.13"
       - name: Install ruff
-        run: pip install "ruff>=0.8.0"
+        # Pinned to match requirements-dev.txt so local == CI (no rule drift).
+        run: pip install "ruff==0.15.13"
       - name: Run ruff
         run: ruff check MyCiteV2/
 
@@ -64,9 +65,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
-      - name: Run pytest (no smoke)
-        # Excludes tests/smoke/ — those run in the smoke job below with playwright.
-        run: pytest MyCiteV2/tests/ --ignore=MyCiteV2/tests/smoke -v
+      - name: Run pytest (no smoke, no e2e)
+        # Excludes tests/smoke/ and tests/e2e/ — both need a real browser and run
+        # in the smoke job below with playwright + chromium.
+        run: pytest MyCiteV2/tests/ --ignore=MyCiteV2/tests/smoke --ignore=MyCiteV2/tests/e2e -v
 
   smoke:
     name: browser smoke (playwright + chromium-headless-shell)
@@ -91,5 +93,5 @@ jobs:
         # Only the headless variant — full chromium isn't needed.
         run: playwright install chromium-headless-shell
 
-      - name: Run browser smoke
-        run: pytest MyCiteV2/tests/smoke/ -v
+      - name: Run browser smoke + e2e
+        run: pytest MyCiteV2/tests/smoke/ MyCiteV2/tests/e2e/ -v

@@ -131,9 +131,11 @@ def test_cts_gis_shell_hydration_under_perf_budget(portal_app, cts_gis_bootstrap
         assert response.status_code in (200, 503), response.status_code
     body = json.loads(response.data)
     # Plan v2: cts_gis is a palette tool layered on /portal/system; the
-    # requested surface is system.root with surface_query.tool=cts_gis.
+    # requested surface is system.root with surface_query.tools=cts_gis.
     assert body["requested_surface_id"] == "system.root"
-    assert (body.get("canonical_query") or {}).get("tool") == "cts_gis", body.get("canonical_query")
+    # Canonical palette filter key is `tools` (plural) — the workbench query
+    # canonicalizer normalizes the legacy singular `tool` into it.
+    assert (body.get("canonical_query") or {}).get("tools") == "cts_gis", body.get("canonical_query")
     timings = (
         body.get("surface_payload", {})
         .get("runtime_diagnostics", {})

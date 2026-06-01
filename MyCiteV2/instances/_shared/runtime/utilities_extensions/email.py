@@ -16,17 +16,15 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-
-from datetime import datetime, timedelta, timezone
 
 from MyCiteV2.packages.peripherals.aws import ProbeCache, ProfileStore
 
 _log = logging.getLogger("mycite.portal_host")
 
 from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link, _mask_secret
-
 
 # B2 — module-level cache for the Wave-B activity-based onboarding overlay
 # probes. Single instance shared across requests in this worker process;
@@ -234,7 +232,7 @@ def _onboarding_progress(
     return {
         "steps_total": total,
         "steps_done": done,
-        "percent": int(round(done * 100 / total)) if total else 0,
+        "percent": round(done * 100 / total) if total else 0,
         "completed": completed,
         "next_step": next_step,
         "aws_evidence": aws_evidence,
@@ -253,7 +251,7 @@ def _parse_iso_ts(value: str) -> datetime | None:
     except ValueError:
         return None
     if ts.tzinfo is None:
-        ts = ts.replace(tzinfo=timezone.utc)
+        ts = ts.replace(tzinfo=UTC)
     return ts
 
 
@@ -266,7 +264,7 @@ def _reminder_cooldown_remaining(workflow: dict[str, Any]) -> timedelta | None:
     last = _parse_iso_ts(_as_text(workflow.get("reminder_sent_at")))
     if last is None:
         return None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     elapsed = now - last
     if elapsed >= _REMINDER_COOLDOWN:
         return None
@@ -566,7 +564,7 @@ def _send_reminder_action_for_profile(
 
     cooldown = _reminder_cooldown_remaining(workflow)
     if cooldown is not None:
-        hours = max(1, int(round(cooldown.total_seconds() / 3600)))
+        hours = max(1, round(cooldown.total_seconds() / 3600))
         base["disabled"] = True
         base["label"] = f"Sent recently ({hours}h cooldown)"
         base["confirm"] = None
@@ -624,9 +622,9 @@ __all__ = [
     "_edit_action_for_profile",
     "_onboarding_aws_evidence",
     "_onboarding_progress",
+    "_reminder_cooldown_remaining",
     "_remove_action_for_profile",
     "_render_ext_aws_email",
     "_resend_handoff_action_for_profile",
     "_send_reminder_action_for_profile",
-    "_reminder_cooldown_remaining",
 ]

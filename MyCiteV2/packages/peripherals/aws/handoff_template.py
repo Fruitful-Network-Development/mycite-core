@@ -105,6 +105,6 @@ CVCCBoard mailbox setup
 
 __all__ = [
     "HANDOFF_TEMPLATE_VERSION",
-    "handoff_subject",
     "handoff_body",
+    "handoff_subject",
 ]

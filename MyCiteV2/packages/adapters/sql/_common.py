@@ -31,4 +31,4 @@ def _rate(numer: int, denom: int) -> float:
     return float(numer) / float(denom) if denom > 0 else 0.0
 
 
-__all__ = ["_as_text", "_as_int", "_domain_token", "_rate"]
+__all__ = ["_as_int", "_as_text", "_domain_token", "_rate"]

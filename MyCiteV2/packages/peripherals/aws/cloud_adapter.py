@@ -13,6 +13,7 @@ the live AWS resources together.
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from typing import Any
 
 from ._normalize import as_text, normalized_domain, normalized_email
@@ -28,7 +29,6 @@ from .contracts import (
     TagOperationResult,
 )
 from .profile_store import ProfileStore, iter_profile_recipient_targets
-
 
 SES_REGION = "us-east-1"
 
@@ -179,7 +179,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     .get("DkimVerificationStatus", "")
                 )
                 dkim_verified = dstatus == "Success"
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 notes.append(f"ses_describe_error: {exc}")
 
         receipt_rule_present = False
@@ -191,7 +191,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     if domain in (rule.get("Recipients") or []):
                         receipt_rule_present = True
                         break
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 notes.append(f"receipt_rule_lookup_error: {exc}")
 
         forward_map_contains_send_as = False
@@ -205,7 +205,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 forward_map_contains_send_as = send_as in fmap
                 policy = lam.get_policy(FunctionName=SES_FORWARDER_FN)
                 lambda_permission_present = domain.replace(".", "-") in policy.get("Policy", "")
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 notes.append(f"lambda_describe_error: {exc}")
 
         return ProfileReadiness(
@@ -267,8 +267,8 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         identity. Reporting "drift" off the email-address check alone would
         false-alarm on every domain-verified mailbox.
         """
-        from datetime import datetime, timezone
-        observed_at = datetime.now(timezone.utc).isoformat()
+        from datetime import datetime
+        observed_at = datetime.now(UTC).isoformat()
         token = as_text(send_as_email).strip().lower()
         if not token:
             return {"state": "error", "detail": "send_as_email empty", "observed_at": observed_at}
@@ -284,7 +284,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             va = attrs.get("VerificationAttributes", {})
             email_status = va.get(token, {}).get("VerificationStatus", "")
             domain_status = va.get(domain, {}).get("VerificationStatus", "") if domain else ""
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {
                 "state": "error",
                 "detail": f"ses_get_identity_verification_attributes: {exc}",
@@ -350,14 +350,14 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         into the AWSCMSDiagnosticsLogsReadOnly inline policy); without it
         the probe returns state=error.
         """
-        from datetime import datetime, timedelta, timezone
-        observed_at = datetime.now(timezone.utc).isoformat()
+        from datetime import datetime, timedelta
+        observed_at = datetime.now(UTC).isoformat()
         token = as_text(send_as_email).strip().lower()
         if not token:
             return {"state": "error", "detail": "send_as_email empty", "observed_at": observed_at}
         try:
             cw = self._client("cloudwatch")
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             start_time = now - timedelta(days=max(1, lookback_days))
             response = cw.get_metric_statistics(
                 Namespace="AWS/SES",
@@ -371,7 +371,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             total = sum(
                 float(dp.get("Sum") or 0) for dp in response.get("Datapoints", [])
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {
                 "state": "error",
                 "detail": f"cloudwatch_get_metric_statistics: {exc}",
@@ -412,8 +412,8 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         implies the S3 write succeeded; if the S3 write failed, the
         forwarder would never have been invoked).
         """
-        from datetime import datetime, timezone
-        observed_at = datetime.now(timezone.utc).isoformat()
+        from datetime import datetime
+        observed_at = datetime.now(UTC).isoformat()
         token = normalized_domain(domain)
         if not token:
             return {"state": "error", "detail": "invalid_domain", "observed_at": observed_at}
@@ -424,7 +424,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 Bucket=bucket, Prefix=prefix, MaxKeys=1
             )
             key_count = int(response.get("KeyCount") or 0)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             return {
                 "state": "error",
                 "detail": f"s3_list_objects_v2: {exc}",
@@ -436,7 +436,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
             detail = f"inbound S3 objects present at s3://{bucket}/{prefix}"
         elif any_inbound and not declared_verified:
             state = "auto_advance"
-            detail = f"inbound S3 objects present; JSON flag not yet set"
+            detail = "inbound S3 objects present; JSON flag not yet set"
         elif (not any_inbound) and declared_verified:
             state = "drift"
             detail = f"flag says verified; no S3 objects under {prefix}"
@@ -495,7 +495,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                             dmarc_present = True
                     elif rtype == "CNAME" and name.endswith(f"._domainkey.{token}"):
                         dkim_cnames_present += 1
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             notes.append(f"route53_error: {exc}")
 
         ses_identity_verified = dkim_verified = False
@@ -515,7 +515,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 )
                 == "Success"
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             notes.append(f"ses_error: {exc}")
 
         receipt_rule_present = False
@@ -526,7 +526,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 if token in (rule.get("Recipients") or []):
                     receipt_rule_present = True
                     break
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             notes.append(f"receipt_rule_error: {exc}")
 
         return DomainStatus(
@@ -559,7 +559,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         try:
             ident = sts.get_caller_identity()
             account_id = str(ident.get("Account", "")) or ""
-        except Exception:  # noqa: BLE001
+        except Exception:
             return ""  # do NOT cache failure — retry next call
         if account_id:
             self._cached_account_id = account_id
@@ -621,7 +621,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                         failed = tag_result.get("failed_arns") or []
                         detail = (failed[0].get("error_message") if failed else "") or "tag_resource ok=False"
                         tag_failed = detail
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     tag_failed = str(exc)
         result: dict[str, Any] = {"ok": True, "changed": changed, "domain": token}
         if tagged_arn:
@@ -748,7 +748,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 .get("MailFromDomain", "")
             )
             mail_from_needs_set = current_mf != mail_from_domain
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Can't read current MAIL FROM → don't risk setting it blind.
             mail_from_needs_set = False
 
@@ -796,7 +796,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                         "Changes": desired_changes,
                     },
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 # DNS publish failed — return a clean partial-status and do
                 # NOT touch the SES MAIL FROM setting, so we never end up
                 # with MAIL FROM pointing at unpublished records.
@@ -821,7 +821,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     BehaviorOnMXFailure="UseDefaultValue",
                 )
                 mail_from_changed = True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
 
         # Auto-tag-on-create — tag the hosted zone. Route53 records aren't
@@ -838,7 +838,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                     AddTags=[{"Key": k, "Value": v} for k, v in tags.items()],
                 )
                 tagged_zone = True
-            except Exception:  # noqa: BLE001
+            except Exception:
                 pass
         result: dict[str, Any] = {
             "ok": True,
@@ -1013,7 +1013,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
                 SourceAccount="065948377733",
                 SourceArn=rule_arn,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             # Already-present permissions raise ResourceConflictException;
             # idempotent: we just want the grant to exist.
             pass
@@ -1140,7 +1140,7 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
 
         try:
             response = ses.send_raw_email(**kwargs)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             from botocore.exceptions import BotoCoreError, ClientError
 
             if isinstance(exc, ClientError):

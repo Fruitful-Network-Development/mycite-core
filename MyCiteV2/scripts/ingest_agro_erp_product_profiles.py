@@ -189,7 +189,7 @@ def _rebuild_document(
     *,
     existing: AuthoritativeDatumDocument,
     overlay: dict[str, AuthoritativeDatumDocumentRow],
-    drop: "callable[[str], bool]",
+    drop: callable[[str], bool],
     name: str,
 ) -> tuple[AuthoritativeDatumDocument, str]:
     """Return a new canonical document: existing rows kept in order (with ``overlay``

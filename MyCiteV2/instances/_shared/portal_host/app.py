@@ -11,7 +11,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -1638,7 +1638,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # mode, row, ...) so a deep-linked document is not dropped on redirect:
         #   - workbench-ui → /portal/system?<canonical query>
         #   - agro-erp     → /portal/system?sandbox_filter=agro_erp&<canonical>
-        #   - cts-gis      → /portal/system?tool=cts_gis&<canonical>
+        #   - cts-gis      → /portal/system?tools=cts_gis&<canonical>
+        #     (the `tool` key below is canonicalized to the plural `tools`)
         _tool_redirect_extra = {
             "workbench-ui": {},
             "agro-erp": {"sandbox_filter": "agro_erp"},
@@ -2400,7 +2401,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 },
             )
             return {"ok": False, "detail": exc.reason}
-        except Exception as exc:  # noqa: BLE001 — last-ditch envelope for unexpected raise
+        except Exception as exc:
             return {"ok": False, "detail": str(exc)}
 
         return {
@@ -3096,7 +3097,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             _aws_peripheral.sync_operator_forwarding_routes(
                 profiles=store.list_profiles(), dry_run=False
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error(
                 "post_profile_save_hook_failed",
                 extra={"profile_id": profile_id, "op": op, "err": str(exc)},
@@ -3202,7 +3203,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # MAIL FROM live? Read the SES identity's MAIL FROM status.
         mail_from_live = False
         try:
-            ses = _aws_peripheral._client("ses")  # noqa: SLF001 — shared client cache
+            ses = _aws_peripheral._client("ses")
             mf = ses.get_identity_mail_from_domain_attributes(Identities=[domain])
             status = (
                 mf.get("MailFromDomainAttributes", {})
@@ -3210,7 +3211,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 .get("MailFromDomainStatus", "")
             )
             mail_from_live = status == "Success"
-        except Exception:  # noqa: BLE001
+        except Exception:
             mail_from_live = False
 
         decision = compute_dmarc_ramp(
@@ -3725,7 +3726,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         cooldown = _reminder_cooldown_remaining(workflow)
         if cooldown is not None:
-            hours = max(1, int(round(cooldown.total_seconds() / 3600)))
+            hours = max(1, round(cooldown.total_seconds() / 3600))
             return jsonify(
                 {"ok": False, "error": "cooldown_active",
                  "detail": f"reminder sent within last {24 - hours}h; retry in ~{hours}h"}
@@ -3868,6 +3869,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return 0.0
         except OSError:
             return 0.0
+
+    def _configured_fnd_csm_root() -> Path:
+        # Grantee profiles live under the app's CONFIGURED private_dir. Resolving
+        # against this (rather than the tolling module's hardcoded default live
+        # path) is a no-op on the deploy host — where private_dir IS
+        # /srv/webapps/mycite/fnd/private — and the only thing that makes grantee
+        # resolution work under a test/non-default config.
+        return Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
 
     def _is_operator_request() -> bool:
         # Operator context = no oauth2-proxy grantee header. Mirrors
@@ -4894,7 +4903,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # proxy carrying its own X-Auth-Request-Grantee header, so reject anyone
         # who resolves to a non-operator grantee. (Mirrors the ledger/billing-rules
         # gate; the operator surface is header-absent and still passes.)
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -4943,6 +4952,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """
         import time as _time
         from itertools import product
+
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
         )
@@ -4991,8 +5001,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # this pass is now O(events) in memory; in practice the
         # grantee-scoped window is a few thousand events / month per
         # domain so this is fine.
-        from MyCiteV2.packages.core.analytics import derivations as _derivations
         from collections import Counter as _Counter
+
+        from MyCiteV2.packages.core.analytics import derivations as _derivations
 
         total_events = 0
         bot_events = 0
@@ -5307,7 +5318,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "bad_signature"}), 403
         except LookupError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 404
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error("newsletter_inbound_dispatch_failed",
                        extra={"domain": domain, "err": str(exc)})
             return jsonify({"ok": False, "error": "dispatch_failed"}), 500
@@ -5322,9 +5333,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             grantee_for_domain,
             resolve_grantee_from_headers,
         )
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(_normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None:
             short = str(caller.get("short_name", "")).lower()
             if short and short != "bpw":
@@ -5387,7 +5398,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             saved = save_job(body)
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error("bpw_jobs_save_failed", extra={"err": str(exc)})
             return jsonify({"ok": False, "error": "save_failed"}), 500
         return jsonify({"ok": True, "job": saved}), 200
@@ -5434,7 +5445,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         # Operator-only — reject any logged-in grantee caller. No
         # oauth2-proxy headers = operator context (dev tooling, cron).
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5446,7 +5457,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             result = refresh_all(period, aws_peripheral=_aws_peripheral)
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error("tolling_refresh_failed",
                        extra={"period": period, "err": str(exc)})
             return jsonify({"ok": False, "error": "refresh_failed"}), 500
@@ -5468,7 +5479,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5490,7 +5501,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
         return jsonify({"ok": True, "rules": read_billing_rules()}), 200
@@ -5506,12 +5517,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             BILLING_RULES_SCHEMA,
             LINE_ITEM_CATEGORIES,
             OPERATOR_MSN_ID,
-            read_billing_rules,
             resolve_grantee_from_headers,
             write_billing_rules,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5581,9 +5591,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(_normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
             return jsonify({"ok": True, "grantee": None}), 200
         return jsonify({
@@ -5605,9 +5615,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
         requested_msn = _as_text(request.args.get("grantee"))
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(
+                _normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root()
+            )
         if caller is not None:
             caller_msn = _as_text(caller.get("msn_id"))
             if requested_msn and requested_msn != caller_msn:
@@ -6049,7 +6061,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
         except ValueError as exc:
             return jsonify({"ok": False, "error": "tenant_slug_required", "detail": str(exc)}), 400
-        except Exception as exc:  # noqa: BLE001 — fail closed with JSON, not a 500
+        except Exception as exc:
             _log.error("grantee_alias_add_failed", extra={"err": str(exc)})
             return jsonify({"ok": False, "error": "sync_failed", "detail": str(exc)}), 502
         return jsonify({"ok": True, **result}), 200
@@ -6091,7 +6103,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
         except ValueError as exc:
             return jsonify({"ok": False, "error": "edit_failed", "detail": str(exc)}), 400
-        except Exception as exc:  # noqa: BLE001 — fail closed with JSON, not a 500
+        except Exception as exc:
             _log.error("grantee_alias_edit_failed", extra={"err": str(exc)})
             return jsonify({"ok": False, "error": "sync_failed", "detail": str(exc)}), 502
         return jsonify({"ok": True, **result}), 200

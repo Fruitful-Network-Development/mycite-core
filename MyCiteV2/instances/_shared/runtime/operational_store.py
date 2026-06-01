@@ -127,6 +127,6 @@ def resolve_selected_domain(
 
 __all__ = [
     "load_grantee_profiles",
-    "resolve_selected_grantee",
     "resolve_selected_domain",
+    "resolve_selected_grantee",
 ]

@@ -101,7 +101,10 @@ class ToolSurfaceRedirectTests(unittest.TestCase):
     def test_cts_gis_redirects_with_tool_filter(self) -> None:
         resp = self._client.get("/portal/system/tools/cts-gis", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertIn("tool=cts_gis", resp.headers["Location"])
+        # Canonical palette filter key is `tools` (plural) — the workbench query
+        # canonicalizer (shell.py: query["tools"] = ...) normalizes the legacy
+        # singular `tool` into it. Pin the canonical form.
+        self.assertIn("tools=cts_gis", resp.headers["Location"])
         self.assertTrue(resp.headers["Location"].startswith("/portal/system"))
 
 

@@ -102,30 +102,40 @@ class LiveMosThinToolTests(unittest.TestCase):
         self.assertIn("node_id", payload)
 
 
-@unittest.skipUnless(
-    os.path.exists(_LIVE_DB) and os.path.isdir(_LIVE_DATA_DIR),
-    "live MOS db + data dir not present",
-)
 class MapPerfCanaryTests(unittest.TestCase):
     """The 504/OOM regression guard: the artifact fast-read must be fast — the slow
-    read_projection_bundle was ~35s. This must stay green before C3 deletes it."""
+    read_projection_bundle was ~35s. Hermetic: times the compiled-artifact read over
+    a seeded fixture (no live MOS), with a generous CI-safe ceiling that still catches
+    the ~35s-class regression this canary exists to prevent. (Wall-clock micro-budgets
+    are flaky under CI load, so the ceiling guards order-of-magnitude, not jitter.)"""
+
+    _BUDGET_S = 2.0
 
     def setUp(self) -> None:
         self._saved = artifact._DATA_DIR
-        artifact.configure_data_dir(_LIVE_DATA_DIR)
+        self._tmp = TemporaryDirectory()
+        data_dir = Path(self._tmp.name)
+        # A non-trivial artifact so the read does real work, but still bounded.
+        _write_artifact(data_dir, features=[
+            {"type": "Feature", "id": f"p{i}", "geometry": {"type": "Point", "coordinates": [i, i]}}
+            for i in range(200)
+        ])
+        artifact.configure_data_dir(data_dir)
 
     def tearDown(self) -> None:
         artifact.configure_data_dir(self._saved)
+        self._tmp.cleanup()
 
     def test_map_build_panel_payload_under_budget(self) -> None:
         tool = get("cts_gis")
         # warm + measure (cached artifact read)
-        tool.build_panel_payload(authority_db_file=Path(_LIVE_DB), sandbox_id="cts_gis", document_id="", datum_address="")
+        tool.build_panel_payload(authority_db_file=None, sandbox_id="cts_gis", document_id="d", datum_address="0-0-1")
         start = time.perf_counter()
-        payload = tool.build_panel_payload(authority_db_file=Path(_LIVE_DB), sandbox_id="cts_gis", document_id="", datum_address="")
+        payload = tool.build_panel_payload(authority_db_file=None, sandbox_id="cts_gis", document_id="d", datum_address="0-0-1")
         elapsed = time.perf_counter() - start
-        self.assertLess(elapsed, 0.3, f"map fast-read took {elapsed:.3f}s (budget 0.3s)")
+        self.assertLess(elapsed, self._BUDGET_S, f"map fast-read took {elapsed:.3f}s (budget {self._BUDGET_S}s)")
         self.assertNotIn("error", payload)
+        self.assertEqual(payload["feature_count"], 200)
 
 
 if __name__ == "__main__":

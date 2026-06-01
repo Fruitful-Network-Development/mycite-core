@@ -76,7 +76,7 @@ class _FakeStore:
     def __init__(self, docs):
         self._docs = tuple(docs)
 
-    def read_authoritative_datum_documents(self, request):  # noqa: ARG002
+    def read_authoritative_datum_documents(self, request):
         return type("R", (), {"documents": self._docs})()
 
 

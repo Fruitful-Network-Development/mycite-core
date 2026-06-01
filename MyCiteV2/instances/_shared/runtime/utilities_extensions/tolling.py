@@ -38,7 +38,7 @@ import json
 import logging
 import re
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -211,9 +211,8 @@ def bandwidth_share_by_domain(
     # Treat the date bounds as UTC midnight, matching how nginx logs
     # tag entries with offset-aware timestamps (we don't shift, we
     # compare to the same instant in time across timezones).
-    from datetime import timezone
-    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=timezone.utc)
-    end_dt = datetime.combine(end, datetime.min.time(), tzinfo=timezone.utc)
+    start_dt = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
+    end_dt = datetime.combine(end, datetime.min.time(), tzinfo=UTC)
 
     if not root.exists():
         return {}
@@ -525,9 +524,9 @@ def upsert_tolling_row(
     in the grantee's tolling JSON. Atomic write via tempfile+rename so
     a half-written file never replaces a good one. Returns the new
     full snapshot."""
-    from datetime import UTC, datetime
     import os
     import tempfile
+    from datetime import UTC, datetime
 
     path = _tolling_path_for(msn_id, fnd_csm_root)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -623,7 +622,6 @@ def _hash_line_id(period: str, service: str, usage_type: str, attribution_key: s
 
 def _period_window(period: str) -> tuple[str, str]:
     """YYYY-MM → (start_iso, end_exclusive_iso)."""
-    from calendar import monthrange
     from datetime import date as _date
 
     try:
@@ -659,6 +657,7 @@ def _domain_to_msn(
 # Operator sets these in the systemd unit / shell env. Default prefix
 # matches the ses_event_sink Lambda's default.
 import os as _os
+
 _SES_EVENTS_BUCKET_ENV = "MYCITE_SES_EVENTS_BUCKET"
 _SES_EVENTS_PREFIX_ENV = "MYCITE_SES_EVENTS_PREFIX"
 _SES_EVENTS_PREFIX_DEFAULT = "ses_events"
@@ -707,7 +706,8 @@ def _aggregate_ses_event_metrics(
         return empty
 
     # Date list: start .. end_excl - 1 day. Both are YYYY-MM-DD ISO strings.
-    from datetime import date as _date, timedelta
+    from datetime import date as _date
+    from datetime import timedelta
     try:
         start_d = _date.fromisoformat(start)
         end_d = _date.fromisoformat(end_excl)
@@ -723,7 +723,7 @@ def _aggregate_ses_event_metrics(
         try:
             import boto3
             s3_client = boto3.client("s3")
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.warning("tolling_ses_metrics_s3_client_init_failed", exc_info=True)
             return empty
 
@@ -775,7 +775,7 @@ def _aggregate_ses_event_metrics(
                         break
                 else:
                     break
-        except Exception:  # noqa: BLE001
+        except Exception:
             _log.warning(
                 "tolling_ses_metrics_domain_listing_failed", exc_info=True
             )
@@ -792,7 +792,7 @@ def compute_ledger_for_period(
     analytics_root: str | Path = _DEFAULT_ANALYTICS_ROOT,
 ) -> dict[str, Any]:
     """Build a complete ledger row for the period from live AWS + nginx data."""
-    from datetime import UTC, date as _date, datetime
+    from datetime import UTC, datetime
 
     start, end_excl = _period_window(period)
 
@@ -1237,7 +1237,7 @@ def derive_invoice_for_grantee(
     # for now emit only if the operator has decided to expose bandwidth attribution explicitly).
     # Skip: data_transfer lines are already routed via shared_pool/direct above.
 
-    subtotal_billable = sum(float(l["amount"]) for l in billable_lines)
+    subtotal_billable = sum(float(line["amount"]) for line in billable_lines)
     minimum = (rules.get("defaults") or {}).get("minimum_invoice") or "0.00"
     try:
         minimum_v = float(minimum)
@@ -1355,7 +1355,6 @@ def compute_tolling_row(
 
     `aws_peripheral` is an `AwsPeripheralCloudAdapter` (injected so
     callers can pass a singleton or a mock)."""
-    from calendar import monthrange
     from datetime import date as _date
 
     try:
@@ -1364,8 +1363,6 @@ def compute_tolling_row(
     except ValueError as exc:
         raise ValueError(f"period must be YYYY-MM, got {period!r}") from exc
     start = _date(year, month, 1)
-    last_day = monthrange(year, month)[1]
-    end = _date(year, month, last_day) if month != 12 else _date(year, 12, 31)
     # half-open: end_exclusive = first of next month, or 31-day-month for Dec.
     if month == 12:
         end_exclusive = _date(year + 1, 1, 1)

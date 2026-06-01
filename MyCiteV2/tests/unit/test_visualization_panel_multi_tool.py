@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import unittest
 
-from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import _build_visualization_panel
+from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+    _build_visualization_panel,
+)
 from MyCiteV2.packages.state_machine.portal_shell import (
     WORKBENCH_UI_TOOL_SURFACE_ID,
     canonical_query_for_surface_query,

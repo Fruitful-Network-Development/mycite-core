@@ -35,7 +35,7 @@ import logging
 import os
 import sys
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 try:
@@ -48,14 +48,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (  # noqa: E402
+from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
     load_grantee_directory,
 )
-from MyCiteV2.packages.adapters.sql.fnd_email_deliverability import (  # noqa: E402
+from MyCiteV2.packages.adapters.sql.fnd_email_deliverability import (
     EVENT_KEYS,
     MosDatumEmailDeliverabilityAdapter,
 )
-
 
 _log = logging.getLogger("sync_ses_events")
 
@@ -203,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         prefix = f"{args.events_prefix.strip('/')}/{domain}/"
         try:
             keys = _list_keys(s3, args.events_bucket, prefix)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             _log.error("%s — list failed: %s", domain, exc)
             continue
         if not keys:

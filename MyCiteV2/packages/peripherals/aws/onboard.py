@@ -29,7 +29,6 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import os
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -155,7 +154,7 @@ def _profile_payload(
         },
         "workflow": {
             "lifecycle_state": "operational",
-            "onboarded_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+            "onboarded_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
         },
     }
 
@@ -190,7 +189,6 @@ def onboard_alias(
             f"no existing profile on {domain} — pass --tenant-slug for the first user on a new client "
             f"(by convention: a short org name, e.g. cvccboard for cvccboard.org)."
         )
-    grantee = getattr(store, "grantee", "fnd")
     path = _profile_path(store, tenant_slug, local)
     payload = _profile_payload(
         grantee=tenant_slug, domain=domain, local=local,
@@ -332,7 +330,7 @@ def issue_smtp_credentials(
         # re-run is idempotent instead of dying on LimitExceeded.
         try:
             existing = iam.list_access_keys(UserName=iam_user).get("AccessKeyMetadata", [])
-            _epoch = _dt.datetime.min.replace(tzinfo=_dt.timezone.utc)
+            _epoch = _dt.datetime.min.replace(tzinfo=_dt.UTC)
             existing.sort(key=lambda k: k.get("CreateDate") or _epoch)
             while len(existing) >= 2:
                 stale = existing.pop(0)
@@ -397,6 +395,6 @@ def issue_smtp_credentials(
         "packet_paths": packet_paths,
         # Back-compat: first selected client's packet as the singular field.
         "packet_path": packet_paths[selected[0]],
-        "issued_at": _dt.datetime.now(_dt.timezone.utc).isoformat(timespec="seconds"),
+        "issued_at": _dt.datetime.now(_dt.UTC).isoformat(timespec="seconds"),
     }
     return summary

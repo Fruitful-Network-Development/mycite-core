@@ -23,7 +23,7 @@ from MyCiteV2.packages.core.datum_ops import (
     samras_deps,
     workbook_codec,
 )
-from MyCiteV2.packages.core.datum_ops.node_ops import RelocateNode as _Reloc  # noqa: F401
+from MyCiteV2.packages.core.datum_ops.node_ops import RelocateNode as _Reloc
 from MyCiteV2.packages.core.mss import compute_mss_hash
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
