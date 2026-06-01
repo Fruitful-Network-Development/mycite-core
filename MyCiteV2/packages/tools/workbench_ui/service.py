@@ -433,6 +433,15 @@ def _preferred_document_id(document_rows: list[dict[str, Any]]) -> str:
 _GLOBAL_SURFACE_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 _SURFACE_CACHE_MAX_ENTRIES = 256
 
+# The catalog fingerprint is a SHA-256 over every row of every document, so it is
+# wasteful to recompute on every request (it runs before the surface-cache lookup,
+# so even cache HITs pay it). The catalog content is fully determined by the db
+# file's mtime — the same freshness signal the datum store keys its own catalog
+# cache on — so memoize the fingerprint per (db_file, mtime_ns). A write bumps the
+# mtime (the store guarantees this), yielding a new key and a fresh fingerprint.
+_FINGERPRINT_MEMO: dict[tuple[str, int], str] = {}
+_FINGERPRINT_MEMO_MAX_ENTRIES = 64
+
 
 def _catalog_fingerprint(catalog: Any) -> str:
     digest = hashlib.sha256()
@@ -462,8 +471,9 @@ def _surface_cache_key(
     query: dict[str, Any],
     enabled_lens_ids: frozenset[str] | None = None,
     hash_policy: str = "mss_sha256_v1",
+    catalog_fingerprint: str | None = None,
 ) -> tuple[Any, ...]:
-    fingerprint = _catalog_fingerprint(catalog)
+    fingerprint = catalog_fingerprint if catalog_fingerprint is not None else _catalog_fingerprint(catalog)
     # The enabled-lens policy changes the rendered display values, so it MUST be
     # part of the key (None = all-enabled is its own distinct bucket).
     lens_key = "*" if enabled_lens_ids is None else ",".join(sorted(enabled_lens_ids))
@@ -665,6 +675,23 @@ class WorkbenchUiReadService:
         # Build the closure index ONLY in binary mode (default mode never needs
         # it, so there's zero added cost when the flag is unset).
         mss_index = build_catalog_index(catalog) if hash_policy == _MSS_BINARY_POLICY else None
+        # Memoize the (expensive) catalog fingerprint by db mtime — see
+        # _FINGERPRINT_MEMO. Falls back to a direct compute if the file can't
+        # be stat'd (then the catalog itself would be empty/unavailable anyway).
+        try:
+            _mtime_ns = os.stat(self._db_file).st_mtime_ns
+        except OSError:
+            _mtime_ns = -1
+        if _mtime_ns < 0:
+            fingerprint = _catalog_fingerprint(catalog)
+        else:
+            fp_key = (str(self._db_file), _mtime_ns)
+            fingerprint = _FINGERPRINT_MEMO.get(fp_key)
+            if fingerprint is None:
+                fingerprint = _catalog_fingerprint(catalog)
+                if len(_FINGERPRINT_MEMO) >= _FINGERPRINT_MEMO_MAX_ENTRIES:
+                    _FINGERPRINT_MEMO.clear()
+                _FINGERPRINT_MEMO[fp_key] = fingerprint
         cache_key = _surface_cache_key(
             db_file=str(self._db_file),
             portal_instance_id=portal_instance_id,
@@ -672,6 +699,7 @@ class WorkbenchUiReadService:
             query=query,
             enabled_lens_ids=enabled_lens_ids,
             hash_policy=hash_policy,
+            catalog_fingerprint=fingerprint,
         )
         cached = _GLOBAL_SURFACE_CACHE.get(cache_key)
         if cached is not None:

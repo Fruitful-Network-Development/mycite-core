@@ -1400,7 +1400,14 @@ class AwsPeripheralCloudAdapter(AwsPeripheralPort):
         }
         clauses: list[dict[str, Any]] = []
         if tag_filter:
-            clauses.append({"Tags": tag_filter})
+            tags = dict(tag_filter)
+            # Cost Explorer rejects a Tags expression that carries Values together
+            # with an ABSENT/NULL MatchOption ("Tags expression must not have
+            # values set when ABSENT is provided"). Strip Values in that case so
+            # an "untagged residue" query (MatchOptions=[ABSENT]) is valid.
+            if any(opt in ("ABSENT", "NULL") for opt in (tags.get("MatchOptions") or [])):
+                tags.pop("Values", None)
+            clauses.append({"Tags": tags})
         if service_filter:
             clauses.append({"Dimensions": {"Key": "SERVICE", "Values": list(service_filter)}})
         if len(clauses) == 1:

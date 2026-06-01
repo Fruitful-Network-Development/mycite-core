@@ -822,11 +822,17 @@ def compute_ledger_for_period(
         known_msns = [OPERATOR_MSN_ID] + [m for m in known_msns if m != OPERATOR_MSN_ID]
 
     for msn in known_msns:
-        lines = aws_peripheral.get_costs_breakdown(
-            start=start, end=end_excl,
-            group_by=("SERVICE", "USAGE_TYPE"),
-            tag_filter={"Key": "msn_id", "Values": [msn]},
-        )
+        try:
+            lines = aws_peripheral.get_costs_breakdown(
+                start=start, end=end_excl,
+                group_by=("SERVICE", "USAGE_TYPE"),
+                tag_filter={"Key": "msn_id", "Values": [msn]},
+            )
+        except Exception:
+            # A transient/throttled Cost Explorer error for one grantee must not
+            # abort the whole ledger (matches the residue query's guard below).
+            _log.warning("tolling_grantee_breakdown_query_failed", exc_info=True)
+            continue
         is_operator = (msn == OPERATOR_MSN_ID)
         for ln in lines:
             keys = tuple(ln.get("keys") or ())

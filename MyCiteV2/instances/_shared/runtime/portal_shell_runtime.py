@@ -1318,6 +1318,9 @@ def _bundle_for_surface(
             portal_scope=portal_scope,
             seed_anchor_file=shell_state is None,
         )
+        from MyCiteV2.instances._shared.runtime.portal_lens_runtime import (
+            enabled_lens_ids as _enabled_lens_ids,
+        )
         bundle = build_portal_workbench_ui_bundle(
             portal_scope=portal_scope,
             portal_domain=portal_domain,
@@ -1325,6 +1328,9 @@ def _bundle_for_surface(
             authority_db_file=authority_db_file,
             tool_rows=tool_rows,
             surface_query=surface_query,
+            # Apply the operator's Control-Panel lens toggles on the /portal/system
+            # landing surface too (previously all-enabled regardless of toggles).
+            enabled_lens_ids=_enabled_lens_ids(private_dir),
         )
         # The workbench bundle stamps WORKBENCH_UI identifiers on the
         # surface_payload; rewrite them for the SYSTEM root so
