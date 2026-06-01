@@ -60,7 +60,7 @@ class DryRunTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             db = Path(tmp) / "mos.sqlite3"
             old_id = _seed(db)
-            mapping, _report, skipped = tool.compute_mapping(str(db), "fnd")
+            mapping, _report, skipped, _index = tool.compute_mapping(str(db), "fnd")
             self.assertEqual(len(mapping), 1)
             self.assertEqual(skipped, 0)
             m = mapping[0]
@@ -74,11 +74,14 @@ class ApplyTests(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             db = Path(tmp) / "copy.sqlite3"
             old_id = _seed(db)
-            mapping, _, _ = tool.compute_mapping(str(db), "fnd")
+            old_row = _store(db).read_datum_semantic_identity(
+                tenant_id="fnd", document_id=old_id, datum_address="1-1-1"
+            )
+            mapping, _, _, index = tool.compute_mapping(str(db), "fnd")
             new_id = mapping[0]["new_document_id"]
             new_vh = mapping[0]["new_version_hash"]
 
-            backup = tool.apply_mapping(str(db), "fnd", mapping)
+            backup = tool.apply_mapping(str(db), "fnd", mapping, index)
             self.assertTrue(backup.exists())
 
             # Read path (snapshot) now serves the NEW document_id.
@@ -92,22 +95,26 @@ class ApplyTests(unittest.TestCase):
             ident = _store(db).read_document_version_identity(tenant_id="fnd", document_id=new_id)
             self.assertEqual(ident["version_hash"], new_vh)
             self.assertEqual(ident["policy"], "mos.mss_binary_v2")
-            # Row semantics were re-keyed to the new document_id (not orphaned).
+            # Row semantics re-keyed to the new document_id AND cut over to binary
+            # hyphae (new policy + a changed hyphae_hash).
             row_sem = _store(db).read_datum_semantic_identity(
                 tenant_id="fnd", document_id=new_id, datum_address="1-1-1"
             )
             self.assertIsNotNone(row_sem)
+            self.assertEqual(row_sem["policy"], "mos.mss_binary_v2")
+            self.assertTrue(row_sem["hyphae_hash"].startswith("sha256:"))
+            self.assertNotEqual(row_sem["hyphae_hash"], old_row["hyphae_hash"])
 
     def test_apply_refuses_the_live_db_path(self) -> None:
         with TemporaryDirectory() as tmp:
             db = Path(tmp) / "mos.sqlite3"
             _seed(db)
-            mapping, _, _ = tool.compute_mapping(str(db), "fnd")
+            mapping, _, _, index = tool.compute_mapping(str(db), "fnd")
             original = tool._LIVE_DB
             try:
                 tool._LIVE_DB = db  # pretend this copy IS the live DB
                 with self.assertRaises(SystemExit):
-                    tool.apply_mapping(str(db), "fnd", mapping)
+                    tool.apply_mapping(str(db), "fnd", mapping, index)
             finally:
                 tool._LIVE_DB = original
 
