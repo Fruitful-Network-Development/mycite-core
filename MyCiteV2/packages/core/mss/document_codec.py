@@ -157,6 +157,23 @@ def _fixed_decode(bits: str, cursor: int, width: int) -> tuple[int, int]:
     return int(bits[cursor:cursor + width], 2), cursor + width
 
 
+def _g_encode_list(values: list[int]) -> str:
+    return "".join(_g_encode(v) for v in values)
+
+
+def _g_decode_list(bits: str, cursor: int, count: int) -> tuple[list[int], int]:
+    values: list[int] = []
+    for _ in range(count):
+        value, cursor = _g_decode(bits, cursor)
+        values.append(value)
+    return values, cursor
+
+
+def _ref_width(active_count: int) -> int:
+    """Bits to index into a layer's active set (0 when ≤1 candidate)."""
+    return bits_required(active_count - 1) if active_count > 1 else 0
+
+
 # --------------------------------------------------------------------------- #
 # Canonicalization (reindex into an isolated anthology)
 # --------------------------------------------------------------------------- #
@@ -284,12 +301,9 @@ def encode_document(datums: list[MssDatum]) -> EncodedMss:
 
     out: list[str] = []
     out.append(_g_encode(meta.layer_count))
-    for c in meta.vg_count_per_layer:
-        out.append(_g_encode(c))
-    for v in meta.vg_value:
-        out.append(_g_encode(v))
-    for c in meta.iter_count:
-        out.append(_g_encode(c))
+    out.append(_g_encode_list(meta.vg_count_per_layer))
+    out.append(_g_encode_list(meta.vg_value))
+    out.append(_g_encode_list(meta.iter_count))
 
     # Group datums by layer (canonical order), and precompute the active set +
     # ref width per layer; emit the COBM for layers > 0.
@@ -316,7 +330,7 @@ def encode_document(datums: list[MssDatum]) -> EncodedMss:
     objects: list[str] = []
     for layer in range(meta.layer_count):
         active = active_set_per_layer[layer]
-        ref_width = bits_required(len(active) - 1) if len(active) > 1 else 0
+        ref_width = _ref_width(len(active))
         index_of = {p.address: i for i, p in enumerate(active)}
         for d in by_layer.get(layer, []):
             # v2 object blob: [is_refs_only:1][arity:g][body]. Arity is explicit,
@@ -360,21 +374,10 @@ def encode_document(datums: list[MssDatum]) -> EncodedMss:
 def decode_document(bitstream: str) -> list[MssDatum]:
     cursor = 0
     layer_count, cursor = _g_decode(bitstream, cursor)
-
-    vg_count_per_layer: list[int] = []
-    for _ in range(layer_count):
-        c, cursor = _g_decode(bitstream, cursor)
-        vg_count_per_layer.append(c)
+    vg_count_per_layer, cursor = _g_decode_list(bitstream, cursor, layer_count)
     total_groups = sum(vg_count_per_layer)
-
-    vg_value: list[int] = []
-    for _ in range(total_groups):
-        v, cursor = _g_decode(bitstream, cursor)
-        vg_value.append(v)
-    iter_count: list[int] = []
-    for _ in range(total_groups):
-        c, cursor = _g_decode(bitstream, cursor)
-        iter_count.append(c)
+    vg_value, cursor = _g_decode_list(bitstream, cursor, total_groups)
+    iter_count, cursor = _g_decode_list(bitstream, cursor, total_groups)
 
     # Reconstruct the canonical (layer, group, iteration) address of every datum
     # and how many datums precede each layer.
@@ -391,7 +394,8 @@ def decode_document(bitstream: str) -> list[MssDatum]:
                 datums_per_layer[layer] += 1
 
     # COBM per layer (layer 0 has none) → active set membership over prior datums.
-    prior_addresses: list[str] = []
+    # specs are layer-major, so the datums before `layer` are exactly the prefix
+    # spec_address[:layer_start_index[layer]].
     layer_start_index: list[int] = []
     idx = 0
     for layer in range(layer_count):
@@ -400,15 +404,8 @@ def decode_document(bitstream: str) -> list[MssDatum]:
     spec_address = [f"{lyr}-{g}-{it}" for (lyr, g, it) in specs]
 
     active_set_per_layer: dict[int, list[str]] = {0: []}
-    accumulated_before_layer: list[list[str]] = []
-    running: list[str] = []
-    for layer in range(layer_count):
-        accumulated_before_layer.append(list(running))
-        start = layer_start_index[layer]
-        running = running + spec_address[start:start + datums_per_layer[layer]]
-
     for layer in range(1, layer_count):
-        prior_addresses = accumulated_before_layer[layer]
+        prior_addresses = spec_address[:layer_start_index[layer]]
         width = len(prior_addresses)
         cobm = bitstream[cursor:cursor + width]
         if len(cobm) != width:
@@ -444,7 +441,7 @@ def decode_document(bitstream: str) -> list[MssDatum]:
     datums: list[MssDatum] = []
     for (layer, group_number, iteration), blob in zip(specs, blobs, strict=True):
         active = active_set_per_layer.get(layer, [])
-        ref_width = bits_required(len(active) - 1) if len(active) > 1 else 0
+        ref_width = _ref_width(len(active))
         if not blob:
             raise MssFormatError(f"empty object blob for {layer}-{group_number}-{iteration}")
         is_refs_only = blob[0] == "1"

@@ -23,15 +23,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from MyCiteV2.packages.core.datum_semantics.engine import (
+    is_datum_address,
+    parse_datum_address,
+)
+
 from .document_codec import MssDatum
-
-
-def _is_address(token: Any) -> bool:
-    return (
-        isinstance(token, str)
-        and token.count("-") == 2
-        and all(part.isdigit() for part in token.split("-"))
-    )
 
 
 def _strip_rf(token: Any) -> Any:
@@ -77,49 +74,51 @@ def build_catalog_index(catalog: Any) -> dict[str, list[Any]]:
         rows = list(document.rows) + list(getattr(document, "anchor_rows", ()) or [])
         for row in rows:
             address = row.datum_address
-            if _is_address(address) and address not in index:
+            if is_datum_address(address) and address not in index:
                 head = _row_head(row.raw)
                 if head is not None:
                     index[address] = head
     return index
 
 
+def _resolve_ref(
+    token: Any, layer: int, index: dict[str, list[Any]], report: MssAdapterReport
+) -> str | None:
+    """Strip an ``rf.`` marker and validate a reference: it must be a datum address,
+    present in the catalog, and strictly downward. Drops are counted in ``report``;
+    returns the clean address or ``None``."""
+    ref = _strip_rf(token)
+    if not is_datum_address(ref):
+        report.dropped_malformed += 1
+        return None
+    if ref not in index:
+        report.dropped_dangling += 1
+        return None
+    if parse_datum_address(ref)[0] >= layer:
+        report.dropped_upward += 1
+        return None
+    return ref
+
+
 def _parse_row(address: str, head: list[Any], index: dict[str, list[Any]], report: MssAdapterReport):
-    layer = int(address.split("-")[0])
-    coords = tuple(int(p) for p in address.split("-"))
+    coords = parse_datum_address(address)
+    layer = coords[0]
     body = head[1:]
     deps: list[str] = []
     if body and body[0] == "~":
-        refs: list[str] = []
         for token in body[1:]:
-            ref = _strip_rf(token)
-            if not _is_address(ref):
-                report.dropped_malformed += 1
-                continue
-            if ref not in index:
-                report.dropped_dangling += 1
-                continue
-            if int(ref.split("-")[0]) >= layer:
-                report.dropped_upward += 1
-                continue
-            refs.append(ref)
-            deps.append(ref)
-        return MssDatum(*coords, refs=tuple(refs)), deps
+            ref = _resolve_ref(token, layer, index, report)
+            if ref is not None:
+                deps.append(ref)
+        return MssDatum(*coords, refs=tuple(deps)), deps
     if len(body) % 2:
         report.dropped_malformed += 1
     tuples: list[tuple[str, int]] = []
     for i in range(0, len(body) - 1, 2):
-        ref = _strip_rf(body[i])
+        ref = _resolve_ref(body[i], layer, index, report)
+        if ref is None:
+            continue
         magnitude = _coerce_magnitude(body[i + 1])
-        if not _is_address(ref):
-            report.dropped_malformed += 1
-            continue
-        if ref not in index:
-            report.dropped_dangling += 1
-            continue
-        if int(ref.split("-")[0]) >= layer:
-            report.dropped_upward += 1
-            continue
         if magnitude is None:
             report.dropped_malformed += 1
             continue
@@ -136,7 +135,7 @@ def _closure_from_seeds(
     """Transitive downward closure of ``seeds`` as ``MssDatum``s, resolved against
     ``index`` (which spans the whole tenant, so cross-document refs resolve)."""
     out: dict[str, MssDatum] = {}
-    work = [a for a in seeds if _is_address(a)]
+    work = [a for a in seeds if is_datum_address(a)]
     while work:
         address = work.pop()
         if address in out or address not in index:
@@ -154,7 +153,7 @@ def document_closure_to_mss(
     """The document's transitive downward closure as ``MssDatum``s. Feed the result
     to :func:`core.mss.document_codec.mss_document_hash`."""
     report = report if report is not None else MssAdapterReport()
-    seeds = [r.datum_address for r in document.rows if _is_address(r.datum_address)]
+    seeds = [r.datum_address for r in document.rows if is_datum_address(r.datum_address)]
     closure = _closure_from_seeds(seeds, index, report)
     report.documents += 1
     return closure
