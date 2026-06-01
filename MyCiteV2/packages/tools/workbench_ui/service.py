@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,12 @@ from MyCiteV2.packages.core.datum_semantics import (
     datum_address_sort_key,
     parse_datum_address,
 )
+from MyCiteV2.packages.core.mss import (
+    build_catalog_index,
+    datum_closure_to_mss,
+    document_closure_to_mss,
+    mss_document_hash,
+)
 from MyCiteV2.packages.modules.domains.datum_recognition import recognize_authoritative_document
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -30,6 +37,18 @@ from MyCiteV2.packages.ports.directive_context import (
 from MyCiteV2.packages.state_machine.lens import resolve_datum_lens
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
+# Canonical hash policy for the render. Default = the JSON+SHA256 stand-in
+# (mos.mss_sha256_v1). Set MOS_CANONICAL_HASH=mss_binary_v2 to make the render
+# compute the BINARY MSS document hash + per-datum binary hyphae, so it agrees
+# with a store migrated by scripts/recompile_datum_semantics. Flag-gated → with
+# the flag unset, behavior is byte-for-byte unchanged (the golden test holds).
+_MSS_BINARY_POLICY = "mss_binary_v2"
+
+
+def _canonical_hash_policy() -> str:
+    return (os.environ.get("MOS_CANONICAL_HASH") or "").strip() or "mss_sha256_v1"
+
+
 WORKBENCH_UI_DEFAULT_DOCUMENT_SORT = "version_hash"
 WORKBENCH_UI_DEFAULT_ROW_SORT = "datum_address"
 WORKBENCH_UI_DEFAULT_GROUP = "flat"
@@ -442,6 +461,7 @@ def _surface_cache_key(
     catalog: Any,
     query: dict[str, Any],
     enabled_lens_ids: frozenset[str] | None = None,
+    hash_policy: str = "mss_sha256_v1",
 ) -> tuple[Any, ...]:
     fingerprint = _catalog_fingerprint(catalog)
     # The enabled-lens policy changes the rendered display values, so it MUST be
@@ -452,6 +472,7 @@ def _surface_cache_key(
         portal_instance_id,
         fingerprint,
         lens_key,
+        hash_policy,
         _as_text(query.get("document")),
         _as_text(query.get("row")),
         _as_text(query.get("sandbox_filter")),
@@ -483,13 +504,20 @@ class WorkbenchUiReadService:
         *,
         tenant_id: str,
         document: AuthoritativeDatumDocument,
+        mss_index: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         del tenant_id  # identity is derived from the document, not a SQL lookup
         # Phase 3 cut-over: derive the version identity from the document via the
         # core engine — the SAME engine the store uses at write time
         # (store_authoritative_catalog → build_document_semantics) — instead of
         # reading the persisted SQL projection. One materialized source of truth.
-        version_hash = _as_text(build_document_version_identity(document).get("version_hash"))
+        # When MOS_CANONICAL_HASH=mss_binary_v2 (mss_index provided), the canonical
+        # identity is the BINARY MSS hash of the document's tenant-wide downward
+        # closure — matching a store migrated by recompile_datum_semantics.
+        if mss_index is not None:
+            version_hash = mss_document_hash(document_closure_to_mss(document, index=mss_index))
+        else:
+            version_hash = _as_text(build_document_version_identity(document).get("version_hash"))
         return {
             "document_id": document.document_id,
             "document_name": document.document_name,
@@ -508,6 +536,7 @@ class WorkbenchUiReadService:
         tenant_id: str,
         document: AuthoritativeDatumDocument,
         enabled_lens_ids: frozenset[str] | None = None,
+        mss_index: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         del tenant_id  # semantics are derived from the document, not a SQL lookup
         # Phase 3 cut-over: derive every row's semantics in ONE core-engine pass
@@ -530,7 +559,18 @@ class WorkbenchUiReadService:
             layer, value_group, iteration = parse_datum_address(row.datum_address)
             semantics = row_semantics.get(row.datum_address)
             recognized = recognized_rows.get(row.datum_address)
-            hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
+            # Binary mode: the per-datum hyphae is the MSS hash of its downward
+            # closure (matching recompile_datum_semantics); semantic_hash + the
+            # other derived fields stay on the engine fold (as the migration left
+            # them). Default mode keeps the engine hyphae_hash.
+            _binary_closure = (
+                datum_closure_to_mss(row.datum_address, index=mss_index)
+                if mss_index is not None else None
+            )
+            if _binary_closure is not None:
+                hyphae_hash = mss_document_hash(_binary_closure)
+            else:
+                hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
             semantic_hash = _as_text((semantics or {}).get("semantic_hash"))
             recognized_family = _as_text(getattr(recognized, "recognized_family", ""))
             recognized_anchor = _as_text(getattr(recognized, "recognized_anchor", ""))
@@ -553,8 +593,13 @@ class WorkbenchUiReadService:
                 _object_ref(row.raw, datum_address=row.datum_address),
             )
             raw_json = _json_text(row.raw)
-            hyphae_chain = dict((semantics or {}).get("hyphae_chain") or {})
-            hyphae_chain_addresses = list(hyphae_chain.get("addresses") or [])
+            if _binary_closure is not None:
+                hyphae_chain_addresses = [d.address for d in _binary_closure]
+                hyphae_policy = "mos.mss_binary_v2"
+            else:
+                hyphae_chain = dict((semantics or {}).get("hyphae_chain") or {})
+                hyphae_chain_addresses = list(hyphae_chain.get("addresses") or [])
+                hyphae_policy = _as_text((semantics or {}).get("policy"))
             local_references = list((semantics or {}).get("local_references") or [])
             items.append(
                 {
@@ -586,7 +631,7 @@ class WorkbenchUiReadService:
                     "hyphae_hash_short": _short_hash(hyphae_hash),
                     "semantic_hash": semantic_hash,
                     "semantic_hash_short": _short_hash(semantic_hash),
-                    "hyphae_policy": _as_text((semantics or {}).get("policy")),
+                    "hyphae_policy": hyphae_policy,
                     "hyphae_chain_addresses": hyphae_chain_addresses,
                     "hyphae_chain_length": len(hyphae_chain_addresses),
                     "local_references": local_references,
@@ -616,12 +661,17 @@ class WorkbenchUiReadService:
         catalog = self._datum_store.read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id=portal_instance_id)
         )
+        hash_policy = _canonical_hash_policy()
+        # Build the closure index ONLY in binary mode (default mode never needs
+        # it, so there's zero added cost when the flag is unset).
+        mss_index = build_catalog_index(catalog) if hash_policy == _MSS_BINARY_POLICY else None
         cache_key = _surface_cache_key(
             db_file=str(self._db_file),
             portal_instance_id=portal_instance_id,
             catalog=catalog,
             query=query,
             enabled_lens_ids=enabled_lens_ids,
+            hash_policy=hash_policy,
         )
         cached = _GLOBAL_SURFACE_CACHE.get(cache_key)
         if cached is not None:
@@ -635,6 +685,7 @@ class WorkbenchUiReadService:
             query=query,
             catalog=catalog,
             enabled_lens_ids=enabled_lens_ids,
+            mss_index=mss_index,
         )
 
         # Directive overlays are live, advisory annotations served from a
@@ -654,6 +705,7 @@ class WorkbenchUiReadService:
         query: dict[str, Any],
         catalog: Any,
         enabled_lens_ids: frozenset[str] | None = None,
+        mss_index: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         selected_document_id = _as_text(query.get("document"))
         selected_row_id = _as_text(query.get("row"))
@@ -695,7 +747,9 @@ class WorkbenchUiReadService:
                 if marker in _as_text(document.document_id)
             ]
         document_rows = [
-            self._build_document_entry(tenant_id=portal_instance_id, document=document)
+            self._build_document_entry(
+                tenant_id=portal_instance_id, document=document, mss_index=mss_index
+            )
             for document in documents
         ]
         if document_filter:
@@ -728,6 +782,7 @@ class WorkbenchUiReadService:
                 tenant_id=portal_instance_id,
                 document=active_document,
                 enabled_lens_ids=enabled_lens_ids,
+                mss_index=mss_index,
             )
         if text_filter:
             rows = [row for row in rows if text_filter in _row_filter_haystack(row)]

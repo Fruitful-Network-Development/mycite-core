@@ -196,6 +196,46 @@ class WorkbenchUiMaterializationTests(unittest.TestCase):
             "read_surface output drifted from the golden snapshot",
         )
 
+    def test_binary_flag_renders_binary_mss_matching_the_codec(self) -> None:
+        # With MOS_CANONICAL_HASH=mss_binary_v2 the render computes the binary MSS
+        # document hash + per-datum binary hyphae — the SAME values
+        # recompile_datum_semantics writes — so render agrees with a migrated store.
+        import os
+
+        from MyCiteV2.packages.core.mss import (
+            binary_hyphae_value,
+            build_catalog_index,
+            document_closure_to_mss,
+            mss_document_hash,
+        )
+
+        txa_id = _QUERIES["txa_selected_grouped"]["document"]
+        cat = self._store().read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+        )
+        index = build_catalog_index(cat)
+        txa = next(d for d in cat.documents if d.document_id == txa_id)
+        expected_version = mss_document_hash(document_closure_to_mss(txa, index=index))
+        expected_hyphae = binary_hyphae_value("4-2-4", index=index)
+
+        baseline = self._surface(_QUERIES["txa_selected_grouped"])
+        prev = os.environ.get("MOS_CANONICAL_HASH")
+        try:
+            os.environ["MOS_CANONICAL_HASH"] = "mss_binary_v2"
+            model = self._surface(_QUERIES["txa_selected_grouped"])
+        finally:
+            if prev is None:
+                os.environ.pop("MOS_CANONICAL_HASH", None)
+            else:
+                os.environ["MOS_CANONICAL_HASH"] = prev
+
+        self.assertEqual(model["document_version_hash"], expected_version)
+        self.assertNotEqual(baseline["document_version_hash"], model["document_version_hash"])
+        rows = model.get("visible_row_items") or model.get("rows") or []
+        row = next(r for r in rows if r["datum_address"] == "4-2-4")
+        self.assertEqual(row["hyphae_hash"], expected_hyphae)
+        self.assertEqual(row["hyphae_policy"], "mos.mss_binary_v2")
+
 
 if __name__ == "__main__":
     unittest.main()
