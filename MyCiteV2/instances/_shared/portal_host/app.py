@@ -3870,6 +3870,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except OSError:
             return 0.0
 
+    def _configured_fnd_csm_root() -> Path:
+        # Grantee profiles live under the app's CONFIGURED private_dir. Resolving
+        # against this (rather than the tolling module's hardcoded default live
+        # path) is a no-op on the deploy host — where private_dir IS
+        # /srv/webapps/mycite/fnd/private — and the only thing that makes grantee
+        # resolution work under a test/non-default config.
+        return Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+
     def _is_operator_request() -> bool:
         # Operator context = no oauth2-proxy grantee header. Mirrors
         # the convention used by /__fnd/tolling/refresh.
@@ -4895,7 +4903,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # proxy carrying its own X-Auth-Request-Grantee header, so reject anyone
         # who resolves to a non-operator grantee. (Mirrors the ledger/billing-rules
         # gate; the operator surface is header-absent and still passes.)
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5325,9 +5333,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             grantee_for_domain,
             resolve_grantee_from_headers,
         )
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(_normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None:
             short = str(caller.get("short_name", "")).lower()
             if short and short != "bpw":
@@ -5437,7 +5445,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         # Operator-only — reject any logged-in grantee caller. No
         # oauth2-proxy headers = operator context (dev tooling, cron).
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5471,7 +5479,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5493,7 +5501,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
         return jsonify({"ok": True, "rules": read_billing_rules()}), 200
@@ -5513,7 +5521,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             write_billing_rules,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
 
@@ -5583,9 +5591,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(_normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
             return jsonify({"ok": True, "grantee": None}), 200
         return jsonify({
@@ -5607,9 +5615,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
         requested_msn = _as_text(request.args.get("grantee"))
-        caller = resolve_grantee_from_headers(request.headers)
+        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
         if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host))
+            caller = grantee_for_domain(
+                _normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root()
+            )
         if caller is not None:
             caller_msn = _as_text(caller.get("msn_id"))
             if requested_msn and requested_msn != caller_msn:

@@ -14,6 +14,8 @@ import sys
 import unittest
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -22,6 +24,18 @@ WEBAPPS_ROOT = Path("/srv/webapps")
 SITE_CORE = WEBAPPS_ROOT / "clients" / "_shared" / "site-core"
 JS_DIR = SITE_CORE / "js"
 EXT_DIR = JS_DIR / "extensions"
+
+# The shared site-core bundle (form-utils.js, the extensions, the docs) is a
+# deploy artifact owned by the *webapps* repo and distributed by sync_site_core.py
+# — it has no source copy in mycite-core, so it is absent in CI. These are
+# deploy postconditions: they run on the deploy host (and any checkout with
+# /srv/webapps present) and skip elsewhere. They belong long-term in the webapps
+# repo's own suite.
+pytestmark = pytest.mark.skipif(
+    not SITE_CORE.is_dir(),
+    reason="shared site-core bundle (/srv/webapps/clients/_shared/site-core) is a "
+    "webapps-repo deploy artifact, absent in mycite-core CI",
+)
 
 
 class SharedLibraryLayoutTests(unittest.TestCase):
