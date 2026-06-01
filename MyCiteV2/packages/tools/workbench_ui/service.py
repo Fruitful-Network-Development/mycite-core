@@ -11,11 +11,13 @@ from MyCiteV2.packages.adapters.sql import (
     SqliteDirectiveContextAdapter,
     SqliteSystemDatumStoreAdapter,
 )
-from MyCiteV2.packages.adapters.sql.datum_semantics import (
+from MyCiteV2.packages.core.datum_rules import family_column_template
+from MyCiteV2.packages.core.datum_semantics import (
+    build_document_semantics,
+    build_document_version_identity,
     datum_address_sort_key,
     parse_datum_address,
 )
-from MyCiteV2.packages.core.datum_rules import family_column_template
 from MyCiteV2.packages.modules.domains.datum_recognition import recognize_authoritative_document
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -477,11 +479,12 @@ class WorkbenchUiReadService:
         tenant_id: str,
         document: AuthoritativeDatumDocument,
     ) -> dict[str, Any]:
-        document_identity = self._datum_store.read_document_version_identity(
-            tenant_id=tenant_id,
-            document_id=document.document_id,
-        )
-        version_hash = _as_text((document_identity or {}).get("version_hash"))
+        del tenant_id  # identity is derived from the document, not a SQL lookup
+        # Phase 3 cut-over: derive the version identity from the document via the
+        # core engine — the SAME engine the store uses at write time
+        # (store_authoritative_catalog → build_document_semantics) — instead of
+        # reading the persisted SQL projection. One materialized source of truth.
+        version_hash = _as_text(build_document_version_identity(document).get("version_hash"))
         return {
             "document_id": document.document_id,
             "document_name": document.document_name,
@@ -500,6 +503,17 @@ class WorkbenchUiReadService:
         tenant_id: str,
         document: AuthoritativeDatumDocument,
     ) -> list[dict[str, Any]]:
+        del tenant_id  # semantics are derived from the document, not a SQL lookup
+        # Phase 3 cut-over: derive every row's semantics in ONE core-engine pass
+        # (build_document_semantics) — the SAME engine the store runs at write
+        # time — instead of one read_datum_semantic_identity SQL read per row.
+        # This retires the per-row SQL hotspot and unifies read + write on the
+        # core engine. Derive from the catalog document directly: the single-doc
+        # WORKBOOK-YAML codec is intentionally lossy for anchor context
+        # (anchor_rows / anchor_document_metadata), which the engine folds into
+        # the anchor-context hash, so a round-trip here would corrupt the hashes
+        # of anchored documents.
+        row_semantics = build_document_semantics(document)["rows"]
         recognized_document = recognize_authoritative_document(document)
         recognized_rows = {
             row.datum_address: row
@@ -508,11 +522,7 @@ class WorkbenchUiReadService:
         items: list[dict[str, Any]] = []
         for row in sorted(document.rows, key=lambda item: datum_address_sort_key(item.datum_address)):
             layer, value_group, iteration = parse_datum_address(row.datum_address)
-            semantics = self._datum_store.read_datum_semantic_identity(
-                tenant_id=tenant_id,
-                document_id=document.document_id,
-                datum_address=row.datum_address,
-            )
+            semantics = row_semantics.get(row.datum_address)
             recognized = recognized_rows.get(row.datum_address)
             hyphae_hash = _as_text((semantics or {}).get("hyphae_hash"))
             semantic_hash = _as_text((semantics or {}).get("semantic_hash"))
