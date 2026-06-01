@@ -39,13 +39,13 @@ class _ImportFinder(ast.NodeVisitor):
     def __init__(self) -> None:
         self.violations: list[tuple[int, str]] = []
 
-    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:  # noqa: N802
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         for alias in node.names:
             if alias.name in _FORBIDDEN_IMPORT_NAMES:
                 self.violations.append((node.lineno, f"from {node.module} import {alias.name}"))
         self.generic_visit(node)
 
-    def visit_Attribute(self, node: ast.Attribute) -> None:  # noqa: N802
+    def visit_Attribute(self, node: ast.Attribute) -> None:
         # `something.FilesystemSystemDatumStoreAdapter`
         if node.attr in _FORBIDDEN_IMPORT_NAMES:
             self.violations.append((node.lineno, f".{node.attr}"))
@@ -57,7 +57,7 @@ class _PathGlobFinder(ast.NodeVisitor):
         self.violations: list[tuple[int, str]] = []
         self._string_constants: dict[int, str] = {}
 
-    def visit_Constant(self, node: ast.Constant) -> None:  # noqa: N802
+    def visit_Constant(self, node: ast.Constant) -> None:
         if isinstance(node.value, str):
             self._string_constants[node.lineno] = node.value
         self.generic_visit(node)

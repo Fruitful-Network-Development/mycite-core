@@ -170,7 +170,7 @@ def _playwright_browser():
     pw = sync_playwright().start()
     try:
         browser = pw.chromium.launch(headless=True)
-    except Exception as exc:  # noqa: BLE001 — chromium binary not installed
+    except Exception as exc:
         pw.stop()
         pytest.skip(
             "chromium not launchable (run `playwright install chromium`): "

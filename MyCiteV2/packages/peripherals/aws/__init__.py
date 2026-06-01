@@ -32,7 +32,6 @@ from .contracts import (
 from .probe_cache import ProbeCache
 from .profile_store import ProfileStore, iter_profile_recipient_targets
 
-
 __all__ = [
     "AwsEvidence",
     "AwsPeripheralCloudAdapter",

@@ -25,7 +25,6 @@ in cloud_adapter.py and call into here.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 # Minimum dwell + alignment to advance one rung. Tunable but conservative.

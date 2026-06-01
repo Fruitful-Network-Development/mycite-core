@@ -44,15 +44,15 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.packages.adapters.sql.datum_store import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.modules.cross_domain.cts_gis._projection import (
+    _build_document_projection,
+)
 from MyCiteV2.packages.modules.cross_domain.cts_gis.compiled_artifact import (
     compiled_artifact_path,
     read_admin_profile_static_from_mos,
     read_compiled_artifact,
     read_district_profile_static_from_mos,
     write_compiled_artifact,
-)
-from MyCiteV2.packages.modules.cross_domain.cts_gis._projection import (
-    _build_document_projection,
 )
 from MyCiteV2.packages.modules.domains.datum_recognition.service import (
     recognize_authoritative_document,
@@ -174,7 +174,7 @@ def main() -> int:
     navigation = dict(base.get("navigation_model") or {})
     navigation["decode_state"] = "ready"
     base["navigation_model"] = navigation
-    base["generated_at"] = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    base["generated_at"] = _dt.datetime.now(_dt.UTC).isoformat()
     base["build_mode"] = "mos_lean_bake"
 
     if args.dry_run:

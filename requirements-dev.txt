@@ -29,5 +29,10 @@ playwright>=1.58.0
 # Crypto used by grantee schema (password fields) + paypal token signing
 cryptography>=46.0.0
 
-# Linter — config in repo-root pyproject.toml [tool.ruff]
-ruff>=0.8.0
+# YAML — WORKBOOK-YAML transport codec (core/datum_io) + many tests import yaml.
+PyYAML>=6.0
+
+# Linter — config in repo-root pyproject.toml [tool.ruff]. Pinned exactly so
+# local and CI run the identical ruff version (newer ruff adds rules → drift
+# turns a clean tree red in CI). Bump deliberately, not implicitly.
+ruff==0.15.13

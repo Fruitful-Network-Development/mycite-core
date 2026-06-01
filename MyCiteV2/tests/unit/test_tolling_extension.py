@@ -8,7 +8,7 @@ import json
 import sys
 import tempfile
 import unittest
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -97,8 +97,8 @@ class AccessLogBytesTests(unittest.TestCase):
             '1.2.3.4 - - [15/Apr/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 1000 "-" "-"',
             '1.2.3.4 - - [15/Apr/2026:11:00:00 +0000] "GET / HTTP/1.1" 200 2000 "-" "-"',
         )
-        start = datetime(2026, 4, 15, tzinfo=timezone.utc)
-        end = datetime(2026, 4, 16, tzinfo=timezone.utc)
+        start = datetime(2026, 4, 15, tzinfo=UTC)
+        end = datetime(2026, 4, 16, tzinfo=UTC)
         self.assertEqual(_parse_log_window_bytes(self.log, start, end), 3000)
 
     def test_excludes_lines_outside_window(self) -> None:
@@ -107,23 +107,23 @@ class AccessLogBytesTests(unittest.TestCase):
             '1.2.3.4 - - [15/Apr/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 500 "-" "-"',
             '1.2.3.4 - - [20/Apr/2026:10:00:00 +0000] "GET / HTTP/1.1" 200 9999 "-" "-"',
         )
-        start = datetime(2026, 4, 15, tzinfo=timezone.utc)
-        end = datetime(2026, 4, 16, tzinfo=timezone.utc)
+        start = datetime(2026, 4, 15, tzinfo=UTC)
+        end = datetime(2026, 4, 16, tzinfo=UTC)
         self.assertEqual(_parse_log_window_bytes(self.log, start, end), 500)
 
     def test_end_is_exclusive(self) -> None:
         self._write(
             '1.2.3.4 - - [16/Apr/2026:00:00:00 +0000] "GET / HTTP/1.1" 200 7777 "-" "-"',
         )
-        start = datetime(2026, 4, 15, tzinfo=timezone.utc)
-        end = datetime(2026, 4, 16, tzinfo=timezone.utc)
+        start = datetime(2026, 4, 15, tzinfo=UTC)
+        end = datetime(2026, 4, 16, tzinfo=UTC)
         self.assertEqual(_parse_log_window_bytes(self.log, start, end), 0)
 
     def test_missing_file_returns_zero(self) -> None:
         self.assertEqual(
             _parse_log_window_bytes(self.tmp / "missing.log",
-                                     datetime(2026, 1, 1, tzinfo=timezone.utc),
-                                     datetime(2026, 2, 1, tzinfo=timezone.utc)),
+                                     datetime(2026, 1, 1, tzinfo=UTC),
+                                     datetime(2026, 2, 1, tzinfo=UTC)),
             0,
         )
 
@@ -135,8 +135,8 @@ class AccessLogBytesTests(unittest.TestCase):
         )
         self.assertEqual(
             _parse_log_window_bytes(self.log,
-                                     datetime(2026, 4, 15, tzinfo=timezone.utc),
-                                     datetime(2026, 4, 16, tzinfo=timezone.utc)),
+                                     datetime(2026, 4, 15, tzinfo=UTC),
+                                     datetime(2026, 4, 16, tzinfo=UTC)),
             1000,
         )
 
@@ -350,8 +350,8 @@ class DeriveInvoiceDivisionTests(unittest.TestCase):
         rules = _rules(pool_mode="equal", residue="absorb_fnd")
         fnd = self._invoice(OPERATOR_MSN_ID, rules)
         cvcc = self._invoice(_CVCC, rules)
-        self.assertTrue(any(l["id"] == "res1" for l in fnd["billable_lines"]))
-        self.assertFalse(any(l["id"] == "res1" for l in cvcc["billable_lines"]))
+        self.assertTrue(any(line["id"] == "res1" for line in fnd["billable_lines"]))
+        self.assertFalse(any(line["id"] == "res1" for line in cvcc["billable_lines"]))
 
     def test_shared_lines_annotated_direct_lines_are_not(self) -> None:
         inv = self._invoice(_CVCC, _rules(pool_mode="equal"))
@@ -360,7 +360,7 @@ class DeriveInvoiceDivisionTests(unittest.TestCase):
         self.assertIs(shared["shared"], True)
         self.assertEqual(shared["share_basis"], "equal")
         self.assertIn("share_pct", shared)
-        direct = next(l for l in inv["billable_lines"] if l["id"] == "d_cvcc")
+        direct = next(line for line in inv["billable_lines"] if line["id"] == "d_cvcc")
         self.assertNotIn("shared", direct)
 
     def test_margin_applies_after_division(self) -> None:

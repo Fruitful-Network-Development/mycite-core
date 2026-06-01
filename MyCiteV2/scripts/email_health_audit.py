@@ -37,7 +37,6 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 
 # Imports deferred so the bare --help / import audit still works under
 # environments without boto3 installed.
@@ -156,7 +155,7 @@ def check_forwarder_map(report: AuditReport, *, auto_recover: bool = True) -> No
             f"MyCiteV2.packages.peripherals.aws.cli --grantee fnd "
             f"sync-forwarding-routes"))
         return
-    rc2, data2, stderr2 = _run_sync_cli(dry_run=False)
+    rc2, _data2, stderr2 = _run_sync_cli(dry_run=False)
     if rc2 != 0:
         # Failed to auto-recover — escalate to operator.
         report.add(CheckResult("forwarder-map", False,

@@ -72,7 +72,7 @@ def _step(
             "status": "ok" if ok else "failed",
             "detail": result if isinstance(result, dict) else {"result": str(result)},
         }
-    except Exception as exc:  # noqa: BLE001 — report, don't abort the sequence
+    except Exception as exc:
         return {"step": name, "status": "error", "detail": str(exc)}
 
 

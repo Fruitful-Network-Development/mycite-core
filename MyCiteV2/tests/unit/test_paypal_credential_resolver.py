@@ -24,7 +24,7 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.portal_host.app import (  # noqa: E402
+from MyCiteV2.instances._shared.portal_host.app import (
     _paypal_base_url,
     _resolve_paypal_credentials_for_domain,
 )

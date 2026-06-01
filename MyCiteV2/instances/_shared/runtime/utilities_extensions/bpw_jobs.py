@@ -20,10 +20,10 @@ import os
 import re
 import tempfile
 from collections import defaultdict
-from datetime import date as _date, datetime
+from datetime import date as _date
+from datetime import datetime
 from pathlib import Path
 from typing import Any
-
 
 _DEFAULT_BPW_JOBS_ROOT = Path(
     "/srv/webapps/mycite/fnd/private/utilities/tools/bpw-jobs"

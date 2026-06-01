@@ -154,7 +154,7 @@ def main() -> int:
         print(json.dumps(result, indent=2))
         return 0
     if args.command == "issue-smtp-credentials":
-        from .onboard import issue_smtp_credentials, OperatorIamRequiredError
+        from .onboard import OperatorIamRequiredError, issue_smtp_credentials
         clients = ("gmail", "imap") if args.client == "both" else (args.client,)
         try:
             result = issue_smtp_credentials(

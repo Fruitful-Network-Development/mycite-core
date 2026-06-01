@@ -24,7 +24,7 @@ is unit-testable without spinning up the WSGI app.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -36,7 +36,6 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
     read_tolling_snapshot,
 )
 from MyCiteV2.packages.adapters.sql._common import _rate
-
 
 # ---------------------------------------------------------------------
 # Helpers
@@ -162,7 +161,7 @@ def _describe_domains_parallel(
     def _describe(d: str) -> dict[str, Any]:
         try:
             status = aws_peripheral.describe_domain_status(domain=d)
-        except Exception:  # noqa: BLE001
+        except Exception:
             status = None
         if status is None:
             return {
@@ -420,7 +419,7 @@ def build_email_dashboard(
             status = aws_peripheral.describe_domain_status(domain=primary_domain) or {}
             ses_verified  = bool(status.get("ses_identity_verified"))
             dkim_verified = bool(status.get("dkim_verified"))
-        except Exception:  # noqa: BLE001
+        except Exception:
             pass
 
     # Deliverability (period-filtered). Aggregate across domains.
@@ -553,9 +552,9 @@ def build_resources_summary(
 
 
 __all__ = [
-    "build_grantee_summary",
     "build_email_dashboard",
+    "build_grantee_summary",
     "build_resources_summary",
-    "dashboard_response",
     "dashboard_error",
+    "dashboard_response",
 ]

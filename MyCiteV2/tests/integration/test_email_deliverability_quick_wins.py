@@ -325,6 +325,7 @@ class DonationReceiptHtmlAltTests(unittest.TestCase):
 
     def _send_and_capture(self):
         from unittest.mock import patch
+
         from MyCiteV2.instances._shared.portal_host import app as portal_app
 
         tmp = Path(tempfile.mkdtemp(prefix="a6_donation_"))

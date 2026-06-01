@@ -24,6 +24,9 @@ ignore = [
     "B008",   # function call in default args — Flask + dataclass-defaults pattern
     "RUF012", # mutable class defaults — false-positive on dataclass-style classes
 ]
+# Typographic characters used intentionally in docstrings/comments (e.g.
+# "3 × 4" cost math, en-dash ranges). Allowed so RUF002/RUF003 don't flag them.
+allowed-confusables = ["×", "–"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests do sys.path.insert(0, REPO_ROOT) before MyCiteV2 imports (the project
@@ -47,3 +50,10 @@ ignore = [
 # interleaved with imports for readability — the imports follow the
 # constants they document.
 "MyCiteV2/instances/_shared/runtime/portal_cts_gis_runtime.py" = ["E402"]
+# app.py imports flask behind a try/except fallback-stub block, then does its
+# real imports; utilities_extensions modules + newsletter_state set a
+# module-level `_log` before grouped imports. Same intentional house style as
+# above — the imports deliberately follow module-level setup.
+"MyCiteV2/instances/_shared/portal_host/app.py" = ["E402"]
+"MyCiteV2/instances/_shared/runtime/utilities_extensions/*.py" = ["E402"]
+"MyCiteV2/packages/adapters/filesystem/newsletter_state.py" = ["E402"]

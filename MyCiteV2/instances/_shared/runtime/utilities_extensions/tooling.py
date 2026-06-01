@@ -43,8 +43,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ._shared import _as_dict, _as_list, _as_text, _grantee_edit_link
-
+from ._shared import _as_list, _as_text, _grantee_edit_link
 
 EXTENSION_ID = "tooling"
 EXTENSION_LABEL = "Tooling"
@@ -98,4 +97,4 @@ def _build_tooling_extension_payload(
     }
 
 
-__all__ = ["_build_tooling_extension_payload", "EXTENSION_ID", "EXTENSION_LABEL"]
+__all__ = ["EXTENSION_ID", "EXTENSION_LABEL", "_build_tooling_extension_payload"]

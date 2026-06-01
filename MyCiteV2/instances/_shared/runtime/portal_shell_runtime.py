@@ -993,16 +993,18 @@ def _surface_payload_for_peripherals() -> dict[str, Any]:
                         "value": " / ".join(summary),
                     }
                 )
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 aws_notes.append(f"{domain}: error: {exc}")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         aws_notes.append(f"aws peripheral unavailable: {exc}")
 
-    cards: list[dict[str, Any]] = list(aws_cards) + [
+    cards: list[dict[str, Any]] = [
+        *aws_cards,
         {"label": "Keypass vault", "value": "Pending"},
         {"label": "TLS / cert health", "value": "Pending"},
     ]
-    notes: list[str] = list(aws_notes) + [
+    notes: list[str] = [
+        *aws_notes,
         "AWS peripheral status from peripherals.aws.describe_domain_status.",
         "Keypass + TLS surfaces are independent peripherals not yet implemented.",
         "Operational integration readiness is also reported by /portal/healthz "

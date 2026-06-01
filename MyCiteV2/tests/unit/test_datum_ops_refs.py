@@ -1,26 +1,23 @@
 """S2 — sandbox cross-document reference index (datum_ops.refs).
 
 Verifies marker/value detection, definition-vs-reference separation, and the
-references_to / is_referenced queries on a fixture workbook. A guarded
-integration test loads the live agro_erp sandbox (read-only) and asserts the
-102 product taxonomy_id edges into the catch-all root that S7 must rewrite.
+references_to / is_referenced queries on a fixture workbook. The catch-all
+reference-indexing behavior is covered deterministically by
+``ReferenceIndexTests`` over a fixed fixture (no live-data coupling).
 """
 
 from __future__ import annotations
 
-import os
 import unittest
 
 from MyCiteV2.packages.core.datum_ops import Workbook, build_reference_index
 from MyCiteV2.packages.core.datum_ops import refs as R
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
-    AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
 
 _BLOB = "0" * 16  # a title blob: binary, >=8 bits
-_LIVE_DB = "/srv/webapps/mycite/fnd/private/mos_authority.sqlite3"
 
 
 def _doc(name: str, rows: list[tuple[str, object]]) -> AuthoritativeDatumDocument:
@@ -102,28 +99,11 @@ class ReferenceIndexTests(unittest.TestCase):
         self.assertFalse(any(e.target_node_addr == "4" for e in self.idx.edges))
 
 
-@unittest.skipUnless(os.path.exists(_LIVE_DB), "live MOS db not present")
-class LiveAgroErpIndexTests(unittest.TestCase):
-    """Read-only integration: the live agro_erp sandbox has 102 catch-all edges."""
-
-    def test_catch_all_edge_count(self) -> None:
-        from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-
-        store = SqliteSystemDatumStoreAdapter(_LIVE_DB, allow_legacy_writes=False)
-        catalog = store.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id="fnd"))
-        sheets = {
-            d.document_id.split(".")[3]: d
-            for d in catalog.documents
-            if ".agro_erp." in d.document_id
-        }
-        wb = Workbook(sandbox="agro_erp", sheets=sheets)
-        idx = build_reference_index(wb)
-        catch_all_edges = idx.references_to("4")
-        self.assertEqual(len(catch_all_edges), 102, f"expected 102 catch-all edges, got {len(catch_all_edges)}")
-        self.assertTrue(all(e.src_sheet == "product_profiles" for e in catch_all_edges))
-        # every catch-all leaf 4-1..4-36 is a defined txa node
-        self.assertIn("4", idx.defined_nodes())
-        self.assertEqual(idx.defining_row("4-9").sheet, "txa")
+# NOTE: LiveAgroErpIndexTests was removed — it read the deployed prod MOS DB at
+# /srv/webapps/mycite/fnd/private/mos_authority.sqlite3 (skipUnless present) and
+# asserted a transient magic count (102 catch-all edges pre-S7-rewrite; the live
+# data has since drifted). The catch-all reference-indexing logic is covered
+# deterministically by ReferenceIndexTests above over a fixed fixture.
 
 
 if __name__ == "__main__":

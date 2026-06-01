@@ -39,16 +39,12 @@ does that.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
-
-from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAdapter
-
 
 # ---------------------------------------------------------------------
 # Grantee → resource mapping.
@@ -62,8 +58,9 @@ from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAd
 # plate (which is correct — FND pays for shared infra and charges
 # grantees per use, not per-resource).
 # ---------------------------------------------------------------------
-
 import os as _os
+
+from MyCiteV2.packages.peripherals.aws.cloud_adapter import AwsPeripheralCloudAdapter
 
 # Environment-overridable so the script can target staging / other
 # accounts without an edit. Defaults are FND's production account.
@@ -268,7 +265,7 @@ def activate_cost_allocation_tags(
     activated by this call. An empty dict means everything was already
     Active (or, in `--dry-run`, means activation would be a no-op).
     """
-    ce = adapter._client("ce", region="us-east-1")  # noqa: SLF001 — adapter shared client cache
+    ce = adapter._client("ce", region="us-east-1")
     statuses: dict[str, str] = {}
     paginator_token: str | None = None
     while True:

@@ -44,7 +44,7 @@ PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.response.v1"
 
 def _http_get(url: str, accept: str = "*/*", timeout: float = 15.0):
     req = urllib.request.Request(url, headers={"Accept": accept})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — localhost only
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.status, resp.read()
 
 

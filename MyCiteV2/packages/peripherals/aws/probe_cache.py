@@ -23,7 +23,8 @@ elsewhere yet.
 from __future__ import annotations
 
 import time
-from typing import Any, Callable, Hashable
+from collections.abc import Callable, Hashable
+from typing import Any
 
 
 class ProbeCache:
