@@ -23,18 +23,36 @@ def _as_text(value: object) -> str:
 
 
 def _normalize_json_value(value: Any, *, field_name: str) -> JsonValue:
+    # Hot path: this runs on every row's `raw` for every document on every catalog
+    # deserialization (millions of calls for a large tenant). Two behaviour-preserving
+    # optimisations vs the naive recursion: (1) don't build a per-element ``field_name``
+    # string on every call (it was only ever used in the rare error message); (2) return
+    # the input object unchanged when nothing needed coercing, so already-clean JSON
+    # (e.g. straight from ``json.loads`` of our own persisted blob) is validated without
+    # re-allocating the whole structure. Output is value-identical to the naive form.
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, list):
-        return [_normalize_json_value(item, field_name=f"{field_name}[]") for item in value]
+        changed = False
+        out: list[JsonValue] = []
+        for item in value:
+            normalized = _normalize_json_value(item, field_name=field_name)
+            out.append(normalized)
+            if normalized is not item:
+                changed = True
+        return out if changed else value
     if isinstance(value, dict):
-        out: dict[str, JsonValue] = {}
+        changed = False
+        out_map: dict[str, JsonValue] = {}
         for key, item in value.items():
-            token = _as_text(key)
+            token = key if (type(key) is str and key and key == key.strip()) else _as_text(key)
             if not token:
                 raise ValueError(f"{field_name} keys must be non-empty strings")
-            out[token] = _normalize_json_value(item, field_name=f"{field_name}.{token}")
-        return out
+            normalized = _normalize_json_value(item, field_name=field_name)
+            out_map[token] = normalized
+            if token is not key or normalized is not item:
+                changed = True
+        return out_map if changed else value
     raise ValueError(f"{field_name} must be JSON-serializable data")
 
 

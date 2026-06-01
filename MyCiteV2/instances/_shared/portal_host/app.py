@@ -865,6 +865,26 @@ def _warm_system_workbench_projection(config: V2PortalHostConfig) -> None:
     except Exception:
         pass
 
+    # Warm the workbench READ path too — the catalog deserialization + the default
+    # surface projections are the dominant cold cost for a large sandbox (e.g.
+    # agro_erp), and read_system_workbench_projection does not exercise it. Doing it
+    # here (once, in the --preload master) means every worker — initial and
+    # max-requests-recycled — inherits the warm _GLOBAL_CATALOG_CACHE /
+    # _GLOBAL_SURFACE_CACHE via copy-on-write and serves the first real request fast.
+    try:
+        if config.authority_db_file is not None:
+            from MyCiteV2.packages.tools.workbench_ui.service import WorkbenchUiReadService
+
+            reader = WorkbenchUiReadService(config.authority_db_file)
+            for warm_query in ({}, {"sandbox_filter": "agro_erp"}):
+                reader.read_surface(
+                    portal_instance_id=config.portal_instance_id,
+                    portal_domain="",
+                    surface_query=warm_query,
+                )
+    except Exception:
+        pass
+
     # Register the compiled-artifact root for the thin CTS-GIS tools (deployment
     # config, set once — the map tool reads {data_dir}/payloads/compiled/...).
     try:
