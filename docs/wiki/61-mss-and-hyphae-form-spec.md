@@ -1,8 +1,22 @@
 # 61 — MSS Form & Hyphae Form Spec
 
-> Status: design-spec
+> Status: design-spec — **CORRECTED 2026-06-01**
 
 [← Overview](00-overview-and-glossary.md)
+
+> **Correction / upgrade.** The authoritative original MSS binary-sequence spec
+> has been recovered from git history and restored at
+> `docs/contracts/mss_binary_sequence/` (`MSS_convention.py`, the
+> `anthology-notes.txt` worked example + anthology base, and a reference
+> implementation). Treat **that** directory as the canonical wire spec; this page
+> is the wiki-level summary. Two corrections to earlier framing here: (1) **MSS
+> is a hash over the binary MSS *sequence*** of the document — a document's
+> identity is its MSS, never a hyphae value; (2) **hyphae = the same codec over a
+> datum's focus closure, and it retains the full ordinal rudi scaffold** (include
+> `0-0-1`..`0-0-K`) — focus-exclusion drops off-focus *sibling* datums, it does
+> **not** drop the preceding rudis. Today's `mos.mss_sha256_v1` (JSON-of-rows +
+> SHA-256) is a canonical-ish **stand-in**, not the binary MSS sequence; building
+> the real codec against the recovered spec is tracked separately.
 
 This page specs the **MSS form**: the standardized single-sequence binary
 encoding of one or more top-level datums, the way every datum document is

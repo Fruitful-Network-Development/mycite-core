@@ -55,23 +55,38 @@ def _genus_leaf(leaf_addr: str) -> AuthoritativeDatumDocument:
 
 
 class CanonicalHyphaeValueTests(unittest.TestCase):
-    def test_value_is_address_independent(self) -> None:
-        # Identical content + reference structure, leaf at a different address.
-        v1 = compile_hyphae_value(_genus_leaf("4-2-2"), "4-2-2")
-        v2 = compile_hyphae_value(_genus_leaf("4-2-9"), "4-2-9")
-        self.assertEqual(v1, v2)
-        self.assertTrue(v1.startswith("sha256:"))
+    def _doc_with_rudis(self, r1_title: str):
+        # A datum (1-1-1) that references rudi 0-0-5; 0-0-1 is a PRECEDING rudi it
+        # does NOT reference directly. Per the MOS spec the canonical hyphae value
+        # must still account for 0-0-1 (ordinal context: "include 0-0-1 .. 0-0-5").
+        return _doc("anchor", [
+            ("0-0-1", [["0-0-1", "~", "0-0-0"], [r1_title]]),
+            ("0-0-5", [["0-0-5", "~", "0-0-0"], ["nop"]]),
+            ("1-1-1", [["1-1-1", "0-0-5", "128"], ["thing"]]),
+        ])
 
-    def test_minimum_complete_path_excludes_rudi_fill(self) -> None:
-        # A doc with rudi gaps: only referenced rudis appear in the path.
+    def test_value_carries_ordinal_rudi_context(self) -> None:
+        # 1-1-1 references only 0-0-5, but changing the content of the preceding,
+        # UNREFERENCED rudi 0-0-1 must change 1-1-1's canonical hyphae value —
+        # proving the value is anchored to the full ordinal rudi scaffold.
+        v_a = compile_hyphae_value(self._doc_with_rudis("top"), "1-1-1")
+        v_b = compile_hyphae_value(self._doc_with_rudis("TOP-changed"), "1-1-1")
+        self.assertTrue(v_a.startswith("sha256:"))
+        self.assertNotEqual(v_a, v_b)
+
+    def test_minimum_complete_path_is_the_focus_closure(self) -> None:
+        # build_minimum_complete_path is the focus-selection (the downward
+        # reference closure), NOT the rudi-complete value basis: it includes only
+        # referenced datums, target last. The rudi scaffold is added when the
+        # VALUE is compiled (see test_value_carries_ordinal_rudi_context).
         doc = _doc("txa", [
             ("0-0-1", [["0-0-1", "~", "x"], ["r1"]]),
             ("0-0-3", [["0-0-3", "~", "y"], ["r3"]]),
             ("4-2-1", [["4-2-1", _NID, "1", "2-1", "0-0-3"], ["leaf"]]),
         ])
         path = build_minimum_complete_path(doc, "4-2-1")
-        self.assertIn("0-0-3", path)
-        self.assertNotIn("0-0-1", path)  # not referenced → not filled in
+        self.assertIn("0-0-3", path)        # referenced → in the focus closure
+        self.assertNotIn("0-0-1", path)     # unreferenced → not in the closure
         self.assertEqual(path[-1], "4-2-1")  # target last
 
     def test_absent_address_raises(self) -> None:

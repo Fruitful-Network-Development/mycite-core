@@ -319,28 +319,27 @@ def build_minimum_complete_path(
 def compile_hyphae_value(
     document: AuthoritativeDatumDocument, datum_address: str
 ) -> str:
-    """Compile the **canonical hyphae value** of ``datum_address``: fold the
-    minimum-complete path's content-canonical semantic hashes (anchor-context
-    aware) into a single ``sha256:`` token.
+    """Compile the **canonical hyphae value** of ``datum_address`` — a single
+    ``sha256:`` token over the datum's focus closure.
 
-    Address-independent by construction — re-nesting/relocating datums that
-    preserves content + reference structure preserves every semantic hash, hence
-    the value. This is the value a hyphae-flag registry matches against (see
-    ``core/hyphae_flags``). It equals the per-row ``hyphae_hash`` that
-    ``build_document_semantics`` will emit once the rudi-range fill is retired.
+    Per the MOS spec (``docs/personal_notes/MOS/mycelial_ontological_schema.md``
+    + ``docs/contracts/mss_binary_sequence/``), the canonical hyphae value MUST
+    carry the **ordinal rudi context** — *"include all preceding rudi datums even
+    if not used directly; if the abstraction uses ``0-0-5``, include ``0-0-1``
+    through ``0-0-5``"*. The rudis are the ordinal/incremental/nominal frames, so
+    a value is only canonical if it is anchored to the universal rudi starting
+    position. (An earlier version of this function folded the reference closure
+    *without* the rudi scaffold — that was wrong and is corrected here by
+    delegating to the rudi-inclusive per-row computation.)
+
+    Today this is the JSON+SHA fold ``build_document_semantics`` produces; the
+    forthcoming binary-MSS codec will replace the *representation* (a hash of the
+    MSS sequence of the focus closure) while keeping the rudi-inclusion rule.
     """
-    context = _semantic_context(document)
-    if datum_address not in context["address_map"]:
+    rows = build_document_semantics(document)["rows"]
+    if datum_address not in rows:
         raise ValueError(f"datum_address not found in document: {datum_address!r}")
-    semantic_hashes = context["semantic_hashes"]
-    closure = _dependency_closure(datum_address, context["dependency_map"])
-    payload = {
-        "policy": HYPHAE_CHAIN_POLICY,
-        "anchor_context_hash": context["anchor_context_hash"],
-        "target_semantic_hash": semantic_hashes[datum_address],
-        "chain_semantic_hashes": [semantic_hashes[item] for item in closure],
-    }
-    return _sha256_token(prefix=f"{HYPHAE_CHAIN_POLICY}:chain", payload=payload)
+    return str(rows[datum_address]["hyphae_hash"])
 
 
 def build_document_semantics(document: AuthoritativeDatumDocument) -> dict[str, Any]:
