@@ -9,10 +9,17 @@ encode→decode round-trips and validated against the ``anthology-notes`` struct
 Model
 -----
 A document is a set of datums. Each datum has address ``<layer>-<value_group>-
-<iteration>`` and either:
-  - **VG0** (value_group == 0): *references only* — a list of referenced datums
-    (e.g. the rudimentary datums ``0-0-*``), or
-  - **VG>0**: exactly ``value_group`` ``(reference, magnitude)`` tuples.
+<iteration>`` and is either:
+  - **refs-only** — a list of referenced datums (e.g. the rudimentary datums
+    ``0-0-*`` and ``~``-collections), or
+  - **tuple-bearing** — a list of ``(reference, magnitude)`` tuples.
+
+**v2 note:** the arity (number of refs / tuples) is stored **explicitly** per datum,
+*independent of ``value_group``*. ``value_group`` is purely the address segment
+(its SAMRAS/HOPS ordinal position); the live corpus has e.g. entity records that
+carry several tuples under ``value_group=1`` (see
+``docs/contracts/mss_binary_sequence/cutover_design.md``). v1 wrongly equated
+``value_group`` with the tuple count.
 
 Addresses are NOT stored — they are *derived* from the per-layer / per-value-group
 / per-iteration counts (SAMRAS-style ordinal derivation). The codec therefore
@@ -43,8 +50,9 @@ known width (width 0 ⇒ the field is omitted; the single possible value is impl
     <value stream>                          # concatenated per-datum object blobs
 
 Per-datum object blob (the non-uniform slice), in canonical datum order:
-    VG0:  g(ref_count) + ref_count × <ref_width(layer) bits>      # active-set indices
-    VG>0: vg_value × ( <ref_width(layer) bits> + g(magnitude) )
+    <is_refs_only:1 bit> g(arity) <body>
+      refs-only (bit=1): arity × <ref_width(layer) bits>                 # active-set indices
+      tuple-bearing (bit=0): arity × ( <ref_width(layer) bits> + g(magnitude) )
 
 ``ref_width(layer) = bits_required(active_set_size - 1)`` (0 when size ≤ 1). The
 active set for a layer is the COBM-marked subset of all lower-layer datums, in
@@ -59,7 +67,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass
 
-MSS_DOC_POLICY = "mos.mss_binary_v1"
+MSS_DOC_POLICY = "mos.mss_binary_v2"
 
 
 # --------------------------------------------------------------------------- #
@@ -78,9 +86,11 @@ class MssDatum:
         return f"{self.layer}-{self.value_group}-{self.iteration}"
 
     def dependency_addresses(self) -> tuple[str, ...]:
-        if self.value_group == 0:
-            return tuple(self.refs)
-        return tuple(ref for ref, _mag in self.tuples)
+        # v2: keyed off which field is populated, NOT value_group (a datum may be
+        # refs-only or tuple-bearing at any value_group).
+        if self.tuples:
+            return tuple(ref for ref, _mag in self.tuples)
+        return tuple(self.refs)
 
 
 @dataclass
@@ -221,17 +231,14 @@ def _validate_canonical(datums: list[MssDatum]) -> None:
     if layers and layers != list(range(len(layers))):
         raise MssFormatError("layers must be contiguous from 0 (reindex first)")
     for d in datums:
-        if d.value_group == 0:
-            if d.tuples:
-                raise MssFormatError(f"VG0 datum {d.address} must not carry tuples")
-        else:
-            if len(d.tuples) != d.value_group:
-                raise MssFormatError(
-                    f"datum {d.address}: value_group {d.value_group} requires exactly "
-                    f"{d.value_group} tuples, got {len(d.tuples)}"
-                )
-            if d.refs:
-                raise MssFormatError(f"VG>0 datum {d.address} must not carry refs-only")
+        # MSS-DOC.v2: a datum is EITHER refs-only OR tuple-bearing; arity is stored
+        # explicitly (len(refs) / len(tuples)) and is independent of value_group
+        # (which is purely the address segment — the live corpus has e.g. entity
+        # records carrying several tuples under value_group=1).
+        if d.refs and d.tuples:
+            raise MssFormatError(
+                f"datum {d.address} cannot be both refs-only and tuple-bearing"
+            )
         for ref in d.dependency_addresses():
             if ref not in by_addr:
                 raise MssFormatError(f"datum {d.address} references missing {ref}")
@@ -252,7 +259,7 @@ def _build_metadata(datums: list[MssDatum]) -> _Metadata:
         vg_count_per_layer.append(len(groups))
         for group in groups:
             members = [d for d in datums if d.layer == layer and d.value_group == group]
-            vg_value.append(group)               # group number == tuple count
+            vg_value.append(group)               # the value_group address segment
             iter_count.append(len(members))
     return _Metadata(
         layer_count=len(layers),
@@ -312,15 +319,20 @@ def encode_document(datums: list[MssDatum]) -> EncodedMss:
         ref_width = bits_required(len(active) - 1) if len(active) > 1 else 0
         index_of = {p.address: i for i, p in enumerate(active)}
         for d in by_layer.get(layer, []):
+            # v2 object blob: [is_refs_only:1][arity:g][body]. Arity is explicit,
+            # so a datum's tuple count is independent of its value_group.
             blob: list[str] = []
-            if d.value_group == 0:
-                blob.append(_g_encode(len(d.refs)))
-                for ref in d.refs:
-                    blob.append(_fixed_encode(index_of[ref], ref_width))
-            else:
+            if d.tuples:
+                blob.append("0")                       # tuple-bearing
+                blob.append(_g_encode(len(d.tuples)))
                 for ref, mag in d.tuples:
                     blob.append(_fixed_encode(index_of[ref], ref_width))
                     blob.append(_g_encode(mag))
+            else:
+                blob.append("1")                       # refs-only (incl. empty)
+                blob.append(_g_encode(len(d.refs)))
+                for ref in d.refs:
+                    blob.append(_fixed_encode(index_of[ref], ref_width))
             objects.append("".join(blob))
 
     # Stop-index table: cumulative exclusive ends of all objects except the last.
@@ -428,22 +440,25 @@ def decode_document(bitstream: str) -> list[MssDatum]:
             f"stop table yields {len(blobs)} objects but metadata expects {object_count}"
         )
 
-    # Parse each blob per its value-group rule.
+    # Parse each blob: [is_refs_only:1][arity:g][body].
     datums: list[MssDatum] = []
     for (layer, group_number, iteration), blob in zip(specs, blobs, strict=True):
         active = active_set_per_layer.get(layer, [])
         ref_width = bits_required(len(active) - 1) if len(active) > 1 else 0
-        bc = 0
-        if group_number == 0:
-            ref_count, bc = _g_decode(blob, bc)
+        if not blob:
+            raise MssFormatError(f"empty object blob for {layer}-{group_number}-{iteration}")
+        is_refs_only = blob[0] == "1"
+        bc = 1
+        arity, bc = _g_decode(blob, bc)
+        if is_refs_only:
             refs: list[str] = []
-            for _ in range(ref_count):
+            for _ in range(arity):
                 ridx, bc = _fixed_decode(blob, bc, ref_width)
                 refs.append(active[ridx])
             datums.append(MssDatum(layer, group_number, iteration, refs=tuple(refs)))
         else:
             tuples: list[tuple[str, int]] = []
-            for _ in range(group_number):
+            for _ in range(arity):
                 ridx, bc = _fixed_decode(blob, bc, ref_width)
                 mag, bc = _g_decode(blob, bc)
                 tuples.append((active[ridx], mag))

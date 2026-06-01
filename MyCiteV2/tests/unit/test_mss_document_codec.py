@@ -36,28 +36,26 @@ def _norm(datums: list[MssDatum]) -> list[tuple]:
 
 
 def _random_canonical_document(rng: random.Random) -> list[MssDatum]:
-    """Generate a valid canonical document: contiguous layers from 0, refs point
-    strictly downward, VG>0 datums carry exactly value_group tuples."""
+    """Generate a valid canonical document. v2: arity (refs / tuples) is chosen
+    INDEPENDENTLY of value_group (value_group is just the address segment). Layers
+    are contiguous from 0; refs point strictly downward."""
     datums: list[MssDatum] = []
     by_layer: dict[int, list[str]] = {}
     layer_count = rng.randint(1, 4)
     for layer in range(layer_count):
         by_layer[layer] = []
         lower = [a for ll in range(layer) for a in by_layer[ll]]
-        # value-groups present in this layer (0 = refs-only; v>0 = v tuples).
-        possible_vgs = [0] if not lower else rng.sample([0, 1, 2, 3], rng.randint(1, 3))
-        for vg in sorted(set(possible_vgs)):
+        value_groups = [0] if not lower else rng.sample([0, 1, 2, 3], rng.randint(1, 3))
+        for vg in sorted(set(value_groups)):
             count = rng.randint(1, 4)
             for it in range(1, count + 1):
-                if vg == 0:
+                refs_only = (not lower) or rng.random() < 0.4
+                if refs_only:
                     refs = tuple(rng.sample(lower, rng.randint(0, min(3, len(lower))))) if lower else ()
-                    d = MssDatum(layer, 0, it, refs=refs)
+                    d = MssDatum(layer, vg, it, refs=refs)
                 else:
-                    if not lower:
-                        continue
-                    tuples = tuple(
-                        (rng.choice(lower), rng.randint(0, 5000)) for _ in range(vg)
-                    )
+                    arity = rng.randint(1, 4)              # NOT tied to vg
+                    tuples = tuple((rng.choice(lower), rng.randint(0, 5000)) for _ in range(arity))
                     d = MssDatum(layer, vg, it, tuples=tuples)
                 datums.append(d)
                 by_layer[layer].append(d.address)
@@ -143,9 +141,26 @@ class AnthologyShapeTests(unittest.TestCase):
 
 
 class ValidationTests(unittest.TestCase):
-    def test_vg_tuple_arity_enforced(self) -> None:
+    def test_arity_decoupled_from_value_group(self) -> None:
+        # v2: an entity-style record carrying 4 tuples under value_group=1 is valid
+        # and round-trips (this is the live filament/entity case the audit found).
+        doc = [
+            MssDatum(0, 0, 1, refs=()),
+            MssDatum(0, 0, 2, refs=()),
+            MssDatum(1, 1, 1, tuples=(("0-0-1", 11), ("0-0-2", 22), ("0-0-1", 33), ("0-0-2", 44))),
+        ]
+        decoded = decode_document(encode_document(doc).bitstream)
+        leaf = next(d for d in decoded if d.layer == 1)
+        self.assertEqual(leaf.value_group, 1)
+        self.assertEqual(len(leaf.tuples), 4)
+        self.assertEqual(_norm(doc), _norm(decoded))
+
+    def test_refs_and_tuples_together_rejected(self) -> None:
         with self.assertRaises(MssFormatError):
-            encode_document([MssDatum(0, 0, 1, refs=()), MssDatum(1, 2, 1, tuples=(("0-0-1", 1),))])
+            encode_document([
+                MssDatum(0, 0, 1, refs=()),
+                MssDatum(1, 1, 1, refs=("0-0-1",), tuples=(("0-0-1", 1),)),
+            ])
 
     def test_upward_reference_rejected(self) -> None:
         with self.assertRaises(MssFormatError):
