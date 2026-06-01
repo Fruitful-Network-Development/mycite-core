@@ -130,16 +130,13 @@ def _parse_row(address: str, head: list[Any], index: dict[str, list[Any]], repor
     return MssDatum(*coords, refs=()), deps
 
 
-def document_closure_to_mss(
-    document: Any, *, index: dict[str, list[Any]], report: MssAdapterReport | None = None
+def _closure_from_seeds(
+    seeds: list[str], index: dict[str, list[Any]], report: MssAdapterReport
 ) -> list[MssDatum]:
-    """The document's transitive downward closure as ``MssDatum``s, resolved against
-    a prebuilt ``index`` (see :func:`build_catalog_index`). Feed the result to
-    :func:`core.mss.document_codec.mss_document_hash`."""
-    report = report if report is not None else MssAdapterReport()
-    seeds = [r.datum_address for r in document.rows if _is_address(r.datum_address)]
+    """Transitive downward closure of ``seeds`` as ``MssDatum``s, resolved against
+    ``index`` (which spans the whole tenant, so cross-document refs resolve)."""
     out: dict[str, MssDatum] = {}
-    work = list(seeds)
+    work = [a for a in seeds if _is_address(a)]
     while work:
         address = work.pop()
         if address in out or address not in index:
@@ -147,13 +144,45 @@ def document_closure_to_mss(
         datum, deps = _parse_row(address, index[address], index, report)
         out[address] = datum
         work.extend(deps)
-    report.documents += 1
     report.datums += len(out)
     return list(out.values())
 
 
+def document_closure_to_mss(
+    document: Any, *, index: dict[str, list[Any]], report: MssAdapterReport | None = None
+) -> list[MssDatum]:
+    """The document's transitive downward closure as ``MssDatum``s. Feed the result
+    to :func:`core.mss.document_codec.mss_document_hash`."""
+    report = report if report is not None else MssAdapterReport()
+    seeds = [r.datum_address for r in document.rows if _is_address(r.datum_address)]
+    closure = _closure_from_seeds(seeds, index, report)
+    report.documents += 1
+    return closure
+
+
+def datum_closure_to_mss(
+    datum_address: str, *, index: dict[str, list[Any]], report: MssAdapterReport | None = None
+) -> list[MssDatum]:
+    """The transitive downward closure of a SINGLE datum as ``MssDatum``s — the
+    focus closure whose MSS hash is that datum's **canonical binary hyphae value**."""
+    report = report if report is not None else MssAdapterReport()
+    return _closure_from_seeds([datum_address], index, report)
+
+
+def binary_hyphae_value(datum_address: str, *, index: dict[str, list[Any]]) -> str:
+    """A datum's canonical binary **hyphae value**: the ``sha256:`` MSS hash of its
+    downward focus closure (rudi-inclusive). This is the stable, content-derived key
+    a hyphae-flag / family-root registry matches against (see ``core/hyphae_flags``
+    and ``docs/wiki/60``)."""
+    from .document_codec import mss_document_hash
+
+    return mss_document_hash(datum_closure_to_mss(datum_address, index=index))
+
+
 __all__ = [
     "MssAdapterReport",
+    "binary_hyphae_value",
     "build_catalog_index",
+    "datum_closure_to_mss",
     "document_closure_to_mss",
 ]
