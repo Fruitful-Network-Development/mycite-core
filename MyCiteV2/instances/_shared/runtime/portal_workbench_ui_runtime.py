@@ -333,6 +333,7 @@ def build_portal_workbench_ui_bundle(
     tool_rows: list[dict[str, Any]] | None = None,
     surface_query: dict[str, Any] | None = None,
     sandbox: str | None = None,
+    enabled_lens_ids: frozenset[str] | None = None,
 ) -> dict[str, Any]:
     del tool_rows
     effective_sandbox = _resolve_sandbox(
@@ -380,6 +381,7 @@ def build_portal_workbench_ui_bundle(
             portal_instance_id=portal_scope.scope_id,
             portal_domain=portal_domain,
             surface_query=surface_query,
+            enabled_lens_ids=enabled_lens_ids,
         )
         model["surface_payload"]["schema"] = WORKBENCH_UI_TOOL_SURFACE_SCHEMA
         model["surface_payload"]["request_contract"] = {

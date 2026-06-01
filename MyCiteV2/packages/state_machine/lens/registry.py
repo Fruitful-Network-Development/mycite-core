@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .base import (
     BinaryTextLens,
@@ -12,6 +13,17 @@ from .base import (
     SecretReferenceLens,
     TrimmedStringLens,
 )
+
+# Human-facing metadata for the Utilities → Lenses management surface, keyed by
+# lens_id. (label, description). Lenses themselves stay pure codecs.
+_LENS_METADATA: dict[str, tuple[str, str]] = {
+    "trimmed_string": ("Trimmed text", "Strips surrounding whitespace on display."),
+    "numeric_hyphen": ("Numeric hyphen", "Renders SAMRAS/HOPS node addresses as <a>-<b>-<c>."),
+    "binary_text": ("Binary → ASCII", "Decodes a binary title blob to nominal ASCII text."),
+    "samras_title": ("SAMRAS title", "Decodes a SAMRAS-encoded title."),
+    "email_address": ("Email address", "Lowercases / normalizes an email address."),
+    "secret_reference": ("Secret reference", "Renders a vault secret reference, never the value."),
+}
 
 
 def _as_text(value: object) -> str:
@@ -74,6 +86,34 @@ class DatumLensRegistry:
     def lens_by_id(self, lens_id: object) -> Lens | None:
         return self._by_lens_id.get(_as_text(lens_id))
 
+    def catalog(self) -> list[dict[str, Any]]:
+        """All built-in lenses + what binds to each — powers the Utilities → Lenses
+        management surface. Excludes ``identity`` (the always-on passthrough)."""
+        bindings: dict[str, dict[str, list[str]]] = {
+            lens_id: {"families": [], "value_kinds": [], "overlays": []}
+            for lens_id in self._by_lens_id
+        }
+        for family, lens in self._family_lenses.items():
+            bindings[lens.lens_id]["families"].append(family)
+        for value_kind, lens in self._value_kind_lenses.items():
+            bindings[lens.lens_id]["value_kinds"].append(value_kind)
+        for overlay, lens in self._overlay_lenses.items():
+            bindings[lens.lens_id]["overlays"].append(overlay)
+        out: list[dict[str, Any]] = []
+        for lens_id in sorted(self._by_lens_id):
+            if lens_id == "identity":
+                continue
+            label, description = _LENS_METADATA.get(lens_id, (lens_id, ""))
+            out.append(
+                {
+                    "lens_id": lens_id,
+                    "label": label,
+                    "description": description,
+                    "bindings": {k: sorted(v) for k, v in bindings[lens_id].items()},
+                }
+            )
+        return out
+
     def resolve(
         self,
         *,
@@ -81,6 +121,30 @@ class DatumLensRegistry:
         primary_value_kind: object = "",
         overlay_kind: object = "",
         flag_lens_id: object = "",
+        enabled_lens_ids: object = None,
+    ) -> LensResolution:
+        resolution = self._resolve_binding(
+            recognized_family=recognized_family,
+            primary_value_kind=primary_value_kind,
+            overlay_kind=overlay_kind,
+            flag_lens_id=flag_lens_id,
+        )
+        # Control-Panel toggle: a lens the operator turned OFF falls back to the
+        # always-on identity passthrough. ``enabled_lens_ids=None`` (the default)
+        # means "no policy → everything enabled" — fully behavior-preserving.
+        if enabled_lens_ids is not None:
+            enabled = {_as_text(item) for item in enabled_lens_ids}
+            if resolution.lens_id != "identity" and resolution.lens_id not in enabled:
+                return LensResolution(lens=self._default_lens, matched_on="lens_disabled", token=resolution.lens_id)
+        return resolution
+
+    def _resolve_binding(
+        self,
+        *,
+        recognized_family: object,
+        primary_value_kind: object,
+        overlay_kind: object,
+        flag_lens_id: object,
     ) -> LensResolution:
         # Highest precedence: a hyphae-flag explicitly bound a lens to this datum
         # (by its canonical hyphae value). Falls through to the family/value-kind
@@ -112,12 +176,14 @@ def resolve_datum_lens(
     primary_value_kind: object = "",
     overlay_kind: object = "",
     flag_lens_id: object = "",
+    enabled_lens_ids: object = None,
 ) -> LensResolution:
     return DEFAULT_DATUM_LENS_REGISTRY.resolve(
         recognized_family=recognized_family,
         primary_value_kind=primary_value_kind,
         overlay_kind=overlay_kind,
         flag_lens_id=flag_lens_id,
+        enabled_lens_ids=enabled_lens_ids,
     )
 
 

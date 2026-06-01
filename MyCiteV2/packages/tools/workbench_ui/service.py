@@ -441,12 +441,17 @@ def _surface_cache_key(
     portal_instance_id: str,
     catalog: Any,
     query: dict[str, Any],
+    enabled_lens_ids: frozenset[str] | None = None,
 ) -> tuple[Any, ...]:
     fingerprint = _catalog_fingerprint(catalog)
+    # The enabled-lens policy changes the rendered display values, so it MUST be
+    # part of the key (None = all-enabled is its own distinct bucket).
+    lens_key = "*" if enabled_lens_ids is None else ",".join(sorted(enabled_lens_ids))
     return (
         db_file,
         portal_instance_id,
         fingerprint,
+        lens_key,
         _as_text(query.get("document")),
         _as_text(query.get("row")),
         _as_text(query.get("sandbox_filter")),
@@ -502,6 +507,7 @@ class WorkbenchUiReadService:
         *,
         tenant_id: str,
         document: AuthoritativeDatumDocument,
+        enabled_lens_ids: frozenset[str] | None = None,
     ) -> list[dict[str, Any]]:
         del tenant_id  # semantics are derived from the document, not a SQL lookup
         # Phase 3 cut-over: derive every row's semantics in ONE core-engine pass
@@ -539,6 +545,7 @@ class WorkbenchUiReadService:
                 recognized_family=recognized_family,
                 primary_value_kind=render_hints.get("primary_value_kind"),
                 overlay_kind=render_hints.get("overlay_kind"),
+                enabled_lens_ids=enabled_lens_ids,
             )
             display_value = _first_non_empty(
                 lens_resolution.lens.decode(primary_value_token) if primary_value_token else "",
@@ -599,6 +606,7 @@ class WorkbenchUiReadService:
         portal_instance_id: str,
         portal_domain: str,
         surface_query: dict[str, Any] | None = None,
+        enabled_lens_ids: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         del portal_domain
         query = dict(surface_query or {})
@@ -613,6 +621,7 @@ class WorkbenchUiReadService:
             portal_instance_id=portal_instance_id,
             catalog=catalog,
             query=query,
+            enabled_lens_ids=enabled_lens_ids,
         )
         cached = _GLOBAL_SURFACE_CACHE.get(cache_key)
         if cached is not None:
@@ -625,6 +634,7 @@ class WorkbenchUiReadService:
             portal_instance_id=portal_instance_id,
             query=query,
             catalog=catalog,
+            enabled_lens_ids=enabled_lens_ids,
         )
 
         # Directive overlays are live, advisory annotations served from a
@@ -643,6 +653,7 @@ class WorkbenchUiReadService:
         portal_instance_id: str,
         query: dict[str, Any],
         catalog: Any,
+        enabled_lens_ids: frozenset[str] | None = None,
     ) -> dict[str, Any]:
         selected_document_id = _as_text(query.get("document"))
         selected_row_id = _as_text(query.get("row"))
@@ -713,7 +724,11 @@ class WorkbenchUiReadService:
         document_version_hash_short = _as_text((active_document_row or {}).get("version_hash_short"))
         rows: list[dict[str, Any]] = []
         if active_document is not None:
-            rows = self._row_items(tenant_id=portal_instance_id, document=active_document)
+            rows = self._row_items(
+                tenant_id=portal_instance_id,
+                document=active_document,
+                enabled_lens_ids=enabled_lens_ids,
+            )
         if text_filter:
             rows = [row for row in rows if text_filter in _row_filter_haystack(row)]
 
