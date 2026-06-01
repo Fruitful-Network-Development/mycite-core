@@ -1,8 +1,23 @@
 # Canonical Datum & Hyphae Flags
 
-> Status: design-spec
+> Status: design-spec — **CORRECTED 2026-06-01**
 
 [← Overview](00-overview-and-glossary.md)
+
+> **Correction (supersedes parts of this page).** An earlier draft framed the
+> canonical hyphae value as a *minimum-complete, address-independent* fold that
+> **excludes** the unreferenced rudi prefix, and proposed "retiring the
+> rudi-range fill." **That is wrong.** Per the authoritative MOS spec
+> (`docs/personal_notes/MOS/mycelial_ontological_schema.md` and
+> `docs/contracts/mss_binary_sequence/`), the canonical hyphae value **must
+> include all preceding rudi datums even if not used directly** (e.g. an
+> abstraction using `0-0-5` includes `0-0-1`..`0-0-5`). The rudis are the
+> ordinal/incremental/nominal frames; the value is canonical *because* it is
+> anchored to the universal rudi starting position. So the rudi scaffold is
+> retained, never retired, and the value is *not* "address-independent" in the
+> sense earlier claimed. `compile_hyphae_value` now carries the rudi context.
+> Read the "minimum-but-complete / address-independent" passages below in that
+> light.
 
 This page specifies how a **canonical datum** earns a stable, content-derived
 identity (a **hyphae value**), how that value "raises a flag," and how that flag
