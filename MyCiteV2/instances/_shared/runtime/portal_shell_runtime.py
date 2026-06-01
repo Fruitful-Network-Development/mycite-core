@@ -1153,6 +1153,46 @@ def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True)
     }
 
 
+def _surface_render_error_bundle(*, surface_id: str, detail: str) -> dict[str, Any]:
+    """Pure, no-I/O fallback bundle for when one surface's render raises. It keeps
+    the shell chrome alive and confines the failure to the workbench pane. The
+    envelope-level error is deliberately left UNSET so ``_runtime_response`` stays
+    HTTP 200 — a non-200 makes the JS shell ``showFatal`` and blank the whole
+    portal. The message therefore rides inside the surface_payload's ``sections``
+    (what the generic surface renderer displays), never the envelope error. Built
+    only from pure helpers, so this fallback can never itself raise."""
+    error_payload = {
+        "schema": surface_schema_for_surface(surface_id),
+        "kind": "surface_render_error",
+        "title": "This surface could not be rendered",
+        "subtitle": "The rest of the portal is available — pick another surface or reload.",
+        "sections": [
+            {
+                "title": "Surface unavailable",
+                "rows": [{"label": "detail", "detail": _as_text(detail) or "Render failed."}],
+            }
+        ],
+    }
+    return {
+        "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
+        "read_write_posture": "read-only",
+        "page_title": "Unavailable",
+        "page_subtitle": "This surface could not be rendered.",
+        "surface_payload": error_payload,
+        "control_panel": attach_region_family_contract(
+            _utilities_control_panel(active_surface_id=surface_id),
+            family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+            surface_id=surface_id,
+        ),
+        "workbench": attach_region_family_contract(
+            _generic_workbench(error_payload),
+            family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+            surface_id=surface_id,
+        ),
+        "tool_rows": [],
+    }
+
+
 ToolSurfaceBundleBuilder = Callable[..., dict[str, Any]]
 
 
@@ -1524,22 +1564,41 @@ def run_portal_shell_entry(
     )
     selection = resolve_portal_shell_request(normalized_request)
     portal_scope = normalized_request.portal_scope
-    bundle = _bundle_for_surface(
-        selection_surface_id=selection.active_surface_id,
-        portal_scope=portal_scope,
-        shell_state=selection.shell_state,
-        request_payload=request_payload,
-        surface_query=normalized_request.surface_query,
-        portal_domain=portal_domain,
-        data_dir=data_dir,
-        public_dir=public_dir,
-        private_dir=private_dir,
-        audit_storage_file=audit_storage_file,
-        webapps_root=webapps_root,
-        tool_exposure_policy=tool_exposure_policy,
-        authority_db_file=authority_db_file,
-        authority_mode=authority_mode,
-    )
+    render_warnings: list[dict[str, Any]] = []
+    try:
+        bundle = _bundle_for_surface(
+            selection_surface_id=selection.active_surface_id,
+            portal_scope=portal_scope,
+            shell_state=selection.shell_state,
+            request_payload=request_payload,
+            surface_query=normalized_request.surface_query,
+            portal_domain=portal_domain,
+            data_dir=data_dir,
+            public_dir=public_dir,
+            private_dir=private_dir,
+            audit_storage_file=audit_storage_file,
+            webapps_root=webapps_root,
+            tool_exposure_policy=tool_exposure_policy,
+            authority_db_file=authority_db_file,
+            authority_mode=authority_mode,
+        )
+    except Exception as exc:
+        # A single surface's render failure must NOT 500 the shell endpoint (which
+        # blanks the entire portal). Degrade to a chrome-intact fallback that shows
+        # the error only in this surface's pane. Re-raise the one error the
+        # /portal/api/v2/shell handler special-cases so its behaviour is preserved.
+        if getattr(exc, "code", "") == "legacy_maps_alias_unsupported":
+            raise
+        _log.exception(
+            "portal_shell_surface_render_failed surface=%s", selection.active_surface_id
+        )
+        bundle = _surface_render_error_bundle(
+            surface_id=selection.active_surface_id,
+            detail="This surface could not be rendered.",
+        )
+        render_warnings.append(
+            {"code": "surface_render_failed", "surface_id": selection.active_surface_id}
+        )
     canonical_route = _as_text(bundle.get("canonical_route")) or selection.canonical_route
     canonical_query = dict(bundle.get("canonical_query") or selection.canonical_query)
     canonical_url = _as_text(bundle.get("canonical_url")) or build_canonical_url(
@@ -1591,7 +1650,7 @@ def run_portal_shell_entry(
         shell_state=None if composition_shell_state is None else composition_shell_state.to_dict(),
         surface_payload=bundle["surface_payload"],
         shell_composition=composition,
-        warnings=[],
+        warnings=render_warnings,
         error=error,
     )
 

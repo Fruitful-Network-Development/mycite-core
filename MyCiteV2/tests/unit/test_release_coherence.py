@@ -43,5 +43,55 @@ class CodeCoherenceTests(unittest.TestCase):
         self.assertEqual(self._coherence("git-abc1234", None)["status"], "unknown")
 
 
+class SourceFreshnessTests(unittest.TestCase):
+    """Locks the mtime-based stale-worker detector: it catches "disk source newer
+    than the running worker" — the --preload deploy-without-restart failure mode
+    that the build-id string compare in _code_coherence structurally cannot see."""
+
+    def _freshness(self, baseline: float, disk: float) -> dict:
+        with patch.object(app, "_newest_source_mtime", return_value=disk):
+            return app._source_freshness(baseline)
+
+    def test_fresh_when_disk_not_newer_than_baseline(self) -> None:
+        self.assertEqual(self._freshness(1000.0, 1000.0)["status"], "fresh")
+
+    def test_fresh_within_tolerance(self) -> None:
+        # mtime granularity / same-second deploy stays fresh.
+        disk = 1000.0 + (app._FRESHNESS_TOLERANCE_SECONDS / 2)
+        self.assertEqual(self._freshness(1000.0, disk)["status"], "fresh")
+
+    def test_stale_when_disk_newer_beyond_tolerance(self) -> None:
+        disk = 1000.0 + app._FRESHNESS_TOLERANCE_SECONDS + 1.0
+        self.assertEqual(self._freshness(1000.0, disk)["status"], "stale")
+
+    def test_unknown_when_no_baseline(self) -> None:
+        self.assertEqual(self._freshness(0.0, 1000.0)["status"], "unknown")
+
+    def test_build_health_unhealthy_when_source_stale(self) -> None:
+        from unittest.mock import MagicMock
+
+        cfg = MagicMock()
+        cfg.to_public_dict.return_value = {}
+        with patch.object(app, "_shell_asset_files_from_manifest", return_value=[]), patch.object(
+            app, "_source_freshness",
+            return_value={"status": "stale", "loaded_mtime": 1.0, "disk_mtime": 9.0},
+        ):
+            health = app._build_health(cfg)
+        self.assertFalse(health["ok"])
+        self.assertEqual(health["source_freshness"]["status"], "stale")
+
+    def test_build_health_ok_when_source_fresh(self) -> None:
+        from unittest.mock import MagicMock
+
+        cfg = MagicMock()
+        cfg.to_public_dict.return_value = {}
+        with patch.object(app, "_shell_asset_files_from_manifest", return_value=[]), patch.object(
+            app, "_source_freshness",
+            return_value={"status": "fresh", "loaded_mtime": 1.0, "disk_mtime": 1.0},
+        ):
+            health = app._build_health(cfg)
+        self.assertTrue(health["ok"])
+
+
 if __name__ == "__main__":
     unittest.main()

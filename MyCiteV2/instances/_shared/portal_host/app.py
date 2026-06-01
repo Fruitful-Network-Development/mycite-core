@@ -191,6 +191,48 @@ def _current_git_head_build_id() -> str | None:
         return None
 
 
+_FRESHNESS_TOLERANCE_SECONDS = 2.0
+
+
+def _portal_source_root() -> Path:
+    # .../MyCiteV2 (this file is MyCiteV2/instances/_shared/portal_host/app.py).
+    return Path(__file__).resolve().parents[3]
+
+
+def _newest_source_mtime(root: Path | None = None) -> float:
+    """Newest ``.py`` mtime under the imported runtime subtrees (``packages/`` +
+    ``instances/``). Tests/docs/scripts are excluded so editing them never trips
+    the stale-worker signal. Robust to files vanishing mid-walk."""
+    base = root if root is not None else _portal_source_root()
+    newest = 0.0
+    for sub in ("packages", "instances"):
+        for path in (base / sub).rglob("*.py"):
+            try:
+                mtime = path.stat().st_mtime
+            except OSError:
+                continue
+            if mtime > newest:
+                newest = mtime
+    return newest
+
+
+def _source_freshness(baseline_mtime: float) -> dict[str, Any]:
+    """Detect "disk source newer than the running worker" — the ``--preload``
+    stale-worker failure mode that ``_code_coherence``'s build-id compare cannot
+    see (the build id is a deploy-pinned env frozen at import, not the worker's
+    actual code-load point). ``baseline_mtime`` is the newest source mtime captured
+    AT IMPORT (i.e. when this worker loaded its code); compare it to the current
+    on-disk newest mtime. ``unknown`` (no baseline) is non-gating."""
+    disk = _newest_source_mtime()
+    if baseline_mtime <= 0.0:
+        status = "unknown"
+    elif disk - baseline_mtime > _FRESHNESS_TOLERANCE_SECONDS:
+        status = "stale"
+    else:
+        status = "fresh"
+    return {"status": status, "loaded_mtime": baseline_mtime, "disk_mtime": disk}
+
+
 def _default_portal_build_id() -> str:
     """Fall back to the git short SHA when MYCITE_V2_PORTAL_BUILD_ID is unset.
 
@@ -240,6 +282,9 @@ def _code_coherence(running_build_id: str) -> dict[str, Any]:
 
 
 PORTAL_BUILD_ID = _default_portal_build_id()
+# Captured once in the gunicorn --preload master (pre-fork; inherited COW by every
+# worker) so healthz can detect a worker running code older than what's on disk.
+PORTAL_SOURCE_MTIME_AT_IMPORT = _newest_source_mtime()
 PORTAL_SHELL_ASSET_MANIFEST_SCHEMA = "mycite.v2.portal.shell.asset_manifest.v1"
 PORTAL_SHELL_INITIAL_LOAD_BUDGET_GZIP_BYTES = 41000
 PORTAL_SHELL_TOTAL_BUDGET_GZIP_BYTES = 65000
@@ -834,12 +879,18 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
     static_dir = Path(__file__).resolve().parent / "static"
     shell_asset_manifest = build_shell_asset_manifest(PORTAL_BUILD_ID)
     static_files = _shell_asset_files_from_manifest(shell_asset_manifest)
+    source_freshness = _source_freshness(PORTAL_SOURCE_MTIME_AT_IMPORT)
+    static_ok = all((static_dir / name).is_file() for name in static_files)
     return {
         "schema": V2_PORTAL_HEALTH_SCHEMA,
-        "ok": all((static_dir / name).is_file() for name in static_files),
+        # A "stale" worker (disk code newer than this worker loaded) is unhealthy:
+        # this is the signal a deploy-without-restart needs (the gate curls healthz).
+        # "unknown" is non-gating so dependency-light/test layouts don't false-fail.
+        "ok": static_ok and source_freshness["status"] != "stale",
         "host_shape": HOST_SHAPE,
         "portal_build_id": PORTAL_BUILD_ID,
         "code_coherence": _code_coherence(PORTAL_BUILD_ID),
+        "source_freshness": source_freshness,
         "portal_instance_id": config.portal_instance_id,
         "shell_asset_manifest": shell_asset_manifest,
         "root_routes": [

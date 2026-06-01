@@ -256,9 +256,12 @@ if [[ "$SKIP_HEALTH" != "1" ]]; then
   attempts=20
   sleep_seconds=1
   log "Checking health endpoint on port ${PORT} (up to ${attempts}s wait)"
+  shell_url="http://127.0.0.1:${PORT}/portal/api/v2/shell"
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '[dry-run] '
     printf '%q ' curl -fsS "$local_url"
+    printf '\n[dry-run] '
+    printf '%q ' curl -fsS -X POST "$shell_url" -H 'Content-Type: application/json' -d '{}'
     printf '\n'
   else
     health_ok="0"
@@ -273,6 +276,17 @@ if [[ "$SKIP_HEALTH" != "1" ]]; then
     if [[ "$health_ok" != "1" ]]; then
       fail "Health endpoint did not become ready at ${local_url} within ${attempts}s"
     fi
+    # healthz GET only proves the process is up; POST the actual shell so a 500ing
+    # shell fails the sync instead of silently shipping a blank portal.
+    shell_code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' \
+      -X POST "$shell_url" -H 'Content-Type: application/json' -d '{}')"
+    # 200 healthy; 503 = service-state (e.g. DB not seeded), not a code crash;
+    # 500/502/504/000/4xx = broken/down shell → fail the sync.
+    case "$shell_code" in
+      200) log "Shell endpoint POST returned 200" ;;
+      503) log "WARNING: shell endpoint POST returned 503 (service-state) — not blocking" ;;
+      *) fail "Shell endpoint POST ${shell_url} returned ${shell_code} (broken/down shell)" ;;
+    esac
   fi
 fi
 

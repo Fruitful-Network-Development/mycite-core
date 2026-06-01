@@ -211,15 +211,32 @@ run_health_check() {
   local sleep_seconds=1
   local attempt
   log "Checking health endpoint on port ${PORT} (up to ${attempts}s wait)"
+  local shell_url="http://127.0.0.1:${PORT}/portal/api/v2/shell"
   if [[ "$DRY_RUN" == "1" ]]; then
     printf '[dry-run] '
     printf '%q ' curl -fsS "$url"
+    printf '\n[dry-run] '
+    printf '%q ' curl -fsS -X POST "$shell_url" -H 'Content-Type: application/json' -d '{}'
     printf '\n'
     return 0
   fi
   for attempt in $(seq 1 "$attempts"); do
     if curl -fsS "$url" >/dev/null; then
       curl -fsS "$url"
+      # The healthz GET only proves the process is up. POST the actual shell so a
+      # 500ing shell (e.g. a stale/broken worker) FAILS the deploy instead of
+      # silently shipping a blank portal.
+      local shell_code
+      shell_code="$(curl -s -m 10 -o /dev/null -w '%{http_code}' \
+        -X POST "$shell_url" -H 'Content-Type: application/json' -d '{}')"
+      # 200 = healthy. 503 = a well-formed app reporting service state (e.g. SQL
+      # authority not yet seeded) — NOT a code crash, so don't block the deploy.
+      # 500/502/504/000/4xx = a broken or down shell → fail the deploy.
+      case "$shell_code" in
+        200) log "Shell endpoint POST returned 200" ;;
+        503) log "WARNING: shell endpoint POST returned 503 (service-state, e.g. DB not ready) — not blocking" ;;
+        *) fail "Shell endpoint POST ${shell_url} returned ${shell_code} (broken/down shell)" ;;
+      esac
       return 0
     fi
     sleep "$sleep_seconds"
@@ -552,6 +569,10 @@ if [[ "$DO_CODE" == "1" ]]; then
   if [[ "$SKIP_RESTART" != "1" ]]; then
     restart_service
   fi
+  # run_health_check now also POSTs /portal/api/v2/shell (see the function), so a
+  # hard-500ing shell fails the deploy. Stale-worker / disk-newer-than-running is
+  # caught independently by the healthz source_freshness gate (any code change,
+  # incl. a raw git operation on the live tree, not just a --code deploy).
   if [[ "$SKIP_HEALTH" != "1" ]]; then
     run_health_check
   fi
