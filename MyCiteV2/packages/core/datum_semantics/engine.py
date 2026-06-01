@@ -212,7 +212,35 @@ def _remap_semantic_raw(
     return raw
 
 
-def build_document_semantics(document: AuthoritativeDatumDocument) -> dict[str, Any]:
+def _dependency_closure(start: str, dependency_map: dict[str, Any]) -> list[str]:
+    """The minimum-but-complete dependency path of ``start`` (focus-excluded):
+    a DFS over local-reference edges, dependencies emitted before dependents,
+    with NO rudi-range fill. ``start`` is the last element.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+
+    def visit(current: str) -> None:
+        if current in seen:
+            return
+        seen.add(current)
+        for dependency in sorted(dependency_map.get(current, ()), key=datum_address_sort_key):
+            visit(dependency)
+        out.append(current)
+
+    visit(start)
+    return out
+
+
+def _semantic_context(document: AuthoritativeDatumDocument) -> dict[str, Any]:
+    """Shared semantic substrate consumed by ``build_document_semantics``,
+    ``build_minimum_complete_path``, and ``compile_hyphae_value``.
+
+    Returns the address map, the local-reference dependency map, the
+    anchor-context hash, the per-row **content-canonical** semantic hashes
+    (address-independent — each local ref folds to its dependency's semantic
+    hash and the row's own address to ``__self__``), and the detected cycle set.
+    """
     address_map = {
         row.datum_address: row
         for row in sorted(document.rows, key=lambda item: datum_address_sort_key(item.datum_address))
@@ -266,33 +294,71 @@ def build_document_semantics(document: AuthoritativeDatumDocument) -> dict[str, 
     for address in address_map:
         semantic_hash_for(address)
 
+    return {
+        "address_map": address_map,
+        "dependency_map": dependency_map,
+        "anchor_context_hash": anchor_context_hash,
+        "semantic_hashes": semantic_hashes,
+        "cycle_rows": cycle_rows,
+    }
+
+
+def build_minimum_complete_path(
+    document: AuthoritativeDatumDocument, datum_address: str
+) -> list[str]:
+    """The minimum-but-complete abstraction path for ``datum_address``: the
+    focus-excluded local-reference closure (dependencies first, target last),
+    with NO inclusive rudi-range fill. Raises ``ValueError`` if absent.
+    """
+    context = _semantic_context(document)
+    if datum_address not in context["address_map"]:
+        raise ValueError(f"datum_address not found in document: {datum_address!r}")
+    return _dependency_closure(datum_address, context["dependency_map"])
+
+
+def compile_hyphae_value(
+    document: AuthoritativeDatumDocument, datum_address: str
+) -> str:
+    """Compile the **canonical hyphae value** of ``datum_address``: fold the
+    minimum-complete path's content-canonical semantic hashes (anchor-context
+    aware) into a single ``sha256:`` token.
+
+    Address-independent by construction — re-nesting/relocating datums that
+    preserves content + reference structure preserves every semantic hash, hence
+    the value. This is the value a hyphae-flag registry matches against (see
+    ``core/hyphae_flags``). It equals the per-row ``hyphae_hash`` that
+    ``build_document_semantics`` will emit once the rudi-range fill is retired.
+    """
+    context = _semantic_context(document)
+    if datum_address not in context["address_map"]:
+        raise ValueError(f"datum_address not found in document: {datum_address!r}")
+    semantic_hashes = context["semantic_hashes"]
+    closure = _dependency_closure(datum_address, context["dependency_map"])
+    payload = {
+        "policy": HYPHAE_CHAIN_POLICY,
+        "anchor_context_hash": context["anchor_context_hash"],
+        "target_semantic_hash": semantic_hashes[datum_address],
+        "chain_semantic_hashes": [semantic_hashes[item] for item in closure],
+    }
+    return _sha256_token(prefix=f"{HYPHAE_CHAIN_POLICY}:chain", payload=payload)
+
+
+def build_document_semantics(document: AuthoritativeDatumDocument) -> dict[str, Any]:
+    context = _semantic_context(document)
+    address_map = context["address_map"]
+    dependency_map = context["dependency_map"]
+    anchor_context_hash = context["anchor_context_hash"]
+    semantic_hashes = context["semantic_hashes"]
+    cycle_rows = context["cycle_rows"]
+
     rudi_rows = {
         address: row
         for address, row in address_map.items()
         if parse_datum_address(address)[:2] == (0, 0)
     }
     row_results: dict[str, dict[str, Any]] = {}
-    def _walk_closure(
-        start: str,
-        deps: dict[str, set[str]],
-    ) -> list[str]:
-        """DFS closure with sorted dependency traversal — captures only its args."""
-        out: list[str] = []
-        seen: set[str] = set()
-
-        def visit(current: str) -> None:
-            if current in seen:
-                return
-            seen.add(current)
-            for dependency in sorted(deps.get(current, ()), key=datum_address_sort_key):
-                visit(dependency)
-            out.append(current)
-
-        visit(start)
-        return out
-
     for address in address_map:
-        closure = _walk_closure(address, dependency_map)
+        closure = _dependency_closure(address, dependency_map)
         reachable_rudi_iterations = [
             parse_datum_address(item)[2]
             for item in closure

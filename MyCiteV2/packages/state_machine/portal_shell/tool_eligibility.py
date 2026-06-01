@@ -65,24 +65,24 @@ def recognize_applicable_tools(
     datum_doc: Any,
     datum_address: str,
     registry: tuple[PortalToolRegistryEntry, ...],
+    *,
+    hyphae_values: Iterable[str] = (),
 ) -> tuple[PortalToolRegistryEntry, ...]:
     """Return the palette-eligible subset of `registry` for the given datum.
 
-    A tool is eligible when:
-      - it is NOT an extension (is_extension == False), AND
-      - either its `applies_to_archetype` intersects the document's archetype
-        set, OR its `applies_to_source_kind` intersects the document's
-        source_kind (a single-element set).
+    A tool is eligible when it is NOT an extension and any of:
+      - its `applies_to_archetype` intersects the document's archetype set, OR
+      - its `applies_to_source_kind` intersects the document's source_kind, OR
+      - its `applies_to_hyphae_value` intersects ``hyphae_values`` — the canonical
+        hyphae value(s) of the selected datum (from
+        ``core.datum_semantics.compile_hyphae_value``). This is the content-derived
+        flag binding; pass () (the default) for the archetype-only behavior, so an
+        un-flagged caller is unchanged.
 
     The archetype set is widened by the hyphae chain so tools applicable to
-    upstream rudis are also offered.
+    upstream rudis are also offered. Output is sorted by `tool_id`.
 
-    Output ordering is deterministic, sorted by `tool_id`.
-
-    Returns () when:
-      - datum_address is empty
-      - datum_address is not present in datum_doc (derive_hyphae_chain raises;
-        we treat that as no eligibility rather than re-raising)
+    Returns () when datum_address is empty or absent from datum_doc.
     """
     address = str(datum_address or "").strip()
     if not address:
@@ -96,17 +96,19 @@ def recognize_applicable_tools(
     archetype_set = _document_archetype_set(datum_doc, hyphae_chain)
     source_kind = _normalize_token(getattr(datum_doc, "source_kind", ""))
     source_kind_set = frozenset({source_kind}) if source_kind else frozenset()
+    hyphae_value_set = frozenset(v for v in (str(x).strip() for x in hyphae_values) if v)
 
     eligible: list[PortalToolRegistryEntry] = []
     for entry in registry:
         if entry.is_extension:
             continue
-        applies_archetype = frozenset(entry.applies_to_archetype)
-        applies_source_kind = frozenset(entry.applies_to_source_kind)
-        if archetype_set & applies_archetype:
+        if archetype_set & frozenset(entry.applies_to_archetype):
             eligible.append(entry)
             continue
-        if source_kind_set & applies_source_kind:
+        if source_kind_set & frozenset(entry.applies_to_source_kind):
+            eligible.append(entry)
+            continue
+        if hyphae_value_set & frozenset(entry.applies_to_hyphae_value):
             eligible.append(entry)
     eligible.sort(key=lambda e: e.tool_id)
     return tuple(eligible)
