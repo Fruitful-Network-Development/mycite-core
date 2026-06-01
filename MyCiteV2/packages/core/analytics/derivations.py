@@ -16,12 +16,9 @@ from __future__ import annotations
 import json
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
-from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.filesystem.analytics_event_paths import (
-    AnalyticsEventPathResolver,
-)
+from MyCiteV2.packages.ports.analytics_events import AnalyticsEventPathResolver
 
 # Default sessionization gap: a visitor is in the same session as
 # long as consecutive events are within this many ms.
@@ -47,9 +44,7 @@ def read_events(
     *,
     domain: str,
     year_months: Iterable[str],
-    resolver: AnalyticsEventPathResolver | None = None,
-    analytics_root: str | Path | None = None,
-    webapps_root: str | Path | None = None,
+    resolver: AnalyticsEventPathResolver,
 ) -> Iterator[dict[str, Any]]:
     """Yield events from one or more NDJSON files for a domain.
 
@@ -58,20 +53,12 @@ def read_events(
     enumerates the year_months explicitly so the read scope is
     bounded.
 
-    Resolution priority:
-        1. ``resolver`` — explicit injected resolver.
-        2. ``analytics_root`` — construct a canonical-mode resolver.
-        3. ``webapps_root`` — construct a legacy-mode resolver (the
-           historical interface; kept for backward compat).
-        4. ``MYCITE_ANALYTICS_ROOT`` env / default canonical root.
+    ``resolver`` is injected (it implements the
+    :class:`MyCiteV2.packages.ports.analytics_events.AnalyticsEventPathResolver`
+    protocol). Constructing the concrete filesystem resolver — and choosing
+    canonical vs legacy roots — is the caller's (adapter/instance) job; core
+    stays free of any filesystem-adapter dependency.
     """
-    if resolver is None:
-        if analytics_root is not None:
-            resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
-        elif webapps_root is not None:
-            resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
-        else:
-            resolver = AnalyticsEventPathResolver()
     for year_month in year_months:
         try:
             resolution = resolver.resolve_events_file(

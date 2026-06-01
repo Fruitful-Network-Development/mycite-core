@@ -1,19 +1,23 @@
-"""Boundary guard: the datum-semantics / datum-ops / MSS-identity seam in
-``core`` must not depend on adapters or instances.
+"""Boundary guard: NOTHING in ``core`` may depend on an outer layer.
 
-The datum-address / hyphae / MSS-semantics engine used to live at
-``MyCiteV2.packages.adapters.sql.datum_semantics`` even though it depends only
-on ``ports`` + the standard library. ``core/datum_ops`` (``ops.py`` /
-``node_ops.py``) imported it from there, inverting the core->adapter dependency
-direction. The engine now lives at ``MyCiteV2.packages.core.datum_semantics``;
-this test locks the rule in so these packages never import from ``adapters`` or
-``instances`` again.
+``core`` is the innermost layer of the hexagon: it may import the standard
+library, third-party packages, other ``core`` modules, and the ``ports``
+contracts — and nothing else. In particular it must never import from
+``adapters``, ``instances``, ``modules``, ``state_machine``, ``tools``, or
+``sandboxes``.
 
-Scope is the three packages this seam touches — ``datum_semantics``,
-``datum_ops``, and ``mss`` — mirroring the per-package convention of the other
-``tests/architecture`` boundary guards (e.g. :mod:`test_core_datum_refs_boundaries`,
-:mod:`test_state_machine_boundaries`). It does NOT forbid ``ports``: these
-packages legitimately depend on the ``ports.datum_store`` value types.
+History: the datum-address / hyphae / MSS-semantics engine used to live at
+``adapters.sql.datum_semantics`` (``core/datum_ops`` imported it from there),
+and ``core/analytics/derivations`` imported a filesystem adapter directly —
+both inverting the dependency direction. Those are now fixed (the engine lives
+at ``core.datum_semantics``; analytics resolves through the
+``ports.analytics_events`` protocol). This guard now covers **all** of ``core``
+so no future commit can quietly re-introduce an inversion in any core package.
+
+It does NOT forbid ``ports``: core legitimately depends on the ``ports`` value
+types / protocols. (The stricter per-package guards for the *pure* packages
+``datum_refs`` / ``datum_rules`` additionally forbid ``ports`` and live in their
+own test modules.)
 """
 
 from __future__ import annotations
@@ -24,20 +28,20 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CORE_DIR = PROJECT_ROOT / "packages" / "core"
-GUARDED_PACKAGES = ("datum_semantics", "datum_ops", "mss")
 
 FORBIDDEN_IMPORT_PREFIXES = (
     "MyCiteV2.instances",
     "instances",
     "MyCiteV2.packages.adapters",
+    "MyCiteV2.packages.modules",
+    "MyCiteV2.packages.state_machine",
+    "MyCiteV2.packages.tools",
+    "MyCiteV2.packages.sandboxes",
 )
 
 
 def _guarded_paths() -> list[Path]:
-    paths: list[Path] = []
-    for package in GUARDED_PACKAGES:
-        paths.extend((CORE_DIR / package).rglob("*.py"))
-    return sorted(paths)
+    return sorted(CORE_DIR.rglob("*.py"))
 
 
 def _violations_for(module_name: str, path: Path) -> list[str]:
@@ -46,8 +50,8 @@ def _violations_for(module_name: str, path: Path) -> list[str]:
     return []
 
 
-class CoreDatumOpsBoundaryTests(unittest.TestCase):
-    def test_datum_ops_seam_never_imports_from_adapters_or_instances(self) -> None:
+class CoreLayerBoundaryTests(unittest.TestCase):
+    def test_core_never_imports_from_an_outer_layer(self) -> None:
         violations: list[str] = []
 
         for path in _guarded_paths():
