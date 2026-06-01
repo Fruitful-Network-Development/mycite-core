@@ -310,6 +310,14 @@ _SPECIES_ALIAS: dict[str, str] = {
     "salsify": "tragopogon_porrifolius",
     "asparagus_officinalis.mary_washington": "asparagus_officinalis",
     "asparagus_officinalis.purple_passion": "asparagus_officinalis",
+    # Non-binomial catalogue rows → resolve to an existing taxon node (genus-level
+    # aggregate, or the 'unspecified' bucket) so they don't mint a raw catch-all.
+    # Faithful + idempotent: the resolver's exact-title path finds these nodes.
+    "allium_spp": "allium",            # genus-level aggregate → the allium genus
+    "amaranthus_spp.": "amaranthus",   # genus-level aggregate → the amaranthus genus
+    "direct": "unspecified",           # no species (e.g. a packaged mix) → unspecified bucket
+    "mixed_spp.": "unspecified",       # explicit mixture → unspecified bucket
+    "unknown": "unspecified",          # uncharacterised row → unspecified bucket
 }
 
 
