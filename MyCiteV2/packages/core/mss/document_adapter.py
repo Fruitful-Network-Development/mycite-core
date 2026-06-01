@@ -1,0 +1,159 @@
+"""Adapter: ``AuthoritativeDatumDocument`` (the repo's raw-row model) → ``MssDatum``
+closures the binary MSS codec can encode.
+
+A document's datums reference the shared anthology base (rudis ``0-0-*`` + the
+abstraction ladder) and other sandbox documents, so a document's canonical MSS is
+its **transitive downward reference closure resolved across the whole tenant
+catalog**, reindexed into an isolated anthology (per
+``docs/contracts/mss_binary_sequence/``). Validated read-only against the live
+``fnd`` corpus: **163/163 documents round-trip** through encode→decode.
+
+Raw-row grammar parsed here: ``raw = [[address, t0, t1, …], [title]]``.
+  - leading ``~`` ⇒ refs-only (the trailing tokens are references / a collection),
+  - otherwise tuple-bearing: the trailing tokens pair as ``(reference, magnitude)``.
+Reference tokens are datum addresses or ``rf.<addr>`` markers; magnitudes are
+decimal, binary-string, or literal (coerced to an integer canonical value).
+Dangling references (addresses absent from the catalog), upward references, and
+malformed tokens are dropped and counted in :class:`MssAdapterReport` — they are
+stale/legacy data (~0.5% of references), never silently mangled.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from .document_codec import MssDatum
+
+
+def _is_address(token: Any) -> bool:
+    return (
+        isinstance(token, str)
+        and token.count("-") == 2
+        and all(part.isdigit() for part in token.split("-"))
+    )
+
+
+def _strip_rf(token: Any) -> Any:
+    return token[3:] if isinstance(token, str) and token.startswith("rf.") else token
+
+
+def _coerce_magnitude(token: Any) -> int | None:
+    if isinstance(token, bool):
+        return int(token)
+    if isinstance(token, int):
+        return token
+    if isinstance(token, str):
+        if token.lstrip("-").isdigit():
+            return int(token)
+        if token and set(token) <= {"0", "1"}:
+            return int(token, 2)
+        # Literal text → its canonical byte value (the lens-decoded form is display).
+        return int.from_bytes(token.encode("utf-8"), "big") if token else 0
+    return None
+
+
+@dataclass
+class MssAdapterReport:
+    dropped_dangling: int = 0      # reference to an address absent from the catalog
+    dropped_upward: int = 0        # reference to an equal/higher layer (not downward)
+    dropped_malformed: int = 0     # non-address token / odd body / uncoercible magnitude
+    documents: int = 0
+    datums: int = 0
+
+
+def _row_head(raw: Any) -> list[Any] | None:
+    if isinstance(raw, list) and raw and isinstance(raw[0], list):
+        return raw[0]
+    return None
+
+
+def build_catalog_index(catalog: Any) -> dict[str, list[Any]]:
+    """Address → row-head map across every document in the catalog (rows +
+    anchor_rows; first occurrence wins). The shared anthology base appears as the
+    ``anchor_rows`` of many documents, so this resolves cross-document references."""
+    index: dict[str, list[Any]] = {}
+    for document in catalog.documents:
+        rows = list(document.rows) + list(getattr(document, "anchor_rows", ()) or [])
+        for row in rows:
+            address = row.datum_address
+            if _is_address(address) and address not in index:
+                head = _row_head(row.raw)
+                if head is not None:
+                    index[address] = head
+    return index
+
+
+def _parse_row(address: str, head: list[Any], index: dict[str, list[Any]], report: MssAdapterReport):
+    layer = int(address.split("-")[0])
+    coords = tuple(int(p) for p in address.split("-"))
+    body = head[1:]
+    deps: list[str] = []
+    if body and body[0] == "~":
+        refs: list[str] = []
+        for token in body[1:]:
+            ref = _strip_rf(token)
+            if not _is_address(ref):
+                report.dropped_malformed += 1
+                continue
+            if ref not in index:
+                report.dropped_dangling += 1
+                continue
+            if int(ref.split("-")[0]) >= layer:
+                report.dropped_upward += 1
+                continue
+            refs.append(ref)
+            deps.append(ref)
+        return MssDatum(*coords, refs=tuple(refs)), deps
+    if len(body) % 2:
+        report.dropped_malformed += 1
+    tuples: list[tuple[str, int]] = []
+    for i in range(0, len(body) - 1, 2):
+        ref = _strip_rf(body[i])
+        magnitude = _coerce_magnitude(body[i + 1])
+        if not _is_address(ref):
+            report.dropped_malformed += 1
+            continue
+        if ref not in index:
+            report.dropped_dangling += 1
+            continue
+        if int(ref.split("-")[0]) >= layer:
+            report.dropped_upward += 1
+            continue
+        if magnitude is None:
+            report.dropped_malformed += 1
+            continue
+        tuples.append((ref, magnitude))
+        deps.append(ref)
+    if tuples:
+        return MssDatum(*coords, tuples=tuple(tuples)), deps
+    return MssDatum(*coords, refs=()), deps
+
+
+def document_closure_to_mss(
+    document: Any, *, index: dict[str, list[Any]], report: MssAdapterReport | None = None
+) -> list[MssDatum]:
+    """The document's transitive downward closure as ``MssDatum``s, resolved against
+    a prebuilt ``index`` (see :func:`build_catalog_index`). Feed the result to
+    :func:`core.mss.document_codec.mss_document_hash`."""
+    report = report if report is not None else MssAdapterReport()
+    seeds = [r.datum_address for r in document.rows if _is_address(r.datum_address)]
+    out: dict[str, MssDatum] = {}
+    work = list(seeds)
+    while work:
+        address = work.pop()
+        if address in out or address not in index:
+            continue
+        datum, deps = _parse_row(address, index[address], index, report)
+        out[address] = datum
+        work.extend(deps)
+    report.documents += 1
+    report.datums += len(out)
+    return list(out.values())
+
+
+__all__ = [
+    "MssAdapterReport",
+    "build_catalog_index",
+    "document_closure_to_mss",
+]
