@@ -1,0 +1,109 @@
+"""Lens management runtime — the backend for the Utilities → Lenses surface and
+the Control-Panel per-lens toggles (docs/wiki/81-lens-authoring-guide.md).
+
+Lenses are managed (discovered/curated) and toggled ON/OFF here; a disabled lens
+falls back to the identity passthrough in the workbench render path. State is a
+small control-config JSON under ``<private_dir>/utilities/control/lens_state.json``
+holding the set of *disabled* lens ids — absence ⇒ everything enabled (so a fresh
+portal is behavior-preserving). This is control config, not a datum document, so
+it is exempt from the MOS-only on-disk rule (same posture as tool_exposure).
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+from pathlib import Path
+from typing import Any
+
+from MyCiteV2.packages.state_machine.lens import DEFAULT_DATUM_LENS_REGISTRY
+
+LENS_STATE_SUBPATH = "utilities/control/lens_state.json"
+LENS_CATALOG_RESPONSE_SCHEMA = "mycite.v2.portal.lenses.catalog.response.v1"
+LENS_STATE_SCHEMA = "mycite.v2.portal.lenses.state.v1"
+
+
+def _state_path(private_dir: str | Path) -> Path:
+    return Path(private_dir) / LENS_STATE_SUBPATH
+
+
+def _catalog_lens_ids() -> set[str]:
+    return {entry["lens_id"] for entry in DEFAULT_DATUM_LENS_REGISTRY.catalog()}
+
+
+def read_disabled_lens_ids(private_dir: str | Path | None) -> frozenset[str]:
+    """The set of operator-disabled lens ids (empty ⇒ all enabled). Only ids that
+    are still in the catalog are honored (a removed lens can't stay 'disabled')."""
+    if private_dir is None:
+        return frozenset()
+    path = _state_path(private_dir)
+    if not path.is_file():
+        return frozenset()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+    disabled = {str(item).strip() for item in (payload.get("disabled") or []) if str(item).strip()}
+    return frozenset(disabled & _catalog_lens_ids())
+
+
+def enabled_lens_ids(private_dir: str | Path | None) -> frozenset[str]:
+    """The set of currently-ENABLED catalog lens ids — what the render path passes
+    to ``resolve_datum_lens(enabled_lens_ids=...)``."""
+    return frozenset(_catalog_lens_ids() - read_disabled_lens_ids(private_dir))
+
+
+def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lens_state.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True))
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def set_lens_enabled(
+    private_dir: str | Path, *, lens_id: str, enabled: bool
+) -> dict[str, Any]:
+    """Toggle one lens; persist; return the refreshed catalog response.
+
+    Raises ``ValueError`` for an unknown lens id (can't toggle what isn't built in).
+    """
+    lens_token = str(lens_id or "").strip()
+    if lens_token not in _catalog_lens_ids():
+        raise ValueError(f"unknown lens_id: {lens_id!r}")
+    disabled = set(read_disabled_lens_ids(private_dir))
+    if enabled:
+        disabled.discard(lens_token)
+    else:
+        disabled.add(lens_token)
+    _atomic_write_json(
+        _state_path(private_dir),
+        {"schema": LENS_STATE_SCHEMA, "disabled": sorted(disabled)},
+    )
+    return build_lens_catalog_response(private_dir)
+
+
+def build_lens_catalog_response(private_dir: str | Path | None) -> dict[str, Any]:
+    """The catalog + per-lens enabled flag for the management/Control-Panel UI."""
+    disabled = read_disabled_lens_ids(private_dir)
+    lenses = [
+        {**entry, "enabled": entry["lens_id"] not in disabled}
+        for entry in DEFAULT_DATUM_LENS_REGISTRY.catalog()
+    ]
+    return {"schema": LENS_CATALOG_RESPONSE_SCHEMA, "lenses": lenses}
+
+
+__all__ = [
+    "LENS_CATALOG_RESPONSE_SCHEMA",
+    "LENS_STATE_SCHEMA",
+    "LENS_STATE_SUBPATH",
+    "build_lens_catalog_response",
+    "enabled_lens_ids",
+    "read_disabled_lens_ids",
+    "set_lens_enabled",
+]

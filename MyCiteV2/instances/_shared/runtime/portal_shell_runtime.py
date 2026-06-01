@@ -1164,8 +1164,10 @@ def _build_workbench_ui_tool_bundle(
     authority_db_file: str | Path | None,
     tool_rows: list[dict[str, Any]],
     surface_query: dict[str, str] | None,
+    private_dir: str | Path | None = None,
     **_: Any,
 ) -> dict[str, Any]:
+    from MyCiteV2.instances._shared.runtime.portal_lens_runtime import enabled_lens_ids
     from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
         build_portal_workbench_ui_bundle,
     )
@@ -1177,6 +1179,9 @@ def _build_workbench_ui_tool_bundle(
         authority_db_file=authority_db_file,
         tool_rows=tool_rows,
         surface_query=surface_query,
+        # Apply the operator's Control-Panel lens toggles (disabled → identity).
+        # private_dir flows in via _tool_bundle_for_surface; None ⇒ all enabled.
+        enabled_lens_ids=enabled_lens_ids(private_dir),
     )
 
 

@@ -366,6 +366,22 @@ PORTAL_SHELL_MODULE_CONTRACTS = (
         ),
     },
     {
+        # Phase 5 (docs/wiki/81). The lens panel manages presentation lenses and
+        # toggles them on/off (disabled → identity passthrough). Deferred: it only
+        # loads on the Utilities surface, never in the critical-shell budget.
+        "module_id": "lens_panel",
+        "file": "v2_portal_lens_panel.js",
+        "load_phase": "deferred",
+        "loading_scope": ("utilities.root",),
+        "budget_group": "deferred_tool_renderers",
+        "exports": (
+            {
+                "global": "PortalLensPanel",
+                "required_callables": ("fetch", "toggle", "mount", "refresh"),
+            },
+        ),
+    },
+    {
         "module_id": "shell_watchdog",
         "file": "v2_portal_shell_watchdog.js",
         "load_phase": "startup_critical",
@@ -1729,6 +1745,36 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             datum_store=datum_store,
         )
         return jsonify(payload), 200
+
+    @app.get("/portal/api/lenses")
+    def portal_lenses_catalog() -> tuple[Any, int]:
+        # Lens management: the built-in lens catalog (id / label / description /
+        # bindings) + each lens's current enabled state, for the Utilities → Lenses
+        # surface and the Control-Panel toggles. See docs/wiki/81.
+        from MyCiteV2.instances._shared.runtime.portal_lens_runtime import (
+            build_lens_catalog_response,
+        )
+
+        return jsonify(build_lens_catalog_response(host_config.private_dir)), 200
+
+    @app.post("/portal/api/lenses/toggle")
+    def portal_lenses_toggle() -> tuple[Any, int]:
+        # Control-Panel toggle: enable/disable one lens. A disabled lens falls back
+        # to the identity passthrough in the workbench render path.
+        from MyCiteV2.instances._shared.runtime.portal_lens_runtime import set_lens_enabled
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        body = request.get_json(silent=True) or {}
+        lens_id = _as_text(body.get("lens_id"))
+        if not lens_id:
+            return jsonify({"ok": False, "error": "lens_id_required"}), 400
+        enabled = bool(body.get("enabled", True))
+        try:
+            payload = set_lens_enabled(host_config.private_dir, lens_id=lens_id, enabled=enabled)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "unknown_lens", "detail": str(exc)}), 400
+        return jsonify({"ok": True, **payload}), 200
 
     @app.get("/portal/api/visualizers/for-sandbox")
     def portal_visualizers_for_sandbox() -> tuple[Any, int]:
