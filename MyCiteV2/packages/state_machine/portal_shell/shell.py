@@ -489,6 +489,12 @@ class PortalToolRegistryEntry:
     summary: str = ""
     applies_to_archetype: tuple[str, ...] = ()
     applies_to_source_kind: tuple[str, ...] = ()
+    # Canonical hyphae values (sha256 tokens from core.datum_semantics.
+    # compile_hyphae_value) this tool binds to — content-derived eligibility,
+    # parallel to applies_to_archetype/source_kind. Stored verbatim (NOT slugged,
+    # so the token matches). The palette unions tools whose value intersects the
+    # selected datum's compiled hyphae value(s).
+    applies_to_hyphae_value: tuple[str, ...] = ()
     is_extension: bool = False
     # Phase 11 (datum_catalog_phase_e4_migration.md): tools that mutate the
     # MOS datum store declare which AuthoritativeDatumDocument.source_kind
@@ -543,6 +549,13 @@ class PortalToolRegistryEntry:
             self,
             "applies_to_source_kind",
             _normalize_capabilities(self.applies_to_source_kind, field_name="tool_registry.applies_to_source_kind"),
+        )
+        # Hyphae values are opaque sha256 tokens — store verbatim (dedup + drop
+        # empties), never slugified, or they'd never match a compiled value.
+        object.__setattr__(
+            self,
+            "applies_to_hyphae_value",
+            tuple(dict.fromkeys(v for v in (_as_text(t) for t in self.applies_to_hyphae_value) if v)),
         )
         object.__setattr__(self, "is_extension", bool(self.is_extension))
         object.__setattr__(

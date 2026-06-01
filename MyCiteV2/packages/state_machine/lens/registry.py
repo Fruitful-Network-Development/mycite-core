@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .base import BinaryTextLens, IdentityLens, Lens, NumericHyphenLens, TrimmedStringLens
+from .base import (
+    BinaryTextLens,
+    EmailAddressLens,
+    IdentityLens,
+    Lens,
+    NumericHyphenLens,
+    SamrasTitleLens,
+    SecretReferenceLens,
+    TrimmedStringLens,
+)
 
 
 def _as_text(value: object) -> str:
@@ -47,6 +56,23 @@ class DatumLensRegistry:
             "binary_overlay": BinaryTextLens(),
         }
         self._default_lens = IdentityLens()
+        # Lens-id → lens, for resolving a hyphae-flag's bound lens_id. Covers the
+        # full built-in surface so a flag can name any of them.
+        self._by_lens_id = {
+            lens.lens_id: lens
+            for lens in (
+                IdentityLens(),
+                TrimmedStringLens(),
+                NumericHyphenLens(),
+                BinaryTextLens(),
+                SamrasTitleLens(),
+                EmailAddressLens(),
+                SecretReferenceLens(),
+            )
+        }
+
+    def lens_by_id(self, lens_id: object) -> Lens | None:
+        return self._by_lens_id.get(_as_text(lens_id))
 
     def resolve(
         self,
@@ -54,7 +80,17 @@ class DatumLensRegistry:
         recognized_family: object = "",
         primary_value_kind: object = "",
         overlay_kind: object = "",
+        flag_lens_id: object = "",
     ) -> LensResolution:
+        # Highest precedence: a hyphae-flag explicitly bound a lens to this datum
+        # (by its canonical hyphae value). Falls through to the family/value-kind
+        # resolution below when unset or unknown — so an empty flag registry is
+        # fully behavior-preserving.
+        flag_lens_token = _as_text(flag_lens_id)
+        if flag_lens_token:
+            flag_lens = self._by_lens_id.get(flag_lens_token)
+            if flag_lens is not None:
+                return LensResolution(lens=flag_lens, matched_on="hyphae_flag", token=flag_lens_token)
         family = _as_text(recognized_family).lower()
         if family in self._family_lenses:
             return LensResolution(lens=self._family_lenses[family], matched_on="family", token=family)
@@ -75,11 +111,13 @@ def resolve_datum_lens(
     recognized_family: object = "",
     primary_value_kind: object = "",
     overlay_kind: object = "",
+    flag_lens_id: object = "",
 ) -> LensResolution:
     return DEFAULT_DATUM_LENS_REGISTRY.resolve(
         recognized_family=recognized_family,
         primary_value_kind=primary_value_kind,
         overlay_kind=overlay_kind,
+        flag_lens_id=flag_lens_id,
     )
 
 
