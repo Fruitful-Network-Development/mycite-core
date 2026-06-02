@@ -17,7 +17,6 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.core.hops.square_pack import pack_squares
 from MyCiteV2.packages.core.structures.hops import decode_hops_coordinate_token
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -198,6 +197,8 @@ class FarmProfileViewer:
         if not plot_count:
             try:
                 from shapely.geometry import Polygon
+
+                from MyCiteV2.packages.core.hops.square_pack import pack_squares
 
                 idx = 0
                 for coords in field_polys:
