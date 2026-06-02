@@ -3745,8 +3745,73 @@
       "</section>";
   }
 
+  function renderFarmProfile(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var fc = payload.feature_collection || {};
+    var features = Array.isArray(fc.features) ? fc.features : [];
+    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+
+    // Collect all lon/lat for a shared projection (equirectangular fit-to-box).
+    var pts = [];
+    features.forEach(function (f) {
+      var g = (f && f.geometry) || {};
+      ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
+        if (Array.isArray(c) && c.length >= 2) pts.push(c);
+      });
+    });
+    var W = 460, H = 320, PAD = 12, svg = "";
+    if (pts.length) {
+      var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      pts.forEach(function (c) {
+        if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0];
+        if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1];
+      });
+      var sx = (maxx - minx) || 1e-9, sy = (maxy - miny) || 1e-9;
+      var scale = Math.min((W - 2 * PAD) / sx, (H - 2 * PAD) / sy);
+      var proj = function (c) {
+        var x = PAD + (c[0] - minx) * scale;
+        var y = H - PAD - (c[1] - miny) * scale; // flip Y (north up)
+        return x.toFixed(1) + "," + y.toFixed(1);
+      };
+      var paths = features.map(function (f) {
+        var g = (f && f.geometry) || {};
+        var p = (f && f.properties) || {};
+        var ring = (g.coordinates && g.coordinates[0]) || [];
+        if (!ring.length) return "";
+        var pointsAttr = ring.map(proj).join(" ");
+        var isPlot = p.kind === "plot";
+        var fill = isPlot ? "rgba(46,160,67,0.35)" : "rgba(31,111,235,0.12)";
+        var stroke = isPlot ? "#2ea043" : "#1f6feb";
+        return '<polygon points="' + pointsAttr + '" fill="' + fill +
+          '" stroke="' + stroke + '" stroke-width="1"><title>' +
+          esc(p.label || "") + " (" + esc(p.kind || "") + ")</title></polygon>";
+      }).join("");
+      svg = '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
+        '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm map">' +
+        paths + "</svg>";
+    } else {
+      svg = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
+    }
+
+    var fieldRows = fields.map(function (f) {
+      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
+    }).join("");
+
+    content.innerHTML =
+      '<section class="v2-farm">' +
+      '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
+      " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
+      '<div class="v2-farm__map">' + svg + "</div>" +
+      (fieldRows
+        ? '<table class="v2-farm__values"><tbody>' + fieldRows + "</tbody></table>"
+        : "") +
+      "</section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
+  window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
 })();

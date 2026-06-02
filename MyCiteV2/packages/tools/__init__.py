@@ -19,6 +19,7 @@ from . import (
     cts_gis_admin,  # noqa: F401
     cts_gis_district,  # noqa: F401
     cts_gis_map,  # noqa: F401
+    farm_profile_viewer,  # noqa: F401
     product_document_view,  # noqa: F401
     workbench_ui_view,  # noqa: F401
 )

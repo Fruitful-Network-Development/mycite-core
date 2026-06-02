@@ -56,6 +56,48 @@ def _find_document(
     return None
 
 
+def _row_head(row: Any) -> list[Any]:
+    raw = getattr(row, "raw", None)
+    if isinstance(raw, list) and raw and isinstance(raw[0], list):
+        return raw[0]
+    if isinstance(raw, list):
+        return raw
+    return []
+
+
+def derive_document_archetypes(datum_doc: Any) -> set[str]:
+    """Recognize a document's tool-eligibility archetypes by ARCHETYPE/SHAPE,
+    never by a hardcoded document id (TASK-2026-06-02-008).
+
+    Sources, in order of preference:
+      * explicit ``document_metadata.datum_template_archetype`` / ``samras_family``
+        (e.g. product_profiles -> ``agro_erp_product_profile_row``);
+      * the document ``schema`` / ``datum_template_schema`` token, so schema-typed
+        docs (contracts/plots/contacts/invoices) are addressable by their schema;
+      * a STRUCTURAL scan: a CTS-GIS HOPS geospatial filament (rows carrying the
+        ``rf.3-1-3`` coordinate marker, i.e. the 4->5->6->7 form) is tagged
+        ``hops_geospatial_filament`` — this is how the farm-profile viewer matches
+        farm_profile without any per-document special case.
+    """
+    archetypes: set[str] = set()
+    metadata = getattr(datum_doc, "document_metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("datum_template_archetype", "samras_family"):
+            token = _as_text(metadata.get(key))
+            if token:
+                archetypes.add(token)
+        for key in ("schema", "datum_template_schema"):
+            token = _as_text(metadata.get(key))
+            if token:
+                archetypes.add(token)
+    # Structural shape: HOPS coordinate marker anywhere in the rows -> geospatial.
+    for row in getattr(datum_doc, "rows", ()) or ():
+        if any(_as_text(tok) == "rf.3-1-3" for tok in _row_head(row)):
+            archetypes.add("hops_geospatial_filament")
+            break
+    return archetypes
+
+
 def _viz_tool_matches(
     tool: Any, *, archetypes: set[str], source_kinds: set[str]
 ) -> bool:
@@ -103,13 +145,7 @@ def build_eligible_tools_response(
             tenant_id=tenant_id, document_id=document_id, datum_store=datum_store
         )
         if datum_doc is not None:
-            metadata = getattr(datum_doc, "document_metadata", None) or {}
-            archetype = _as_text(metadata.get("datum_template_archetype") if isinstance(metadata, dict) else "")
-            if archetype:
-                archetypes.add(archetype)
-            family = _as_text(metadata.get("samras_family") if isinstance(metadata, dict) else "")
-            if family:
-                archetypes.add(family)
+            archetypes |= derive_document_archetypes(datum_doc)
             source_kind = _as_text(getattr(datum_doc, "source_kind", ""))
             if source_kind:
                 source_kinds.add(source_kind)
