@@ -139,7 +139,11 @@ class RegistryPostconditionTests(unittest.TestCase):
 
 
 class CompositionPostconditionTests(unittest.TestCase):
-    def test_interface_panel_is_never_visible(self) -> None:
+    def test_interface_panel_honors_region_visibility(self) -> None:
+        # TASK-interface-panel-migration: the interface_panel is REVIVED as the tool
+        # surface. The composition no longer force-hides it — it is visible iff the
+        # region payload marks visible=True (the workbench-ui tool-surface builder does
+        # so), and hidden otherwise. It is never the primary surface.
         for surface_id in (
             "system.root",
             "network.root",
@@ -148,7 +152,7 @@ class CompositionPostconditionTests(unittest.TestCase):
             "system.tools.cts_gis",
             WORKBENCH_UI_TOOL_SURFACE_ID,
         ):
-            composition = build_shell_composition_payload(
+            shown = build_shell_composition_payload(
                 active_surface_id=surface_id,
                 portal_instance_id="fnd",
                 page_title="t",
@@ -159,12 +163,29 @@ class CompositionPostconditionTests(unittest.TestCase):
                 interface_panel={"visible": True},
                 shell_state=None,
             )
-            self.assertFalse(
-                composition["regions"]["interface_panel"]["visible"],
-                f"interface_panel must be hidden for surface={surface_id}",
+            self.assertTrue(
+                shown["regions"]["interface_panel"]["visible"],
+                f"interface_panel must honor visible=True for surface={surface_id}",
             )
-            self.assertTrue(composition["interface_panel_collapsed"])
-            self.assertFalse(composition["regions"]["interface_panel"]["primary_surface"])
+            self.assertFalse(shown["interface_panel_collapsed"])
+            self.assertFalse(shown["regions"]["interface_panel"]["primary_surface"])
+
+            hidden = build_shell_composition_payload(
+                active_surface_id=surface_id,
+                portal_instance_id="fnd",
+                page_title="t",
+                page_subtitle="",
+                activity_items=[],
+                control_panel={},
+                workbench={"visible": True},
+                interface_panel={},  # no tool surface -> stays hidden
+                shell_state=None,
+            )
+            self.assertFalse(
+                hidden["regions"]["interface_panel"]["visible"],
+                f"interface_panel must stay hidden without a tool surface for surface={surface_id}",
+            )
+            self.assertTrue(hidden["interface_panel_collapsed"])
 
 
 class VestigialInterfacePanelReferencesTests(unittest.TestCase):
