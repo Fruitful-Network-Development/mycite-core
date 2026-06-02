@@ -783,17 +783,35 @@ def build_portal_workbench_ui_bundle(
             },
         },
     }
+    # Control-panel ownership split (TASK-2026-06-02-002): the WORKBENCH owns
+    # document/datum LISTS (the clickable document_table + datum grid). The
+    # CONTROL PANEL hosts only non-duplicate controls — the mode tabs, author
+    # forms, the collapsed Display-options/Inspector disclosures, plus the
+    # lens on/off toggles and a document-context tool search mounted by JS via
+    # `control_panel_controls`. The old "Documents"/"Switch document"/
+    # "Navigation" nav-list groups duplicated the workbench and are dropped.
+    _ = workbench_ui_navigation_groups  # retained for reference; intentionally not surfaced
+    control_panel_controls = {
+        "lenses": True,
+        "tool_search": {
+            "tenant_id": portal_scope.scope_id,
+            "document_id": selected_document_id,
+            "datum_address": selected_row_address,
+            "sandbox_id": effective_sandbox,
+        },
+    }
     control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
         shell_state=shell_state,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
         surface_label=sandbox_label.upper(),
-        navigation_groups=workbench_ui_navigation_groups,
+        navigation_groups=[],
         actions=[],
         workbench_state=workbench_ui_workbench_state,
         tool_extensions=workbench_ui_extensions,
         disclosure_groups=disclosure_groups,
         workbench_mode=workbench_mode_payload,
+        control_panel_controls=control_panel_controls,
     )
     # Slim context_conditions: keep only the two identity rows the user
     # always needs (Sandbox + Document + Selected Row when applicable).

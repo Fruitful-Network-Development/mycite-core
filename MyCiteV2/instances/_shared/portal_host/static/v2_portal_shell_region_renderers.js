@@ -813,6 +813,28 @@
 
     html += renderToolExtensions(ctx, toolExtensions);
 
+    // Non-duplicate control-panel controls (TASK-2026-06-02-002): lens on/off
+    // toggles + a document-context tool search. The mount points are filled by
+    // shell_core (PortalLensPanel / PortalToolPalette) after this render. The
+    // workbench owns document/datum lists; these act ON the current selection.
+    var cpControls = region.control_panel_controls || null;
+    if (cpControls) {
+      if (cpControls.lenses) {
+        html +=
+          '<details class="ide-controlpanel__disclosure" open>' +
+          '<summary class="ide-controlpanel__disclosureSummary">Lenses</summary>' +
+          '<div class="ide-controlpanel__disclosureBody" data-cp-lens-mount></div>' +
+          "</details>";
+      }
+      if (cpControls.tool_search) {
+        html +=
+          '<details class="ide-controlpanel__disclosure" open>' +
+          '<summary class="ide-controlpanel__disclosureSummary">Tools</summary>' +
+          '<nav class="ide-controlpanel__toolSearch" aria-label="Tool search" data-cp-tool-search-mount></nav>' +
+          "</details>";
+      }
+    }
+
     // Actions
     if (actions.length) {
       html += '<div class="ide-controlpanel__actions">';

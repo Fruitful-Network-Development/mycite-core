@@ -1340,6 +1340,7 @@ def build_unified_control_panel(
     context_controls: list[dict[str, Any]] | None = None,
     disclosure_groups: list[dict[str, Any]] | None = None,
     workbench_mode: dict[str, Any] | None = None,
+    control_panel_controls: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the unified control panel following canonical contract v2.
 
@@ -1411,6 +1412,12 @@ def build_unified_control_panel(
             "tool_extensions": extensions,
             "disclosure_groups": list(disclosure_groups or []),
             "workbench_mode": dict(workbench_mode) if isinstance(workbench_mode, dict) else None,
+            # Non-duplicate control-panel controls (lens on/off toggles + a
+            # document-context tool search). The workbench owns document/datum
+            # lists; the control panel hosts only controls that act ON the
+            # current selection. JS (shell_core) mounts PortalLensPanel +
+            # PortalToolPalette into the divs the renderer emits for this.
+            "control_panel_controls": dict(control_panel_controls) if isinstance(control_panel_controls, dict) else None,
         },
         family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
         surface_id=surface_id,

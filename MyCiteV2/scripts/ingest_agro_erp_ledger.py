@@ -275,7 +275,7 @@ def _make_new_doc(name: str, rows: list[AuthoritativeDatumDocumentRow], *, metad
         document_id=format_canonical_document_id(
             prefix="lv", msn_id=MSN_ID, sandbox=SANDBOX, name=name, version_hash="0" * 64),
         source_kind="sandbox_source",
-        document_name=f"lv.{MSN_ID}.{SANDBOX}.{name}",
+        document_name=name,
         relative_path=f"sandbox/agro-erp/lv.{MSN_ID}.{SANDBOX}.{name}.json",
         canonical_name=name,
         tool_id=SANDBOX,

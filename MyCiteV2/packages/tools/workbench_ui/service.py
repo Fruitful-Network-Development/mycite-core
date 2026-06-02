@@ -107,6 +107,35 @@ def _short_hash(value: object, *, length: int = 12) -> str:
     return token[:length] if token else ""
 
 
+def _short_document_name(document_name: object) -> str:
+    """Reduce a possibly path/dotted document_name to a clean short label.
+
+    Strips any directory component (full filesystem paths) and a trailing file
+    extension. Used only as a fallback when canonical_name is absent — the
+    canonical_name projection is the authoritative clean name for every doc.
+    """
+    text = _as_text(document_name)
+    if not text:
+        return ""
+    base = text.replace("\\", "/").rsplit("/", 1)[-1]
+    stem, sep, ext = base.rpartition(".")
+    if sep and stem and ext.isalnum() and len(ext) <= 5:
+        base = stem
+    return base or text
+
+
+def _document_display_name(document: AuthoritativeDatumDocument) -> str:
+    """The clean short label shown in the workbench doc-list.
+
+    Prefer the authoritative canonical_name; fall back to a cleaned
+    document_name; last resort the document_id. Never a raw path/dotted blob.
+    """
+    canonical = _as_text(getattr(document, "canonical_name", ""))
+    if canonical:
+        return canonical
+    return _short_document_name(getattr(document, "document_name", "")) or _as_text(document.document_id)
+
+
 def _truncate_text(value: object, *, limit: int = 96) -> str:
     token = _as_text(value)
     if len(token) <= limit:
@@ -297,7 +326,7 @@ def _overlay_summary_rows(overlay: dict[str, Any] | None, *, event_rows: Iterabl
 
 def _document_table_columns(*, source_visibility: str) -> list[dict[str, str]]:
     columns = [
-        {"key": "document_name", "label": "document_name"},
+        {"key": "label", "label": "document"},
         {"key": "document_id", "label": "document_id"},
     ]
     if source_visibility == "show":
@@ -528,10 +557,12 @@ class WorkbenchUiReadService:
             version_hash = mss_document_hash(document_closure_to_mss(document, index=mss_index))
         else:
             version_hash = _as_text(build_document_version_identity(document).get("version_hash"))
+        display_name = _document_display_name(document)
         return {
             "document_id": document.document_id,
             "document_name": document.document_name,
-            "label": document.document_name,
+            "canonical_name": _as_text(document.canonical_name),
+            "label": display_name,
             "source_kind": document.source_kind,
             "row_count": int(document.row_count),
             "version_hash": version_hash,

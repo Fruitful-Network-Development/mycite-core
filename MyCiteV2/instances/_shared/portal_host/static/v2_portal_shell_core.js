@@ -388,6 +388,7 @@
     // The resolve + dispatch lines are gone with the module.
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
+    mountControlPanelControls(composition.regions.control_panel);
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
     renderVisualizationPanel(composition);
   }
@@ -886,6 +887,59 @@
         // Defer to allow click on a result to register before hiding.
         setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
       });
+    }
+  }
+
+  function appendToolToShell(item, mount) {
+    var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
+    if (!request) return;
+    var next = cloneRequest(request);
+    next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
+    var tools = vizToolList(next.surface_query);
+    var picked = item.tool_id || "";
+    if (picked && tools.indexOf(picked) === -1) tools.push(picked);
+    delete next.surface_query.tool;
+    next.surface_query.tools = tools.join(",");
+    loadShell(next).catch(function () {});
+    if (mount) {
+      var list = mount.querySelector("[data-palette-list]");
+      if (list) list.setAttribute("hidden", "hidden");
+    }
+  }
+
+  // TASK-2026-06-02-002: mount the non-duplicate control-panel controls — the
+  // lens on/off catalog (PortalLensPanel) and a document-context tool search
+  // (PortalToolPalette) — into the divs the control-panel renderer emits. Runs
+  // after every control-panel render (re-mount is idempotent).
+  function mountControlPanelControls(region) {
+    var controls = region && region.control_panel_controls;
+    if (!controls) return;
+    if (controls.lenses) {
+      var lensMount = qs("[data-cp-lens-mount]");
+      if (lensMount && window.PortalLensPanel && typeof window.PortalLensPanel.mount === "function") {
+        window.PortalLensPanel.mount(lensMount).catch(function () {});
+      }
+    }
+    var search = controls.tool_search;
+    if (search) {
+      var toolMount = qs("[data-cp-tool-search-mount]");
+      if (toolMount && window.PortalToolPalette && typeof window.PortalToolPalette.mount === "function") {
+        window.PortalToolPalette.mount(toolMount, {
+          tenantId: search.tenant_id || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
+          sandboxId: search.sandbox_id || "",
+          documentId: search.document_id || "",
+          datumAddress: search.datum_address || "",
+          onDispatch: function (item) { appendToolToShell(item, toolMount); },
+        });
+        var cpInput = toolMount.querySelector("[data-palette-input]");
+        var cpList = toolMount.querySelector("[data-palette-list]");
+        if (cpInput && cpList) {
+          cpInput.addEventListener("focus", function () { cpList.removeAttribute("hidden"); });
+          cpInput.addEventListener("blur", function () {
+            setTimeout(function () { cpList.setAttribute("hidden", "hidden"); }, 200);
+          });
+        }
+      }
     }
   }
 

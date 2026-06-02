@@ -1568,7 +1568,7 @@
           '<td><div class="v2-workbenchUi__primaryCell">' +
           selection +
           '<strong>' +
-          escapeHtml(stripJsonSuffix(row.document_name || row.label || row.document_id || "—")) +
+          escapeHtml(stripJsonSuffix(row.canonical_name || row.label || row.document_name || row.document_id || "—")) +
           "</strong>" +
           '<div class="v2-workbenchUi__subvalue">' +
           escapeHtml(row.document_id || "—") +
@@ -1832,7 +1832,7 @@
 
   function renderDocumentColumnItem(row, index) {
     var label = stripJsonSuffix(
-      row.document_name || row.label || row.document_id || "—"
+      row.canonical_name || row.label || row.document_name || row.document_id || "—"
     );
     var rowCount = String(row.row_count || 0);
     var versionShort = asText(row.version_hash_short);

@@ -213,7 +213,7 @@ def _build_document(
     candidate = AuthoritativeDatumDocument(
         document_id=placeholder_id,
         source_kind="sandbox_source",
-        document_name=f"lv.{msn_id}.{SANDBOX}.{name}",
+        document_name=name,
         relative_path=f"sandbox/agro-erp/lv.{msn_id}.{SANDBOX}.{name}.json",
         canonical_name=name,
         tool_id=SANDBOX,
@@ -228,7 +228,7 @@ def _build_document(
     final = AuthoritativeDatumDocument(
         document_id=real_id,
         source_kind="sandbox_source",
-        document_name=f"lv.{msn_id}.{SANDBOX}.{name}",
+        document_name=name,
         relative_path=f"sandbox/agro-erp/lv.{msn_id}.{SANDBOX}.{name}.json",
         canonical_name=name,
         tool_id=SANDBOX,
