@@ -783,22 +783,17 @@ def build_portal_workbench_ui_bundle(
             },
         },
     }
-    # Control-panel ownership split (TASK-2026-06-02-002): the WORKBENCH owns
-    # document/datum LISTS (the clickable document_table + datum grid). The
-    # CONTROL PANEL hosts only non-duplicate controls — the mode tabs, author
-    # forms, the collapsed Display-options/Inspector disclosures, plus the
-    # lens on/off toggles and a document-context tool search mounted by JS via
-    # `control_panel_controls`. The old "Documents"/"Switch document"/
-    # "Navigation" nav-list groups duplicated the workbench and are dropped.
+    # Control-panel ownership (TASK-interface-panel-migration, 2026-06-02): the
+    # CONTROL PANEL hosts only lens on/off toggles, the SANDBOX SELECTOR (pick from
+    # available sandboxes — the sole sandbox-switch affordance now; the workbench
+    # toggle bar is gone), and a presentational Documents/Datums tab strip. Tool
+    # SEARCH moved to the Interface Panel (the tool surface). The WORKBENCH still
+    # owns the working document/datum LISTS. The old nav-list groups are dropped.
     _ = workbench_ui_navigation_groups  # retained for reference; intentionally not surfaced
     control_panel_controls = {
         "lenses": True,
-        "tool_search": {
-            "tenant_id": portal_scope.scope_id,
-            "document_id": selected_document_id,
-            "datum_address": selected_row_address,
-            "sandbox_id": effective_sandbox,
-        },
+        "sandbox_selector": {"sandbox_id": effective_sandbox},
+        "doc_datum_tabs": True,
     }
     control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
@@ -886,33 +881,19 @@ def build_portal_workbench_ui_bundle(
         sandbox=effective_sandbox,
         selected_document_id=_as_text(model.get("document_id")),
     )
-    interface_panel = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-        "kind": "summary_panel",
-        "title": "Selection",
-        "summary": "Selected document/version metadata, row semantics, and additive directive overlays.",
-        "visible": True,
-        "subject": {
-            "level": "datum",
-            "id": _as_text((model.get("selected_row") or {}).get("datum_address")) or _as_text(model.get("document_id")),
-        },
-        "sections": list(model.get("interface_panel_sections") or []),
-        },
-        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-    )
-    # Plan v2: dispatch the visualization panel based on surface_query.tool.
-    # Looks up the tool in the registry, calls its build_panel_payload with
-    # the current workbench context, embeds the result. When no tool is
-    # requested the build_shell_composition_payload helper emits a hidden
-    # placeholder for schema continuity.
-    visualization_panel = _build_visualization_panel(
+    # Interface panel = the TOOL SURFACE (TASK-interface-panel-migration, 2026-06-02):
+    # a tool search bar + the selected tools' visualization panels, in one right-side
+    # region. `panels` is built from surface_query.tools via the registry; `tool_search`
+    # carries the document/datum context the JS palette mounts with. The region is
+    # always visible on this workbench surface so the search bar is reachable before a
+    # tool is picked. (The separate visualization_panel region was retired.)
+    interface_panel = _build_interface_tool_panel(
         surface_query=surface_query,
         authority_db_file=authority_db_file,
         sandbox_id=effective_sandbox,
         document_id=selected_document_id,
         datum_address=selected_row_address,
+        portal_scope=portal_scope,
     )
     return {
         "entrypoint_id": WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
@@ -924,33 +905,46 @@ def build_portal_workbench_ui_bundle(
         "control_panel": control_panel,
         "workbench": workbench,
         "interface_panel": interface_panel,
-        "visualization_panel": visualization_panel,
+        # The selection-summary projection (document/version metadata, row semantics,
+        # lens/hyphae/overlay sections) is still computed; it is no longer shown in the
+        # interface_panel (now the tool surface) but is exposed here for inspectors/tests.
+        "interface_panel_sections": list(model.get("interface_panel_sections") or []),
         "route": WORKBENCH_UI_TOOL_ROUTE,
         "sandbox_id": effective_sandbox,
         "sandbox_label": sandbox_label,
     }
 
 
-def _build_visualization_panel(
+def _build_interface_tool_panel(
     *,
     surface_query: dict[str, Any] | None,
     authority_db_file: str | Path | None,
     sandbox_id: str,
     document_id: str,
     datum_address: str,
-) -> dict[str, Any] | None:
-    """Resolve surface_query.tool to a registered tool and build the panel.
+    portal_scope: PortalScope,
+) -> dict[str, Any]:
+    """Build the interface_panel region payload — the unified TOOL SURFACE.
 
-    Returns None when no tool is requested or the requested tool is not
-    registered — the shell composition then emits the canonical hidden
-    placeholder.
+    Always returns a visible region carrying:
+      * ``tool_search``: the document/datum context the JS palette mounts with (the
+        search bar lives in this panel now, not the control panel);
+      * ``panels``: one {tool_id, tool_label, panel_payload} per tool in
+        surface_query.tools (empty until the user picks a tool).
+    The region is always visible on the workbench surface so the search bar is
+    reachable before any tool is selected.
     """
-    if not isinstance(surface_query, dict):
-        return None
-    # Multi-tool panel: surface_query.tools is a comma-joined, ordered tool-id list
-    # (round-trips as a plain query param). Legacy surface_query.tool (scalar) is
-    # coerced to a single-element list for back-compat.
-    raw = _as_text(surface_query.get("tools")) or _as_text(surface_query.get("tool"))
+    tool_search = {
+        "tenant_id": portal_scope.scope_id,
+        "document_id": document_id,
+        "datum_address": datum_address,
+        "sandbox_id": sandbox_id,
+    }
+    raw = ""
+    if isinstance(surface_query, dict):
+        # surface_query.tools is a comma-joined, ordered tool-id list (round-trips as a
+        # plain query param). Legacy surface_query.tool (scalar) is coerced to one tool.
+        raw = _as_text(surface_query.get("tools")) or _as_text(surface_query.get("tool"))
     seen: set[str] = set()
     tool_ids: list[str] = []
     for token in raw.split(","):
@@ -958,41 +952,50 @@ def _build_visualization_panel(
         if tid and tid not in seen:
             seen.add(tid)
             tool_ids.append(tid)
-    if not tool_ids:
-        return None
-    # Import lazily to keep tools package import-side-effects (registry
-    # population) localized to where they're actually needed.
-    from MyCiteV2.packages.tools import get as _tools_get
-    authority_path = _path_or_none(authority_db_file)
+
     panels: list[dict[str, Any]] = []
-    for tid in tool_ids:
-        tool = _tools_get(tid)
-        if tool is None:
-            panels.append({"tool_id": tid, "tool_label": tid, "panel_payload": {"error": f"unknown tool: {tid}"}})
-            continue
-        try:
-            payload = tool.build_panel_payload(
-                authority_db_file=authority_path,
-                sandbox_id=sandbox_id,
-                document_id=document_id,
-                datum_address=datum_address,
-            )
-        except Exception as exc:  # pragma: no cover — tool errors must not crash the shell
-            payload = {"error": f"tool failed: {exc}"}
-        panels.append({
-            "tool_id": getattr(tool, "tool_id", tid),
-            "tool_label": getattr(tool, "label", tid),
-            "panel_payload": payload,
-        })
-    first = panels[0]
-    # Keep the legacy single-tool fields (= first panel) alongside the new
-    # `panels` list so older readers/tests keep working during the transition.
-    return {
-        "tool_id": first["tool_id"],
-        "tool_label": first["tool_label"],
-        "panel_payload": first["panel_payload"],
-        "panels": panels,
-    }
+    if tool_ids:
+        # Import lazily to keep tools-package import side effects (registry population)
+        # localized to where they're actually needed.
+        from MyCiteV2.packages.tools import get as _tools_get
+        authority_path = _path_or_none(authority_db_file)
+        for tid in tool_ids:
+            tool = _tools_get(tid)
+            if tool is None:
+                panels.append({"tool_id": tid, "tool_label": tid, "panel_payload": {"error": f"unknown tool: {tid}"}})
+                continue
+            try:
+                payload = tool.build_panel_payload(
+                    authority_db_file=authority_path,
+                    sandbox_id=sandbox_id,
+                    document_id=document_id,
+                    datum_address=datum_address,
+                )
+            except Exception as exc:  # pragma: no cover — tool errors must not crash the shell
+                payload = {"error": f"tool failed: {exc}"}
+            panels.append({
+                "tool_id": getattr(tool, "tool_id", tid),
+                "tool_label": getattr(tool, "label", tid),
+                "panel_payload": payload,
+            })
+
+    first = panels[0] if panels else {}
+    return attach_region_family_contract(
+        {
+            "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
+            "kind": "tool_surface",
+            "title": "Tools",
+            "visible": True,
+            "tool_search": tool_search,
+            "panels": panels,
+            # Legacy single-tool mirrors (= first panel) for older readers/tests.
+            "tool_id": first.get("tool_id", ""),
+            "tool_label": first.get("tool_label", ""),
+            "panel_payload": first.get("panel_payload", {}),
+        },
+        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
+        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
+    )
 
 
 def run_portal_workbench_ui(

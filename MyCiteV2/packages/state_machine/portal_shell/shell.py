@@ -1573,7 +1573,6 @@ def build_shell_composition_payload(
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
     interface_panel: dict[str, Any] | None = None,
-    visualization_panel: dict[str, Any] | None = None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
@@ -1596,14 +1595,16 @@ def build_shell_composition_payload(
         default=default_workbench_visible_for_surface(active_surface_id),
     )
     force_workbench_visible = workbench_region.get("forced_visible") is True
-    # Phase 3 (portal_tool_surface_contract.md): the interface panel is retired.
-    # The palette replaces it as the surface that lists tools applicable to the
-    # selected datum. The interface_panel region remains in the composition for
-    # one transition cycle so consumers that read the field do not crash; it is
-    # never visible and never primary.
+    # 2026-06-02 (TASK-interface-panel-migration): the interface_panel is REVIVED as
+    # the unified tool surface — it carries the tool search bar + the selected tool's
+    # visualization panels (the retired Phase-3 placeholder + the separate
+    # `visualization_panel` region are both gone). It is visible only when the surface's
+    # bundle explicitly marks it visible (the workbench-ui builder does so), so non-tool
+    # surfaces stay unaffected. The workbench owns doc/datum lists; the control panel owns
+    # lenses + sandbox selection.
     if tool_surface:
         workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-    interface_panel_visible = False
+    interface_panel_visible = interface_panel_region.get("visible") is True
     workbench_region["visible"] = workbench_visible
     interface_panel_region["visible"] = interface_panel_visible
     interface_panel_region["primary_surface"] = False
@@ -1640,40 +1641,16 @@ def build_shell_composition_payload(
             },
             "control_panel": dict(control_panel or {}),
             "workbench": workbench_region,
+            # The interface_panel is the tool surface (search + tool render). The
+            # separate visualization_panel region was retired 2026-06-02 — tools now
+            # render inside the interface_panel. See TASK-interface-panel-migration.
             "interface_panel": interface_panel_region,
-            # Visualization panel: tool-invoked viz surface rendered to
-            # the right of the workbench. Hidden when no tool is in
-            # surface_query.tool. See PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA.
-            "visualization_panel": _normalize_visualization_panel(visualization_panel),
         },
     }
     apply_surface_posture_to_composition(composition)
     return composition
 
 
-def _normalize_visualization_panel(payload: dict[str, Any] | None) -> dict[str, Any]:
-    """Build the canonical visualization_panel region payload.
-
-    Defaults to a hidden placeholder so the JS renderer can rely on the
-    key always being present. When ``payload`` is given, schema is
-    stamped and visibility defaults to True unless the caller explicitly
-    set visible=False.
-    """
-    if payload is None:
-        return {
-            "schema": PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA,
-            "visible": False,
-            "tool_id": "",
-            "tool_label": "",
-            "panel_payload": {},
-        }
-    region = dict(payload)
-    region.setdefault("schema", PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA)
-    region.setdefault("visible", True)
-    region.setdefault("tool_id", "")
-    region.setdefault("tool_label", "")
-    region.setdefault("panel_payload", {})
-    return region
 
 
 __all__ = [

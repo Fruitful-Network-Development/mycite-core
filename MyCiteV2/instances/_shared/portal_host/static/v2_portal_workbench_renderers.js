@@ -1795,40 +1795,6 @@
     });
   }
 
-  function renderSandboxToggleBar(activeToken) {
-    var sandboxes = availableSandboxes();
-    if (!sandboxes.length) {
-      return (
-        '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
-        '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
-        '<button type="button" class="v2-workbenchUi__sandboxToggle is-active" disabled aria-pressed="true">' +
-        escapeHtml(activeToken || "system") +
-        "</button></header>"
-      );
-    }
-    var buttons = sandboxes
-      .map(function (s) {
-        var isActive = s.token === activeToken;
-        return (
-          '<button type="button" class="v2-workbenchUi__sandboxToggle' +
-          (isActive ? " is-active" : "") +
-          '" data-sandbox-toggle data-sandbox-token="' +
-          escapeHtml(s.token) +
-          '" aria-pressed="' +
-          (isActive ? "true" : "false") +
-          '">' +
-          escapeHtml(s.label) +
-          "</button>"
-        );
-      })
-      .join("");
-    return (
-      '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
-      '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
-      buttons +
-      "</header>"
-    );
-  }
 
   function renderDocumentColumnItem(row, index) {
     var label = stripJsonSuffix(
@@ -2247,42 +2213,14 @@
 
   function renderWorkbenchSurface(surfacePayload, region) {
     var workspace = asObject(surfacePayload.workspace);
-    var activeToken = activeSandboxToken(region);
+    // TASK-interface-panel-migration: the in-workbench sandbox toggle bar was removed —
+    // sandbox switching now lives solely in the control-panel sandbox selector.
     return (
       '<div class="v2-workbenchUi__trifecta" data-region="workbench-trifecta">' +
-      renderSandboxToggleBar(activeToken) +
       '<div class="v2-workbenchUi__columns">' +
       renderDocumentColumn(workspace, surfacePayload) +
       renderDocumentEditor(workspace, surfacePayload, region) +
       "</div></div>"
-    );
-  }
-
-  function bindSandboxToggleBar(ctx, target) {
-    Array.prototype.forEach.call(
-      target.querySelectorAll("[data-sandbox-toggle][data-sandbox-token]"),
-      function (button) {
-        button.addEventListener("click", function () {
-          if (button.classList.contains("is-active")) return;
-          var token = button.getAttribute("data-sandbox-token") || "";
-          if (!token || typeof ctx.loadShell !== "function") return;
-          var envelope = ctx.getEnvelope && ctx.getEnvelope();
-          var surfaceId = (envelope && envelope.surface_id) || "";
-          var nextQuery = Object.assign(
-            {},
-            (envelope && envelope.surface_query) || {}
-          );
-          nextQuery.sandbox_filter = token;
-          delete nextQuery.document;
-          delete nextQuery.row;
-          delete nextQuery.mode;
-          ctx.loadShell({
-            schema: "mycite.v2.portal.shell.request.v1",
-            requested_surface_id: surfaceId,
-            surface_query: nextQuery,
-          });
-        });
-      }
     );
   }
 
@@ -2862,7 +2800,6 @@
   }
 
   function bindWorkbenchNavigation(ctx, target, workspace, surfacePayload, region) {
-    bindSandboxToggleBar(ctx, target);
     bindDocumentColumn(ctx, target, workspace, surfacePayload || {});
     bindDatumComposer(ctx, target, workspace, surfacePayload || {});
     bindDocumentEditor(ctx, target, workspace, surfacePayload || {});

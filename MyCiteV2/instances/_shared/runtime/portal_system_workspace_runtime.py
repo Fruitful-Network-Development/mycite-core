@@ -1650,7 +1650,10 @@ def build_system_workspace_bundle(
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
         "summary": "Mediation is bound to the current focus subject." if shell_state.verb == VERB_MEDIATE else "The interface panel stays collapsed during ordinary navigation.",
-        "visible": shell_state.verb == VERB_MEDIATE,
+        # The interface_panel is the TOOL SURFACE now (built by the workbench-ui bundle).
+        # This system-action/mediation path is not a tool surface, so it stays hidden —
+        # the next shell GET rebuilds the tool surface via build_portal_workbench_ui_bundle.
+        "visible": False,
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "sections": [
             {

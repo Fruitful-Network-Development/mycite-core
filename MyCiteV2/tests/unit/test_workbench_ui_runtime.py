@@ -115,11 +115,23 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
             composition = envelope["shell_composition"]
-            # Phase 3: interface_panel always collapsed after retirement.
+            # TASK-interface-panel-migration: the interface_panel is the TOOL SURFACE now
+            # (search + tool render) and is visible on the workbench surface so the search
+            # bar is reachable; the workbench stays visible too.
             self.assertFalse(composition["workbench_collapsed"])
-            self.assertTrue(composition["interface_panel_collapsed"])
+            self.assertFalse(composition["interface_panel_collapsed"])
             self.assertTrue(composition["regions"]["workbench"]["visible"])
-            self.assertFalse(composition["regions"]["interface_panel"]["visible"])
+            self.assertTrue(composition["regions"]["interface_panel"]["visible"])
+            # tool surface carries the search context + an (empty) panels list by default
+            self.assertEqual(composition["regions"]["interface_panel"]["panels"], [])
+            self.assertIn("tool_search", composition["regions"]["interface_panel"])
+            self.assertNotIn("visualization_panel", composition["regions"])
+            # control panel = lenses + sandbox selector + doc/datum tabs; NO tool search.
+            cp_controls = composition["regions"]["control_panel"]["control_panel_controls"]
+            self.assertTrue(cp_controls.get("lenses"))
+            self.assertTrue(cp_controls.get("sandbox_selector"))
+            self.assertTrue(cp_controls.get("doc_datum_tabs"))
+            self.assertNotIn("tool_search", cp_controls)
 
     def test_shell_route_keeps_workbench_ui_runtime_owned_and_sql_context_led(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -639,7 +651,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 surface_query={"document": "system:anthology", "row": "1-1-2", "overlay": "show"},
             )
 
-            overlay_section = next(section for section in bundle["interface_panel"]["sections"] if section["title"] == "Directive Overlay")
+            overlay_section = next(section for section in bundle["interface_panel_sections"] if section["title"] == "Directive Overlay")
             self.assertEqual(overlay_section["rows"][0]["value"], "loaded")
             catalog = datum_store.read_authoritative_datum_documents({"tenant_id": "fnd"})
             document = next(item for item in catalog.documents if item.document_id == "system:anthology")
@@ -688,7 +700,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             document_table = workspace["document_table"]
             datum_grid = workspace["datum_grid"]
-            interface_panel_titles = [section["title"] for section in bundle["interface_panel"]["sections"]]
+            interface_panel_titles = [section["title"] for section in bundle["interface_panel_sections"]]
 
             self.assertEqual(workspace["query"]["group"], "layer_value_group")
             self.assertEqual(workspace["query"]["workbench_lens"], "raw")
@@ -749,7 +761,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             datum_grid = workspace["datum_grid"]
             selected_row = workspace["selected_row"]
-            interface_panel_titles = [section["title"] for section in bundle["interface_panel"]["sections"]]
+            interface_panel_titles = [section["title"] for section in bundle["interface_panel_sections"]]
 
             self.assertEqual(datum_grid["group_mode"], "layer_value_group_iteration")
             self.assertEqual([layer["title"] for layer in datum_grid["layers"]], ["Layer 4"])

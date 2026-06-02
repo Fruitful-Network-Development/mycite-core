@@ -381,35 +381,27 @@
         "render"
       );
     }
-    // Phase 3 retired the interface panel and Phase 3e deleted its renderer
-    // module + manifest entry. build_shell_composition_payload forces the
-    // region's `visible=false`, so even if the composition still emits an
-    // interface_panel region for schema continuity, the renderer never runs.
-    // The resolve + dispatch lines are gone with the module.
+    // TASK-interface-panel-migration: the interface_panel is REVIVED as the tool surface
+    // (search + tool render), rendered by renderInterfacePanel below.
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     mountControlPanelControls(composition.regions.control_panel);
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    renderVisualizationPanel(composition);
+    renderInterfacePanel(composition);
   }
 
-  function renderVisualizationPanel(composition) {
-    // Plan v2: viz panel is the right-side surface that a workbench tool
-    // (e.g. CTS-GIS map) paints into. The Python side emits the region
-    // with visible=false when no tool is requested.
-    var region = (composition && composition.regions && composition.regions.visualization_panel) || {};
-    var aside = qs("#portalVisualizationPanel");
-    var splitter = document.querySelector(".ide-splitter--visualization-panel");
-    var title = qs("#portalVisualizationPanelTitle");
-    var content = qs("#portalVisualizationPanelContent");
+  function renderInterfacePanel(composition) {
+    // TASK-interface-panel-migration: the interface_panel is the unified TOOL SURFACE —
+    // a tool SEARCH bar at the top + the selected tools' visualizations below, in one
+    // right-side panel. It is visible on workbench surfaces so search is reachable before
+    // a tool is picked. (The old separate visualization_panel region is gone.)
+    var region = (composition && composition.regions && composition.regions.interface_panel) || {};
+    var aside = qs("#portalInterfacePanel");
+    var splitter = document.querySelector(".ide-splitter--interface-panel");
+    var title = qs("#portalInterfacePanelTitle");
+    var content = qs("#portalInterfacePanelContent");
     if (!aside || !content) return;
-    // Multi-tool: region.panels is an ordered list of {tool_id, tool_label,
-    // panel_payload}. Fall back to the legacy single-tool fields.
-    var panels = Array.isArray(region.panels) ? region.panels : [];
-    if (!panels.length && region.tool_id) {
-      panels = [{ tool_id: region.tool_id, tool_label: region.tool_label, panel_payload: region.panel_payload }];
-    }
-    var visible = !!region.visible && panels.length > 0;
+    var visible = region.visible !== false && !!region.tool_search;
     if (!visible) {
       aside.setAttribute("hidden", "hidden");
       aside.setAttribute("aria-hidden", "true");
@@ -422,11 +414,16 @@
     aside.setAttribute("aria-hidden", "false");
     aside.classList.remove("is-collapsed");
     if (splitter) splitter.removeAttribute("hidden");
-    if (title) {
-      title.textContent = panels.length === 1 ? (panels[0].tool_label || panels[0].tool_id) : "Visualizations";
+
+    var panels = Array.isArray(region.panels) ? region.panels : [];
+    if (!panels.length && region.tool_id) {
+      panels = [{ tool_id: region.tool_id, tool_label: region.tool_label, panel_payload: region.panel_payload }];
     }
-    // One uniform removable container box per tool.
-    content.innerHTML = panels
+    if (title) {
+      title.textContent = panels.length === 1 ? (panels[0].tool_label || panels[0].tool_id) : "Tools";
+    }
+    // Search bar (always present) + one removable box per selected tool.
+    var boxesHtml = panels
       .map(function (p) {
         return (
           '<article class="ide-vizBox" data-viz-box="' + escapeHtml(p.tool_id) + '">' +
@@ -440,6 +437,14 @@
         );
       })
       .join("");
+    content.innerHTML =
+      '<nav class="ide-interfacePanel__toolSearch portal-tool-palette" aria-label="Tool search" data-ip-tool-search-mount></nav>' +
+      '<div class="ide-interfacePanel__tools" data-ip-tools>' +
+      (boxesHtml || '<p class="ide-interfacePanel__empty">Search for a tool above to open it here.</p>') +
+      "</div>";
+
+    mountInterfacePanelSearch(region.tool_search || {});
+
     var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
     var boxes = content.querySelectorAll("[data-viz-box]");
     panels.forEach(function (p, i) {
@@ -461,6 +466,30 @@
           escapeHtml(p.tool_id) + "</code>.</p>";
       }
     });
+  }
+
+  // Mount the document-context tool search palette into the interface panel (the tool
+  // surface). Selecting a tool appends it to surface_query.tools and reloads, so it
+  // renders as a box below the search bar in this same panel.
+  function mountInterfacePanelSearch(search) {
+    var mount = qs("[data-ip-tool-search-mount]");
+    if (!mount) return;
+    if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return;
+    window.PortalToolPalette.mount(mount, {
+      tenantId: search.tenant_id || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
+      sandboxId: search.sandbox_id || "",
+      documentId: search.document_id || "",
+      datumAddress: search.datum_address || "",
+      onDispatch: function (item) { appendToolToShell(item, mount); },
+    });
+    var input = mount.querySelector("[data-palette-input]");
+    var list = mount.querySelector("[data-palette-list]");
+    if (input && list) {
+      input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
+      input.addEventListener("blur", function () {
+        setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
+      });
+    }
   }
 
   // surface_query.tools is a comma-joined, ordered, de-duplicated tool-id list.
@@ -777,8 +806,9 @@
   setBootState("core_loaded");
   bindShellChromeEvents();
   bindVisualizationPanelClose();
-  bindSandboxSelector();
-  mountMenubarToolPalette();
+  // Sandbox selection + tool search now live in the control panel + interface panel
+  // respectively; both are wired in mountControlPanelControls / renderInterfacePanel
+  // after each shell render (the menubar tool-search palette was removed).
   window.addEventListener("popstate", onPopState);
 
   function bindVisualizationPanelClose() {
@@ -815,6 +845,8 @@
   function bindSandboxSelector() {
     var select = qs("[data-sandbox-selector]");
     if (!select) return;
+    if (select.getAttribute("data-sandbox-bound") === "true") return;  // idempotent re-mount
+    select.setAttribute("data-sandbox-bound", "true");
     var sandboxes = Array.isArray(window.__MYCITE_V2_SANDBOXES) ? window.__MYCITE_V2_SANDBOXES : [];
     if (!sandboxes.length) {
       select.setAttribute("hidden", "hidden");
@@ -849,47 +881,6 @@
     });
   }
 
-  function mountMenubarToolPalette() {
-    var mount = qs("[data-tool-palette-mount]");
-    if (!mount) return;
-    if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return;
-    // The palette dispatches a tool by re-loading the current shell
-    // request with surface_query.tool=<tool_id> set, which the workbench
-    // runtime turns into a visualization panel via the tool registry.
-    window.PortalToolPalette.mount(mount, {
-      tenantId: (BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd",
-      documentId: "",
-      datumAddress: "",
-      onDispatch: function (item) {
-        var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
-        if (!request) return;
-        var next = cloneRequest(request);
-        next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
-        // APPEND the selected tool to the panel's tool list (dedup); each tool
-        // renders as its own removable box.
-        var tools = vizToolList(next.surface_query);
-        var picked = item.tool_id || "";
-        if (picked && tools.indexOf(picked) === -1) tools.push(picked);
-        delete next.surface_query.tool;
-        next.surface_query.tools = tools.join(",");
-        loadShell(next).catch(function () {});
-        // Hide the results popover after dispatch.
-        var list = mount.querySelector("[data-palette-list]");
-        if (list) list.setAttribute("hidden", "hidden");
-      },
-    });
-    // Show/hide the results popover on focus + blur of the input.
-    var input = mount.querySelector("[data-palette-input]");
-    var list = mount.querySelector("[data-palette-list]");
-    if (input && list) {
-      input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
-      input.addEventListener("blur", function () {
-        // Defer to allow click on a result to register before hiding.
-        setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
-      });
-    }
-  }
-
   function appendToolToShell(item, mount) {
     var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
     if (!request) return;
@@ -907,10 +898,11 @@
     }
   }
 
-  // TASK-2026-06-02-002: mount the non-duplicate control-panel controls — the
-  // lens on/off catalog (PortalLensPanel) and a document-context tool search
-  // (PortalToolPalette) — into the divs the control-panel renderer emits. Runs
-  // after every control-panel render (re-mount is idempotent).
+  // TASK-interface-panel-migration: the CONTROL PANEL hosts only lens on/off toggles
+  // (PortalLensPanel) + the SANDBOX SELECTOR (the sole sandbox-switch affordance now).
+  // The Documents/Datums tab strip is presentational (emitted by the region renderer).
+  // Tool search moved to the interface panel. Runs after every control-panel render
+  // (re-mount/re-bind is idempotent).
   function mountControlPanelControls(region) {
     var controls = region && region.control_panel_controls;
     if (!controls) return;
@@ -920,26 +912,8 @@
         window.PortalLensPanel.mount(lensMount).catch(function () {});
       }
     }
-    var search = controls.tool_search;
-    if (search) {
-      var toolMount = qs("[data-cp-tool-search-mount]");
-      if (toolMount && window.PortalToolPalette && typeof window.PortalToolPalette.mount === "function") {
-        window.PortalToolPalette.mount(toolMount, {
-          tenantId: search.tenant_id || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
-          sandboxId: search.sandbox_id || "",
-          documentId: search.document_id || "",
-          datumAddress: search.datum_address || "",
-          onDispatch: function (item) { appendToolToShell(item, toolMount); },
-        });
-        var cpInput = toolMount.querySelector("[data-palette-input]");
-        var cpList = toolMount.querySelector("[data-palette-list]");
-        if (cpInput && cpList) {
-          cpInput.addEventListener("focus", function () { cpList.removeAttribute("hidden"); });
-          cpInput.addEventListener("blur", function () {
-            setTimeout(function () { cpList.setAttribute("hidden", "hidden"); }, 200);
-          });
-        }
-      }
+    if (controls.sandbox_selector) {
+      bindSandboxSelector();
     }
   }
 

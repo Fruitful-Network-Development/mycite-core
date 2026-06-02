@@ -62,21 +62,8 @@
     data-interface-panel-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
-      <nav class="ide-menubar__toolSearch" aria-label="Tool search" data-tool-palette-mount>
-        <input
-          type="search"
-          class="ide-menubar__toolSearchInput"
-          data-palette-input
-          placeholder="Search tools…"
-          autocomplete="off"
-          aria-label="Search tools"
-        />
-        <div
-          class="ide-menubar__toolSearchResults portal-tool-palette__results"
-          data-palette-list
-          hidden
-        ></div>
-      </nav>
+      <!-- Tool search moved to the interface panel (TASK-interface-panel-migration);
+           the menubar tool-search palette was removed. -->
       <div class="ide-menubar__center" aria-label="Page label">
         <span class="ide-menubar__pageTitle">MyCite</span>
         <span class="ide-menubar__pageSub">{{ host_shape }} · portal {{ portal_instance_id }} · {{ portal_domain }}</span>
@@ -214,35 +201,8 @@
         </section>
       </aside>
 
-      <button type="button" class="ide-splitter ide-splitter--visualization-panel" data-splitter="visualization-panel" aria-label="Resize visualization panel" hidden></button>
-
-      <aside
-        id="portalVisualizationPanel"
-        class="ide-visualizationPanel is-collapsed"
-        data-shell-region="visualization-panel"
-        aria-label="Visualization panel"
-        aria-hidden="true"
-        hidden
-      >
-        <header class="ide-visualizationPanel__header">
-          <div>
-            <div class="ide-visualizationPanel__kicker">Tool</div>
-            <div id="portalVisualizationPanelTitle" class="ide-visualizationPanel__title">—</div>
-          </div>
-          <button
-            type="button"
-            class="ide-visualizationPanel__close"
-            data-visualization-panel-close
-            aria-label="Close visualization panel"
-            title="Close tool"
-          >×</button>
-        </header>
-        <section
-          id="portalVisualizationPanelContent"
-          class="ide-visualizationPanel__content"
-          data-visualization-panel-scroll-root="true"
-        ></section>
-      </aside>
+      <!-- The separate visualization panel was retired (TASK-interface-panel-migration);
+           tools now render inside the interface panel above (search + visualization). -->
     </div>
   </div>
 
