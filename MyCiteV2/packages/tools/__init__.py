@@ -16,6 +16,7 @@ from __future__ import annotations
 # Self-registering tool modules (import for side effect). Order is irrelevant
 # — ``_registry.all_tools()`` sorts by ``tool_id`` on read.
 from . import (
+    contracts_tool,  # noqa: F401
     cts_gis_admin,  # noqa: F401
     cts_gis_district,  # noqa: F401
     cts_gis_map,  # noqa: F401

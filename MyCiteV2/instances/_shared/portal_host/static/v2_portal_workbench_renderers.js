@@ -3809,9 +3809,40 @@
       "</section>";
   }
 
+  function renderContracts(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var contracts = Array.isArray(payload.contracts) ? payload.contracts : [];
+    var drawDown = Array.isArray(payload.draw_down) ? payload.draw_down : [];
+    var crows = contracts.map(function (c) {
+      return "<tr><td>" + esc(c.date) + "</td><td>" + esc(c.invoice) + "</td><td>" +
+        esc(c.plot) + "</td><td>" + esc(c.amount) + "</td><td>" + esc(c.cost) + "</td></tr>";
+    }).join("");
+    var drows = drawDown.map(function (d) {
+      return '<tr' + (d.over_committed ? ' class="is-over"' : "") + "><td>" + esc(d.invoice) +
+        "</td><td>" + esc(d.purchased_weight) + "</td><td>" + esc(d.committed) +
+        "</td><td>" + esc(d.remaining) + "</td></tr>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-contracts">' +
+      '<header class="v2-contracts__header">' + esc(payload.contract_count || 0) +
+      " contracts · " + esc(payload.archetype || "") + "</header>" +
+      (contracts.length
+        ? '<table class="v2-contracts__table"><thead><tr><th>date</th><th>invoice</th>' +
+          "<th>plot</th><th>amount</th><th>cost</th></tr></thead><tbody>" + crows + "</tbody></table>"
+        : '<p class="v2-contracts__empty">No contracts yet — bind a plot to an invoice to create one.</p>') +
+      (drawDown.length
+        ? '<h4 class="v2-contracts__subhead">Weight draw-down</h4>' +
+          '<table class="v2-contracts__drawdown"><thead><tr><th>invoice</th><th>purchased</th>' +
+          "<th>committed</th><th>remaining</th></tr></thead><tbody>" + drows + "</tbody></table>"
+        : "") +
+      "</section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
+  window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
 })();
