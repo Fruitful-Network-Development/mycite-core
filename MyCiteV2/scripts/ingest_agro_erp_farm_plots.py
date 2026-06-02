@@ -89,10 +89,18 @@ def _ring_coords(head: list) -> list[tuple[float, float]]:
     return coords
 
 
-def _field_polygons(boundary_rows: list[AuthoritativeDatumDocumentRow]) -> list[Polygon]:
-    """The property field polygons (boundary 5-0-1..3 → their family-4 rings)."""
+def _field_polygons(
+    boundary_rows: list[AuthoritativeDatumDocumentRow],
+) -> tuple[list[Polygon], list[str]]:
+    """The property field polygons (boundary 5-0-1..3 → their family-4 rings).
+
+    Returns ``(fields, skipped)`` where ``skipped`` lists the boundary poly addresses
+    dropped for a missing/dangling ring or <3 decodable vertices — the caller surfaces
+    these rather than silently producing fewer plots than the property has parcels.
+    """
     by_addr = {r.datum_address: r for r in boundary_rows}
     fields: list[Polygon] = []
+    skipped: list[str] = []
     for addr, row in sorted(by_addr.items()):
         m = _PLOT_POLY_RE.match(addr)
         if not (m and int(m.group(1)) <= _BOUNDARY_POLY_MAX):
@@ -101,11 +109,14 @@ def _field_polygons(boundary_rows: list[AuthoritativeDatumDocumentRow]) -> list[
         ring_addr = next((str(t).strip() for t in head[1:] if str(t).strip().startswith("4-")), "")
         ring = by_addr.get(ring_addr)
         if ring is None:
+            skipped.append(f"{addr} (ring {ring_addr or '?'} missing)")
             continue
         coords = _ring_coords(ring.raw[0])
         if len(coords) >= 3:
             fields.append(Polygon(coords))
-    return fields
+        else:
+            skipped.append(f"{addr} (ring {ring_addr} decoded {len(coords)} vertices)")
+    return fields, skipped
 
 
 @dataclasses.dataclass
@@ -133,7 +144,12 @@ def build(store: SqliteSystemDatumStoreAdapter, *, edge_m: float) -> Plan:
     if any(_PLOT_RING_RE.match(r.datum_address) for r in boundary):
         raise SystemExit("a boundary ring already uses the 4-4-* plot family; aborting to avoid collision")
 
-    fields = _field_polygons(boundary)
+    fields, skipped_fields = _field_polygons(boundary)
+    if skipped_fields:
+        raise SystemExit(
+            "boundary field(s) could not be packed — refusing to silently drop parcels: "
+            + "; ".join(skipped_fields)
+        )
     if not fields:
         raise SystemExit("no field polygons decoded from farm_profile boundary")
 

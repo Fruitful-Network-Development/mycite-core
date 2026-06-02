@@ -19,7 +19,6 @@ from typing import Any
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.structures.hops import decode_hops_coordinate_token
 from MyCiteV2.packages.ports.datum_store import (
-    AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
 )
 from MyCiteV2.packages.state_machine.lens.base import BinaryTextLens
@@ -27,6 +26,7 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
 
+from ._archetype import resolve_tool_document
 from ._registry import register
 
 _TENANT_DEFAULT = "fnd"
@@ -88,15 +88,6 @@ def _ring_coords(head: list[Any]) -> list[tuple[float, float]]:
     return coords
 
 
-def _find_named(docs: list[AuthoritativeDatumDocument], sandbox: str, name: str) -> AuthoritativeDatumDocument | None:
-    for doc in docs:
-        if _as_text(getattr(doc, "canonical_name", "")) == name:
-            parts = _as_text(getattr(doc, "document_id", "")).split(".")
-            if not sandbox or (len(parts) > 4 and parts[2] == sandbox):
-                return doc
-    return None
-
-
 def _feature(coords: list[tuple[float, float]], *, kind: str, label: str, fid: str) -> dict[str, Any] | None:
     if len(coords) < 3:
         return None
@@ -140,9 +131,18 @@ class FarmProfileViewer:
             return _error(f"datum store unavailable: {exc}")
 
         docs = list(getattr(catalog, "documents", ()) or ())
-        doc = next((d for d in docs if _as_text(getattr(d, "document_id", "")) == _as_text(document_id)), None)
-        if doc is None:
-            doc = _find_named(docs, sandbox_id or "agro_erp", "farm_profile")
+        # Resolve the farm_profile by archetype — NOT by trusting the selected
+        # document_id. The workbench auto-selects the first sandbox doc (the
+        # geometry-less anchor); resolving by document_id alone rendered that wrong
+        # doc as an empty map. resolve_tool_document honors the selection only when
+        # it actually matches this tool, else finds the real farm_profile.
+        doc = resolve_tool_document(
+            docs,
+            tool=self,
+            sandbox=sandbox_id or "agro_erp",
+            document_id=document_id,
+            canonical_name="farm_profile",
+        )
         if doc is None:
             return _error("farm_profile document not found")
 

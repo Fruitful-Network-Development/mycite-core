@@ -27,6 +27,7 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 )
 from MyCiteV2.packages.tools.product_document_view import LclNameIndex
 
+from ._archetype import find_named_document, resolve_tool_document
 from ._registry import register
 
 _TENANT_DEFAULT = "fnd"
@@ -103,17 +104,35 @@ def _parse_weight(text: str) -> float:
         return 0.0
 
 
-def _find_named(docs: list[AuthoritativeDatumDocument], sandbox: str, name: str) -> AuthoritativeDatumDocument | None:
-    for doc in docs:
-        if _as_text(getattr(doc, "canonical_name", "")) == name:
-            parts = _as_text(getattr(doc, "document_id", "")).split(".")
-            if not sandbox or (len(parts) > 4 and parts[2] == sandbox):
-                return doc
-    return None
+def _draw_down(inv_weights: dict[str, dict[str, Any]], committed: dict[str, float]) -> list[dict[str, Any]]:
+    """Per-invoice weight draw-down: purchased weight minus committed contract amounts.
+
+    Iterates the UNION of invoices-with-weight and committed nodes, so an invoice with
+    purchased weight but no contract stays visible (with full remaining capacity) once
+    any contract exists — it is not dropped just because nothing is committed against it.
+    """
+    rows: list[dict[str, Any]] = []
+    for node in sorted(set(inv_weights) | set(committed)):
+        info = inv_weights.get(node, {"label": node, "weight": 0.0})
+        used = committed.get(node, 0.0)
+        weight = info.get("weight", 0.0)
+        rows.append({
+            "invoice": info["label"],
+            "purchased_weight": weight,
+            "committed": used,
+            "remaining": round(weight - used, 6),
+            "over_committed": used > weight,
+        })
+    return rows
 
 
 def _invoice_weights(invoices: AuthoritativeDatumDocument | None, lcl: LclNameIndex) -> dict[str, dict[str, Any]]:
-    """invoice lcl-node -> {label, weight} from the invoices 4-6-* rows (weight = pair 4)."""
+    """invoice lcl-node -> {label, weight} from the invoices 4-6-* rows.
+
+    Marker-driven (order-independent): the invoice node is the FIRST rf.3-1-5 value
+    and the weight is the FIRST rf.3-1-7 nominal, scanned as (marker, value) pairs —
+    not read from a fixed head position.
+    """
     out: dict[str, dict[str, Any]] = {}
     if invoices is None:
         return out
@@ -121,13 +140,10 @@ def _invoice_weights(invoices: AuthoritativeDatumDocument | None, lcl: LclNameIn
         if not _as_text(row.datum_address).startswith("4-6-"):
             continue
         head = row.raw[0] if isinstance(row.raw, list) and row.raw else []
-        # head: [addr, rf.3-1-5 invoice_node, rf.3-1-6 date, rf.3-1-5 product, rf.3-1-7 weight, ...]
-        invoice_node = _as_text(head[2]) if len(head) > 2 else ""
-        weight = ""
-        markers = [(head[i], head[i + 1]) for i in range(1, len(head) - 1, 2)]
-        nominals = [v for m, v in markers if _as_text(m) == _RF_NOMINAL]
-        if nominals:
-            weight = _BINARY_TEXT.decode(nominals[0])
+        markers = [(_as_text(head[i]), head[i + 1]) for i in range(1, len(head) - 1, 2)]
+        invoice_node = next((_as_text(v) for m, v in markers if m == _RF_LCL_ID), "")
+        nominals = [v for m, v in markers if m == _RF_NOMINAL]
+        weight = _BINARY_TEXT.decode(nominals[0]) if nominals else ""
         if invoice_node:
             out[invoice_node] = {"label": lcl.resolve(invoice_node) or invoice_node, "weight": _parse_weight(weight), "weight_text": weight}
     return out
@@ -162,14 +178,17 @@ class ContractsTool:
             return _error(f"datum store unavailable: {exc}")
         docs = list(getattr(catalog, "documents", ()) or ())
         sandbox = sandbox_id or "agro_erp"
-        doc = next((d for d in docs if _as_text(getattr(d, "document_id", "")) == _as_text(document_id)), None)
-        if doc is None:
-            doc = _find_named(docs, sandbox, "contracts")
+        # Resolve the contracts doc by archetype, not by trusting the selected
+        # document_id — the workbench auto-selects the first sandbox doc, which would
+        # otherwise be rendered as an empty contracts view. See _archetype.
+        doc = resolve_tool_document(
+            docs, tool=self, sandbox=sandbox, document_id=document_id, canonical_name="contracts"
+        )
         if doc is None:
             return _error("contracts document not found")
 
-        lcl = LclNameIndex(_find_named(docs, sandbox, "lcl"))
-        invoices = _find_named(docs, sandbox, "invoices")
+        lcl = LclNameIndex(find_named_document(docs, sandbox=sandbox, name="lcl"))
+        invoices = find_named_document(docs, sandbox=sandbox, name="invoices")
         inv_weights = _invoice_weights(invoices, lcl)
 
         contracts: list[dict[str, Any]] = []
@@ -201,19 +220,7 @@ class ContractsTool:
                 "cost": cost,
             })
 
-        # Weight draw-down: purchased weight per invoice minus committed contract amounts.
-        draw_down = []
-        referenced = set(committed) | (set(inv_weights) if not contracts else set(committed))
-        for node in sorted(referenced or inv_weights):
-            info = inv_weights.get(node, {"label": node, "weight": 0.0})
-            used = committed.get(node, 0.0)
-            draw_down.append({
-                "invoice": info["label"],
-                "purchased_weight": info.get("weight", 0.0),
-                "committed": used,
-                "remaining": round(info.get("weight", 0.0) - used, 6),
-                "over_committed": used > info.get("weight", 0.0),
-            })
+        draw_down = _draw_down(inv_weights, committed)
 
         return {
             "schema": _SCHEMA,

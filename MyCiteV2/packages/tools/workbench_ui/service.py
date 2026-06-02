@@ -107,10 +107,15 @@ def _short_hash(value: object, *, length: int = 12) -> str:
     return token[:length] if token else ""
 
 
+# Real document file extensions we strip from a fallback document_name. NOT any
+# short dotted token — a name like "report.v2" / "inventory.feb" must keep its tail.
+_STRIPPABLE_EXTENSIONS = frozenset({"json", "yaml", "yml", "txt", "md", "csv"})
+
+
 def _short_document_name(document_name: object) -> str:
     """Reduce a possibly path/dotted document_name to a clean short label.
 
-    Strips any directory component (full filesystem paths) and a trailing file
+    Strips any directory component (full filesystem paths) and a recognized file
     extension. Used only as a fallback when canonical_name is absent — the
     canonical_name projection is the authoritative clean name for every doc.
     """
@@ -119,7 +124,7 @@ def _short_document_name(document_name: object) -> str:
         return ""
     base = text.replace("\\", "/").rsplit("/", 1)[-1]
     stem, sep, ext = base.rpartition(".")
-    if sep and stem and ext.isalnum() and len(ext) <= 5:
+    if sep and stem and ext.lower() in _STRIPPABLE_EXTENSIONS:
         base = stem
     return base or text
 

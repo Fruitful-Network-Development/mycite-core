@@ -49,6 +49,23 @@ class TestShortDocumentName(unittest.TestCase):
             f"tool.{MSN}.cts-gis",
         )
 
+    def test_strips_known_doc_extensions(self) -> None:
+        for name, want in [
+            ("rates.yaml", "rates"),
+            ("notes.yml", "notes"),
+            ("readme.md", "readme"),
+            ("ledger.csv", "ledger"),
+            ("memo.txt", "memo"),
+        ]:
+            self.assertEqual(_short_document_name(name), want)
+
+    def test_keeps_non_extension_dotted_suffix(self) -> None:
+        # A short dotted tail that is NOT a file extension (version/season code) must
+        # be preserved — only recognized extensions are stripped.
+        self.assertEqual(_short_document_name("report.v2"), "report.v2")
+        self.assertEqual(_short_document_name("inventory.feb"), "inventory.feb")
+        self.assertEqual(_short_document_name("plot.7b"), "plot.7b")
+
     def test_empty(self) -> None:
         self.assertEqual(_short_document_name(""), "")
         self.assertEqual(_short_document_name(None), "")

@@ -27,6 +27,7 @@ from MyCiteV2.packages.ports.datum_store import (
 from MyCiteV2.packages.tools import (
     all_tools as _viz_all_tools,
 )
+from MyCiteV2.packages.tools._archetype import document_archetypes as _document_archetypes
 
 PORTAL_PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.response.v1"
 
@@ -56,46 +57,16 @@ def _find_document(
     return None
 
 
-def _row_head(row: Any) -> list[Any]:
-    raw = getattr(row, "raw", None)
-    if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return raw[0]
-    if isinstance(raw, list):
-        return raw
-    return []
-
-
 def derive_document_archetypes(datum_doc: Any) -> set[str]:
-    """Recognize a document's tool-eligibility archetypes by ARCHETYPE/SHAPE,
-    never by a hardcoded document id (TASK-2026-06-02-008).
+    """Recognize a document's tool-eligibility archetypes (TASK-2026-06-02-008).
 
-    Sources, in order of preference:
-      * explicit ``document_metadata.datum_template_archetype`` / ``samras_family``
-        (e.g. product_profiles -> ``agro_erp_product_profile_row``);
-      * the document ``schema`` / ``datum_template_schema`` token, so schema-typed
-        docs (contracts/plots/contacts/invoices) are addressable by their schema;
-      * a STRUCTURAL scan: a CTS-GIS HOPS geospatial filament (rows carrying the
-        ``rf.3-1-3`` coordinate marker, i.e. the 4->5->6->7 form) is tagged
-        ``hops_geospatial_filament`` — this is how the farm-profile viewer matches
-        farm_profile without any per-document special case.
+    Delegates to the single-sourced recognizer in
+    :mod:`MyCiteV2.packages.tools._archetype` so the palette eligibility, the
+    farm-profile viewer, and the contracts tool all agree on what a document IS
+    (notably the tightened ``hops_geospatial_filament`` rule: a family-4 ring row
+    carrying rf.3-1-3, not merely any stray rf.3-1-3 token).
     """
-    archetypes: set[str] = set()
-    metadata = getattr(datum_doc, "document_metadata", None)
-    if isinstance(metadata, dict):
-        for key in ("datum_template_archetype", "samras_family"):
-            token = _as_text(metadata.get(key))
-            if token:
-                archetypes.add(token)
-        for key in ("schema", "datum_template_schema"):
-            token = _as_text(metadata.get(key))
-            if token:
-                archetypes.add(token)
-    # Structural shape: HOPS coordinate marker anywhere in the rows -> geospatial.
-    for row in getattr(datum_doc, "rows", ()) or ():
-        if any(_as_text(tok) == "rf.3-1-3" for tok in _row_head(row)):
-            archetypes.add("hops_geospatial_filament")
-            break
-    return archetypes
+    return _document_archetypes(datum_doc)
 
 
 def _viz_tool_matches(

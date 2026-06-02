@@ -43,6 +43,10 @@ def pack_squares(field: Polygon, edge_m: float, *, origin_steps: int = 5) -> lis
         return []
     min_x, min_y, max_x, max_y = field.bounds
     lat_mid = (min_y + max_y) / 2.0
+    # Near the poles cos(lat)->0, so a metre maps to an unbounded span of longitude
+    # and axis-aligned "squares" degenerate. Refuse rather than emit distorted cells.
+    if abs(lat_mid) >= 89.9:
+        return []
     d_lon, d_lat = meters_to_degrees(edge_m, lat_mid)
     if d_lon <= 0 or d_lat <= 0:
         return []

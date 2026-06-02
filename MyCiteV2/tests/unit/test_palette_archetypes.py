@@ -57,6 +57,15 @@ class TestDeriveDocumentArchetypes(unittest.TestCase):
         doc = _doc("contacts", metadata={"schema": "mycite.v2.datum.agro_erp.contacts.v1"}, rows=rows)
         self.assertNotIn("hops_geospatial_filament", derive_document_archetypes(doc))
 
+    def test_stray_rf313_outside_family4_not_tagged(self) -> None:
+        # rf.3-1-3 appearing outside a family-4 ring row (e.g. an anchor file-pointer
+        # row) must NOT tag the doc geospatial — only the real 4->5->6->7 ring form does.
+        rows = [
+            {"datum_address": "1-0-3", "raw": [["1-0-3", "rf.3-1-3", "coord-pointer"], ["anchor_ptr"]]},
+        ]
+        doc = _doc("anchor", metadata={}, rows=rows)
+        self.assertNotIn("hops_geospatial_filament", derive_document_archetypes(doc))
+
     def test_recognition_is_not_by_document_id(self) -> None:
         # Two docs with different ids but the same shape resolve identically.
         rows = [{"datum_address": "4-4-1", "raw": [["4-4-1", "rf.3-1-3", "3-76-1"], ["r"]]}]

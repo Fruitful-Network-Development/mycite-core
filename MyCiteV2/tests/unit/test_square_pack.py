@@ -91,6 +91,12 @@ class TestPackSquares(unittest.TestCase):
         self.assertEqual(pack_squares(self.field, edge_m=0.0), [])
         self.assertEqual(pack_squares(self.field, edge_m=-5.0), [])
 
+    def test_empty_near_the_pole(self) -> None:
+        # Near the poles cos(lat)->0 and axis-aligned squares degenerate; pack refuses
+        # rather than emitting wildly distorted cells.
+        polar = Polygon([(0.0, 89.95), (0.001, 89.95), (0.001, 89.96), (0.0, 89.96)])
+        self.assertEqual(pack_squares(polar, edge_m=30.0), [])
+
     def test_hops_roundtrip_of_a_plot_square(self) -> None:
         squares = pack_squares(self.field, edge_m=30.0)
         sq = squares[0]

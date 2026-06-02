@@ -1,0 +1,133 @@
+"""Shared archetype recognition + tool↔document resolution for WorkbenchTools.
+
+Single-sources the "does this document match this tool?" question used by both the
+palette eligibility runtime and the tools that resolve a sandbox-singleton document
+(farm_profile, contracts). Resolving by archetype — never a hardcoded document id —
+is the TASK-2026-06-02-008 principle; this module is where it lives.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+_HOPS_COORD_MARKER = "rf.3-1-3"
+
+
+def _as_text(value: object) -> str:
+    return "" if value is None else str(value).strip()
+
+
+def _row_head(row: Any) -> list[Any]:
+    raw = getattr(row, "raw", None)
+    if isinstance(raw, list) and raw and isinstance(raw[0], list):
+        return raw[0]
+    if isinstance(raw, list):
+        return raw
+    return []
+
+
+def document_sandbox(doc: Any) -> str:
+    """Sandbox token from a canonical id ``lv.<msn>.<sandbox>.<name>.<hash>``."""
+    parts = _as_text(getattr(doc, "document_id", "")).split(".")
+    return parts[2] if len(parts) > 4 else ""
+
+
+def document_archetypes(doc: Any) -> set[str]:
+    """Recognize a document's tool-eligibility archetypes by ARCHETYPE/SHAPE,
+    never by a hardcoded document id (TASK-2026-06-02-008).
+
+    Sources:
+      * metadata ``datum_template_archetype`` / ``samras_family``;
+      * the ``schema`` / ``datum_template_schema`` token (so schema-typed docs —
+        contracts/invoices/taxonomy — are addressable by their schema);
+      * a STRUCTURAL scan: a CTS-GIS HOPS geospatial filament is tagged
+        ``hops_geospatial_filament`` only when the doc carries a family-4 ring row
+        (address ``4-*``) whose head holds the rf.3-1-3 coordinate marker — i.e. the
+        real 4->5->6->7 form, NOT merely any stray rf.3-1-3 token elsewhere in the doc.
+    """
+    archetypes: set[str] = set()
+    metadata = getattr(doc, "document_metadata", None)
+    if isinstance(metadata, dict):
+        for key in ("datum_template_archetype", "samras_family", "schema", "datum_template_schema"):
+            token = _as_text(metadata.get(key))
+            if token:
+                archetypes.add(token)
+    for row in getattr(doc, "rows", ()) or ():
+        if _as_text(getattr(row, "datum_address", "")).startswith("4-") and any(
+            _as_text(tok) == _HOPS_COORD_MARKER for tok in _row_head(row)
+        ):
+            archetypes.add("hops_geospatial_filament")
+            break
+    return archetypes
+
+
+def tool_matches_document(tool: Any, doc: Any) -> bool:
+    """True when ``doc`` matches the tool's applies_to_archetype / source_kind.
+
+    A tool with no applies_to_* lists is universal (matches every doc) — same
+    semantics the palette already uses for the menubar search.
+    """
+    tool_archetypes = set(getattr(tool, "applies_to_archetype", ()) or ())
+    tool_source_kinds = set(getattr(tool, "applies_to_source_kind", ()) or ())
+    if not tool_archetypes and not tool_source_kinds:
+        return True
+    if tool_archetypes & document_archetypes(doc):
+        return True
+    source_kind = _as_text(getattr(doc, "source_kind", ""))
+    return bool(source_kind and source_kind in tool_source_kinds)
+
+
+def find_named_document(docs: Any, *, sandbox: str, name: str) -> Any | None:
+    """First doc in ``sandbox`` whose canonical_name == ``name`` (sandbox '' = any)."""
+    for doc in docs:
+        if _as_text(getattr(doc, "canonical_name", "")) == name:
+            if not sandbox or document_sandbox(doc) == sandbox:
+                return doc
+    return None
+
+
+def resolve_tool_document(
+    docs: Any,
+    *,
+    tool: Any,
+    sandbox: str,
+    document_id: str,
+    canonical_name: str | None = None,
+) -> Any | None:
+    """Resolve the document a sandbox-singleton tool should render.
+
+    Honors the selected document only when it actually matches the tool; otherwise
+    falls back to the first sandbox document that matches (by archetype, or by
+    ``canonical_name`` when given). This is the fix for the empty-render bug: the
+    workbench auto-selects the first sandbox doc (e.g. the geometry-less ``anchor``),
+    and a wrong-but-present selection must NOT win over the real target document.
+    """
+    document_id = _as_text(document_id)
+
+    def _matches(doc: Any) -> bool:
+        if tool_matches_document(tool, doc):
+            return True
+        return bool(canonical_name and _as_text(getattr(doc, "canonical_name", "")) == canonical_name)
+
+    selected = (
+        next((d for d in docs if _as_text(getattr(d, "document_id", "")) == document_id), None)
+        if document_id
+        else None
+    )
+    if selected is not None and _matches(selected):
+        return selected
+    for doc in docs:
+        if sandbox and document_sandbox(doc) != sandbox:
+            continue
+        if _matches(doc):
+            return doc
+    return None
+
+
+__all__ = [
+    "document_archetypes",
+    "document_sandbox",
+    "find_named_document",
+    "resolve_tool_document",
+    "tool_matches_document",
+]
