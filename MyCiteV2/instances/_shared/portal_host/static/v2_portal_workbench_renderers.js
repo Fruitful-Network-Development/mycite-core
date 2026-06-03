@@ -3776,10 +3776,52 @@
       "</section>";
   }
 
+  function renderTxaTreeNode(node) {
+    node = node || {};
+    var isEmpty = node.status === "empty";
+    var head =
+      '<span class="v2-txatree__addr">' + esc(node.address || "") + "</span> " +
+      (isEmpty
+        ? '<span class="v2-txatree__emptyTag">(undefined — denoted by magnitude)</span>'
+        : '<span class="v2-txatree__label">' + esc(node.label || "") + "</span>");
+    var kids = Array.isArray(node.children) ? node.children : [];
+    if (kids.length) {
+      return (
+        '<details class="v2-txatree__node' + (isEmpty ? " is-empty" : "") + '">' +
+        "<summary>" + head + "</summary>" +
+        kids.map(renderTxaTreeNode).join("") +
+        "</details>"
+      );
+    }
+    return '<div class="v2-txatree__leaf' + (isEmpty ? " is-empty" : "") + '">' + head + "</div>";
+  }
+
+  function renderTxaTree(payload, content) {
+    // Collapsible node-address tree: DEFINED nodes show their label; EMPTY nodes
+    // (denoted by the anchor magnitude but not defined in txa) are flagged. Collapsed
+    // by default so a 1000+ node tree only paints expanded branches.
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var tree = Array.isArray(payload.tree) ? payload.tree : [];
+    content.innerHTML =
+      '<section class="v2-txatree">' +
+      '<header class="v2-txatree__header">' +
+      esc(payload.magnitude || "txa") + " magnitude · " +
+      esc(payload.denoted_count || 0) + " denoted · " +
+      esc(payload.defined_count || 0) + " defined · " +
+      esc(payload.empty_count || 0) + " empty</header>" +
+      '<div class="v2-txatree__body">' +
+      (tree.length
+        ? tree.map(renderTxaTreeNode).join("")
+        : '<p class="v2-txatree__empty">No nodes denoted by the magnitude.</p>') +
+      "</div></section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
   window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
+  window.__MYCITE_V2_TOOL_RENDERERS["txa_tree"] = renderTxaTree;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
 })();
