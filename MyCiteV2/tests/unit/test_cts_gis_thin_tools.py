@@ -17,10 +17,17 @@ from tempfile import TemporaryDirectory
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import WORKBENCH_UI_TOOL_ROUTE
 from MyCiteV2.packages.tools import _cts_gis_artifact as artifact
 from MyCiteV2.packages.tools import get
+from MyCiteV2.packages.tools.cts_gis_admin import CtsGisAdminTool
+from MyCiteV2.packages.tools.cts_gis_district import CtsGisDistrictTool
+from MyCiteV2.packages.tools.cts_gis_map import CtsGisMapTool
 
 _LIVE_DB = "/srv/webapps/mycite/fnd/private/mos_authority.sqlite3"
 _LIVE_DATA_DIR = "/srv/webapps/mycite/fnd/data"
 _TOOL_IDS = ("cts_gis", "cts_gis_district", "cts_gis_admin")
+# The cts tools were RETIRED from the viz palette (no reliable per-doc eligibility — they
+# render a doc-independent compiled artifact). The classes remain + their behavior is still
+# tested directly; they are simply not in the registry.
+_TOOLS = {"cts_gis": CtsGisMapTool(), "cts_gis_district": CtsGisDistrictTool(), "cts_gis_admin": CtsGisAdminTool()}
 
 
 def _write_artifact(data_dir: Path, *, features: list[dict]) -> None:
@@ -37,12 +44,10 @@ def _write_artifact(data_dir: Path, *, features: list[dict]) -> None:
 
 
 class ContractTests(unittest.TestCase):
-    def test_three_thin_tools_registered_at_the_unified_route(self) -> None:
+    def test_three_thin_tools_retired_from_palette_but_classes_intact(self) -> None:
         for tid in _TOOL_IDS:
-            tool = get(tid)
-            self.assertIsNotNone(tool, tid)
-            self.assertEqual(tool.route, WORKBENCH_UI_TOOL_ROUTE, tid)
-            self.assertEqual(tool.applies_to_archetype, ("samras_family",), tid)
+            self.assertIsNone(get(tid), f"{tid} should be RETIRED from the viz palette")
+            self.assertEqual(_TOOLS[tid].route, WORKBENCH_UI_TOOL_ROUTE, tid)
 
     def test_map_tool_no_longer_imports_the_slow_service(self) -> None:
         import MyCiteV2.packages.tools.cts_gis_map as m
@@ -65,7 +70,7 @@ class MapProjectionFixtureTests(unittest.TestCase):
             data_dir = Path(tmp)
             _write_artifact(data_dir, features=[{"type": "Feature", "id": "p1"}])
             artifact.configure_data_dir(data_dir)
-            payload = get("cts_gis").build_panel_payload(
+            payload = _TOOLS["cts_gis"].build_panel_payload(
                 authority_db_file=None, sandbox_id="cts_gis", document_id="d", datum_address="0-0-1",
             )
         self.assertEqual(payload["feature_count"], 1)
@@ -76,7 +81,7 @@ class MapProjectionFixtureTests(unittest.TestCase):
     def test_map_empty_when_artifact_absent(self) -> None:
         with TemporaryDirectory() as tmp:
             artifact.configure_data_dir(Path(tmp))  # no artifact written
-            payload = get("cts_gis").build_panel_payload(
+            payload = _TOOLS["cts_gis"].build_panel_payload(
                 authority_db_file=None, sandbox_id="cts_gis", document_id="", datum_address="",
             )
         self.assertNotIn("error", payload)
@@ -87,7 +92,7 @@ class MapProjectionFixtureTests(unittest.TestCase):
 @unittest.skipUnless(os.path.exists(_LIVE_DB), "live MOS db not present")
 class LiveMosThinToolTests(unittest.TestCase):
     def test_district_tool_lists_member_precincts(self) -> None:
-        payload = get("cts_gis_district").build_panel_payload(
+        payload = _TOOLS["cts_gis_district"].build_panel_payload(
             authority_db_file=Path(_LIVE_DB), sandbox_id="cts_gis", document_id="d", datum_address="0-0-1",
         )
         self.assertNotIn("error", payload)
@@ -95,7 +100,7 @@ class LiveMosThinToolTests(unittest.TestCase):
         self.assertEqual(payload["member_count"], len(payload["member_precinct_ids"]))
 
     def test_admin_tool_resolves_identity(self) -> None:
-        payload = get("cts_gis_admin").build_panel_payload(
+        payload = _TOOLS["cts_gis_admin"].build_panel_payload(
             authority_db_file=Path(_LIVE_DB), sandbox_id="cts_gis", document_id="d", datum_address="0-0-1",
         )
         self.assertNotIn("error", payload)
@@ -127,7 +132,7 @@ class MapPerfCanaryTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_map_build_panel_payload_under_budget(self) -> None:
-        tool = get("cts_gis")
+        tool = _TOOLS["cts_gis"]
         # warm + measure (cached artifact read)
         tool.build_panel_payload(authority_db_file=None, sandbox_id="cts_gis", document_id="d", datum_address="0-0-1")
         start = time.perf_counter()

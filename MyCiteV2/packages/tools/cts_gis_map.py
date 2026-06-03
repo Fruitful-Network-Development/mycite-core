@@ -21,7 +21,6 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 )
 
 from . import _cts_gis_artifact as artifact
-from ._registry import register
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.cts_gis_map.v1"
 
@@ -74,5 +73,6 @@ def _error_payload(message: str) -> dict[str, Any]:
     }
 
 
-# Self-register on import.
-register(CtsGisMapTool())
+# RETIRED from the viz palette (no longer self-registers): a legacy fixed-artifact viewer
+# with no reliable per-doc eligibility. The class stays for direct use / future re-enable
+# behind a sandbox-scoped tool surface. See packages/tools/__init__.py.

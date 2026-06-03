@@ -98,7 +98,11 @@ class TxaTreeViewer:
     # txa itself carries no archetype (only a legacy_alias); the taxonomy archetype lives
     # on the lcl doc, so the tool surfaces in the taxonomy context. It resolves anchor+txa
     # BY NAME regardless of the selected doc, and degrades gracefully off-context.
+    # Recognized by SHAPE: `samras_taxonomy` is derived structurally from the 4-2-N
+    # titled-definition rows (txa + lcl both have it; txa carries no metadata token).
+    # The two metadata tokens stay for back-compat with lcl's stamped metadata.
     applies_to_archetype: tuple[str, ...] = (
+        "samras_taxonomy",
         "agro_erp_taxonomy_row",
         "mycite.v2.datum.agro_erp.taxonomy_source.v1",
     )

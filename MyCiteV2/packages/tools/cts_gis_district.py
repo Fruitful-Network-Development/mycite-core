@@ -16,7 +16,6 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 )
 
 from . import _cts_gis_artifact as artifact
-from ._registry import register
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.cts_gis_district.v1"
 
@@ -72,5 +71,4 @@ def _error(message: str) -> dict[str, Any]:
     return {"schema": _SCHEMA, "error": message, "member_precinct_ids": [], "member_count": 0}
 
 
-# Self-register on import.
-register(CtsGisDistrictTool())
+# RETIRED from the viz palette (no longer self-registers). See packages/tools/__init__.py.
