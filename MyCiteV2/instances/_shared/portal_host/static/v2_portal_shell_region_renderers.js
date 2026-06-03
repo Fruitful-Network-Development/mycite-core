@@ -813,6 +813,40 @@
 
     html += renderToolExtensions(ctx, toolExtensions);
 
+    // Control-panel controls (TASK-interface-panel-migration): lens on/off toggles +
+    // the SANDBOX SELECTOR (the sole sandbox switch now) + a presentational
+    // Documents/Datums tab strip. The lens + sandbox mount points are filled by
+    // shell_core after this render. Tool search lives in the interface panel; the
+    // workbench owns the working document/datum lists.
+    var cpControls = region.control_panel_controls || null;
+    if (cpControls) {
+      if (cpControls.sandbox_selector) {
+        html +=
+          '<details class="ide-controlpanel__disclosure" open>' +
+          '<summary class="ide-controlpanel__disclosureSummary">Sandbox</summary>' +
+          '<div class="ide-controlpanel__disclosureBody">' +
+          '<select class="ide-controlpanel__sandboxSelect" data-sandbox-selector aria-label="Select sandbox"></select>' +
+          "</div></details>";
+      }
+      if (cpControls.lenses) {
+        html +=
+          '<details class="ide-controlpanel__disclosure" open>' +
+          '<summary class="ide-controlpanel__disclosureSummary">Lenses</summary>' +
+          '<div class="ide-controlpanel__disclosureBody" data-cp-lens-mount></div>' +
+          "</details>";
+      }
+      if (cpControls.doc_datum_tabs) {
+        html +=
+          '<div class="ide-controlpanel__tabs" data-cp-doc-datum-tabs role="tablist">' +
+          '<button type="button" class="ide-controlpanel__tab is-active" role="tab" aria-selected="true" data-cp-tab="documents">Documents</button>' +
+          '<button type="button" class="ide-controlpanel__tab" role="tab" aria-selected="false" data-cp-tab="datums">Datums</button>' +
+          "</div>" +
+          '<div class="ide-controlpanel__tabBody" data-cp-tab-body>' +
+          '<p class="ide-controlpanel__empty">Select a sandbox to browse its documents and datums in the workbench.</p>' +
+          "</div>";
+      }
+    }
+
     // Actions
     if (actions.length) {
       html += '<div class="ide-controlpanel__actions">';

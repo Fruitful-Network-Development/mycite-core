@@ -1,9 +1,11 @@
-"""C4 — multi-tool visualization panel (surface_query.tools → panels[]).
+"""C4 — interface-panel tool surface (surface_query.tools → panels[]).
 
-The panel builder now accepts a comma-joined ``tools`` list and emits one panel
-per tool (each renders as a removable box client-side), while keeping the legacy
-single-tool fields (= first panel) for back-compat. The canonical query round-trips
-``tools`` (and folds the legacy scalar ``tool``).
+The interface_panel is the unified tool surface (TASK-interface-panel-migration): it
+carries a ``tool_search`` context + one panel per tool in ``surface_query.tools`` (each
+renders as a removable box client-side), keeping the legacy single-tool fields (= first
+panel) for back-compat. The region is always returned (visible) so the search bar is
+reachable before a tool is picked. The canonical query round-trips ``tools`` (and folds
+the legacy scalar ``tool``).
 """
 
 from __future__ import annotations
@@ -11,28 +13,36 @@ from __future__ import annotations
 import unittest
 
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
-    _build_visualization_panel,
+    _build_interface_tool_panel,
 )
 from MyCiteV2.packages.state_machine.portal_shell import (
     WORKBENCH_UI_TOOL_SURFACE_ID,
+    PortalScope,
     canonical_query_for_surface_query,
 )
 
+_SCOPE = PortalScope(scope_id="fnd", capabilities=())
+
 
 def _panel(surface_query):
-    return _build_visualization_panel(
+    return _build_interface_tool_panel(
         surface_query=surface_query,
         authority_db_file=None,  # tools return graceful error payloads; we assert structure
         sandbox_id="agro_erp",
         document_id="",
         datum_address="",
+        portal_scope=_SCOPE,
     )
 
 
-class MultiToolPanelTests(unittest.TestCase):
-    def test_no_tool_returns_none(self) -> None:
-        self.assertIsNone(_panel({}))
-        self.assertIsNone(_panel({"tools": ""}))
+class InterfaceToolPanelTests(unittest.TestCase):
+    def test_no_tool_yields_visible_panel_with_search_and_no_panels(self) -> None:
+        for sq in ({}, {"tools": ""}):
+            region = _panel(sq)
+            self.assertTrue(region["visible"])  # search bar reachable before a tool is picked
+            self.assertEqual(region["panels"], [])
+            self.assertEqual(region["tool_search"]["sandbox_id"], "agro_erp")
+            self.assertEqual(region["tool_search"]["tenant_id"], "fnd")
 
     def test_legacy_single_tool_yields_one_panel(self) -> None:
         region = _panel({"tool": "product_document"})

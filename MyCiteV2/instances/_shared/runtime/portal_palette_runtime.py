@@ -27,14 +27,10 @@ from MyCiteV2.packages.ports.datum_store import (
 from MyCiteV2.packages.tools import (
     all_tools as _viz_all_tools,
 )
+from MyCiteV2.packages.tools._archetype import document_archetypes as _document_archetypes
+from MyCiteV2.packages.tools._shared.utilities import as_text as _as_text
 
 PORTAL_PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.response.v1"
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _find_document(
@@ -54,6 +50,18 @@ def _find_document(
         if getattr(doc, "document_id", "") == document_id:
             return doc
     return None
+
+
+def derive_document_archetypes(datum_doc: Any) -> set[str]:
+    """Recognize a document's tool-eligibility archetypes (TASK-2026-06-02-008).
+
+    Delegates to the single-sourced recognizer in
+    :mod:`MyCiteV2.packages.tools._archetype` so the palette eligibility, the
+    farm-profile viewer, and the contracts tool all agree on what a document IS
+    (notably the tightened ``hops_geospatial_filament`` rule: a family-4 ring row
+    carrying rf.3-1-3, not merely any stray rf.3-1-3 token).
+    """
+    return _document_archetypes(datum_doc)
 
 
 def _viz_tool_matches(
@@ -103,13 +111,7 @@ def build_eligible_tools_response(
             tenant_id=tenant_id, document_id=document_id, datum_store=datum_store
         )
         if datum_doc is not None:
-            metadata = getattr(datum_doc, "document_metadata", None) or {}
-            archetype = _as_text(metadata.get("datum_template_archetype") if isinstance(metadata, dict) else "")
-            if archetype:
-                archetypes.add(archetype)
-            family = _as_text(metadata.get("samras_family") if isinstance(metadata, dict) else "")
-            if family:
-                archetypes.add(family)
+            archetypes |= derive_document_archetypes(datum_doc)
             source_kind = _as_text(getattr(datum_doc, "source_kind", ""))
             if source_kind:
                 source_kinds.add(source_kind)
@@ -153,15 +155,12 @@ def _doc_name(doc: Any) -> str:
 
 
 def _doc_eligibility(doc: Any) -> tuple[set[str], set[str], str]:
-    metadata = getattr(doc, "document_metadata", None) or {}
-    archetypes: set[str] = set()
-    if isinstance(metadata, dict):
-        archetype = _as_text(metadata.get("datum_template_archetype"))
-        if archetype:
-            archetypes.add(archetype)
-        family = _as_text(metadata.get("samras_family"))
-        if family:
-            archetypes.add(family)
+    # Single-sourced recognition (audit Theme G fix): delegate to the same
+    # derive_document_archetypes() the document-context path uses, so the
+    # sandbox-visualizers path also sees structural archetypes (e.g. the
+    # HOPS hops_geospatial_filament scan), not just metadata tokens. Prevents a
+    # tool being eligible on one path but not the other.
+    archetypes = derive_document_archetypes(doc)
     source_kind = _as_text(getattr(doc, "source_kind", ""))
     return archetypes, ({source_kind} if source_kind else set()), source_kind
 

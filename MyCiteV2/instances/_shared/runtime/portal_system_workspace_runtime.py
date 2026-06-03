@@ -1340,6 +1340,7 @@ def build_unified_control_panel(
     context_controls: list[dict[str, Any]] | None = None,
     disclosure_groups: list[dict[str, Any]] | None = None,
     workbench_mode: dict[str, Any] | None = None,
+    control_panel_controls: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build the unified control panel following canonical contract v2.
 
@@ -1411,6 +1412,12 @@ def build_unified_control_panel(
             "tool_extensions": extensions,
             "disclosure_groups": list(disclosure_groups or []),
             "workbench_mode": dict(workbench_mode) if isinstance(workbench_mode, dict) else None,
+            # Non-duplicate control-panel controls (lens on/off toggles + a
+            # document-context tool search). The workbench owns document/datum
+            # lists; the control panel hosts only controls that act ON the
+            # current selection. JS (shell_core) mounts PortalLensPanel +
+            # PortalToolPalette into the divs the renderer emits for this.
+            "control_panel_controls": dict(control_panel_controls) if isinstance(control_panel_controls, dict) else None,
         },
         family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
         surface_id=surface_id,
@@ -1643,7 +1650,10 @@ def build_system_workspace_bundle(
         "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
         "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
         "summary": "Mediation is bound to the current focus subject." if shell_state.verb == VERB_MEDIATE else "The interface panel stays collapsed during ordinary navigation.",
-        "visible": shell_state.verb == VERB_MEDIATE,
+        # The interface_panel is the TOOL SURFACE now (built by the workbench-ui bundle).
+        # This system-action/mediation path is not a tool surface, so it stays hidden —
+        # the next shell GET rebuilds the tool surface via build_portal_workbench_ui_bundle.
+        "visible": False,
         "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
         "sections": [
             {

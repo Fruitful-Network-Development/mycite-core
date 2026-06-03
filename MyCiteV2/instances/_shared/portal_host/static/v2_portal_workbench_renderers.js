@@ -1568,7 +1568,7 @@
           '<td><div class="v2-workbenchUi__primaryCell">' +
           selection +
           '<strong>' +
-          escapeHtml(stripJsonSuffix(row.document_name || row.label || row.document_id || "—")) +
+          escapeHtml(stripJsonSuffix(row.canonical_name || row.label || row.document_name || row.document_id || "—")) +
           "</strong>" +
           '<div class="v2-workbenchUi__subvalue">' +
           escapeHtml(row.document_id || "—") +
@@ -1795,44 +1795,10 @@
     });
   }
 
-  function renderSandboxToggleBar(activeToken) {
-    var sandboxes = availableSandboxes();
-    if (!sandboxes.length) {
-      return (
-        '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
-        '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
-        '<button type="button" class="v2-workbenchUi__sandboxToggle is-active" disabled aria-pressed="true">' +
-        escapeHtml(activeToken || "system") +
-        "</button></header>"
-      );
-    }
-    var buttons = sandboxes
-      .map(function (s) {
-        var isActive = s.token === activeToken;
-        return (
-          '<button type="button" class="v2-workbenchUi__sandboxToggle' +
-          (isActive ? " is-active" : "") +
-          '" data-sandbox-toggle data-sandbox-token="' +
-          escapeHtml(s.token) +
-          '" aria-pressed="' +
-          (isActive ? "true" : "false") +
-          '">' +
-          escapeHtml(s.label) +
-          "</button>"
-        );
-      })
-      .join("");
-    return (
-      '<header class="v2-workbenchUi__sandboxBar" data-region="sandbox-toggle-bar">' +
-      '<span class="v2-workbenchUi__sandboxLabel">Sandbox:</span>' +
-      buttons +
-      "</header>"
-    );
-  }
 
   function renderDocumentColumnItem(row, index) {
     var label = stripJsonSuffix(
-      row.document_name || row.label || row.document_id || "—"
+      row.canonical_name || row.label || row.document_name || row.document_id || "—"
     );
     var rowCount = String(row.row_count || 0);
     var versionShort = asText(row.version_hash_short);
@@ -2247,42 +2213,14 @@
 
   function renderWorkbenchSurface(surfacePayload, region) {
     var workspace = asObject(surfacePayload.workspace);
-    var activeToken = activeSandboxToken(region);
+    // TASK-interface-panel-migration: the in-workbench sandbox toggle bar was removed —
+    // sandbox switching now lives solely in the control-panel sandbox selector.
     return (
       '<div class="v2-workbenchUi__trifecta" data-region="workbench-trifecta">' +
-      renderSandboxToggleBar(activeToken) +
       '<div class="v2-workbenchUi__columns">' +
       renderDocumentColumn(workspace, surfacePayload) +
       renderDocumentEditor(workspace, surfacePayload, region) +
       "</div></div>"
-    );
-  }
-
-  function bindSandboxToggleBar(ctx, target) {
-    Array.prototype.forEach.call(
-      target.querySelectorAll("[data-sandbox-toggle][data-sandbox-token]"),
-      function (button) {
-        button.addEventListener("click", function () {
-          if (button.classList.contains("is-active")) return;
-          var token = button.getAttribute("data-sandbox-token") || "";
-          if (!token || typeof ctx.loadShell !== "function") return;
-          var envelope = ctx.getEnvelope && ctx.getEnvelope();
-          var surfaceId = (envelope && envelope.surface_id) || "";
-          var nextQuery = Object.assign(
-            {},
-            (envelope && envelope.surface_query) || {}
-          );
-          nextQuery.sandbox_filter = token;
-          delete nextQuery.document;
-          delete nextQuery.row;
-          delete nextQuery.mode;
-          ctx.loadShell({
-            schema: "mycite.v2.portal.shell.request.v1",
-            requested_surface_id: surfaceId,
-            surface_query: nextQuery,
-          });
-        });
-      }
     );
   }
 
@@ -2862,7 +2800,6 @@
   }
 
   function bindWorkbenchNavigation(ctx, target, workspace, surfacePayload, region) {
-    bindSandboxToggleBar(ctx, target);
     bindDocumentColumn(ctx, target, workspace, surfacePayload || {});
     bindDatumComposer(ctx, target, workspace, surfacePayload || {});
     bindDocumentEditor(ctx, target, workspace, surfacePayload || {});
@@ -3745,8 +3682,146 @@
       "</section>";
   }
 
+  function renderFarmProfile(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var fc = payload.feature_collection || {};
+    var features = Array.isArray(fc.features) ? fc.features : [];
+    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+
+    // Collect all lon/lat for a shared projection (equirectangular fit-to-box).
+    var pts = [];
+    features.forEach(function (f) {
+      var g = (f && f.geometry) || {};
+      ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
+        if (Array.isArray(c) && c.length >= 2) pts.push(c);
+      });
+    });
+    var W = 460, H = 320, PAD = 12, svg = "";
+    if (pts.length) {
+      var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
+      pts.forEach(function (c) {
+        if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0];
+        if (c[1] < miny) miny = c[1]; if (c[1] > maxy) maxy = c[1];
+      });
+      var sx = (maxx - minx) || 1e-9, sy = (maxy - miny) || 1e-9;
+      var scale = Math.min((W - 2 * PAD) / sx, (H - 2 * PAD) / sy);
+      var proj = function (c) {
+        var x = PAD + (c[0] - minx) * scale;
+        var y = H - PAD - (c[1] - miny) * scale; // flip Y (north up)
+        return x.toFixed(1) + "," + y.toFixed(1);
+      };
+      var paths = features.map(function (f) {
+        var g = (f && f.geometry) || {};
+        var p = (f && f.properties) || {};
+        var ring = (g.coordinates && g.coordinates[0]) || [];
+        if (!ring.length) return "";
+        var pointsAttr = ring.map(proj).join(" ");
+        var isPlot = p.kind === "plot";
+        var fill = isPlot ? "rgba(46,160,67,0.35)" : "rgba(31,111,235,0.12)";
+        var stroke = isPlot ? "#2ea043" : "#1f6feb";
+        return '<polygon points="' + pointsAttr + '" fill="' + fill +
+          '" stroke="' + stroke + '" stroke-width="1"><title>' +
+          esc(p.label || "") + " (" + esc(p.kind || "") + ")</title></polygon>";
+      }).join("");
+      svg = '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
+        '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm map">' +
+        paths + "</svg>";
+    } else {
+      svg = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
+    }
+
+    var fieldRows = fields.map(function (f) {
+      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
+    }).join("");
+
+    content.innerHTML =
+      '<section class="v2-farm">' +
+      '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
+      " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
+      '<div class="v2-farm__map">' + svg + "</div>" +
+      (fieldRows
+        ? '<table class="v2-farm__values"><tbody>' + fieldRows + "</tbody></table>"
+        : "") +
+      "</section>";
+  }
+
+  function renderContracts(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var contracts = Array.isArray(payload.contracts) ? payload.contracts : [];
+    var drawDown = Array.isArray(payload.draw_down) ? payload.draw_down : [];
+    var crows = contracts.map(function (c) {
+      return "<tr><td>" + esc(c.date) + "</td><td>" + esc(c.invoice) + "</td><td>" +
+        esc(c.plot) + "</td><td>" + esc(c.amount) + "</td><td>" + esc(c.cost) + "</td></tr>";
+    }).join("");
+    var drows = drawDown.map(function (d) {
+      return '<tr' + (d.over_committed ? ' class="is-over"' : "") + "><td>" + esc(d.invoice) +
+        "</td><td>" + esc(d.purchased_weight) + "</td><td>" + esc(d.committed) +
+        "</td><td>" + esc(d.remaining) + "</td></tr>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-contracts">' +
+      '<header class="v2-contracts__header">' + esc(payload.contract_count || 0) +
+      " contracts · " + esc(payload.archetype || "") + "</header>" +
+      (contracts.length
+        ? '<table class="v2-contracts__table"><thead><tr><th>date</th><th>invoice</th>' +
+          "<th>plot</th><th>amount</th><th>cost</th></tr></thead><tbody>" + crows + "</tbody></table>"
+        : '<p class="v2-contracts__empty">No contracts yet — bind a plot to an invoice to create one.</p>') +
+      (drawDown.length
+        ? '<h4 class="v2-contracts__subhead">Weight draw-down</h4>' +
+          '<table class="v2-contracts__drawdown"><thead><tr><th>invoice</th><th>purchased</th>' +
+          "<th>committed</th><th>remaining</th></tr></thead><tbody>" + drows + "</tbody></table>"
+        : "") +
+      "</section>";
+  }
+
+  function renderTxaTreeNode(node) {
+    node = node || {};
+    var isEmpty = node.status === "empty";
+    var head =
+      '<span class="v2-txatree__addr">' + esc(node.address || "") + "</span> " +
+      (isEmpty
+        ? '<span class="v2-txatree__emptyTag">(undefined — denoted by magnitude)</span>'
+        : '<span class="v2-txatree__label">' + esc(node.label || "") + "</span>");
+    var kids = Array.isArray(node.children) ? node.children : [];
+    if (kids.length) {
+      return (
+        '<details class="v2-txatree__node' + (isEmpty ? " is-empty" : "") + '">' +
+        "<summary>" + head + "</summary>" +
+        kids.map(renderTxaTreeNode).join("") +
+        "</details>"
+      );
+    }
+    return '<div class="v2-txatree__leaf' + (isEmpty ? " is-empty" : "") + '">' + head + "</div>";
+  }
+
+  function renderTxaTree(payload, content) {
+    // Collapsible node-address tree: DEFINED nodes show their label; EMPTY nodes
+    // (denoted by the anchor magnitude but not defined in txa) are flagged. Collapsed
+    // by default so a 1000+ node tree only paints expanded branches.
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var tree = Array.isArray(payload.tree) ? payload.tree : [];
+    content.innerHTML =
+      '<section class="v2-txatree">' +
+      '<header class="v2-txatree__header">' +
+      esc(payload.magnitude || "txa") + " magnitude · " +
+      esc(payload.denoted_count || 0) + " denoted · " +
+      esc(payload.defined_count || 0) + " defined · " +
+      esc(payload.empty_count || 0) + " empty</header>" +
+      '<div class="v2-txatree__body">' +
+      (tree.length
+        ? tree.map(renderTxaTreeNode).join("")
+        : '<p class="v2-txatree__empty">No nodes denoted by the magnitude.</p>') +
+      "</div></section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
+  window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
+  window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
+  window.__MYCITE_V2_TOOL_RENDERERS["txa_tree"] = renderTxaTree;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
 })();

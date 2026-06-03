@@ -5,6 +5,7 @@
     "document_name": "txa",
     "document_rows": [
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "txa",
         "is_anchor": false,
@@ -16,6 +17,7 @@
         "version_hash_short": "sha256:04963"
       },
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "anchor",
         "is_anchor": false,
@@ -27,6 +29,7 @@
         "version_hash_short": "sha256:1e5f9"
       },
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "product_profiles",
         "is_anchor": false,
@@ -972,8 +975,8 @@
         {
           "columns": [
             {
-              "key": "document_name",
-              "label": "document_name"
+              "key": "label",
+              "label": "document"
             },
             {
               "key": "document_id",
@@ -998,6 +1001,7 @@
           ],
           "items": [
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "txa",
               "is_anchor": false,
@@ -1009,6 +1013,7 @@
               "version_hash_short": "sha256:04963"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "anchor",
               "is_anchor": false,
@@ -1020,6 +1025,7 @@
               "version_hash_short": "sha256:1e5f9"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "product_profiles",
               "is_anchor": false,
@@ -2630,8 +2636,8 @@
         "document_table": {
           "columns": [
             {
-              "key": "document_name",
-              "label": "document_name"
+              "key": "label",
+              "label": "document"
             },
             {
               "key": "document_id",
@@ -2656,6 +2662,7 @@
           ],
           "rows": [
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "txa",
               "is_anchor": false,
@@ -2667,6 +2674,7 @@
               "version_hash_short": "sha256:04963"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "anchor",
               "is_anchor": false,
@@ -2678,6 +2686,7 @@
               "version_hash_short": "sha256:1e5f9"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "product_profiles",
               "is_anchor": false,
@@ -2787,6 +2796,7 @@
     "document_name": "txa",
     "document_rows": [
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "txa",
         "is_anchor": false,
@@ -2798,6 +2808,7 @@
         "version_hash_short": "sha256:04963"
       },
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "anchor",
         "is_anchor": false,
@@ -2809,6 +2820,7 @@
         "version_hash_short": "sha256:1e5f9"
       },
       {
+        "canonical_name": "",
         "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "document_name": "product_profiles",
         "is_anchor": false,
@@ -3799,8 +3811,8 @@
         {
           "columns": [
             {
-              "key": "document_name",
-              "label": "document_name"
+              "key": "label",
+              "label": "document"
             },
             {
               "key": "document_id",
@@ -3825,6 +3837,7 @@
           ],
           "items": [
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "txa",
               "is_anchor": false,
@@ -3836,6 +3849,7 @@
               "version_hash_short": "sha256:04963"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "anchor",
               "is_anchor": false,
@@ -3847,6 +3861,7 @@
               "version_hash_short": "sha256:1e5f9"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "product_profiles",
               "is_anchor": false,
@@ -5248,8 +5263,8 @@
         "document_table": {
           "columns": [
             {
-              "key": "document_name",
-              "label": "document_name"
+              "key": "label",
+              "label": "document"
             },
             {
               "key": "document_id",
@@ -5274,6 +5289,7 @@
           ],
           "rows": [
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "txa",
               "is_anchor": false,
@@ -5285,6 +5301,7 @@
               "version_hash_short": "sha256:04963"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "anchor",
               "is_anchor": false,
@@ -5296,6 +5313,7 @@
               "version_hash_short": "sha256:1e5f9"
             },
             {
+              "canonical_name": "",
               "document_id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.product_profiles.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
               "document_name": "product_profiles",
               "is_anchor": false,

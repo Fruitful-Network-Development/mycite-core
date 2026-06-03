@@ -216,7 +216,7 @@ def _rebuild_document(
     placeholder = format_canonical_document_id(
         prefix="lv", msn_id=MSN_ID, sandbox=SANDBOX, name=name, version_hash="0" * 64
     )
-    candidate = dataclasses.replace(existing, document_id=placeholder, rows=tuple(out))
+    candidate = dataclasses.replace(existing, document_id=placeholder, rows=tuple(out), document_name=name)
     identity = compute_mss_hash(candidate)
     real_hash = identity["version_hash"]
     if real_hash.startswith("sha256:"):

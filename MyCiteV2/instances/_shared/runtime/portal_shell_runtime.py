@@ -1385,7 +1385,7 @@ def _bundle_for_surface(
         bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
         bundle["route"] = SYSTEM_ROOT_ROUTE
         bundle["tool_rows"] = tool_rows
-        for _region_key in ("control_panel", "workbench", "interface_panel", "visualization_panel"):
+        for _region_key in ("control_panel", "workbench", "interface_panel"):
             _region = bundle.get(_region_key)
             if not isinstance(_region, dict):
                 continue
@@ -1619,7 +1619,6 @@ def run_portal_shell_entry(
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
         interface_panel=bundle.get("interface_panel"),
-        visualization_panel=bundle.get("visualization_panel"),
         shell_state=composition_shell_state,
         control_panel_collapsed=bool(
             composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
@@ -1779,7 +1778,6 @@ def run_system_profile_basics_action(
         control_panel=workspace_bundle["control_panel"],
         workbench=workspace_bundle["workbench"],
         interface_panel=workspace_bundle.get("interface_panel"),
-        visualization_panel=workspace_bundle.get("visualization_panel"),
         shell_state=selection.shell_state,
     )
     return build_portal_runtime_envelope(
