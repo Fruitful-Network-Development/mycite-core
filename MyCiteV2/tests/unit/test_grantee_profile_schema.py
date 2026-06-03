@@ -31,6 +31,7 @@ from MyCiteV2.packages.core.grantee import (
     GranteeProfile,
     NewsletterConfig,
     PaypalConfig,
+    ReceiptConfig,
     load_grantee_profile,
     save_grantee_profile,
 )
@@ -104,6 +105,43 @@ class GranteeProfileSchemaTests(unittest.TestCase):
         )
         restored = GranteeProfile.from_dict(original.to_dict())
         self.assertEqual(restored, original)
+
+
+class ReceiptConfigTests(unittest.TestCase):
+    def test_absent_receipt_stays_out_of_dict(self) -> None:
+        # A profile with no receipt must not emit a "receipt" key, so legacy
+        # files stay byte-identical until the operator configures one.
+        p = GranteeProfile.from_dict({"msn_id": "x", "label": "L"})
+        self.assertNotIn("receipt", p.to_dict())
+        self.assertIsNone(p.receipt)
+
+    def test_receipt_round_trips_with_defaults(self) -> None:
+        p = GranteeProfile.from_dict({
+            "msn_id": "x",
+            "receipt": {"legal_name": "Org, Inc.", "ein": "12-3456789", "mailing_address": "PO Box 1"},
+        })
+        r = p.to_dict()["receipt"]
+        self.assertEqual(r["legal_name"], "Org, Inc.")
+        self.assertEqual(r["ein"], "12-3456789")
+        self.assertEqual(r["tax_status"], "501(c)(3)")  # default applied
+        self.assertTrue(r["acknowledgement_statement"].startswith("No goods"))
+        # Full dataclass round-trip preserves equality.
+        self.assertEqual(GranteeProfile.from_dict(p.to_dict()), p)
+
+    def test_empty_statement_and_tax_status_fall_back_to_defaults(self) -> None:
+        cfg = ReceiptConfig(legal_name="A", tax_status="", acknowledgement_statement="")
+        self.assertEqual(cfg.tax_status, "501(c)(3)")
+        self.assertTrue(cfg.acknowledgement_statement.startswith("No goods"))
+
+    def test_receipt_survives_save_load_round_trip(self) -> None:
+        original = GranteeProfile(
+            msn_id="rt-receipt",
+            receipt=ReceiptConfig(legal_name="RT Org, Inc.", ein="98-7654321"),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "grantee.test.json"
+            save_grantee_profile(out, original)
+            self.assertEqual(load_grantee_profile(out), original)
 
 
 class PaypalConfigTests(unittest.TestCase):

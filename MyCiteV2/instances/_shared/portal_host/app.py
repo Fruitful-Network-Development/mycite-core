@@ -1323,9 +1323,19 @@ def _send_donation_receipt_email(
     amount: str,
     currency_code: str,
     capture_id: str,
-    receipt_path: Path,
+    receipt_path: Path | None = None,
 ) -> str:
-    """Email the tax-exempt receipt PDF to the donor via SES send_raw_email.
+    """Email a simple compliant donation acknowledgement to the donor via SES.
+
+    The body is the donor's tax-records receipt: a thank-you with the amount
+    and date, the org's legal identity (legal name, tax status + EIN) and
+    mailing address when configured on ``grantee.receipt`` (``ReceiptConfig``),
+    the standard "no goods or services" acknowledgement statement, and an
+    optional authorized-signer sign-off. It is NOT the FND↔grantee
+    sales-tax-exempt certificate — that vendor document never goes to donors.
+
+    A PDF attachment is OPTIONAL: when ``receipt_path`` is given and readable it
+    is attached, but a missing/unreadable PDF never withholds the receipt.
 
     Returns:
       - ``"sent"`` on successful SES dispatch
@@ -1339,48 +1349,91 @@ def _send_donation_receipt_email(
     ses_identity = _as_text(aws_cfg.get("identity"))
     if not ses_identity:
         return "skipped"
+    receipt_cfg = grantee.get("receipt") if grantee and isinstance(grantee.get("receipt"), dict) else {}
 
     import email.utils
+    import time as _time
     from email.message import EmailMessage
 
     display_amount = f"{amount} {currency_code}".strip()
     org_label = _as_text(grantee.get("label")) if grantee else ""
+    legal_name = _as_text(receipt_cfg.get("legal_name"))
+    org_for_display = legal_name or org_label or domain
     salutation = f", {donor_name}" if donor_name else ""
-    org_for_display = org_label or domain
+    donation_date = _time.strftime("%B %-d, %Y", _time.gmtime())
+
+    # Org legal-identity line, e.g. "<legal_name> is a 501(c)(3) tax-exempt
+    # organization (EIN 12-3456789)." — assembled only from configured fields.
+    ein = _as_text(receipt_cfg.get("ein"))
+    tax_status = _as_text(receipt_cfg.get("tax_status")) or "501(c)(3)"
+    mailing_address = _as_text(receipt_cfg.get("mailing_address"))
+    statement = (
+        _as_text(receipt_cfg.get("acknowledgement_statement"))
+        or "No goods or services were provided in exchange for this contribution."
+    )
+    signer_name = _as_text(receipt_cfg.get("signer_name"))
+    signer_title = _as_text(receipt_cfg.get("signer_title"))
+
+    identity_line = ""
+    if legal_name:
+        ein_suffix = f" (EIN {ein})" if ein else ""
+        identity_line = f"{legal_name} is a {tax_status} tax-exempt organization{ein_suffix}."
+    signoff = ""
+    if signer_name:
+        signoff = signer_name + (f", {signer_title}" if signer_title else "")
 
     # Plain-text body kept verbatim with the HTML alternative below —
     # multipart/alternative divergence detection (Gmail) penalizes
     # parts whose visible content diverges.
-    body_text = (
-        f"Thank you{salutation}, for your"
-        f" {display_amount} contribution to {org_for_display}.\n\n"
-        f"Capture ID: {capture_id}\n\n"
-        f"Attached is our blanket sales-tax-exempt certificate for your records.\n"
-        f"No goods or services were provided in exchange for this contribution.\n"
-    )
+    text_lines = [
+        f"Thank you{salutation}, for your {display_amount} contribution"
+        f" to {org_for_display} on {donation_date}.",
+        "",
+        statement,
+    ]
+    if identity_line:
+        text_lines += ["", identity_line]
+    if mailing_address:
+        text_lines += ["", mailing_address]
+    text_lines += ["", f"Confirmation / capture ID: {capture_id}"]
+    if signoff:
+        text_lines += ["", signoff]
+    body_text = "\n".join(text_lines) + "\n"
+
     # A6: HTML alternative. Inline styles only — no <link> / <script> /
     # web fonts. Same wording as the plain-text part.
     import html as _html
-    body_html = (
+    html_parts = [
         '<!DOCTYPE html><html><head><meta charset="utf-8">'
         '<title>Donation receipt</title></head>'
         '<body style="font-family:Georgia,serif;max-width:600px;'
-        'margin:0 auto;padding:24px;color:#222;line-height:1.5;">'
+        'margin:0 auto;padding:24px;color:#222;line-height:1.5;">',
         f'<p>Thank you{_html.escape(salutation)}, for your '
         f'<strong>{_html.escape(display_amount)}</strong> contribution to '
-        f'<strong>{_html.escape(org_for_display)}</strong>.</p>'
-        f'<p style="color:#666;font-size:0.9em;">Capture ID: '
+        f'<strong>{_html.escape(org_for_display)}</strong> on '
+        f'{_html.escape(donation_date)}.</p>',
+        f'<p>{_html.escape(statement)}</p>',
+    ]
+    if identity_line:
+        html_parts.append(f'<p>{_html.escape(identity_line)}</p>')
+    if mailing_address:
+        html_parts.append(
+            f'<p style="color:#444;">{_html.escape(mailing_address).replace(chr(10), "<br>")}</p>'
+        )
+    html_parts.append(
+        f'<p style="color:#666;font-size:0.9em;">Confirmation / capture ID: '
         f'<code>{_html.escape(capture_id)}</code></p>'
-        '<p>Attached is our blanket sales-tax-exempt certificate for '
-        'your records. No goods or services were provided in exchange '
-        'for this contribution.</p>'
-        '</body></html>'
     )
+    if signoff:
+        html_parts.append(f'<p style="color:#444;">{_html.escape(signoff)}</p>')
+    html_parts.append('</body></html>')
+    body_html = "".join(html_parts)
+
     from_address = _as_text(aws_cfg.get("from_address")) or ses_identity
     from_name = _as_text(aws_cfg.get("from_name"))
     from_domain = from_address.rsplit("@", 1)[-1].strip() if "@" in from_address else ""
     msg = EmailMessage()
-    msg["Subject"] = f"Donation receipt — {org_label or domain}"
+    msg["Subject"] = f"Donation receipt — {org_for_display}"
     msg["From"] = f'"{from_name}" <{from_address}>' if from_name else from_address
     msg["To"] = donor_email
     # A4: always-on Reply-To. Default to reply-to@<from_domain> when the
@@ -1401,24 +1454,23 @@ def _send_donation_receipt_email(
     msg["Date"] = email.utils.formatdate(usegmt=True)
     msg.set_content(body_text)
     # A6: HTML alternative makes the receipt render as multipart/alternative.
-    # Combined with the PDF attachment below the outer container becomes
-    # multipart/mixed wrapping a multipart/alternative wrapping the two text
-    # parts, then the application/pdf attachment.
     msg.add_alternative(body_html, subtype="html")
-    try:
-        pdf_bytes = receipt_path.read_bytes()
-    except OSError as exc:
-        _log.error(
-            "donation_receipt_pdf_unreadable",
-            extra={"domain": domain, "capture_id": capture_id, "path": str(receipt_path), "err": str(exc)},
-        )
-        return "failed"
-    msg.add_attachment(
-        pdf_bytes,
-        maintype="application",
-        subtype="pdf",
-        filename=receipt_path.name,
-    )
+    # Optional PDF attachment. A missing or unreadable PDF NEVER withholds the
+    # receipt — the acknowledgement above is self-contained.
+    if receipt_path is not None:
+        try:
+            pdf_bytes = receipt_path.read_bytes()
+            msg.add_attachment(
+                pdf_bytes,
+                maintype="application",
+                subtype="pdf",
+                filename=receipt_path.name,
+            )
+        except OSError as exc:
+            _log.warning(
+                "donation_receipt_pdf_unreadable",
+                extra={"domain": domain, "capture_id": capture_id, "path": str(receipt_path), "err": str(exc)},
+            )
     try:
         _aws_peripheral.send_raw_email(
             aws_ses_profile=aws_cfg,
@@ -1669,6 +1721,93 @@ def _ndjson_has_capture(orders_log: Path, capture_id: str) -> bool:
     except OSError:
         return False
     return False
+
+
+def _ndjson_has_receipt_sent(orders_log: Path, capture_id: str) -> bool:
+    """True if a ``receipt_email`` row with status ``sent`` exists for ``capture_id``.
+
+    Lets the receipt send be idempotent across the browser capture path and the
+    webhook reconciler: once a donor has been emailed their acknowledgement for a
+    capture, neither path re-sends. A prior ``skipped``/``failed`` does NOT block a
+    later attempt (the webhook may succeed where the browser was unconfigured).
+    """
+    capture_id = _as_text(capture_id)
+    if not capture_id or not orders_log.exists():
+        return False
+    try:
+        for line in orders_log.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except Exception:
+                continue
+            if (
+                _as_text(row.get("event")) == "receipt_email"
+                and _as_text(row.get("capture_id")) == capture_id
+                and _as_text(row.get("status")) == "sent"
+            ):
+                return True
+    except OSError:
+        return False
+    return False
+
+
+def _send_receipt_for_capture(
+    *,
+    private_dir: Path,
+    domain: str,
+    orders_log: Path,
+    order_id: str,
+    capture_id: str,
+    amount: str,
+    currency_code: str,
+    donor_email: str = "",
+    donor_name: str = "",
+) -> str:
+    """Send the donor acknowledgement once per capture and log the outcome.
+
+    Shared by the browser capture route and both webhook branches so every
+    COMPLETED donation — browser-returned or webhook-reconciled — gets exactly
+    one receipt. Deduped on ``capture_id`` (only a prior ``sent`` short-circuits).
+    Donor identity is recovered from the create-order row when not supplied; the
+    PDF artifact is optional. Returns the email status (``sent``/``skipped``/
+    ``failed``/``duplicate``).
+    """
+    if not capture_id:
+        return "skipped"
+    if _ndjson_has_receipt_sent(orders_log, capture_id):
+        return "duplicate"
+    if not donor_email or not donor_name:
+        create_entry = _find_create_order_entry(orders_log, order_id) or {}
+        donor_email = donor_email or _as_text(create_entry.get("donor_email"))
+        donor_name = donor_name or _as_text(create_entry.get("donor_name"))
+    # PDF is optional — a configured artifact is attached, its absence never
+    # withholds the receipt.
+    receipt_path = _resolve_receipt_artifact(private_dir, domain)
+    import time as _time
+
+    email_status = _send_donation_receipt_email(
+        private_dir=private_dir,
+        domain=domain,
+        donor_email=donor_email,
+        donor_name=donor_name,
+        amount=amount,
+        currency_code=currency_code,
+        capture_id=capture_id,
+        receipt_path=receipt_path,
+    )
+    _append_to_ndjson(orders_log, {
+        "event": "receipt_email",
+        "order_id": order_id,
+        "capture_id": capture_id,
+        "domain": domain,
+        "donor_email": donor_email,
+        "status": email_status,
+        "timestamp_ms": int(_time.time() * 1000),
+    })
+    return email_status
 
 
 def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
@@ -2061,6 +2200,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             GranteeProfile,
             NewsletterConfig,
             PaypalConfig,
+            ReceiptConfig,
             load_grantee_profile,
             save_grantee_profile,
         )
@@ -2117,6 +2257,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "aws_ses": {},
             "newsletter": {},
             "connect": {},
+            "receipt": {},
         }
         for key, value in fields_raw.items():
             key_text = _as_text(key)
@@ -2158,6 +2299,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 aws_ses=_build_sub(AwsSesConfig, sub_buckets["aws_ses"], current.aws_ses),
                 newsletter=_build_sub(NewsletterConfig, sub_buckets["newsletter"], current.newsletter),
                 connect=_build_sub(ConnectConfig, sub_buckets["connect"], current.connect),
+                receipt=_build_sub(ReceiptConfig, sub_buckets["receipt"], current.receipt),
             )
         except ValueError as exc:
             return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
@@ -4336,6 +4478,26 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "secret_tail": secret[-4:] if secret else "",
         }
 
+    def _receipt_config_view(receipt: Any) -> dict[str, Any]:
+        """Project a ReceiptConfig for the dashboard — the EIN is masked
+        (has_ein + last-4 only) the same way the client secret is, so a blank
+        field on save means "leave the stored EIN unchanged."""
+        ein = _as_text(getattr(receipt, "ein", "")) if receipt else ""
+        return {
+            "legal_name": _as_text(getattr(receipt, "legal_name", "")) if receipt else "",
+            "tax_status": (_as_text(getattr(receipt, "tax_status", "")) or "501(c)(3)") if receipt else "501(c)(3)",
+            "mailing_address": _as_text(getattr(receipt, "mailing_address", "")) if receipt else "",
+            "signer_name": _as_text(getattr(receipt, "signer_name", "")) if receipt else "",
+            "signer_title": _as_text(getattr(receipt, "signer_title", "")) if receipt else "",
+            "acknowledgement_statement": (
+                _as_text(getattr(receipt, "acknowledgement_statement", ""))
+                if receipt
+                else ""
+            ) or "No goods or services were provided in exchange for this contribution.",
+            "has_ein": bool(ein),
+            "ein_tail": ein[-4:] if ein else "",
+        }
+
     @app.get("/__fnd/paypal/admin/config")
     def fnd_paypal_admin_config() -> tuple[Any, int]:
         """Operator/grantee-scoped read of the caller grantee's PayPal config.
@@ -4352,7 +4514,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             profile = load_grantee_profile(path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
-        return jsonify({"ok": True, "paypal": _paypal_config_view(profile.paypal)}), 200
+        return jsonify({
+            "ok": True,
+            "paypal": _paypal_config_view(profile.paypal),
+            "receipt": _receipt_config_view(profile.receipt),
+        }), 200
 
     @app.post("/__fnd/paypal/admin/update")
     def fnd_paypal_admin_update() -> tuple[Any, int]:
@@ -4375,6 +4541,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         from MyCiteV2.packages.core.grantee import (
             PaypalConfig,
+            ReceiptConfig,
             load_grantee_profile,
             save_grantee_profile,
         )
@@ -4433,6 +4600,28 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             next_profile = _dc_replace(profile, paypal=PaypalConfig.from_dict(merged))
         except ValueError as exc:
             return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
+
+        # Receipt identity (org legal-name/EIN/tax-status/address/signer/statement).
+        # Optional object in the same payload, edited from the dashboard payment tab
+        # or the FND portal grantee editor. A blank EIN means "leave the stored EIN
+        # unchanged" (the GET masks it), mirroring client_secret semantics.
+        if isinstance(body.get("receipt"), dict):
+            r_in = body["receipt"]
+            merged_r = profile.receipt.to_dict() if profile.receipt else {}
+            for k in (
+                "legal_name", "tax_status", "mailing_address",
+                "signer_name", "signer_title", "acknowledgement_statement",
+            ):
+                if k in r_in:
+                    merged_r[k] = _as_text(r_in.get(k))
+            new_ein = _as_text(r_in.get("ein"))
+            if new_ein:
+                merged_r["ein"] = new_ein
+            try:
+                next_profile = _dc_replace(next_profile, receipt=ReceiptConfig.from_dict(merged_r))
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
+
         try:
             save_grantee_profile(path, next_profile)
         except GranteeProfileWriteError as exc:
@@ -4487,6 +4676,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             {
                 "ok": True,
                 "paypal": _paypal_config_view(next_profile.paypal),
+                "receipt": _receipt_config_view(next_profile.receipt),
                 "webhook_warning": webhook_warning,
             }
         ), 200
@@ -4679,18 +4869,41 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         environment = resolved_env or _as_text(domain_profile.get("environment")) or "sandbox"
         base_url = _paypal_base_url(environment)
         orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
+
+        def _augment_with_receipt(result: dict[str, Any]) -> dict[str, Any]:
+            # On a COMPLETED capture, send the donor acknowledgement once (deduped
+            # on capture_id) and expose its status + the optional PDF URL. Shared
+            # across the browser route and the webhook CHECKOUT.ORDER.APPROVED path,
+            # both of which return through this helper.
+            if _as_text(result.get("status")).upper() != "COMPLETED":
+                return result
+            result["receipt_email_status"] = _send_receipt_for_capture(
+                private_dir=private_dir,
+                domain=domain,
+                orders_log=orders_log,
+                order_id=order_id,
+                capture_id=_as_text(result.get("capture_id")),
+                amount=_as_text(result.get("amount")),
+                currency_code=_as_text(result.get("currency_code")),
+            )
+            if _resolve_receipt_artifact(private_dir, domain) is not None:
+                result["receipt_document_url"] = (
+                    f"/__fnd/donation/receipt-document?domain={urllib.parse.quote(domain, safe='')}"
+                )
+            return result
+
         # Idempotency: if this order was already captured (retry, double-click, or
         # webhook+browser race), return the recorded result instead of re-calling
         # PayPal — a second capture 502s ORDER_ALREADY_CAPTURED for a donor who paid.
         prior_capture = _find_completed_capture_entry(orders_log, order_id)
         if prior_capture is not None:
-            return {
+            return _augment_with_receipt({
                 "ok": True,
                 "capture_id": _as_text(prior_capture.get("capture_id")),
                 "status": _as_text(prior_capture.get("status")) or "COMPLETED",
                 "amount": _as_text(prior_capture.get("amount")),
                 "currency_code": _as_text(prior_capture.get("currency_code")),
-            }, 200
+            }), 200
         try:
             access_token = _get_paypal_access_token(client_id, client_secret, base_url)
             capture_result = _capture_paypal_order(
@@ -4736,13 +4949,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "contact_email": contact_email,
             "timestamp_ms": int(_time.time() * 1000),
         })
-        return {
+        return _augment_with_receipt({
             "ok": True,
             "capture_id": capture_id,
             "status": status,
             "amount": capture_amount,
             "currency_code": currency_code,
-        }, 200
+        }), 200
 
     @app.post("/__fnd/paypal/capture-order")
     def fnd_paypal_capture_order() -> tuple[Any, int]:
@@ -4753,62 +4966,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not order_id:
             return jsonify({"ok": False, "error": "missing_order_id"}), 400
 
+        # The shared helper captures, logs, and (on COMPLETED) sends the donor
+        # receipt once — deduped on capture_id — returning receipt_email_status
+        # and (when a PDF is configured) receipt_document_url in the payload.
         result, code = _capture_and_log_paypal_order(domain, order_id)
-        if not result.get("ok"):
-            return jsonify(result), code
-
-        import time as _time
-
-        status = _as_text(result.get("status"))
-        capture_id = _as_text(result.get("capture_id"))
-        capture_amount = _as_text(result.get("amount"))
-        currency_code = _as_text(result.get("currency_code"))
-        private_dir = host_config.private_dir
-        orders_log = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
-
-        response: dict[str, Any] = {
-            "ok": True,
-            "capture_id": capture_id,
-            "status": status,
-            "amount": capture_amount,
-            "currency_code": currency_code,
-        }
-
-        # Receipt fulfillment (best-effort): when the capture is COMPLETED and
-        # the domain has a configured receipt artifact, expose a download URL
-        # and try to email the donor a copy. Email failures are logged but
-        # never fail the capture response.
-        if status.upper() == "COMPLETED":
-            receipt_path = _resolve_receipt_artifact(private_dir, domain)
-            if receipt_path is not None:
-                response["receipt_document_url"] = (
-                    f"/__fnd/donation/receipt-document?domain={urllib.parse.quote(domain, safe='')}"
-                )
-                create_entry = _find_create_order_entry(orders_log, order_id)
-                donor_email = _as_text(create_entry.get("donor_email")) if create_entry else ""
-                donor_name = _as_text(create_entry.get("donor_name")) if create_entry else ""
-                email_status = _send_donation_receipt_email(
-                    private_dir=private_dir,
-                    domain=domain,
-                    donor_email=donor_email,
-                    donor_name=donor_name,
-                    amount=capture_amount,
-                    currency_code=currency_code,
-                    capture_id=capture_id,
-                    receipt_path=receipt_path,
-                )
-                _append_to_ndjson(orders_log, {
-                    "event": "receipt_email",
-                    "order_id": order_id,
-                    "capture_id": capture_id,
-                    "domain": domain,
-                    "donor_email": donor_email,
-                    "status": email_status,
-                    "timestamp_ms": int(_time.time() * 1000),
-                })
-                response["receipt_email_status"] = email_status
-
-        return jsonify(response), 200
+        return jsonify(result), code
 
     @app.post("/__fnd/paypal/webhook")
     def fnd_paypal_webhook() -> tuple[Any, int]:
@@ -4909,6 +5071,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     "contact_email": contact_email,
                     "timestamp_ms": int(_time.time() * 1000),
                 })
+                # Webhook-reconciled donations (donor approved on PayPal but never
+                # returned to the browser capture step) get the same donor receipt
+                # the browser path sends — deduped on capture_id so a browser+webhook
+                # race never double-sends.
+                _send_receipt_for_capture(
+                    private_dir=private_dir,
+                    domain=domain,
+                    orders_log=orders_log,
+                    order_id=order_id,
+                    capture_id=capture_id,
+                    amount=_as_text(amount_obj.get("value")),
+                    currency_code=_as_text(amount_obj.get("currency_code")),
+                    donor_email=donor_email,
+                    donor_name=donor_name,
+                )
             return jsonify({"ok": True, "event_type": event_type, "recorded": True}), 200
 
         # Verified, but not an event type we reconcile — acknowledge it.
