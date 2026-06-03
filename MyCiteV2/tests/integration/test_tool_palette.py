@@ -111,10 +111,11 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
         )
         self.assertEqual(out["schema"], PORTAL_PALETTE_RESPONSE_SCHEMA)
         tool_ids = {tool["tool_id"] for tool in out["tools"]}
-        # cts_gis and workbench_ui are the two viz tools registered today
-        # (MyCiteV2/packages/tools/__init__.py).
-        self.assertIn("cts_gis", tool_ids)
-        self.assertIn("workbench_ui", tool_ids)
+        # Real per-doc viz tools are registered; the retired surface (workbench_ui) +
+        # legacy fixed-artifact viewers (cts_gis*) are not. (packages/tools/__init__.py)
+        self.assertIn("txa_tree", tool_ids)
+        self.assertNotIn("cts_gis", tool_ids)
+        self.assertNotIn("workbench_ui", tool_ids)
 
     def test_returns_all_registered_tools_when_document_not_in_catalog(self) -> None:
         # An unknown document_id resolves to None archetypes/source_kinds, so
@@ -127,8 +128,9 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
             datum_store=store,
         )
         tool_ids = {tool["tool_id"] for tool in out["tools"]}
-        self.assertIn("cts_gis", tool_ids)
-        self.assertIn("workbench_ui", tool_ids)
+        self.assertIn("txa_tree", tool_ids)
+        self.assertNotIn("cts_gis", tool_ids)
+        self.assertNotIn("workbench_ui", tool_ids)
 
     def test_returns_tool_when_archetype_matches(self) -> None:
         doc = _samras_document()
@@ -185,8 +187,9 @@ class PaletteEndpointHTTPTests(unittest.TestCase):
         payload = resp.get_json()
         self.assertEqual(payload["schema"], PORTAL_PALETTE_RESPONSE_SCHEMA)
         tool_ids = {tool["tool_id"] for tool in payload["tools"]}
-        self.assertIn("cts_gis", tool_ids)
-        self.assertIn("workbench_ui", tool_ids)
+        self.assertIn("txa_tree", tool_ids)
+        self.assertNotIn("cts_gis", tool_ids)
+        self.assertNotIn("workbench_ui", tool_ids)
 
     def test_endpoint_returns_all_tools_for_unknown_document(self) -> None:
         # An unknown document_id falls back to the welcome behavior.
@@ -197,8 +200,9 @@ class PaletteEndpointHTTPTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json()
         tool_ids = {tool["tool_id"] for tool in payload["tools"]}
-        self.assertIn("cts_gis", tool_ids)
-        self.assertIn("workbench_ui", tool_ids)
+        self.assertIn("txa_tree", tool_ids)
+        self.assertNotIn("cts_gis", tool_ids)
+        self.assertNotIn("workbench_ui", tool_ids)
 
     def test_palette_module_in_asset_manifest(self) -> None:
         from MyCiteV2.instances._shared.portal_host.app import build_shell_asset_manifest
