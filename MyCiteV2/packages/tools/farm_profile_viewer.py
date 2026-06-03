@@ -28,6 +28,9 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 
 from ._archetype import resolve_tool_document
 from ._registry import register
+from ._shared.utilities import as_text as _as_text
+from ._shared.utilities import row_head as _row_head
+from ._shared.utilities import row_tail_label as _row_tail_label
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.farm_profile.v1"
@@ -41,10 +44,6 @@ PREVIEW_PLOT_EDGE_M = 60.0
 _BINARY_TEXT = BinaryTextLens()
 
 
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
 def _error(message: str) -> dict[str, Any]:
     return {
         "schema": _SCHEMA,
@@ -53,20 +52,6 @@ def _error(message: str) -> dict[str, Any]:
         "feature_count": 0,
         "fields": [],
     }
-
-
-def _row_head(row: Any) -> list[Any]:
-    raw = getattr(row, "raw", None)
-    if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return raw[0]
-    return raw if isinstance(raw, list) else []
-
-
-def _row_tail_label(row: Any) -> str:
-    raw = getattr(row, "raw", None)
-    if isinstance(raw, list) and len(raw) > 1 and isinstance(raw[1], list) and raw[1]:
-        return _as_text(raw[1][0])
-    return ""
 
 
 def _decode_title_bits(bits: str) -> str:

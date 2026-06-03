@@ -812,26 +812,21 @@
   window.addEventListener("popstate", onPopState);
 
   function bindVisualizationPanelClose() {
-    // Each tool box has an 'x' (data-viz-box-close) that removes only that tool
-    // from surface_query.tools; the panel hides when the last tool is removed.
-    // The legacy whole-panel close (data-visualization-panel-close) clears all.
+    // Each tool box in the interface panel has an 'x' (data-viz-box-close) that removes
+    // only that tool from surface_query.tools; the panel empties when the last tool goes.
+    // (The legacy whole-panel close lived on the retired visualization_panel DOM — gone.)
     document.addEventListener("click", function (event) {
       var target = event.target;
       if (!target || !target.closest) return;
       var boxClose = target.closest("[data-viz-box-close]");
-      var panelClose = target.closest("[data-visualization-panel-close]");
-      if (!boxClose && !panelClose) return;
+      if (!boxClose) return;
       var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
       if (!request) return;
       var next = cloneRequest(request);
       next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
       var tools = vizToolList(next.surface_query);
-      if (boxClose) {
-        var removeId = boxClose.getAttribute("data-tool-id") || "";
-        tools = tools.filter(function (t) { return t !== removeId; });
-      } else {
-        tools = [];
-      }
+      var removeId = boxClose.getAttribute("data-tool-id") || "";
+      tools = tools.filter(function (t) { return t !== removeId; });
       delete next.surface_query.tool;
       if (tools.length) {
         next.surface_query.tools = tools.join(",");

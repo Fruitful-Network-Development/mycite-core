@@ -108,6 +108,9 @@ class PortalScope:
 @dataclass(frozen=True)
 class PortalShellChrome:
     control_panel_collapsed: bool = False
+    # Legacy: no longer drives interface_panel visibility (the region's own `visible`
+    # flag does, post TASK-interface-panel-migration). Retained for state-shape
+    # compatibility + the mediation foreground check in foreground_region_for_surface.
     interface_panel_open: bool = False
 
     def __post_init__(self) -> None:
@@ -1576,11 +1579,10 @@ def build_shell_composition_payload(
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
-    # Phase 13a: `interface_panel` is optional. Phase 3 retired the region;
-    # this function still emits an invisible placeholder for schema continuity,
-    # so callers should pass None (or omit) instead of constructing a bespoke
-    # `_generic_interface_panel(surface_payload)` payload that gets force-
-    # hidden anyway.
+    # `interface_panel` is optional. It is REVIVED (TASK-interface-panel-migration,
+    # 2026-06-02) as the tool surface: when a caller passes a payload marked
+    # visible=True (the workbench-ui bundle does) it renders the tool search + the
+    # selected tools' visualizations; otherwise it stays hidden. Pass None to omit it.
     state = shell_state if isinstance(shell_state, PortalShellState) else (
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
@@ -1679,7 +1681,6 @@ __all__ = [
     "PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
     "PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA",
-    "PORTAL_SHELL_REGION_VISUALIZATION_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_WORKBENCH_SCHEMA",
     "PORTAL_SHELL_REQUEST_SCHEMA",
     "PORTAL_SHELL_STATE_SCHEMA",

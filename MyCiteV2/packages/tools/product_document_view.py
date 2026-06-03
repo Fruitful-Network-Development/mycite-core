@@ -31,6 +31,7 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 )
 
 from ._registry import register
+from ._shared.utilities import as_text as _as_text
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.product_document.v1"
@@ -53,10 +54,6 @@ _PAIR_FIELDS: tuple[str, ...] = (
 _LCL_FIELDS = {"product_id", "rotation_group", "propagule", "genesis", "ownership", "raunkiaerality"}
 _TXA_FIELDS = {"taxonomy_id"}
 _UNIT_FIELDS = {"gestation", "spacing"}
-
-
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
 
 
 def _rows(document: AuthoritativeDatumDocument) -> list[Any]:

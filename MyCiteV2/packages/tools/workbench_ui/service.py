@@ -35,6 +35,7 @@ from MyCiteV2.packages.ports.directive_context import (
     DirectiveContextRequest,
 )
 from MyCiteV2.packages.state_machine.lens import resolve_datum_lens
+from MyCiteV2.packages.tools._shared.utilities import as_text as _as_text
 
 WORKBENCH_UI_TOOL_ID = "workbench_ui"
 # Canonical hash policy for the render. Default = the JSON+SHA256 stand-in
@@ -76,12 +77,6 @@ _ROW_SORT_KEYS = {
 _GROUP_MODES = {"flat", "layer", "layer_value_group", "layer_value_group_iteration"}
 _LENS_MODES = {"interpreted", "raw"}
 _VISIBILITY_MODES = {"show", "hide"}
-
-
-def _as_text(value: object) -> str:
-    if value is None:
-        return ""
-    return str(value).strip()
 
 
 def _normalize_sort_key(value: object, *, allowed: set[str], default: str) -> str:

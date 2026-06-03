@@ -10,20 +10,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from ._shared.utilities import as_text as _as_text
+from ._shared.utilities import row_head as _row_head
+
 _HOPS_COORD_MARKER = "rf.3-1-3"
-
-
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
-
-
-def _row_head(row: Any) -> list[Any]:
-    raw = getattr(row, "raw", None)
-    if isinstance(raw, list) and raw and isinstance(raw[0], list):
-        return raw[0]
-    if isinstance(raw, list):
-        return raw
-    return []
 
 
 def document_sandbox(doc: Any) -> str:

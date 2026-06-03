@@ -29,6 +29,7 @@ from MyCiteV2.packages.tools.product_document_view import LclNameIndex
 
 from ._archetype import find_named_document, resolve_tool_document
 from ._registry import register
+from ._shared.utilities import as_text as _as_text
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.contracts.v1"
@@ -39,10 +40,6 @@ _RF_TITLE = "rf.3-1-2"
 _NOMINAL_BITS = 136
 _TITLE_BITS = 512
 _BINARY_TEXT = BinaryTextLens()
-
-
-def _as_text(value: object) -> str:
-    return "" if value is None else str(value).strip()
 
 
 def _error(message: str) -> dict[str, Any]:
