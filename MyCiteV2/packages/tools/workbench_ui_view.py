@@ -24,8 +24,6 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
 
-from ._registry import register
-
 
 class WorkbenchUiTool:
     """Universal datum-grid palette entry.
@@ -67,5 +65,6 @@ class WorkbenchUiTool:
         }
 
 
-# Self-register on import.
-register(WorkbenchUiTool())
+# NOT self-registered: `workbench_ui` is the workbench SURFACE (routed via shell_registry),
+# not a visualization tool. It must never appear in the viz palette. The class stays for
+# the surface-routing payload shape. See packages/tools/__init__.py.

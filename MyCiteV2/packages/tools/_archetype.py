@@ -14,6 +14,7 @@ from ._shared.utilities import as_text as _as_text
 from ._shared.utilities import row_head as _row_head
 
 _HOPS_COORD_MARKER = "rf.3-1-3"
+_NODE_ID_MARKER = "rf.3-1-1"  # the id-pair marker in a titled taxonomy definition head
 
 
 def document_sandbox(doc: Any) -> str:
@@ -30,10 +31,17 @@ def document_archetypes(doc: Any) -> set[str]:
       * metadata ``datum_template_archetype`` / ``samras_family``;
       * the ``schema`` / ``datum_template_schema`` token (so schema-typed docs —
         contracts/invoices/taxonomy — are addressable by their schema);
-      * a STRUCTURAL scan: a CTS-GIS HOPS geospatial filament is tagged
-        ``hops_geospatial_filament`` only when the doc carries a family-4 ring row
-        (address ``4-*``) whose head holds the rf.3-1-3 coordinate marker — i.e. the
-        real 4->5->6->7 form, NOT merely any stray rf.3-1-3 token elsewhere in the doc.
+      * STRUCTURAL scans (shape, never a hand-stamped token — the convention lenses use
+        via hyphae). Two shapes are recognized:
+          - ``hops_geospatial_filament``: a family-4 ring row (``4-*``) carrying at least
+            THREE rf.3-1-3 coordinate markers — a real polygon ring. The bare-single
+            rf.3-1-3 form is rejected: that marker is OVERLOADED (it also appears once as a
+            node-reference in entity docs and as an encoded value), so "≥3 coords in one
+            family-4 row" is what actually identifies a HOPS filament (e.g. farm_profile).
+          - ``samras_taxonomy``: a ``4-2-*`` row whose head is a titled id-pair
+            definition (``[addr, rf.3-1-1, node, rf.3-1-2, title]``) — i.e. the doc
+            *defines* taxonomy nodes. This is what makes txa recognizable WITHOUT
+            stamping it (txa carries no metadata archetype; lcl does — both have the shape).
     """
     archetypes: set[str] = set()
     metadata = getattr(doc, "document_metadata", None)
@@ -42,11 +50,30 @@ def document_archetypes(doc: Any) -> set[str]:
             token = _as_text(metadata.get(key))
             if token:
                 archetypes.add(token)
+    found_hops = False
+    found_taxonomy = False
     for row in getattr(doc, "rows", ()) or ():
-        if _as_text(getattr(row, "datum_address", "")).startswith("4-") and any(
-            _as_text(tok) == _HOPS_COORD_MARKER for tok in _row_head(row)
+        addr = _as_text(getattr(row, "datum_address", ""))
+        head = _row_head(row)
+        if not found_hops and addr.startswith("4-") and (
+            sum(1 for tok in head if _as_text(tok) == _HOPS_COORD_MARKER) >= 3
         ):
             archetypes.add("hops_geospatial_filament")
+            found_hops = True
+        if (
+            not found_taxonomy
+            and addr.startswith("4-2-")
+            and len(head) >= 5
+            and _as_text(head[1]) == _NODE_ID_MARKER
+        ):
+            # Require a real title blob (≥8 binary bits) so this matches a genuine titled
+            # definition (txa/lcl), not a bare 4-2 reference row that merely reuses the
+            # rf.3-1-1 marker (matches datum_ops `is_title_blob` / `_is_definition_head`).
+            title = _as_text(head[4])
+            if len(title) >= 8 and set(title) <= {"0", "1"}:
+                archetypes.add("samras_taxonomy")
+                found_taxonomy = True
+        if found_hops and found_taxonomy:
             break
     return archetypes
 
