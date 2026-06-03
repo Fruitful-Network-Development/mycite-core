@@ -22,6 +22,7 @@ def _build_grantee_profile_form_fields(grantee_dict: dict[str, Any]) -> list[dic
     paypal = _as_dict(grantee_dict.get("paypal"))
     aws_ses = _as_dict(grantee_dict.get("aws_ses"))
     newsletter = _as_dict(grantee_dict.get("newsletter"))
+    receipt = _as_dict(grantee_dict.get("receipt"))
     return [
         # Identity
         {
@@ -126,6 +127,58 @@ def _build_grantee_profile_form_fields(grantee_dict: dict[str, Any]) -> list[dic
             "label": "Reply-to",
             "type": "email",
             "value": _as_text(newsletter.get("reply_to")),
+        },
+        # Donation receipt identity — drives the emailed donor acknowledgement
+        # (REST mode). Not the FND↔grantee sales-tax-exempt certificate.
+        {
+            "key": "receipt.legal_name",
+            "label": "Receipt: legal name",
+            "type": "text",
+            "value": _as_text(receipt.get("legal_name")),
+            "placeholder": "Cuyahoga Valley Countryside Conservancy, Inc.",
+            "help_text": "Organization legal name as it should appear on the donor receipt.",
+        },
+        {
+            "key": "receipt.ein",
+            "label": "Receipt: EIN",
+            "type": "text",
+            "value": _as_text(receipt.get("ein")),
+            "help_text": "Federal tax ID shown on the receipt; display-only.",
+        },
+        {
+            "key": "receipt.tax_status",
+            "label": "Receipt: tax status",
+            "type": "text",
+            "value": _as_text(receipt.get("tax_status")) or "501(c)(3)",
+        },
+        {
+            "key": "receipt.mailing_address",
+            "label": "Receipt: mailing address",
+            "type": "text",
+            "value": _as_text(receipt.get("mailing_address")),
+            "help_text": "Organization mailing address for the receipt footer.",
+        },
+        {
+            "key": "receipt.signer_name",
+            "label": "Receipt: signer name (optional)",
+            "type": "text",
+            "value": _as_text(receipt.get("signer_name")),
+        },
+        {
+            "key": "receipt.signer_title",
+            "label": "Receipt: signer title (optional)",
+            "type": "text",
+            "value": _as_text(receipt.get("signer_title")),
+        },
+        {
+            "key": "receipt.acknowledgement_statement",
+            "label": "Receipt: acknowledgement statement",
+            "type": "text",
+            "value": (
+                _as_text(receipt.get("acknowledgement_statement"))
+                or "No goods or services were provided in exchange for this contribution."
+            ),
+            "help_text": "Mirrored to the donate-page checkbox and the receipt body.",
         },
     ]
 

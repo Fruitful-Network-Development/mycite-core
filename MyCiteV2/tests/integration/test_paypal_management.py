@@ -144,6 +144,54 @@ class PaypalManagementTests(unittest.TestCase):
         self.assertEqual(cfg["webhook_id"], "WH-AUTO")
         self.assertTrue(cfg["has_secret"])
 
+    def test_receipt_identity_round_trip_with_masked_ein(self) -> None:
+        client, _ = self._build_client(paypal=None)
+        resp = client.post(
+            "/__fnd/paypal/admin/update?grantee=alpha",
+            data=json.dumps({
+                "mode": "link",
+                "payment_link": "https://paypal.me/alpha",
+                "receipt": {
+                    "legal_name": "Alpha Org, Inc.",
+                    "ein": "12-3456789",
+                    "mailing_address": "PO Box 1, Town, ST 00000",
+                },
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        r = resp.get_json()["receipt"]
+        # EIN is masked on the way back out — never returned in full.
+        self.assertNotIn("ein", r)
+        self.assertTrue(r["has_ein"])
+        self.assertEqual(r["ein_tail"], "6789")
+        self.assertEqual(r["legal_name"], "Alpha Org, Inc.")
+        self.assertEqual(r["tax_status"], "501(c)(3)")
+        # GET reflects the persisted receipt identity.
+        cfg = client.get("/__fnd/paypal/admin/config?grantee=alpha").get_json()
+        self.assertEqual(cfg["receipt"]["legal_name"], "Alpha Org, Inc.")
+        self.assertTrue(cfg["receipt"]["has_ein"])
+
+    def test_receipt_blank_ein_preserves_stored(self) -> None:
+        client, _ = self._build_client(paypal=None)
+        client.post(
+            "/__fnd/paypal/admin/update?grantee=alpha",
+            data=json.dumps({"mode": "link", "payment_link": "https://paypal.me/alpha",
+                             "receipt": {"legal_name": "Alpha Org, Inc.", "ein": "12-3456789"}}),
+            content_type="application/json",
+        )
+        # A second save with a blank EIN (and a renamed org) keeps the stored EIN.
+        resp = client.post(
+            "/__fnd/paypal/admin/update?grantee=alpha",
+            data=json.dumps({"mode": "link", "payment_link": "https://paypal.me/alpha",
+                             "receipt": {"legal_name": "Alpha Renamed, Inc.", "ein": ""}}),
+            content_type="application/json",
+        )
+        r = resp.get_json()["receipt"]
+        self.assertEqual(r["legal_name"], "Alpha Renamed, Inc.")
+        self.assertTrue(r["has_ein"])
+        self.assertEqual(r["ein_tail"], "6789")
+
     def test_update_rejects_bad_environment(self) -> None:
         client, _ = self._build_client(paypal=None)
         resp = client.post(
@@ -460,10 +508,23 @@ class PaypalManagementTests(unittest.TestCase):
                 )
                 self.assertEqual(resp.status_code, 200)
         rows = [json.loads(line) for line in log.read_text().splitlines() if line.strip()]
-        captures = [r for r in rows if r.get("capture_id") == "CAPABC"]
+        # Filter on the webhook_capture event specifically — the reconciler now
+        # also appends a receipt_email event (same capture_id) on the first
+        # delivery, so counting all rows with the capture_id would over-count.
+        captures = [
+            r for r in rows
+            if r.get("event") == "webhook_capture" and r.get("capture_id") == "CAPABC"
+        ]
         self.assertEqual(len(captures), 1)
         self.assertEqual(captures[0]["amount"], "40.00")
         self.assertEqual(captures[0]["order_id"], "ORD7")
+        # The receipt is attempted exactly once across the two deliveries
+        # (deduped by the webhook_capture idempotency guard).
+        receipt_rows = [
+            r for r in rows
+            if r.get("event") == "receipt_email" and r.get("capture_id") == "CAPABC"
+        ]
+        self.assertEqual(len(receipt_rows), 1)
 
 
 if __name__ == "__main__":

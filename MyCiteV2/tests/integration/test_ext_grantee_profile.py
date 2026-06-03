@@ -103,12 +103,14 @@ class GranteeProfileRendererTests(unittest.TestCase):
         frame = out["form_frame"]
         self.assertEqual(frame["component_type"], "form")
         field_keys = [f["key"] for f in frame["payload"]["fields"]]
-        # Identity + 4 paypal + 4 aws_ses + 3 newsletter = 15 fields.
-        self.assertEqual(len(field_keys), 15)
+        # Identity(4) + 4 paypal + 4 aws_ses + 3 newsletter + 7 receipt = 22 fields.
+        self.assertEqual(len(field_keys), 22)
         self.assertIn("label", field_keys)
         self.assertIn("paypal.webhook_url", field_keys)
         self.assertIn("aws_ses.identity", field_keys)
         self.assertIn("newsletter.selected_sender_address", field_keys)
+        self.assertIn("receipt.legal_name", field_keys)
+        self.assertIn("receipt.ein", field_keys)
 
     def test_no_selected_grantee_returns_empty_message(self) -> None:
         out = _render_ext_grantee_profile({"grantee": {}})
@@ -175,6 +177,27 @@ class GranteeProfileSaveRouteTests(unittest.TestCase):
         self.assertEqual(on_disk["paypal"]["webhook_url"], "https://example.org/hook")
         self.assertEqual(on_disk["paypal"]["client_id"], "CID")
         self.assertEqual(on_disk["paypal"]["environment"], "live")
+
+    def test_save_dotted_keys_build_receipt_subconfig(self) -> None:
+        app, grantee_dir = self._build_app()
+        path = _seed_grantee(grantee_dir, "g2r")
+        client = app.test_client()
+        resp = client.post(
+            "/__fnd/grantee/save",
+            json={
+                "msn_id": "g2r",
+                "fields": {
+                    "receipt.legal_name": "Alpha Org, Inc.",
+                    "receipt.ein": "12-3456789",
+                    "receipt.mailing_address": "PO Box 1",
+                },
+            },
+        )
+        self.assertEqual(resp.status_code, 200)
+        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(on_disk["receipt"]["legal_name"], "Alpha Org, Inc.")
+        self.assertEqual(on_disk["receipt"]["ein"], "12-3456789")
+        self.assertEqual(on_disk["receipt"]["tax_status"], "501(c)(3)")
 
     def test_invalid_request_returns_400(self) -> None:
         app, _ = self._build_app()

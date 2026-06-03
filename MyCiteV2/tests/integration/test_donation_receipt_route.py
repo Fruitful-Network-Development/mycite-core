@@ -28,6 +28,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
@@ -294,8 +295,13 @@ class TestCaptureOrderReceiptUrl(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
         self.assertEqual(body.get("status"), "COMPLETED")
+        # The PDF download URL is still omitted when no artifact is configured.
         self.assertNotIn("receipt_document_url", body)
-        self.assertNotIn("receipt_email_status", body)
+        # But the receipt is now DECOUPLED from the PDF: a COMPLETED donation
+        # still attempts the acknowledgement email even with no artifact. Here
+        # there is no SES identity configured → "skipped" (not absent, not failed).
+        self.assertIn("receipt_email_status", body)
+        self.assertEqual(body["receipt_email_status"], "skipped")
 
     def test_capture_response_omits_receipt_url_when_not_completed(self) -> None:
         _seed_domain_profile(
@@ -330,6 +336,96 @@ class TestCaptureOrderReceiptUrl(unittest.TestCase):
 # `id="receipt-details"` assertion was stale), and the receipt_document_url API
 # contract is covered by the route tests above. The donate.html/donate.js DOM
 # contract belongs in the webapps repo's own test suite.
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class TestReceiptEmailBody(unittest.TestCase):
+    """The acknowledgement email is decoupled from the PDF and carries the
+    configured receipt identity (legal name, EIN, tax status, statement)."""
+
+    DOMAIN = "alpha.example.test"
+
+    def _seed_grantee(self, private_dir: Path, *, with_receipt: bool = True) -> None:
+        gdir = private_dir / "utilities" / "tools" / "fnd-csm"
+        gdir.mkdir(parents=True, exist_ok=True)
+        profile: dict = {
+            "schema": "mycite.v2.grantee.profile.v1",
+            "msn_id": "alpha",
+            "label": "Alpha Org",
+            "short_name": "alpha",
+            "domains": [self.DOMAIN],
+            "users": [],
+            "aws_ses": {
+                "identity": "news@alpha.example.test",
+                "from_address": "news@alpha.example.test",
+                "region": "us-east-1",
+            },
+        }
+        if with_receipt:
+            profile["receipt"] = {
+                "legal_name": "Alpha Org, Inc.",
+                "ein": "12-3456789",
+                "tax_status": "501(c)(3)",
+                "mailing_address": "PO Box 1, Town, ST 00000",
+                "acknowledgement_statement":
+                    "No goods or services were provided in exchange for this contribution.",
+            }
+        (gdir / "grantee.fnd.alpha.json").write_text(json.dumps(profile), encoding="utf-8")
+
+    def test_sends_without_pdf_and_includes_identity(self) -> None:
+        from MyCiteV2.instances._shared.portal_host import app as appmod
+
+        with tempfile.TemporaryDirectory() as t:
+            private_dir = Path(t)
+            self._seed_grantee(private_dir)
+            captured: dict = {}
+
+            def _fake_send(*, aws_ses_profile, destinations, raw_message_bytes):
+                captured["bytes"] = raw_message_bytes
+                captured["dest"] = destinations
+                return {"message_id": "mid-1"}
+
+            with patch.object(appmod._aws_peripheral, "send_raw_email", side_effect=_fake_send):
+                status = appmod._send_donation_receipt_email(
+                    private_dir=private_dir,
+                    domain=self.DOMAIN,
+                    donor_email="donor@example.test",
+                    donor_name="Donor",
+                    amount="50.00",
+                    currency_code="USD",
+                    capture_id="CAP1",
+                    receipt_path=None,  # no PDF — receipt still goes out
+                )
+            self.assertEqual(status, "sent")
+            self.assertEqual(captured["dest"], ["donor@example.test"])
+            raw = captured["bytes"].decode("utf-8", "replace")
+            self.assertIn("Alpha Org, Inc.", raw)
+            self.assertIn("12-3456789", raw)
+            self.assertIn("501(c)(3)", raw)
+            self.assertIn("No goods or services were provided", raw)
+            # No "sales-tax-exempt certificate" language anywhere.
+            self.assertNotIn("sales-tax-exempt certificate", raw)
+            # No PDF attachment when receipt_path is None.
+            self.assertNotIn("application/pdf", raw)
+
+    def test_skipped_when_no_ses_identity(self) -> None:
+        from MyCiteV2.instances._shared.portal_host import app as appmod
+
+        with tempfile.TemporaryDirectory() as t:
+            private_dir = Path(t)
+            # Grantee without aws_ses → cannot send.
+            gdir = private_dir / "utilities" / "tools" / "fnd-csm"
+            gdir.mkdir(parents=True, exist_ok=True)
+            (gdir / "grantee.fnd.alpha.json").write_text(json.dumps({
+                "schema": "mycite.v2.grantee.profile.v1",
+                "msn_id": "alpha", "label": "Alpha", "domains": [self.DOMAIN], "users": [],
+            }), encoding="utf-8")
+            status = appmod._send_donation_receipt_email(
+                private_dir=private_dir, domain=self.DOMAIN,
+                donor_email="donor@example.test", donor_name="Donor",
+                amount="50.00", currency_code="USD", capture_id="CAP2", receipt_path=None,
+            )
+            self.assertEqual(status, "skipped")
 
 
 if __name__ == "__main__":

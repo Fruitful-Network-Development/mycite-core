@@ -16,6 +16,7 @@ from .schema import (
     GranteeProfile,
     NewsletterConfig,
     PaypalConfig,
+    ReceiptConfig,
 )
 from .store import load_grantee_profile, save_grantee_profile
 
@@ -26,6 +27,7 @@ __all__ = [
     "GranteeProfile",
     "NewsletterConfig",
     "PaypalConfig",
+    "ReceiptConfig",
     "load_grantee_profile",
     "save_grantee_profile",
 ]

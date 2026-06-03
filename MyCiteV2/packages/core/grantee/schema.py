@@ -223,6 +223,74 @@ class ConnectConfig:
         return cls(forward_to_email=_as_text(data.get("forward_to_email")))
 
 
+_DEFAULT_ACKNOWLEDGEMENT_STATEMENT = (
+    "No goods or services were provided in exchange for this contribution."
+)
+
+
+@dataclass(frozen=True)
+class ReceiptConfig:
+    """Organization legal identity for emailed donation acknowledgements.
+
+    These are receipt-body facts — the org's legal name, EIN, tax status,
+    mailing address, optional authorized signer, and the standard
+    "no goods or services" statement — orthogonal to the payment processor
+    (``PaypalConfig``) and to mail transport (``AwsSesConfig``). They drive
+    the donor receipt sent after a successful REST-mode donation. In link
+    mode PayPal emails its own confirmation and this is informational only.
+
+    ``acknowledgement_statement`` is the single source mirrored to both the
+    donate-page checkbox and the receipt body. Values are stored as entered
+    (loose ``_as_text``); the EIN is display-only and not format-validated so
+    operators can paste whatever the IRS letter shows.
+    """
+
+    legal_name: str = ""
+    ein: str = ""
+    tax_status: str = "501(c)(3)"
+    mailing_address: str = ""
+    signer_name: str = ""
+    signer_title: str = ""
+    acknowledgement_statement: str = _DEFAULT_ACKNOWLEDGEMENT_STATEMENT
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "legal_name", _as_text(self.legal_name))
+        object.__setattr__(self, "ein", _as_text(self.ein))
+        object.__setattr__(self, "tax_status", _as_text(self.tax_status) or "501(c)(3)")
+        object.__setattr__(self, "mailing_address", _as_text(self.mailing_address))
+        object.__setattr__(self, "signer_name", _as_text(self.signer_name))
+        object.__setattr__(self, "signer_title", _as_text(self.signer_title))
+        object.__setattr__(
+            self,
+            "acknowledgement_statement",
+            _as_text(self.acknowledgement_statement) or _DEFAULT_ACKNOWLEDGEMENT_STATEMENT,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "legal_name": self.legal_name,
+            "ein": self.ein,
+            "tax_status": self.tax_status,
+            "mailing_address": self.mailing_address,
+            "signer_name": self.signer_name,
+            "signer_title": self.signer_title,
+            "acknowledgement_statement": self.acknowledgement_statement,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: Any) -> ReceiptConfig:
+        data = payload if isinstance(payload, dict) else {}
+        return cls(
+            legal_name=_as_text(data.get("legal_name")),
+            ein=_as_text(data.get("ein")),
+            tax_status=_as_text(data.get("tax_status")),
+            mailing_address=_as_text(data.get("mailing_address")),
+            signer_name=_as_text(data.get("signer_name")),
+            signer_title=_as_text(data.get("signer_title")),
+            acknowledgement_statement=_as_text(data.get("acknowledgement_statement")),
+        )
+
+
 @dataclass(frozen=True)
 class GranteeProfile:
     msn_id: str
@@ -234,6 +302,7 @@ class GranteeProfile:
     aws_ses: AwsSesConfig | None = None
     newsletter: NewsletterConfig | None = None
     connect: ConnectConfig | None = None
+    receipt: ReceiptConfig | None = None
     schema: str = field(default=GRANTEE_PROFILE_SCHEMA, init=False)
 
     def __post_init__(self) -> None:
@@ -266,6 +335,8 @@ class GranteeProfile:
             out["newsletter"] = self.newsletter.to_dict()
         if self.connect is not None:
             out["connect"] = self.connect.to_dict()
+        if self.receipt is not None:
+            out["receipt"] = self.receipt.to_dict()
         return out
 
     @classmethod
@@ -287,6 +358,7 @@ class GranteeProfile:
             aws_ses=AwsSesConfig.from_dict(payload["aws_ses"]) if isinstance(payload.get("aws_ses"), dict) else None,
             newsletter=NewsletterConfig.from_dict(payload["newsletter"]) if isinstance(payload.get("newsletter"), dict) else None,
             connect=ConnectConfig.from_dict(payload["connect"]) if isinstance(payload.get("connect"), dict) else None,
+            receipt=ReceiptConfig.from_dict(payload["receipt"]) if isinstance(payload.get("receipt"), dict) else None,
         )
 
     def with_paypal(self, paypal: PaypalConfig | None) -> GranteeProfile:
@@ -305,4 +377,5 @@ __all__ = [
     "GranteeProfile",
     "NewsletterConfig",
     "PaypalConfig",
+    "ReceiptConfig",
 ]
