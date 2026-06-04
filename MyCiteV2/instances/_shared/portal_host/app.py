@@ -5674,96 +5674,156 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         return jsonify({"ok": True, **result}), 200
 
-    def _bpw_scope_guard() -> tuple[Any, int] | None:
-        """Allow BPW grantee + unauthenticated operator; reject other
-        grantees with 403. Returns None on pass, error response on
-        fail. Shared by every /__fnd/bpw-jobs/* route below."""
+    def _resolve_event_scope() -> tuple[str | None, tuple[Any, int] | None]:
+        """Resolve the calling grantee's client slug for the generic
+        /__fnd/events/* routes.
+
+        Returns ``(client_slug, None)`` on success or ``(None, error)``
+        on a scope problem. An unauthenticated operator (header-absent,
+        no matching grantee for the host) resolves to ``client_slug =
+        None`` — i.e. an unscoped view across every client's events,
+        which is the operator surface. A scoped client caller resolves to
+        its own slug (derived from the grantee label/short_name the same
+        way the migration derives ``client``), so it only ever sees and
+        writes its own events.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+            _client_slug,
+        )
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             grantee_for_domain,
             resolve_grantee_from_headers,
         )
-        caller = resolve_grantee_from_headers(request.headers, fnd_csm_root=_configured_fnd_csm_root())
-        if caller is None:
-            caller = grantee_for_domain(_normalize_domain(request.host), fnd_csm_root=_configured_fnd_csm_root())
-        if caller is not None:
-            short = str(caller.get("short_name", "")).lower()
-            if short and short != "bpw":
-                return jsonify({"ok": False, "error": "scope_mismatch"}), 403
-        return None
 
-    @app.get("/__fnd/bpw-jobs/list")
-    def fnd_bpw_jobs_list() -> tuple[Any, int]:
-        """Return the BPW job records (read from the operator tree at
-        /srv/webapps/mycite/fnd/private/utilities/tools/bpw-jobs/).
-        Scope-guarded: only the BPW grantee (or an unauthenticated
-        operator) may read; other grantees are 403."""
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
-            jobs_summary,
-            list_jobs,
+        caller = resolve_grantee_from_headers(
+            request.headers, fnd_csm_root=_configured_fnd_csm_root()
         )
-        err = _bpw_scope_guard()
+        if caller is None:
+            caller = grantee_for_domain(
+                _normalize_domain(request.host),
+                fnd_csm_root=_configured_fnd_csm_root(),
+            )
+        if caller is None:
+            # Operator surface: unscoped.
+            return None, None
+        # Prefer the human label (gives e.g. "brocks_pressure_washing",
+        # matching the migration), fall back to short_name.
+        slug_source = str(caller.get("label") or caller.get("short_name") or "")
+        client_slug = _client_slug(slug_source)
+        if not client_slug or client_slug == "unknown":
+            return None, (
+                jsonify({"ok": False, "error": "client_unresolved"}),
+                403,
+            )
+        return client_slug, None
+
+    @app.get("/__fnd/events/list")
+    def fnd_events_list() -> tuple[Any, int]:
+        """Return the calling client's event leaflets + KPI summary,
+        read from the shared events gallery under
+        <webapps_root>/clients/_shared/site-core/events/. Grantee-scoped:
+        a client sees only its own events; an unauthenticated operator
+        sees all."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+            events_summary,
+            list_events,
+        )
+        client, err = _resolve_event_scope()
         if err:
             return err
-
-        rows = list_jobs()
-        summary = jobs_summary(rows)
+        rows = list_events(host_config.webapps_root, client=client)
         return jsonify({
             "ok": True,
-            "summary": summary,
+            "summary": events_summary(rows),
+            "events": rows,
+            # Legacy alias so pre-migration dashboard JS keeps rendering.
             "jobs": rows,
         }), 200
 
-    @app.get("/__fnd/bpw-jobs/analytics")
-    def fnd_bpw_jobs_analytics() -> tuple[Any, int]:
-        """Richer analytics aggregations for the dashboard Job
-        Analytics section: revenue-by-month, lead-source / status /
-        tag-type breakdowns, per-service price distribution with
-        quartiles + Tukey fences."""
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
-            jobs_analytics,
-            list_jobs,
+    @app.get("/__fnd/events/analytics")
+    def fnd_events_analytics() -> tuple[Any, int]:
+        """Richer analytics for the dashboard Analytics section:
+        revenue-by-month, lead-source / status / tag-type breakdowns,
+        per-service price distribution with quartiles + Tukey fences.
+        Grantee-scoped."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+            events_analytics,
         )
-        err = _bpw_scope_guard()
+        client, err = _resolve_event_scope()
         if err:
             return err
-        return jsonify({"ok": True, **jobs_analytics(list_jobs())}), 200
+        return jsonify(
+            {"ok": True, **events_analytics(host_config.webapps_root, client=client)}
+        ), 200
 
-    @app.post("/__fnd/bpw-jobs/save")
-    def fnd_bpw_jobs_save() -> tuple[Any, int]:
-        """Create or update a BPW job record. Payload shape matches
-        the on-disk YAML (job / customer / home / tags / pricing /
-        notes); missing fields are filled with sensible defaults
-        (auto-assigned id, today's date, status=booked)."""
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
-            save_job,
+    @app.post("/__fnd/events/save")
+    def fnd_events_save() -> tuple[Any, int]:
+        """Create or update an event leaflet. Payload shape: job /
+        customer / home / tags / pricing / notes (+ optional event_kind);
+        missing fields filled with sensible defaults (auto id, today,
+        status=booked). The client slug is forced to the calling
+        grantee's so a caller can't write into another client's
+        namespace."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+            save_event,
         )
-        err = _bpw_scope_guard()
+        client, err = _resolve_event_scope()
         if err:
             return err
+        if client is None:
+            # The operator surface has no single client to attribute a
+            # write to; require a scoped caller for create/update.
+            return jsonify({"ok": False, "error": "client_required"}), 400
         body = _json_payload()
         if not isinstance(body, dict) or not body:
             return jsonify({"ok": False, "error": "missing_payload"}), 400
         try:
-            saved = save_job(body)
+            saved = save_event(body, webapps_root=host_config.webapps_root, client=client)
         except ValueError as exc:
             return jsonify({"ok": False, "error": str(exc)}), 400
         except Exception as exc:
-            _log.error("bpw_jobs_save_failed", extra={"err": str(exc)})
+            _log.error("events_save_failed", extra={"err": str(exc)})
             return jsonify({"ok": False, "error": "save_failed"}), 500
-        return jsonify({"ok": True, "job": saved}), 200
+        return jsonify({"ok": True, "event": saved, "job": saved}), 200
+
+    @app.delete("/__fnd/events/<event_id>")
+    def fnd_events_delete(event_id: str) -> tuple[Any, int]:
+        """Remove an event leaflet by `job.id`, within the calling
+        client's scope."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+            delete_event,
+        )
+        client, err = _resolve_event_scope()
+        if err:
+            return err
+        if not delete_event(
+            event_id, webapps_root=host_config.webapps_root, client=client
+        ):
+            return jsonify({"ok": False, "error": "not_found"}), 404
+        return jsonify({"ok": True, "id": event_id}), 200
+
+    # ------------------------------------------------------------------
+    # Backward-compat aliases: the old BPW-specific /__fnd/bpw-jobs/*
+    # routes now delegate to the generic events handlers above. They
+    # remain so any cached/older dashboard JS keeps working through the
+    # migration; new code should call /__fnd/events/*.
+    # ------------------------------------------------------------------
+
+    @app.get("/__fnd/bpw-jobs/list")
+    def fnd_bpw_jobs_list() -> tuple[Any, int]:
+        return fnd_events_list()
+
+    @app.get("/__fnd/bpw-jobs/analytics")
+    def fnd_bpw_jobs_analytics() -> tuple[Any, int]:
+        return fnd_events_analytics()
+
+    @app.post("/__fnd/bpw-jobs/save")
+    def fnd_bpw_jobs_save() -> tuple[Any, int]:
+        return fnd_events_save()
 
     @app.delete("/__fnd/bpw-jobs/<job_id>")
     def fnd_bpw_jobs_delete(job_id: str) -> tuple[Any, int]:
-        """Remove a BPW job record by `job.id`."""
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.bpw_jobs import (
-            delete_job,
-        )
-        err = _bpw_scope_guard()
-        if err:
-            return err
-        if not delete_job(job_id):
-            return jsonify({"ok": False, "error": "not_found"}), 404
-        return jsonify({"ok": True, "id": job_id}), 200
+        return fnd_events_delete(job_id)
 
     @app.get("/__fnd/tolling/snapshot")
     def fnd_tolling_snapshot() -> tuple[Any, int]:
