@@ -32,6 +32,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_ENTRYPOINT_ID,
     PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
+    RESOURCES_ROOT_SURFACE_ID,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
@@ -285,6 +286,7 @@ def _activity_items(
     visible_surface_ids = [
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
+        RESOURCES_ROOT_SURFACE_ID,
     ]
     items: list[dict[str, Any]] = []
     for entry in build_portal_surface_catalog():
@@ -412,6 +414,26 @@ def _utilities_control_panel(
                 "entries": entries,
             }
         ],
+        "actions": [],
+    }
+
+
+def _resources_control_panel(*, active_surface_id: str) -> dict[str, Any]:
+    # Wave-1 scaffold: minimal control panel for the Resources root. The
+    # gallery subtabs themselves live in the surface_payload; the control
+    # panel just anchors the root context. Wave 2 can add per-gallery
+    # filters / actions here.
+    return {
+        "schema": PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA,
+        "kind": "focus_selection_panel",
+        "title": "Control Panel",
+        "surface_label": "RESOURCES",
+        "context_items": [
+            {"label": "Root", "value": "RESOURCES"},
+            {"label": "Section", "value": "Galleries"},
+        ],
+        "verb_tabs": [],
+        "groups": [],
         "actions": [],
     }
 
@@ -1441,6 +1463,30 @@ def _bundle_for_surface(
             ),
             "workbench": attach_region_family_contract(
                 _network_workbench(surface_payload),
+                family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
+                surface_id=selection_surface_id,
+            ),
+            "tool_rows": tool_rows,
+        }
+    if selection_surface_id == RESOURCES_ROOT_SURFACE_ID:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_surface import (
+            build_resources_surface_payload,
+        )
+
+        surface_payload = build_resources_surface_payload(webapps_root)
+        return {
+            "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
+            "read_write_posture": "read-only",
+            "page_title": _as_text(surface_payload.get("title")) or "Resources",
+            "page_subtitle": _as_text(surface_payload.get("subtitle")),
+            "surface_payload": surface_payload,
+            "control_panel": attach_region_family_contract(
+                _resources_control_panel(active_surface_id=selection_surface_id),
+                family=PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
+                surface_id=selection_surface_id,
+            ),
+            "workbench": attach_region_family_contract(
+                _generic_workbench(surface_payload),
                 family=PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
                 surface_id=selection_surface_id,
             ),
