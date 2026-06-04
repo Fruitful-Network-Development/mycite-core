@@ -5751,22 +5751,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         per-service price distribution with quartiles + Tukey fences.
         Grantee-scoped."""
         from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
-            events_analytics,
+            aggregate_analytics,
+            events_summary,
+            list_events,
         )
         client, err = _resolve_event_scope()
         if err:
             return err
+        # Glob the gallery once and feed the same rows to both aggregators
+        # so the dashboard's KPI strip (renderKpis(analytics.summary)) and
+        # the breakdowns derive from one read.
+        rows = list_events(host_config.webapps_root, client=client)
         return jsonify(
-            {"ok": True, **events_analytics(host_config.webapps_root, client=client)}
+            {
+                "ok": True,
+                "summary": events_summary(rows),
+                **aggregate_analytics(rows),
+            }
         ), 200
 
     @app.post("/__fnd/events/save")
     def fnd_events_save() -> tuple[Any, int]:
-        """Create or update an event leaflet. Payload shape: job /
-        customer / home / tags / pricing / notes (+ optional event_kind);
-        missing fields filled with sensible defaults (auto id, today,
-        status=booked). The client slug is forced to the calling
-        grantee's so a caller can't write into another client's
+        """Create or update an event leaflet. Accepts the dashboard's
+        flat form (event_id / date / status / title / location /
+        description / leaflet_url) plus optional nested job-kind extras
+        (customer / home / tags / pricing / notes) and optional
+        event_kind; missing fields filled with sensible defaults (auto
+        id, today, status=booked). The client slug is forced to the
+        calling grantee's so a caller can't write into another client's
         namespace."""
         from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
             save_event,
@@ -5792,7 +5804,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.delete("/__fnd/events/<event_id>")
     def fnd_events_delete(event_id: str) -> tuple[Any, int]:
-        """Remove an event leaflet by `job.id`, within the calling
+        """Remove an event leaflet by top-level `id`, within the calling
         client's scope."""
         from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
             delete_event,

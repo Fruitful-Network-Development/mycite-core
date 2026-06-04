@@ -8,10 +8,12 @@ special. Event leaflets live in the operator/runtime tree at::
         <yyyy-mm-dd>.event-job.<client>.<name>.yaml
 
 Each leaflet carries schema ``mycite.site_core.event_job.v1`` with an
-``event_kind`` discriminator (``job`` today) plus the same payload shape
-the BPW job records used (job / customer / home / tags / pricing /
-notes), generalized with a top-level ``client`` slug so events from
-different clients can co-exist in one gallery.
+``event_kind`` discriminator (``job`` today). The generic envelope is
+promoted to the TOP LEVEL — ``client`` / ``id`` / ``date`` / ``status``
+/ ``title`` / ``location`` / ``description`` / ``leaflet_url`` — so the
+dashboard's flat event model reads/writes it directly. Job-kind extras
+(``customer`` / ``home`` / ``tags`` / ``pricing`` / ``notes``) remain
+nested and are consumed only by the BPW analytics.
 
 Read surface:  ``list_events``, ``events_summary``, ``events_analytics``.
 Write surface: ``save_event`` (create/update), ``delete_event``.
@@ -115,8 +117,7 @@ def list_events(
         rows.append(data)
 
     def _key(r: dict[str, Any]) -> tuple[str, str]:
-        job = r.get("job") if isinstance(r.get("job"), dict) else {}
-        date = str(job.get("date") or "")
+        date = str(r.get("date") or "")
         return (date, str(r.get("_source_file", "")))
 
     rows.sort(key=_key, reverse=True)
@@ -134,9 +135,8 @@ def events_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
     pipeline = 0.0
     completed = 0
     for r in rows:
-        job = r.get("job") if isinstance(r.get("job"), dict) else {}
         pricing = r.get("pricing") if isinstance(r.get("pricing"), dict) else {}
-        status = str(job.get("status") or "unknown")
+        status = str(r.get("status") or "unknown")
         statuses[status] += 1
         try:
             total_amt = float(pricing.get("total") or 0)
@@ -191,9 +191,8 @@ def _service_distribution(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any
     """
     bucket: dict[str, list[float]] = defaultdict(list)
     for r in rows:
-        job = r.get("job") if isinstance(r.get("job"), dict) else {}
         pricing = r.get("pricing") if isinstance(r.get("pricing"), dict) else {}
-        if str(job.get("status") or "") != "completed":
+        if str(r.get("status") or "") != "completed":
             continue
         tags = r.get("tags") if isinstance(r.get("tags"), list) else []
         # Single-service only: total attributable to one tag type.
@@ -276,10 +275,9 @@ def aggregate_analytics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     repeat_count = 0
 
     for r in rows:
-        job = r.get("job") if isinstance(r.get("job"), dict) else {}
         customer = r.get("customer") if isinstance(r.get("customer"), dict) else {}
         pricing = r.get("pricing") if isinstance(r.get("pricing"), dict) else {}
-        status = str(job.get("status") or "unknown")
+        status = str(r.get("status") or "unknown")
         status_counts[status] += 1
         try:
             total_amt = float(pricing.get("total") or 0)
@@ -293,7 +291,7 @@ def aggregate_analytics(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if customer.get("is_repeat"):
             repeat_count += 1
 
-        date_raw = job.get("date")
+        date_raw = r.get("date")
         if status == "completed" and date_raw:
             ymd = str(date_raw)[:7]
             revenue_by_month[ymd]["completed"] += 1
@@ -392,15 +390,19 @@ def _client_slug(value: object) -> str:
 def _filename_for(payload: dict[str, Any]) -> str:
     """Compute the canonical filename for an event payload.
 
-    Convention: ``<YYYY-MM-DD>.event-job.<client>.<customer-slug>.yaml``.
+    Convention: ``<YYYY-MM-DD>.event-<kind>.<client>.<name-slug>.yaml``,
+    where the name component is derived from the generic ``title`` if
+    present, falling back to the (job-kind) customer name and then the
+    event ``id``. ``id``/``date`` are top-level on the reconciled shape.
     """
-    job = payload.get("job") if isinstance(payload.get("job"), dict) else {}
     customer = (
         payload.get("customer") if isinstance(payload.get("customer"), dict) else {}
     )
-    date_part = str(job.get("date") or _date.today().isoformat())[:10]
+    date_part = str(payload.get("date") or _date.today().isoformat())[:10]
     client_part = _client_slug(payload.get("client"))
-    name_part = _slugify(customer.get("name") or job.get("id") or "untitled")
+    name_part = _slugify(
+        payload.get("title") or customer.get("name") or payload.get("id") or "untitled"
+    )
     kind = _slugify(payload.get("event_kind") or DEFAULT_EVENT_KIND)
     return f"{date_part}.event-{kind}.{client_part}.{name_part}.yaml"
 
@@ -426,8 +428,7 @@ def _path_for_id(
             continue
         if want is not None and _client_slug(data.get("client")) != want:
             continue
-        job = data.get("job") if isinstance(data.get("job"), dict) else {}
-        if str(job.get("id") or "") == str(event_id):
+        if str(data.get("id") or "") == str(event_id):
             return Path(path)
     return None
 
@@ -445,8 +446,7 @@ def _next_event_id(webapps_root: str | Path) -> str:
         data = _load_yaml(Path(path))
         if data is None:
             continue
-        job = data.get("job") if isinstance(data.get("job"), dict) else {}
-        cur = str(job.get("id") or "")
+        cur = str(data.get("id") or "")
         if cur.startswith(prefix):
             try:
                 max_seen = max(max_seen, int(cur.split("-", 1)[1]))
@@ -471,26 +471,37 @@ def normalize_payload(
     webapps_root: str | Path,
     client: str | None = None,
 ) -> dict[str, Any]:
-    """Coerce a UI payload into the on-disk leaflet shape — stamp the
-    schema + event_kind + client, assign an id if missing, coerce numeric
-    fields, drop unknown top-level keys.
+    """Coerce a UI payload into the on-disk leaflet shape.
 
-    ``client`` (the route-resolved grantee slug) overrides any client
-    field in the body so a caller can't write into another client's
-    namespace.
+    Accepts the dashboard's FLAT form (``event_id`` / ``date`` /
+    ``status`` / ``title`` / ``location`` / ``description`` /
+    ``leaflet_url``) and promotes the generic envelope to the TOP LEVEL
+    (``id`` / ``date`` / ``status`` / ``title`` / ``location`` /
+    ``description`` / ``leaflet_url``). The job-kind extras
+    (``customer`` / ``home`` / ``tags`` / ``pricing`` / ``notes``) are
+    still read from nested keys when present — BPW-migrated leaflets
+    carry them and the analytics consume them.
+
+    Stamps schema + event_kind + client, assigns a sequential id when
+    missing, defaults date (today) + status ("booked"), and coerces
+    numeric fields. ``client`` (the route-resolved grantee slug)
+    overrides any client field in the body so a caller can't write into
+    another client's namespace.
     """
-    job = dict(payload.get("job") or {})
     customer = dict(payload.get("customer") or {})
     home = dict(payload.get("home") or {})
     pricing = dict(payload.get("pricing") or {})
     tags_raw = payload.get("tags") or []
-    notes = payload.get("notes") or ""
+    notes = payload.get("notes") or payload.get("description") or ""
 
-    if not job.get("id"):
-        job["id"] = _next_event_id(webapps_root)
-    if not job.get("date"):
-        job["date"] = _date.today().isoformat()
-    job["status"] = str(job.get("status") or "booked")
+    # Top-level envelope. The dashboard posts ``event_id``; accept that
+    # plus a bare ``id``. Default id (next sequential), date (today),
+    # status ("booked").
+    event_id = payload.get("id") or payload.get("event_id")
+    if not event_id:
+        event_id = _next_event_id(webapps_root)
+    date = payload.get("date") or _date.today().isoformat()
+    status = str(payload.get("status") or "booked")
 
     tags: list[dict[str, Any]] = []
     for t in tags_raw:
@@ -516,7 +527,13 @@ def normalize_payload(
         "schema": EVENT_SCHEMA,
         "event_kind": event_kind,
         "client": client_slug,
-        "job": job,
+        "id": str(event_id),
+        "date": str(date),
+        "status": status,
+        "title": str(payload.get("title") or ""),
+        "location": str(payload.get("location") or ""),
+        "description": str(payload.get("description") or notes or ""),
+        "leaflet_url": payload.get("leaflet_url") or None,
         "customer": customer,
         "home": home,
         "tags": tags,
@@ -570,7 +587,7 @@ def save_event(
         raise ValueError("payload must be a dict")
     ensure_events_root(webapps_root)
     normalized = normalize_payload(payload, webapps_root=webapps_root, client=client)
-    event_id = str(normalized["job"]["id"])
+    event_id = str(normalized["id"])
     target_path = events_root(webapps_root) / _filename_for(normalized)
     existing = _path_for_id(webapps_root, event_id, client=client)
     if existing is not None and existing != target_path:

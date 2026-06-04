@@ -37,8 +37,14 @@ if FLASK_AVAILABLE:
 def _sample_payload(name: str = "Dave Atch", date: str = "2026-04-14",
                     status: str = "completed", total: float = 100,
                     tag: str = "house_wash") -> dict:
+    """A reconciled flat-envelope payload (top-level id/date/status/etc.)
+    that still carries the nested job-kind extras the BPW analytics read.
+    Mirrors what the dashboard's flat form POSTs, plus the nested
+    customer/home/tags/pricing a BPW-migrated record retains."""
     return {
-        "job": {"date": date, "status": status},
+        "date": date,
+        "status": status,
+        "location": "123 Main St, Hudson",
         "customer": {"name": name, "phone": "(216) 543-2703",
                      "lead_source": "repeat_customer", "is_repeat": True},
         "home": {"house_sqft": 2211},
@@ -74,13 +80,20 @@ class TestEventsModule(unittest.TestCase):
         self.assertEqual(on_disk["event_kind"], "job")
         self.assertEqual(on_disk["client"], client)
         self.assertEqual(on_disk["customer"]["name"], "Dave Atch")
-        event_id = on_disk["job"]["id"]
+        # Generic envelope is promoted to the top level.
+        event_id = on_disk["id"]
         self.assertTrue(event_id)
+        self.assertEqual(on_disk["date"], "2026-04-14")
+        self.assertEqual(on_disk["status"], "completed")
+        self.assertEqual(on_disk["location"], "123 Main St, Hudson")
+        self.assertNotIn("job", on_disk)
 
         # list scoped to the client returns the row.
         rows = ev.list_events(self.webapps, client=client)
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["job"]["id"], event_id)
+        self.assertEqual(rows[0]["id"], event_id)
+        self.assertEqual(rows[0]["date"], "2026-04-14")
+        self.assertEqual(rows[0]["status"], "completed")
 
         # A different client sees nothing.
         self.assertEqual(ev.list_events(self.webapps, client="other_co"), [])
@@ -112,23 +125,23 @@ class TestEventsModule(unittest.TestCase):
                       client="client_b")
         # client_b can't delete client_a's event by id.
         self.assertFalse(
-            ev.delete_event(a["job"]["id"], webapps_root=self.webapps, client="client_b")
+            ev.delete_event(a["id"], webapps_root=self.webapps, client="client_b")
         )
         # client_a can.
         self.assertTrue(
-            ev.delete_event(a["job"]["id"], webapps_root=self.webapps, client="client_a")
+            ev.delete_event(a["id"], webapps_root=self.webapps, client="client_a")
         )
 
     def test_filename_rename_on_edit(self) -> None:
         client = "acme"
         saved = ev.save_event(_sample_payload(), webapps_root=self.webapps, client=client)
-        eid = saved["job"]["id"]
+        eid = saved["id"]
         gallery = ev.events_root(self.webapps)
         first = gallery / saved["_source_file"]
         self.assertTrue(first.exists())
         # Re-save same id with a new date -> old file removed, new written.
         payload2 = _sample_payload(date="2026-05-01")
-        payload2["job"]["id"] = eid
+        payload2["id"] = eid
         saved2 = ev.save_event(payload2, webapps_root=self.webapps, client=client)
         self.assertNotEqual(saved2["_source_file"], saved["_source_file"])
         self.assertFalse(first.exists())
@@ -184,8 +197,12 @@ class TestEventsRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
         body = resp.get_json()
         self.assertTrue(body["ok"])
-        eid = body["event"]["job"]["id"]
+        eid = body["event"]["id"]
         self.assertEqual(body["event"]["client"], "brocks_pressure_washing")
+        # Flat envelope round-trips through the route.
+        self.assertEqual(body["event"]["date"], "2026-04-14")
+        self.assertEqual(body["event"]["status"], "completed")
+        self.assertEqual(body["event"]["location"], "123 Main St, Hudson")
 
         # the leaflet exists on disk under the right name.
         gallery = ev.events_root(webapps)
@@ -207,6 +224,12 @@ class TestEventsRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         analytics = resp.get_json()
         self.assertEqual(analytics["status_breakdown"], [{"key": "completed", "count": 1}])
+        # The analytics payload now includes the KPI summary so the
+        # dashboard's renderKpis(analytics.summary) populates.
+        self.assertIn("summary", analytics)
+        self.assertEqual(analytics["summary"]["total_events"], 1)
+        self.assertEqual(analytics["summary"]["completed_events"], 1)
+        self.assertEqual(analytics["summary"]["total_revenue"], 100.0)
 
         # legacy bpw-jobs alias still works (list)
         resp = client.get("/__fnd/bpw-jobs/list", headers={"Host": host})
@@ -270,7 +293,8 @@ class TestMigrationScript(unittest.TestCase):
         samples = [
             ("job.2026-04-14.atch.yaml", {
                 "job": {"id": "2026-0038", "date": "2026-04-14", "status": "completed"},
-                "customer": {"name": "Dave Atch", "lead_source": "repeat_customer"},
+                "customer": {"name": "Dave Atch", "lead_source": "repeat_customer",
+                             "address": "1719 Tannery Circle, Hudson"},
                 "home": {"house_sqft": 2211},
                 "tags": [{"type": "house_wash", "price": 100}],
                 "pricing": {"total": 100, "paid": True, "method": "venmo"},
@@ -312,10 +336,12 @@ class TestMigrationScript(unittest.TestCase):
         self.assertEqual(summary["planned_count"], 3)
         # No leaflets written.
         self.assertFalse(ev.events_root(self.webapps).exists())
-        # Planned names are the canonical event-job names.
+        # Planned names are the canonical event-job names. The name
+        # component derives from the generic title (first tag + customer).
         names = {t for _, t in summary["planned"]}
         self.assertIn(
-            "2026-04-14.event-job.brocks_pressure_washing.dave.atch.yaml", names
+            "2026-04-14.event-job.brocks_pressure_washing.house.wash.dave.atch.yaml",
+            names,
         )
 
     def test_apply_writes_leaflets_and_backup(self) -> None:
@@ -329,18 +355,31 @@ class TestMigrationScript(unittest.TestCase):
         written = sorted(p.name for p in gallery.glob("*.event-job.*.yaml"))
         self.assertEqual(len(written), 3)
         self.assertIn(
-            "2026-04-14.event-job.brocks_pressure_washing.dave.atch.yaml", written
+            "2026-04-14.event-job.brocks_pressure_washing.house.wash.dave.atch.yaml",
+            written,
         )
 
         # A migrated leaflet has the schema stamp + preserved payload.
         leaflet = self._yaml.safe_load(
-            (gallery / "2026-04-14.event-job.brocks_pressure_washing.dave.atch.yaml")
+            (gallery
+             / "2026-04-14.event-job.brocks_pressure_washing.house.wash.dave.atch.yaml")
             .read_text(encoding="utf-8")
         )
         self.assertEqual(leaflet["schema"], ev.EVENT_SCHEMA)
         self.assertEqual(leaflet["event_kind"], "job")
         self.assertEqual(leaflet["client"], "brocks_pressure_washing")
-        self.assertEqual(leaflet["job"]["id"], "2026-0038")
+        # Legacy nested job.{id,date,status} is promoted to the top level.
+        self.assertNotIn("job", leaflet)
+        self.assertEqual(leaflet["id"], "2026-0038")
+        self.assertEqual(leaflet["date"], "2026-04-14")
+        self.assertEqual(leaflet["status"], "completed")
+        # A generic title is derived from the first tag + customer name.
+        self.assertEqual(leaflet["title"], "House wash — Dave Atch")
+        # notes -> description; customer.address -> location.
+        self.assertEqual(leaflet["description"], "n1")
+        self.assertEqual(leaflet["location"], "1719 Tannery Circle, Hudson")
+        # Job-kind extras are preserved nested.
+        self.assertEqual(leaflet["customer"]["name"], "Dave Atch")
         self.assertEqual(leaflet["pricing"]["total"], 100)
 
         # Migrated gallery is readable + analytics work end-to-end.

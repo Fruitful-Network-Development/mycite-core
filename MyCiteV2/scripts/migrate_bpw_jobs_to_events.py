@@ -11,8 +11,11 @@ gallery::
 
 where ``client`` defaults to ``brocks_pressure_washing``. Each leaflet is
 stamped with schema ``mycite.site_core.event_job.v1`` and
-``event_kind: job`` and otherwise preserves the job payload verbatim
-(job / customer / home / tags / pricing / notes).
+``event_kind: job``. The legacy nested ``job.{id,date,status}`` is
+promoted to the reconciled top-level envelope (id / date / status /
+title / location / description / leaflet_url), with ``customer.address``
+-> ``location``, ``notes`` -> ``description`` and a derived ``title``;
+the job-kind extras (customer / home / tags / pricing) stay nested.
 
 The migration is IDEMPOTENT: re-running over an already-migrated gallery
 re-derives the same filenames and content (modulo the schema/kind/client
@@ -56,25 +59,68 @@ def _load_yaml(path: Path) -> dict[str, Any] | None:
     return _events._load_yaml(path)
 
 
+def _derive_title(customer: dict[str, Any], tags: Any, event_id: str) -> str:
+    """Derive a generic display title for a migrated job leaflet.
+
+    Prefer "<first-tag-type humanized> — <customer name>" (e.g.
+    "House wash — Dave Atch"); fall back to the customer name alone, and
+    finally to the event id.
+    """
+    name = str(customer.get("name") or "").strip()
+    first_tag = ""
+    if isinstance(tags, list):
+        for t in tags:
+            if isinstance(t, dict) and t.get("type"):
+                first_tag = str(t["type"]).strip()
+                break
+    label = first_tag.replace("_", " ").strip().capitalize()
+    if label and name:
+        return f"{label} — {name}"
+    if name:
+        return name
+    return str(event_id or "")
+
+
 def _to_event_leaflet(job_doc: dict[str, Any], client: str) -> dict[str, Any]:
     """Build the on-disk event-job leaflet from a legacy job document.
 
-    Preserves the payload sections verbatim and prepends the
-    schema / event_kind / client stamp. ``_source_file`` (a runtime-only
-    read annotation) is dropped if present.
+    Promotes the legacy nested ``job.{id,date,status}`` to the
+    reconciled top-level envelope, maps ``customer.address`` -> top-level
+    ``location`` and ``notes`` -> ``description``, derives a generic
+    ``title``, and preserves the job-kind extras
+    (``customer`` / ``home`` / ``tags`` / ``pricing``) nested.
+    ``_source_file`` (a runtime-only read annotation) is dropped.
     """
     doc = {k: v for k, v in job_doc.items() if k != "_source_file"}
+    job = doc.get("job") if isinstance(doc.get("job"), dict) else {}
+    customer = doc.get("customer") if isinstance(doc.get("customer"), dict) else {}
+    tags = doc.get("tags") if isinstance(doc.get("tags"), list) else []
+    notes = doc.get("notes") or ""
+
+    event_id = str(job.get("id") or "")
+    title = _derive_title(customer, tags, event_id)
+
     leaflet: dict[str, Any] = {
         "schema": _events.EVENT_SCHEMA,
         "event_kind": _events.DEFAULT_EVENT_KIND,
         "client": _events._client_slug(client),
+        "id": event_id,
+        "date": str(job.get("date") or ""),
+        "status": str(job.get("status") or "booked"),
+        "title": title,
+        "location": str(customer.get("address") or ""),
+        "description": str(notes or ""),
+        "leaflet_url": doc.get("leaflet_url") or None,
     }
-    # Carry the canonical sections in a stable order.
-    for section in ("job", "customer", "home", "tags", "pricing", "notes"):
+    # Carry the nested job-kind extras (minus the now-promoted ``job``).
+    for section in ("customer", "home", "tags", "pricing", "notes"):
         if section in doc:
             leaflet[section] = doc[section]
-    # Preserve any extra sections not in the canonical list.
+    # Preserve any extra sections not already mapped (skip the legacy
+    # ``job`` wrapper — its fields are promoted to the top level above).
     for key, value in doc.items():
+        if key == "job":
+            continue
         if key not in leaflet:
             leaflet[key] = value
     return leaflet
