@@ -53,6 +53,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
+    RESOURCES_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_EXTENSIONS_SURFACE_ID,
     UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
@@ -918,6 +919,7 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "/portal/system",
             "/portal/network",
             "/portal/utilities",
+            "/portal/resources",
         ],
         "tool_routes": [f"/portal/system/tools/{slug}" for slug in TOOL_SLUG_TO_SURFACE_ID],
         "shell_endpoint": "/portal/api/v2/shell",
@@ -1897,6 +1899,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     @app.get("/portal/utilities")
     def portal_utilities_root() -> str:
         return _render_surface(UTILITIES_ROOT_SURFACE_ID, host_config)
+
+    # Wave-1 scaffold: top-level Resources surface listing the site-core
+    # galleries read-only (one subtab per gallery). Rich UX is Wave 2.
+    @app.get("/portal/resources")
+    def portal_resources_root() -> str:
+        return _render_surface(RESOURCES_ROOT_SURFACE_ID, host_config)
 
     # Phase 14b: four dedicated surfaces under Utilities. The old
     # /tool-exposure and /integrations routes 302-redirect for one

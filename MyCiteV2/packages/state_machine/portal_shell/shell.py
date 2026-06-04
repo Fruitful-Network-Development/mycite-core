@@ -1480,6 +1480,8 @@ def activity_icon_id_for_surface(surface_id: object) -> str:
         return "network"
     if normalized_surface_id in {UTILITIES_ROOT_SURFACE_ID, UTILITIES_TOOL_EXPOSURE_SURFACE_ID}:
         return "utilities"
+    if normalized_surface_id == RESOURCES_ROOT_SURFACE_ID:
+        return "resources"
     if normalized_surface_id == CTS_GIS_TOOL_SURFACE_ID:
         return "cts_gis"
     if normalized_surface_id == WORKBENCH_UI_TOOL_SURFACE_ID:
@@ -1686,6 +1688,8 @@ __all__ = [
     "PORTAL_SHELL_STATE_SCHEMA",
     "PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA",
     "PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA",
+    "RESOURCES_ROOT_ROUTE",
+    "RESOURCES_ROOT_SURFACE_ID",
     "SANDBOX_DISPLAY_NAMES",
     "SURFACE_POSTURE_INTERFACE_PANEL_PRIMARY",
     "SURFACE_POSTURE_PALETTE_TARGET",
