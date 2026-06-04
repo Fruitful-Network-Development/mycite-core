@@ -5535,14 +5535,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return err
 
         domains = domains_for_grantee(requested_msn)
-        contacts_root = Path(host_config.private_dir) / "utilities" / "tools" / "aws-csm" / "newsletter"
+        # The contact ROSTER lives in the per-entity YAML leaflet now, not the
+        # legacy JSON contact log (which holds dispatch history only). Read the
+        # COMPOSED view via the adapter so this list isn't empty/stale after the
+        # contacts cutover — same single-source-of-truth path the dashboard
+        # aggregator uses.
+        adapter = _newsletter_state_adapter(host_config)
         contacts: list[dict[str, Any]] = []
         for d in domains:
-            path = contacts_root / f"newsletter.{d}.contacts.json"
-            try:
-                data = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                continue
+            data = adapter.load_contact_log(domain=d) or {}
             for c in data.get("contacts") or []:
                 contacts.append({**c, "_domain": d})
         contacts.sort(key=lambda c: str(c.get("email", "")))

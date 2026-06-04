@@ -566,16 +566,30 @@ def _count_active_contacts(
     domains: list[str],
     analytics_root: str | Path = _DEFAULT_ANALYTICS_ROOT,
 ) -> int:
-    """Count `subscribed=true` contacts across the grantee's domains."""
-    contacts_root = Path(analytics_root).parent / "aws-csm" / "newsletter"
+    """Count `subscribed=true` contacts across the grantee's domains.
+
+    The contact ROSTER lives in the per-entity YAML leaflet after the
+    contacts cutover (the legacy JSON log keeps only dispatch history and
+    is emptied of contacts on operator writes/migration), so read the
+    COMPOSED view via the newsletter adapter rather than the JSON directly
+    — otherwise this count silently collapses to zero post-cutover.
+    """
+    # analytics_root is <private>/utilities/tools/analytics, so the private
+    # dir is three parents up; the adapter resolves the roster leaflet from it.
+    private_dir = Path(analytics_root).parents[2]
+    from MyCiteV2.packages.adapters.filesystem import (
+        FilesystemNewsletterStateAdapter,
+    )
+
+    try:
+        adapter = FilesystemNewsletterStateAdapter(private_dir)
+    except Exception:
+        return 0
     total = 0
     for d in domains:
-        path = contacts_root / f"newsletter.{d}.contacts.json"
-        if not path.exists():
-            continue
         try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = adapter.load_contact_log(domain=d) or {}
+        except Exception:
             continue
         total += sum(
             1 for c in data.get("contacts") or []
