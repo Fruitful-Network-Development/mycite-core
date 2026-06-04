@@ -35,6 +35,11 @@ def _is_allowed_absolute_import(module_name: str) -> bool:
         return True
     if root_name in getattr(sys, "stdlib_module_names", set()):
         return True
+    # Pure serialization library (contact_leaflet persists the per-entity
+    # contact roster as YAML, the way the JSON adapters use stdlib ``json``).
+    # No module/business semantics — just a serializer, so it stays adapter-side.
+    if root_name == "yaml":
+        return True
     return (
         module_name.startswith("MyCiteV2.packages.ports.audit_log")
         or module_name.startswith("MyCiteV2.packages.ports.newsletter")

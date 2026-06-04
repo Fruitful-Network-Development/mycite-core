@@ -9,6 +9,10 @@ from typing import Any
 
 _log = logging.getLogger("mycite.portal_host")
 
+from MyCiteV2.packages.adapters.filesystem.contact_leaflet import (
+    ContactLeafletStore,
+    entity_for_domain,
+)
 from MyCiteV2.packages.ports.newsletter import (
     _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS,
     _ACCEPTED_NEWSLETTER_PROFILE_SCHEMAS,
@@ -78,11 +82,22 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 class FilesystemNewsletterStateAdapter(NewsletterStatePort):
-    def __init__(self, private_dir: str | Path) -> None:
+    def __init__(
+        self,
+        private_dir: str | Path,
+        *,
+        webapps_root: str | Path | None = None,
+    ) -> None:
         self._private_dir = Path(private_dir)
         self._aws_root = self._private_dir / "utilities" / "tools" / "aws-csm"
         self._newsletter_root = self._aws_root / "newsletter"
         self._runtime_secrets_path = self._newsletter_root / "runtime_secrets.json"
+        # Roster (contacts[]) lives in a per-entity YAML leaflet; this JSON
+        # adapter only owns dispatch-send history (dispatches[]) + the per-domain
+        # profile. load_contact_log composes the two stores back into one view.
+        self._leaflet = ContactLeafletStore(
+            private_dir=self._private_dir, webapps_root=webapps_root
+        )
 
     def list_newsletter_domains(self) -> list[str]:
         domains: set[str] = set()
@@ -176,32 +191,118 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
         return body
 
     def load_contact_log(self, *, domain: str) -> dict[str, Any]:
-        payload = _read_json(self._contacts_path(domain))
-        if _as_text(payload.get("schema")) not in _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS:
+        """Composed view: dispatch history from the legacy JSON log + the
+        contact ROSTER from the per-entity YAML leaflet.
+
+        The roster lives in a single leaflet per entity (an entity may own
+        several domains), so the contacts returned here are scoped to this
+        domain — only rows whose ``domain`` matches (rows missing a ``domain``
+        are treated as belonging to the requested domain for back-compat).
+        Callers keep seeing the historical ``{schema, domain, contacts[],
+        dispatches[]}`` shape, so none of them change.
+        """
+        token = _normalized_domain(domain)
+        json_payload = _read_json(self._contacts_path(token))
+        json_ok = (
+            _as_text(json_payload.get("schema"))
+            in _ACCEPTED_NEWSLETTER_CONTACT_LOG_SCHEMAS
+        )
+        contacts = self._roster_for_domain(token)
+        leaflet_present = self._leaflet.leaflet_present(entity_for_domain(token))
+        # Empty when neither store holds anything for the domain — preserves the
+        # historical "no log yet" sentinel that write paths key off of.
+        if not json_ok and not leaflet_present and not contacts:
             return {}
-        return dict(payload)
+        dispatches = list(json_payload.get("dispatches") or []) if json_ok else []
+        return {
+            "schema": NEWSLETTER_CONTACT_LOG_SCHEMA,
+            "domain": token,
+            "contacts": contacts,
+            "dispatches": dispatches,
+            "updated_at": _as_text(json_payload.get("updated_at")),
+        }
 
     def contact_log_present(self, *, domain: str) -> bool:
-        """True when a contact-log file physically exists for the domain.
+        """True when a contact roster already exists for the domain's entity.
 
-        Lets a write path distinguish "no log yet" (safe to create fresh) from
-        "a log file exists but didn't load" (unaccepted schema / parse error) so
-        it never silently overwrites and drops a domain's existing contacts.
+        Lets a write path distinguish "no roster yet" (safe to create fresh)
+        from "a roster file exists but didn't load" (parse error / schema drift)
+        so it never silently overwrites and drops existing contacts. Tracks the
+        YAML leaflet — the store that now owns the roster — OR the legacy JSON
+        contact log (so an un-migrated domain is still protected).
         """
+        if self._leaflet.leaflet_present(entity_for_domain(_normalized_domain(domain))):
+            return True
         path = self._contacts_path(domain)
         return path.exists() and path.is_file()
 
+    def _roster_for_domain(self, domain: str) -> list[dict[str, Any]]:
+        """Contacts in this domain's entity leaflet, scoped to the domain."""
+        token = _normalized_domain(domain)
+        entity = entity_for_domain(token)
+        rows: list[dict[str, Any]] = []
+        for row in self._leaflet.load_roster(entity):
+            row_domain = _normalized_domain(row.get("domain"))
+            # Rows missing a domain (legacy) belong to the requested domain.
+            if row_domain and row_domain != token:
+                continue
+            rows.append(dict(row))
+        return rows
+
     def save_contact_log(self, *, domain: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Split-write: ROSTER (contacts[]) -> per-entity YAML leaflet;
+        DISPATCH history (dispatches[]) + profile metadata -> legacy JSON.
+
+        Callers still hand us the whole composed ``{contacts, dispatches}``
+        dict; we route each half to the store that owns it. The returned dict
+        is the same composed shape (re-read so it reflects what was persisted).
+        """
         token = _normalized_domain(domain)
         body = dict(payload if isinstance(payload, dict) else {})
-        body["schema"] = NEWSLETTER_CONTACT_LOG_SCHEMA
-        body["domain"] = token
-        body["contacts"] = list(body.get("contacts") or [])
-        # Preserve full dispatch history — a contact write must never drop
-        # dispatch records as a side effect (it previously truncated to 20).
-        body["dispatches"] = list(body.get("dispatches") or [])
-        _write_json(self._contacts_path(token), body)
-        return body
+        contacts = list(body.get("contacts") or [])
+
+        # 1. Roster -> YAML leaflet. Merge into the entity's existing roster so a
+        #    save scoped to ONE domain never drops a sibling domain's contacts
+        #    (an entity may own several). Every persisted row carries its domain.
+        entity = entity_for_domain(token)
+        merged = self._merge_roster(token, entity, contacts)
+        self._leaflet.save_roster(entity, merged)
+
+        # 2. Dispatch history + metadata -> JSON. Strip contacts so the roster
+        #    has exactly one home; keep an empty list for shape continuity.
+        json_body = dict(body)
+        json_body["schema"] = NEWSLETTER_CONTACT_LOG_SCHEMA
+        json_body["domain"] = token
+        json_body["contacts"] = []
+        # Preserve full dispatch history — a write must never drop dispatch
+        # records as a side effect.
+        json_body["dispatches"] = list(body.get("dispatches") or [])
+        _write_json(self._contacts_path(token), json_body)
+
+        return self.load_contact_log(domain=token)
+
+    def _merge_roster(
+        self, domain: str, entity: str, incoming: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Replace this domain's slice of the entity roster with ``incoming``.
+
+        Other domains' contacts in the same entity leaflet are preserved
+        untouched; the incoming rows are stamped with this domain.
+        """
+        token = _normalized_domain(domain)
+        kept: list[dict[str, Any]] = []
+        for row in self._leaflet.load_roster(entity):
+            row_domain = _normalized_domain(row.get("domain"))
+            # Keep only OTHER domains' rows; this domain's slice is replaced.
+            if row_domain and row_domain != token:
+                kept.append(dict(row))
+        for row in incoming:
+            if not isinstance(row, dict):
+                continue
+            stamped = dict(row)
+            stamped["domain"] = token
+            kept.append(stamped)
+        return kept
 
     def runtime_secret_seed(self, *, secret_kind: str) -> str:
         payload = _read_json(self._runtime_secrets_path)

@@ -397,9 +397,15 @@ class PaypalManagementTests(unittest.TestCase):
                     base_url=f"http://{DOMAIN}",
                 )
                 self.assertEqual(resp.status_code, 200)
-        contact_files = list((tmp / "private").rglob("*.contacts.json"))
-        self.assertTrue(contact_files, "donor contact log was not written")
-        contacts = json.loads(contact_files[0].read_text(encoding="utf-8")).get("contacts", [])
+        # The donor lands in the per-entity YAML roster leaflet (Wave-1 store
+        # split: contacts -> YAML, dispatch history -> JSON). Read it back via
+        # the canonical adapter so the test stays decoupled from the file path.
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
+        )
+
+        adapter = FilesystemNewsletterStateAdapter(tmp / "private")
+        contacts = adapter.load_contact_log(domain=DOMAIN).get("contacts", [])
         donors = [c for c in contacts if c.get("source") == "paypal_donation"]
         self.assertEqual(len(donors), 1)  # exactly once despite two captures
         self.assertEqual(donors[0]["email"], "donor@example.test")
