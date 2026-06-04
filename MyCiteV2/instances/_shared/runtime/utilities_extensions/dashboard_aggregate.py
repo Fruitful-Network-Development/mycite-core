@@ -49,9 +49,25 @@ def _profile_for(msn_id: str, fnd_csm_root: str | Path) -> dict[str, Any] | None
     return None
 
 
+def _load_domain_contact_log(private_dir: Path, domain: str) -> dict[str, Any]:
+    """Composed contact log for a domain: roster (YAML leaflet) + dispatch
+    history (JSON), via the canonical adapter so the split store stays a
+    single source of truth (rather than reading the JSON contacts directly,
+    which no longer hold the roster)."""
+    from MyCiteV2.packages.adapters.filesystem import (
+        FilesystemNewsletterStateAdapter,
+    )
+
+    try:
+        adapter = FilesystemNewsletterStateAdapter(private_dir)
+        return adapter.load_contact_log(domain=domain) or {}
+    except Exception:
+        return {}
+
+
 def _count_subscribers_and_dispatches(
     domains: list[str],
-    contacts_root: Path,
+    private_dir: Path,
     *,
     period: tuple[date, date] | None = None,
 ) -> tuple[int, int, list[dict[str, Any]]]:
@@ -62,12 +78,8 @@ def _count_subscribers_and_dispatches(
     dispatch_count = 0
     recent: list[dict[str, Any]] = []
     for d in domains:
-        path = contacts_root / f"newsletter.{d}.contacts.json"
-        if not path.exists():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        data = _load_domain_contact_log(private_dir, d)
+        if not data:
             continue
         for c in data.get("contacts") or []:
             if c.get("subscribed"):
@@ -226,9 +238,8 @@ def build_grantee_summary(
     bw = bandwidth_share_for_grantee(msn_id, start_d, end_d)
     bandwidth_gb = float(bw.get("bytes_sent", 0)) / (1024 ** 3)
 
-    contacts_root = private_dir / "utilities" / "tools" / "aws-csm" / "newsletter"
     subs, dispatches, _ = _count_subscribers_and_dispatches(
-        domains, contacts_root, period=period,
+        domains, private_dir, period=period,
     )
 
     snap = read_tolling_snapshot(msn_id, fnd_csm_root)
@@ -283,18 +294,16 @@ def build_email_dashboard(
     profile = _profile_for(msn_id, fnd_csm_root) or {}
     domains = domains_for_grantee(msn_id, fnd_csm_root)
     start_d, end_d = period
-    contacts_root = private_dir / "utilities" / "tools" / "aws-csm" / "newsletter"
 
-    # Single pass per contacts file: contact counts + dispatch slice.
+    # Single pass per domain: contact counts (from the YAML roster leaflet) +
+    # dispatch slice (from the JSON log), composed by the adapter.
     subscribed = 0
     unsubscribed = 0
     recent_contacts: list[dict[str, Any]] = []
     dispatches_all: list[dict[str, Any]] = []
     for d in domains:
-        path = contacts_root / f"newsletter.{d}.contacts.json"
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+        data = _load_domain_contact_log(private_dir, d)
+        if not data:
             continue
         for c in data.get("contacts") or []:
             if c.get("subscribed"):

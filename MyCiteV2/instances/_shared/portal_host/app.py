@@ -1016,6 +1016,10 @@ def _newsletter_state_adapter(host_config: V2PortalHostConfig):
         FilesystemNewsletterStateAdapter,
     )
 
+    # webapps_root is DERIVED from private_dir inside the adapter (live layout
+    # is <webapps_root>/mycite/<inst>/private) so every adapter built from the
+    # same private_dir — including test verification adapters — resolves the
+    # SAME contacts leaflet dir. We deliberately do not pass an explicit root.
     return FilesystemNewsletterStateAdapter(host_config.private_dir)
 
 
