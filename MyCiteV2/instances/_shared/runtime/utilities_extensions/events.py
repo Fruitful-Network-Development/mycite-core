@@ -574,11 +574,17 @@ def save_event(
 ) -> dict[str, Any]:
     """Create or update an event leaflet.
 
-    Update semantics: if ``payload.job.id`` matches an existing leaflet
-    (within ``client`` scope) *and* the canonical filename is unchanged,
-    overwrite in place. If the canonical filename changes (date, client,
-    or customer name edited), remove the old file and write under the new
-    name so disk layout stays consistent.
+    Update semantics: if the payload ``id`` matches an existing leaflet
+    (within ``client`` scope), the existing on-disk record is used as the
+    base and the incoming payload is layered on top, so fields the
+    dashboard's FLAT edit form omits — the nested job-kind extras
+    (``customer`` / ``home`` / ``tags`` / ``pricing`` / ``notes``) the BPW
+    analytics depend on — are PRESERVED rather than wiped. The flat
+    envelope fields the form does send (date / status / title / location /
+    description / leaflet_url) still win. If the canonical filename
+    changes (date, client, or title/name edited) the old file is removed
+    and the record written under the new name so disk layout stays
+    consistent.
 
     Returns the normalized payload + the on-disk filename. Raises
     ``ValueError`` on invalid input.
@@ -586,10 +592,31 @@ def save_event(
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
     ensure_events_root(webapps_root)
+
+    # On update, hydrate the incoming payload with the existing on-disk
+    # leaflet so nested extras the flat form doesn't carry survive. The
+    # incoming payload's keys override the existing ones; a present-but-
+    # empty nested key in the payload (rare) is treated as no-override.
+    event_id = payload.get("id") or payload.get("event_id")
+    existing = (
+        _path_for_id(webapps_root, str(event_id), client=client)
+        if event_id
+        else None
+    )
+    if existing is not None:
+        base = _load_yaml(existing) or {}
+        base.pop("_source_file", None)
+        merged = dict(base)
+        for key, value in payload.items():
+            # Don't let an absent/empty nested extra clobber the stored one.
+            if key in ("customer", "home", "tags", "pricing") and not value:
+                continue
+            merged[key] = value
+        payload = merged
+
     normalized = normalize_payload(payload, webapps_root=webapps_root, client=client)
     event_id = str(normalized["id"])
     target_path = events_root(webapps_root) / _filename_for(normalized)
-    existing = _path_for_id(webapps_root, event_id, client=client)
     if existing is not None and existing != target_path:
         try:
             existing.unlink()

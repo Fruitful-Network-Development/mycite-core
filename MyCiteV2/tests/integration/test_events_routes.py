@@ -147,6 +147,41 @@ class TestEventsModule(unittest.TestCase):
         self.assertFalse(first.exists())
         self.assertEqual(len(ev.list_events(self.webapps, client=client)), 1)
 
+    def test_flat_edit_preserves_nested_extras(self) -> None:
+        """The dashboard's flat edit form posts only the top-level
+        envelope (no customer/home/tags/pricing). Re-saving such a flat
+        payload over an existing leaflet must PRESERVE the nested BPW
+        analytics extras rather than wipe them."""
+        client = "brocks_pressure_washing"
+        saved = ev.save_event(_sample_payload(), webapps_root=self.webapps, client=client)
+        eid = saved["id"]
+        # A flat-only edit (status flips draft->completed via the form),
+        # carrying none of the nested extras.
+        flat_edit = {
+            "event_id": eid,
+            "date": "2026-04-14",
+            "status": "completed",
+            "title": "House wash — Dave Atch",
+            "location": "123 Main St, Hudson",
+            "description": "edited note",
+        }
+        saved2 = ev.save_event(flat_edit, webapps_root=self.webapps, client=client)
+        # Flat fields updated...
+        self.assertEqual(saved2["id"], eid)
+        self.assertEqual(saved2["title"], "House wash — Dave Atch")
+        self.assertEqual(saved2["description"], "edited note")
+        # ...but the nested analytics extras survived the flat edit.
+        self.assertEqual(saved2["customer"]["name"], "Dave Atch")
+        self.assertEqual(saved2["customer"]["lead_source"], "repeat_customer")
+        self.assertEqual(saved2["pricing"]["total"], 100)
+        self.assertEqual([t["type"] for t in saved2["tags"]], ["house_wash"])
+        # And analytics still see the customer/tag/pricing data.
+        analytics = ev.events_analytics(self.webapps, client=client)
+        self.assertEqual(analytics["tag_types"][0]["key"], "house_wash")
+        self.assertEqual(
+            analytics["lead_sources"][0]["key"], "repeat_customer"
+        )
+
 
 @unittest.skipUnless(FLASK_AVAILABLE and YAML_AVAILABLE, "Flask/PyYAML not installed")
 class TestEventsRoutes(unittest.TestCase):
