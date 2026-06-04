@@ -2009,6 +2009,53 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify(payload), 200
 
+    @app.post("/portal/api/resources/upload")
+    def portal_resources_upload() -> tuple[Any, int]:
+        # Wave-1 backend: operator uploads a site-core gallery artifact
+        # (icon/image/document/profile). Raster images are forced to AVIF.
+        # The Wave-2 UI adds the upload form + manifest-add affordance; this
+        # route is the pure POST handler. Gated by the nginx /portal oauth
+        # block — never publicly exposed.
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resource_upload,
+        )
+
+        upload = request.files.get("file")
+        if upload is None:
+            return jsonify({"ok": False, "error": "file_required"}), 400
+        file_bytes = upload.read()
+
+        def _field(name: str) -> str:
+            return _as_text(request.form.get(name))
+
+        try:
+            result = resource_upload.handle_upload(
+                file_bytes,
+                upload.filename or "",
+                _field("kind"),
+                title=_field("title"),
+                slug=_field("slug"),
+                given_name=_field("given_name"),
+                owner=_field("owner"),
+                webapps_root=host_config.webapps_root,
+            )
+        except resource_upload.UploadError as exc:
+            return jsonify({"ok": False, "error": "invalid_upload", "detail": str(exc)}), 400
+        except Exception:  # pragma: no cover - unexpected backend failure
+            _log.exception("resource upload failed")
+            return jsonify({"ok": False, "error": "upload_failed"}), 500
+        return (
+            jsonify(
+                {
+                    "ok": True,
+                    "asset_id": result["asset_id"],
+                    "asset_path": result["asset_path"],
+                    "gallery": result["gallery"],
+                }
+            ),
+            200,
+        )
+
     # ---- Email health surface -----------------------------------------
     # Operator-facing view of the email stack (forwarder routes + DNS/SES
     # deliverability) so a silent outage like the 11-day forwarder drop is
