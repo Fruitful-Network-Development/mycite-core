@@ -564,11 +564,15 @@ def _seed_cascade_tree(root: Path) -> Path:
         ),
         encoding="utf-8",
     )
-    # CVCC-style derived excerpt for farm_a.
+    # CVCC-style derived excerpt for farm_a + an operation excerpt (entity_slug).
     assets = root / "clients" / "site.org" / "frontend" / "assets"
     assets.mkdir(parents=True)
     (assets / "0000-00-00.profile-legal_entity.site.farm_a-summary_bio.yaml").write_text(
         yaml.safe_dump({"name": "Farm A", "role": "grower"}, sort_keys=False),
+        encoding="utf-8",
+    )
+    (assets / "0000-00-00.profile-operation.farm_a.upick.yaml").write_text(
+        yaml.safe_dump({"entity_slug": "farm_a", "operation_id": "upick"}, sort_keys=False),
         encoding="utf-8",
     )
     # profile_use manifest referencing farm_a's canonical.
@@ -608,7 +612,7 @@ class CascadeRenameTests(unittest.TestCase):
         self.assertTrue(res["ok"])
         r = res["report"]
         self.assertFalse(r["applied"])
-        self.assertEqual(len(r["excerpts"]), 1)
+        self.assertEqual(len(r["excerpts"]), 2)  # summary_bio + operation
         self.assertTrue(r["fnd_network"])
         self.assertEqual(len(r["related"]), 1)
         self.assertEqual(len(r["data_files"]), 1)
@@ -649,6 +653,41 @@ class CascadeRenameTests(unittest.TestCase):
         res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_b", apply=True)
         self.assertFalse(res["ok"])
         self.assertEqual(res["error"], "collision")
+
+    def test_dry_run_picks_only_owned_excerpts(self) -> None:
+        # farm_a owns 2 excerpts (summary_bio + operation); it is NOT the owner
+        # of any other profile's excerpt, so all matches are owned.
+        res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_c", apply=False)
+        names = {e["old"].split("/")[-1] for e in res["report"]["excerpts"]}
+        self.assertEqual(len(names), 2)
+        self.assertTrue(any("profile-operation.farm_a." in n for n in names))
+
+    def test_apply_rewrites_operation_entity_slug(self) -> None:
+        res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_c", apply=True)
+        self.assertTrue(res["ok"], res)
+        op = self.tmp / "clients" / "site.org" / "frontend" / "assets" / "0000-00-00.profile-operation.farm_c.upick.yaml"
+        self.assertTrue(op.exists())
+        self.assertEqual(yaml.safe_load(op.read_text())["entity_slug"], "farm_c")
+
+    def test_refuses_site_entity_owner_slug(self) -> None:
+        # A slug that is the OWNER segment of another profile's excerpt (an org /
+        # site-entity profile) must be refused — renaming it would clobber the
+        # owner token of every excerpt it owns.
+        org = Path(tempfile.mkdtemp(prefix="ext_res_owner_"))
+        prof = org / "clients" / "_shared" / "site-core" / "profiles"
+        prof.mkdir(parents=True)
+        (prof / "0000-00-00.artifact-profile-legal_entity.org_x.profile.yaml").write_text(
+            yaml.safe_dump({"name": "Org X"}, sort_keys=False), encoding="utf-8"
+        )
+        assets = org / "clients" / "site.org" / "frontend" / "assets"
+        assets.mkdir(parents=True)
+        # owner=org_x, subject=some_farm
+        (assets / "0000-00-00.profile-legal_entity.org_x.some_farm-summary_bio.yaml").write_text(
+            yaml.safe_dump({"name": "Some Farm"}, sort_keys=False), encoding="utf-8"
+        )
+        res = rx.cascade_rename_profile_slug(org, "org_x", "org_y", apply=False)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"], "site_entity_slug")
 
 
 class ResourcesModeDispatchTests(unittest.TestCase):

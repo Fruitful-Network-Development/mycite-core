@@ -704,8 +704,15 @@ def _fnd_network_refs(webapps_root: str | Path) -> set[str]:
     for key in _FND_NETWORK_KEYPATH:
         node = node.get(key, {}) if isinstance(node, dict) else {}
     panel = node.get("panel", {}) if isinstance(node, dict) else {}
-    refs = panel.get("profile_refs") or panel.get("farm_profile_refs") or []
-    return {_as_text(r) for r in refs if _as_text(r)} if isinstance(refs, list) else set()
+    # Union BOTH ref lists for presence detection — a slug present in only
+    # ``farm_profile_refs`` (back-compat alias) must still register as in-network
+    # so the cascade updates it and the dataset regen fires.
+    out: set[str] = set()
+    for refs_key in ("profile_refs", "farm_profile_refs"):
+        refs = panel.get(refs_key)
+        if isinstance(refs, list):
+            out.update(_as_text(r) for r in refs if _as_text(r))
+    return out
 
 
 def _regenerate_fnd_network_dataset(
@@ -1397,6 +1404,24 @@ def _find_data_profile_refs(
     return sorted(with_url), sorted(other)
 
 
+def _excerpt_is_owned_by_slug(filename: str, slug: str) -> bool:
+    """True when ``slug`` is the SUBJECT of this excerpt — not its owner /
+    site-entity segment.
+
+    Profile excerpts are ``...profile-<flavor>.<owner>.<slug>-<role>.yaml`` (the
+    slug sits immediately before ``-<role>``); operation excerpts are
+    ``...profile-operation.<slug>.<op>.yaml`` (slug right after the marker). The
+    org/site-entity slug appears only in the ``<owner>`` segment (followed by a
+    dot), so it is NOT owned by this test — which is what stops a cascade rename
+    of an org profile from clobbering every farm/board excerpt it merely owns.
+    """
+    name = str(filename)
+    if ".profile-operation." in name:
+        after = name.split(".profile-operation.", 1)[1]
+        return after.split(".", 1)[0] == slug
+    return re.search(rf"(?:^|[.]){re.escape(slug)}-", name) is not None
+
+
 def cascade_rename_profile_slug(
     webapps_root: str | Path | None,
     old_slug: str,
@@ -1451,11 +1476,33 @@ def cascade_rename_profile_slug(
 
     webapps = Path(webapps_root)
     new_canonical_name = _replace_slug_token(canonical.name, old_slug, new_slug)
+    # Direct filename collision — guards the case where the canonical resolver
+    # returns None on an AMBIGUOUS new_slug (0-or-many) yet the target file
+    # already exists on disk.
+    if (canonical.parent / new_canonical_name).exists():
+        return {"ok": False, "error": "collision", "detail": new_canonical_name}
     report["canonical"] = {"old": canonical.name, "new": new_canonical_name}
 
-    # Excerpts (profile + operation) — plan renames + collision check.
+    # Excerpts: keep ONLY those this profile is the SUBJECT of. A slug that also
+    # appears as the OWNER/site-entity segment of OTHER profiles' excerpts (an
+    # org profile) must NOT be renamed here — that would rewrite the owner token
+    # of every excerpt it owns. Refuse such a rename outright.
+    all_excerpts = _excerpt_paths_for_slug(webapps_root, old_slug)
+    owned = [p for p in all_excerpts if _excerpt_is_owned_by_slug(p.name, old_slug)]
+    owner_only = [p for p in all_excerpts if p not in owned]
+    if owner_only:
+        return {
+            "ok": False,
+            "error": "site_entity_slug",
+            "detail": (
+                "this slug names a site entity that owns other profiles' "
+                "excerpts; renaming it here is not supported"
+            ),
+            "owned_count": len(owned),
+            "owner_count": len(owner_only),
+        }
     excerpt_plan: list[tuple[Path, Path]] = []
-    for ex in _excerpt_paths_for_slug(webapps_root, old_slug):
+    for ex in owned:
         new_ex = ex.parent / _replace_slug_token(ex.name, old_slug, new_slug)
         if new_ex != ex and new_ex.exists():
             return {"ok": False, "error": "collision", "detail": new_ex.name}
@@ -1485,58 +1532,77 @@ def cascade_rename_profile_slug(
     if not apply:
         return {"ok": True, "report": report}
 
-    # ---- APPLY (backups on edits; renames recorded in the report) ----
-    os.replace(str(canonical), str(canonical.parent / new_canonical_name))
-    for ex, new_ex in excerpt_plan:
-        if new_ex != ex:
-            os.replace(str(ex), str(new_ex))
-    for rel in related_files:
-        p = Path(rel)
-        try:
-            text = p.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if old_stem in text:
-            _backup_file(p)
-            _atomic_write_text(p, text.replace(old_stem, new_stem))
-    if report["fnd_network"] and fnd_manifest.is_file():
-        try:
-            data = json.loads(fnd_manifest.read_text(encoding="utf-8"))
-            node: Any = data
-            for key in _FND_NETWORK_KEYPATH:
-                node = node.get(key, {}) if isinstance(node, dict) else {}
-            panel = node.get("panel", {}) if isinstance(node, dict) else {}
-            changed = False
-            for refs_key in ("profile_refs", "farm_profile_refs"):
-                refs = panel.get(refs_key)
-                if isinstance(refs, list):
-                    new_refs = [new_slug if _as_text(r) == old_slug else r for r in refs]
-                    if new_refs != refs:
-                        panel[refs_key] = new_refs
-                        changed = True
-            if changed:
-                _backup_file(fnd_manifest)
-                _atomic_write_text(
-                    fnd_manifest, json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-                )
-        except (OSError, ValueError):
-            pass
-    report["profile_use"] = _update_manifests_for_asset(
-        webapps_root, "profile", old_asset, new_path=new_asset
-    )
-    for df in data_files:
-        p = Path(df)
-        try:
-            text = p.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        needle = "/profile/" + old_slug
-        if needle in text:
-            _backup_file(p)
-            _atomic_write_text(p, text.replace(needle, "/profile/" + new_slug))
-    # Re-derive the (now new-named) excerpts + rebuild owning sites + regenerate
-    # the FND map dataset (new_slug is now in the FND refs).
-    report["propagation"] = propagate_profile(webapps_root, new_slug)
+    # ---- APPLY (backups on edits; renames recorded in the report). Best-effort
+    # atomic: discovery + collision checks ran above, so the remaining work is
+    # mechanical. A mid-way failure is surfaced (with the partial report) rather
+    # than silently swallowed; full rollback is intentionally out of scope. ----
+    try:
+        os.replace(str(canonical), str(canonical.parent / new_canonical_name))
+        for ex, new_ex in excerpt_plan:
+            if new_ex != ex:
+                os.replace(str(ex), str(new_ex))
+            # Operation excerpts carry an internal ``entity_slug`` field that
+            # derive_profile_excerpt cannot repair (the canonical does not define
+            # it) — rewrite it to the new slug.
+            if ".profile-operation." in new_ex.name:
+                op = _load_yaml_mapping(new_ex)
+                if _as_text(op.get("entity_slug")) == old_slug:
+                    op["entity_slug"] = new_slug
+                    _atomic_write_text(
+                        new_ex,
+                        yaml.safe_dump(
+                            op, default_flow_style=False, allow_unicode=True, sort_keys=False
+                        ),
+                    )
+        for rel in related_files:
+            p = Path(rel)
+            try:
+                text = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if old_stem in text:
+                _backup_file(p)
+                _atomic_write_text(p, text.replace(old_stem, new_stem))
+        if report["fnd_network"] and fnd_manifest.is_file():
+            try:
+                data = json.loads(fnd_manifest.read_text(encoding="utf-8"))
+                node: Any = data
+                for key in _FND_NETWORK_KEYPATH:
+                    node = node.get(key, {}) if isinstance(node, dict) else {}
+                panel = node.get("panel", {}) if isinstance(node, dict) else {}
+                changed = False
+                for refs_key in ("profile_refs", "farm_profile_refs"):
+                    refs = panel.get(refs_key)
+                    if isinstance(refs, list):
+                        new_refs = [new_slug if _as_text(r) == old_slug else r for r in refs]
+                        if new_refs != refs:
+                            panel[refs_key] = new_refs
+                            changed = True
+                if changed:
+                    _backup_file(fnd_manifest)
+                    _atomic_write_text(
+                        fnd_manifest, json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+                    )
+            except (OSError, ValueError):
+                pass
+        report["profile_use"] = _update_manifests_for_asset(
+            webapps_root, "profile", old_asset, new_path=new_asset
+        )
+        for df in data_files:
+            p = Path(df)
+            try:
+                text = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            needle = "/profile/" + old_slug
+            if needle in text:
+                _backup_file(p)
+                _atomic_write_text(p, text.replace(needle, "/profile/" + new_slug))
+        # Re-derive the (now new-named) excerpts + rebuild owning sites +
+        # regenerate the FND map dataset (new_slug is now in the FND refs).
+        report["propagation"] = propagate_profile(webapps_root, new_slug)
+    except OSError as exc:
+        return {"ok": False, "error": "apply_failed", "detail": str(exc), "report": report}
     report["applied"] = True
     return {"ok": True, "report": report}
 

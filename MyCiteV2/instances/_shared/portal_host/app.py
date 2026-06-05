@@ -2205,8 +2205,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         if result.get("ok"):
             return jsonify(result), 200
-        # collision / in_use are conflicts; bad slug / unknown are 400.
-        conflict = result.get("error") in {"collision", "in_use"}
+        # collision / in_use / site_entity_slug are conflicts; others are 400.
+        conflict = result.get("error") in {"collision", "in_use", "site_entity_slug"}
         return jsonify(result), 409 if conflict else 400
 
     @app.post("/__fnd/resources/asset/rename-preview")
@@ -2227,7 +2227,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         if result.get("ok"):
             return jsonify(result), 200
-        conflict = result.get("error") == "collision"
+        conflict = result.get("error") in {"collision", "site_entity_slug"}
         return jsonify(result), 409 if conflict else 400
 
     @app.post("/__fnd/resources/asset/delete")
