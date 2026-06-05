@@ -10153,12 +10153,12 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesList {
   display: flex; flex-direction: column;
   max-height: 360px; overflow-y: auto;
-  border: 1px solid var(--border, #2a2a2a); border-radius: 8px;
+  border: 1px solid var(--line, #afafaa); border-radius: 8px;
 }
 .v2-resourcesRow {
   display: flex; align-items: center; gap: 10px;
   width: 100%; padding: 8px 10px; text-align: left;
-  background: transparent; border: 0; border-bottom: 1px solid var(--border, #2a2a2a);
+  background: transparent; border: 0; border-bottom: 1px solid var(--line, #afafaa);
   color: inherit; cursor: pointer; font: inherit;
 }
 .v2-resourcesRow:last-child { border-bottom: 0; }
@@ -10180,10 +10180,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesDetail__head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .v2-resourcesDetail__head h4 { flex: 1; margin: 0; }
 .v2-resourcesField { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
-.v2-resourcesField input, .v2-resourcesField textarea {
+.v2-resourcesField input, .v2-resourcesField textarea,
+.v2-resourcesUploadForm input, .v2-resourcesUploadForm select {
   width: 100%; padding: 5px 7px; font: inherit;
-  border: 1px solid var(--border, #2a2a2a); border-radius: 5px;
-  background: var(--surface, #181818); color: inherit;
+  border: 1px solid var(--line, #afafaa); border-radius: 5px;
+  background: #fff; color: var(--ink, #464646);
 }
 .v2-resourcesField--ro { flex-direction: row; gap: 8px; font-size: 12px; }
 .v2-resourcesField__label { opacity: 0.65; min-width: 140px; }
