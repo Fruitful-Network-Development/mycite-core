@@ -605,6 +605,17 @@ def _lazy_overlay_adapter() -> Any:
 
 
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
+    from ._global import build_overall_roster, is_global
+
+    if is_global(ctx):
+        return build_overall_roster(
+            ctx,
+            extension_label="Email",
+            summarize=lambda g: (
+                ("SES configured" if g.get("aws_ses") else "SES not configured")
+                + f" · {len(g.get('users') or [])} mailbox user(s)"
+            ),
+        )
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),

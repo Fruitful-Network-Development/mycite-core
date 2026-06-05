@@ -45,6 +45,8 @@ _EXPECTED_TOOL_IDS = {
     "ext_paypal",
     # Phase 17b: Connect joins as the 5th operational extension tab.
     "ext_connect",
+    # Wave 2: the shared resources asset-library extension is a tab too.
+    "ext_resources",
 }
 
 
@@ -127,6 +129,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
                     "ext_newsletter",
                     "ext_paypal",
                     "ext_connect",
+                    "ext_resources",
                 ):
                     page.goto(
                         f"{base}/portal/utilities/extensions"

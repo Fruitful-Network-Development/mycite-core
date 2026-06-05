@@ -193,6 +193,18 @@ def _render_ext_grantee_profile(ctx: dict[str, Any]) -> dict[str, Any]:
         build_form_component_frame,
     )
 
+    from ._global import build_overall_roster, is_global
+
+    if is_global(ctx):
+        return build_overall_roster(
+            ctx,
+            extension_label="Grantee Profile",
+            summarize=lambda g: (
+                _as_text(g.get("short_name"))
+                or f"{len(g.get('domains') or [])} domain(s)"
+            ),
+        )
+
     grantee = _as_dict(ctx.get("grantee"))
     msn_id = _as_text(grantee.get("msn_id"))
     if not msn_id:

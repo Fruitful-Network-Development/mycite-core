@@ -355,5 +355,174 @@ class RenderPayloadCarriesDetailTests(unittest.TestCase):
         self.assertEqual(payload["contacts_detail"]["total_contacts"], 2)
 
 
+def _seed_managed_gallery(webapps_root: Path) -> Path:
+    """A site-core icon gallery + a site icon_use manifest referencing one icon."""
+    sc = webapps_root / "clients" / "_shared" / "site-core"
+    (sc / "icon").mkdir(parents=True)
+    used = sc / "icon" / "0000-00-00.artifact-icon.mycite-ui.mail.svg"
+    unused = sc / "icon" / "0000-00-00.artifact-icon.mycite-ui.spare.svg"
+    used.write_text("<svg/>", encoding="utf-8")
+    unused.write_text("<svg/>", encoding="utf-8")
+    assets = webapps_root / "clients" / "site.org" / "frontend" / "assets"
+    assets.mkdir(parents=True)
+    (assets / "0000-00-00.record-manifest.site-website.icon_use.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "manifest_kind": "icon_use",
+                "site_entity": "site",
+                "entries": [
+                    {
+                        "asset_id": "mail",
+                        "asset_path": "/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg",
+                        "consumers": [],
+                        "entity_scope": "site",
+                    }
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    return webapps_root
+
+
+class CollectiveGalleryManagementTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_manage_"))
+        _seed_managed_gallery(self.tmp)
+
+    def test_grouped_gallery_groups_by_slug_with_referenced_flag(self) -> None:
+        grouped = rx.build_grouped_gallery(self.tmp, "icon")
+        by_slug = {g["slug"]: g for g in grouped["groups"]}
+        self.assertEqual(set(by_slug), {"mail", "spare"})
+        mail = by_slug["mail"]["members"][0]
+        self.assertTrue(mail["referenced"])
+        self.assertFalse(by_slug["spare"]["members"][0]["referenced"])
+
+    def test_manifest_referenced_paths(self) -> None:
+        ref = rx.manifest_referenced_paths(self.tmp, "icon")
+        self.assertIn("/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg", ref)
+
+    def test_retitle_rewrites_manifest_asset_id(self) -> None:
+        result = rx.retitle_asset(
+            self.tmp, "icon", "0000-00-00.artifact-icon.mycite-ui.mail.svg", "Mail Glyph"
+        )
+        self.assertTrue(result["ok"])
+        manifest = (
+            self.tmp / "clients" / "site.org" / "frontend" / "assets"
+            / "0000-00-00.record-manifest.site-website.icon_use.yaml"
+        )
+        data = yaml.safe_load(manifest.read_text())
+        self.assertEqual(data["entries"][0]["asset_id"], "Mail Glyph")
+
+    def test_delete_refuses_referenced_asset(self) -> None:
+        result = rx.delete_asset_if_unreferenced(
+            self.tmp, "icon", "0000-00-00.artifact-icon.mycite-ui.mail.svg"
+        )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "referenced")
+
+    def test_delete_removes_unreferenced_asset(self) -> None:
+        result = rx.delete_asset_if_unreferenced(
+            self.tmp, "icon", "0000-00-00.artifact-icon.mycite-ui.spare.svg"
+        )
+        self.assertTrue(result["ok"])
+        self.assertFalse(
+            (self.tmp / "clients" / "_shared" / "site-core" / "icon"
+             / "0000-00-00.artifact-icon.mycite-ui.spare.svg").exists()
+        )
+
+    def test_rename_slug_renames_file_and_repoints_manifest(self) -> None:
+        result = rx.rename_slug(self.tmp, "icon", "mail", "envelope")
+        self.assertTrue(result["ok"], result)
+        icon_dir = self.tmp / "clients" / "_shared" / "site-core" / "icon"
+        self.assertTrue((icon_dir / "0000-00-00.artifact-icon.mycite-ui.envelope.svg").exists())
+        self.assertFalse((icon_dir / "0000-00-00.artifact-icon.mycite-ui.mail.svg").exists())
+        manifest = (
+            self.tmp / "clients" / "site.org" / "frontend" / "assets"
+            / "0000-00-00.record-manifest.site-website.icon_use.yaml"
+        )
+        data = yaml.safe_load(manifest.read_text())
+        self.assertEqual(
+            data["entries"][0]["asset_path"],
+            "/assets/icons/0000-00-00.artifact-icon.mycite-ui.envelope.svg",
+        )
+
+    def test_rename_slug_refuses_collision(self) -> None:
+        result = rx.rename_slug(self.tmp, "icon", "mail", "spare")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "collision")
+
+
+class AllocationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_alloc_"))
+        _seed_managed_gallery(self.tmp)
+
+    def test_site_manifest_entries_lists_allocated(self) -> None:
+        rows = rx.site_manifest_entries(self.tmp, "site.org", "icon")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["asset_id"], "mail")
+
+    def test_remove_then_add_round_trip(self) -> None:
+        path = "/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg"
+        removed = rx.remove_asset_from_manifest(
+            self.tmp, site="site.org", kind="icon", asset_path=path
+        )
+        self.assertTrue(removed["ok"])
+        self.assertTrue(removed["removed"])
+        self.assertEqual(rx.site_manifest_entries(self.tmp, "site.org", "icon"), [])
+        # removing again is a no-op (idempotent), still ok.
+        again = rx.remove_asset_from_manifest(
+            self.tmp, site="site.org", kind="icon", asset_path=path
+        )
+        self.assertTrue(again["ok"])
+        self.assertFalse(again["removed"])
+        # re-add via the existing helper.
+        added = rx.add_asset_to_manifest(
+            self.tmp, site="site.org", kind="icon", asset_id="mail", asset_path=path
+        )
+        self.assertTrue(added["ok"])
+        self.assertEqual(len(rx.site_manifest_entries(self.tmp, "site.org", "icon")), 1)
+
+    def test_allocation_payload_marks_allocated_candidates(self) -> None:
+        payload = render_extension(
+            "ext_resources",
+            {
+                "webapps_root": self.tmp,
+                "mode": "grantee",
+                "grantee": {"msn_id": "acme", "label": "Acme"},
+                "domain": "site.org",
+            },
+        )
+        self.assertEqual(payload["resources_mode"], "allocation")
+        self.assertTrue(payload["site_exists"])
+        icon_alloc = next(a for a in payload["allocations"] if a["gallery"] == "icon")
+        self.assertEqual(icon_alloc["used_count"], 1)
+        allocated = [c for c in icon_alloc["candidates"] if c["allocated"]]
+        self.assertEqual(len(allocated), 1)
+        self.assertTrue(allocated[0]["asset_path"].endswith("mail.svg"))
+
+
+class ResourcesModeDispatchTests(unittest.TestCase):
+    def test_library_is_default_without_grantee(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="ext_res_mode_lib_"))
+        _seed_profiles(tmp)
+        payload = render_extension("ext_resources", {"webapps_root": tmp, "mode": "global"})
+        self.assertEqual(payload["resources_mode"], "library")
+        self.assertIn("managed_galleries", payload)
+        # No allocation affordance in the library.
+        self.assertNotIn("manifest_add_route", payload)
+
+    def test_allocation_when_grantee_selected(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="ext_res_mode_alloc_"))
+        _seed_profiles(tmp)
+        payload = render_extension(
+            "ext_resources",
+            {"webapps_root": tmp, "mode": "grantee", "grantee": {"msn_id": "acme"}, "domain": "acme.org"},
+        )
+        self.assertEqual(payload["resources_mode"], "allocation")
+
+
 if __name__ == "__main__":
     unittest.main()

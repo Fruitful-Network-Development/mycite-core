@@ -615,6 +615,22 @@ def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict
     }
 
 
+def _resolve_utilities_mode(query: dict[str, str], *, default_to_global: bool) -> str:
+    """Resolve GLOBAL ("Overall") vs per-grantee mode from the surface query.
+
+    Precedence: an explicit ``utilities_mode`` wins; else any non-empty
+    ``selected_grantee_msn`` implies grantee mode; else the surface default
+    (the Extensions surface defaults to global, the Grantee-Profile surface to
+    grantee so its single-grantee editor behavior is preserved exactly).
+    """
+    mode_q = _as_text(query.get("utilities_mode"))
+    if mode_q in {"global", "grantee"}:
+        return mode_q
+    if _as_text(query.get("selected_grantee_msn")):
+        return "grantee"
+    return "global" if default_to_global else "grantee"
+
+
 def _build_utilities_surface_context(
     *,
     surface_query: dict[str, str] | None,
@@ -622,14 +638,24 @@ def _build_utilities_surface_context(
     webapps_root: str | Path | None,
     authority_db_file: str | Path | None,
     portal_instance_id: str,
+    default_to_global: bool = False,
 ) -> dict[str, Any]:
     """Resolve grantee/domain selection + grantee_selector list for the
     utilities tool-exposure surface.
 
     Returns a dict with:
       - "ctx": the extension render context (grantee, domain, private_dir, ...)
+        plus ``mode`` ("global" | "grantee"); in global mode ``grantee`` is an
+        empty dict, ``domain`` is "", and the full roster rides in ``grantees``.
       - "grantee_selector": Phase 12h surface-level selector payload listing
-        every available grantee with an `active` flag.
+        every available grantee with an `active` flag, prefixed by a synthetic
+        "All — Overall" entry that engages global mode.
+      - "mode": the resolved mode (so the surface payload builder can thread it
+        into the subtab strip).
+
+    ``default_to_global`` lets the Extensions surface default to the overall
+    view while the Grantee-Profile surface keeps its single-grantee default
+    (its ctx stays byte-identical to before, plus the additive ``mode`` key).
     """
     from MyCiteV2.instances._shared.runtime.operational_store import (
         load_grantee_profiles,
@@ -638,54 +664,95 @@ def _build_utilities_surface_context(
     )
 
     query = dict(surface_query or {})
+    mode = _resolve_utilities_mode(query, default_to_global=default_to_global)
     tool_state = {
         "selected_grantee_msn": query.get("selected_grantee_msn", ""),
         "selected_domain": query.get("selected_domain", ""),
     }
     grantees = load_grantee_profiles(private_dir)
-    selected_grantee = resolve_selected_grantee(grantees, tool_state)
-    selected_msn = _as_text(selected_grantee.get("msn_id"))
-    domain = resolve_selected_domain(selected_grantee, tool_state)
 
-    ctx = {
+    if mode == "global":
+        # Overall / no-grantee view: every extension aggregates across the
+        # whole roster instead of one grantee. grantee/domain are empty so a
+        # per-grantee renderer takes its global branch; the roster rides in
+        # ctx["grantees"] for aggregation.
+        selected_grantee: dict[str, Any] = {}
+        selected_msn = ""
+        domain = ""
+    else:
+        selected_grantee = resolve_selected_grantee(grantees, tool_state)
+        selected_msn = _as_text(selected_grantee.get("msn_id"))
+        domain = resolve_selected_domain(selected_grantee, tool_state)
+
+    ctx: dict[str, Any] = {
         "grantee": selected_grantee,
         "domain": domain,
         "private_dir": private_dir,
         "webapps_root": webapps_root,
         "authority_db_file": authority_db_file,
         "portal_instance_id": portal_instance_id,
+        "mode": mode,
     }
+    if mode == "global":
+        ctx["grantees"] = grantees
 
     # Phase 12h: surface-level grantee selector. Each entry carries the
     # transition payload the client posts to switch grantees. The shell-
     # request layer normalizes `selected_grantee_msn` into surface_query.
+    # Each real entry also pins utilities_mode="grantee"; the synthetic first
+    # entry engages global mode.
+    overall_entry = {
+        "msn_id": "",
+        "label": "All — Overall",
+        "short_name": "",
+        "domains": [],
+        "is_overall": True,
+        "active": mode == "global",
+        "select_action": {
+            "route": "/portal/api/v2/shell",
+            "schema": "mycite.v2.portal.shell.request.v1",
+            "payload": {
+                "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+                "surface_query": {
+                    "selected_grantee_msn": "",
+                    "utilities_mode": "global",
+                },
+            },
+        },
+    }
+    real_entries = [
+        {
+            "msn_id": _as_text(g.get("msn_id")),
+            "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
+            "short_name": _as_text(g.get("short_name")),
+            "domains": list(g.get("domains") or []),
+            "active": mode == "grantee" and _as_text(g.get("msn_id")) == selected_msn,
+            "select_action": {
+                "route": "/portal/api/v2/shell",
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "payload": {
+                    "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+                    "surface_query": {
+                        "selected_grantee_msn": _as_text(g.get("msn_id")),
+                        "utilities_mode": "grantee",
+                    },
+                },
+            },
+        }
+        for g in grantees
+    ]
+    # The synthetic "All — Overall" entry leads the list when there is at least
+    # one grantee; with no grantees configured the list stays empty (Overall is
+    # meaningless) so the empty-state help text shows.
     grantee_selector = {
         "label": "Grantee",
         "selected_grantee_msn": selected_msn,
-        "grantees": [
-            {
-                "msn_id": _as_text(g.get("msn_id")),
-                "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
-                "short_name": _as_text(g.get("short_name")),
-                "domains": list(g.get("domains") or []),
-                "active": _as_text(g.get("msn_id")) == selected_msn,
-                "select_action": {
-                    "route": "/portal/api/v2/shell",
-                    "schema": "mycite.v2.portal.shell.request.v1",
-                    "payload": {
-                        "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-                        "surface_query": {
-                            "selected_grantee_msn": _as_text(g.get("msn_id")),
-                        },
-                    },
-                },
-            }
-            for g in grantees
-        ],
+        "mode": mode,
+        "grantees": [overall_entry, *real_entries] if real_entries else [],
         "empty_message": "No grantees configured. Add a grantee JSON file under "
         "{private_dir}/utilities/tools/fnd-csm/grantee.*.json.",
     }
-    return {"ctx": ctx, "grantee_selector": grantee_selector}
+    return {"ctx": ctx, "grantee_selector": grantee_selector, "mode": mode}
 
 
 def _build_utilities_extensions(
@@ -836,6 +903,7 @@ def _surface_payload_for_extensions(
     grantee_selector: dict[str, Any] | None = None,
     *,
     selected_extension_tool_id: str = "",
+    mode: str = "grantee",
 ) -> dict[str, Any]:
     """Operational utilities-tab extensions only (Email, Analytics,
     Newsletter, PayPal). Grantee Profile is hosted by its own surface.
@@ -844,14 +912,20 @@ def _surface_payload_for_extensions(
     sitting below the grantee_selector. Only the active tab's
     extension card lands in ``payload["extensions"]`` — the others are
     available behind clicks that POST back to /portal/api/v2/shell.
+
+    ``mode`` ("global" | "grantee") is the resolved overall-vs-per-grantee
+    view; it is threaded into the subtab strip so switching extension tabs
+    stays in the current mode, and exposed in the payload for the client.
     """
     payload: dict[str, Any] = {
         "schema": surface_schema_for_surface(UTILITIES_EXTENSIONS_SURFACE_ID),
         "kind": "extensions",
+        "mode": mode,
         "title": "Extensions",
         "subtitle": (
-            "Operational extensions driven by the active Grantee Profile. "
-            "Switch grantees above and the extension tab below to navigate."
+            "Browse every extension across all grantees (Overall), or pick a "
+            "grantee above to manage it individually. Switch the extension tab "
+            "below to navigate."
         ),
     }
     operational = [
@@ -873,7 +947,10 @@ def _surface_payload_for_extensions(
         )
     if operational:
         payload["extension_subtab_selector"] = _build_extension_subtab_selector(
-            operational, active_tool_id, selected_grantee_msn=selected_grantee_msn
+            operational,
+            active_tool_id,
+            selected_grantee_msn=selected_grantee_msn,
+            utilities_mode=mode,
         )
         payload["extensions"] = [
             ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
@@ -1105,11 +1182,13 @@ def _build_extension_subtab_selector(
     selected_tool_id: str,
     *,
     selected_grantee_msn: str,
+    utilities_mode: str = "grantee",
 ) -> dict[str, Any]:
     """Build the per-extension tab strip rendered below the grantee
     selector on /portal/utilities/extensions. Each tab's
     ``select_action`` posts to /portal/api/v2/shell preserving the
-    current grantee — switching tabs must not reset the grantee axis.
+    current grantee AND the current overall-vs-per-grantee ``utilities_mode``
+    — switching tabs must not reset the grantee axis or the mode.
     """
     by_tool_id = {
         _as_text(ext.get("tool_id")): ext for ext in (extensions or []) if isinstance(ext, dict)
@@ -1133,6 +1212,7 @@ def _build_extension_subtab_selector(
                         "surface_query": {
                             "selected_grantee_msn": selected_grantee_msn,
                             "selected_extension_tool_id": tool_id,
+                            "utilities_mode": utilities_mode,
                         },
                     },
                 },
@@ -1485,6 +1565,10 @@ def _bundle_for_surface(
             webapps_root=webapps_root,
             authority_db_file=authority_db_file,
             portal_instance_id=portal_scope.scope_id,
+            # The Extensions surface defaults to the overall (all-grantees)
+            # view; the Grantee-Profile + legacy tool-exposure surfaces keep
+            # their single-grantee default so their behavior is unchanged.
+            default_to_global=selection_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID,
         )
         extensions = _build_utilities_extensions(
             tool_exposure_policy=tool_exposure_policy,
@@ -1497,6 +1581,7 @@ def _bundle_for_surface(
                 selected_extension_tool_id=_as_text(
                     (surface_query or {}).get("selected_extension_tool_id")
                 ),
+                mode=_as_text(ctx_bundle.get("mode")) or "grantee",
             )
         elif selection_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
             surface_payload = _surface_payload_for_grantee_profile(

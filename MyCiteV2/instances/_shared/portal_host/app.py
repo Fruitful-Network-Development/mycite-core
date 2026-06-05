@@ -2145,6 +2145,87 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify(result), 200 if result.get("ok") else 400
 
+    @app.post("/__fnd/resources/manifest/remove")
+    def fnd_resources_manifest_remove() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.remove_asset_from_manifest(
+            host_config.webapps_root,
+            site=_as_text(payload.get("site")),
+            kind=_as_text(payload.get("kind")),
+            asset_path=_as_text(payload.get("asset_path")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
+
+    @app.get("/__fnd/resources/gallery")
+    def fnd_resources_gallery() -> tuple[Any, int]:
+        """Lazy-load one managed gallery's slug-grouped contents."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        gallery = _as_text(request.args.get("gallery"))
+        if gallery not in resources_extension.MANAGED_GALLERIES:
+            return jsonify({"ok": False, "error": "unknown_gallery"}), 400
+        grouped = resources_extension.build_grouped_gallery(
+            host_config.webapps_root, gallery
+        )
+        return jsonify({"ok": True, "gallery": grouped}), 200
+
+    @app.post("/__fnd/resources/asset/retitle")
+    def fnd_resources_asset_retitle() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.retitle_asset(
+            host_config.webapps_root,
+            _as_text(payload.get("gallery")),
+            _as_text(payload.get("filename")),
+            _as_text(payload.get("new_asset_id")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
+
+    @app.post("/__fnd/resources/asset/rename-slug")
+    def fnd_resources_asset_rename_slug() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.rename_slug(
+            host_config.webapps_root,
+            _as_text(payload.get("gallery")),
+            _as_text(payload.get("old_slug")),
+            _as_text(payload.get("new_slug")),
+        )
+        if result.get("ok"):
+            return jsonify(result), 200
+        # collision / in_use are conflicts; bad slug / unknown are 400.
+        conflict = result.get("error") in {"collision", "in_use"}
+        return jsonify(result), 409 if conflict else 400
+
+    @app.post("/__fnd/resources/asset/delete")
+    def fnd_resources_asset_delete() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.delete_asset_if_unreferenced(
+            host_config.webapps_root,
+            _as_text(payload.get("gallery")),
+            _as_text(payload.get("filename")),
+        )
+        if result.get("ok"):
+            return jsonify(result), 200
+        # An asset in use by a site is a conflict, not a bad request.
+        return jsonify(result), 409 if result.get("error") == "referenced" else 400
+
     # ---- Email health surface -----------------------------------------
     # Operator-facing view of the email stack (forwarder routes + DNS/SES
     # deliverability) so a silent outage like the 11-day forwarder drop is

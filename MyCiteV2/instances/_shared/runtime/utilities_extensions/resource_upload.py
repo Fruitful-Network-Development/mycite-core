@@ -48,7 +48,7 @@ _log = logging.getLogger("mycite.portal_host")
 # raises a clear UploadError rather than silently falling back.
 _AVIFENC_BIN = "/usr/bin/avifenc"
 
-VALID_KINDS = ("icon", "image", "document", "profile")
+VALID_KINDS = ("icon", "image", "document", "audio", "profile")
 
 # Galleries live under <webapps_root>/clients/_shared/site-core/<gallery>/.
 _SITE_CORE_REL = ("clients", "_shared", "site-core")
@@ -56,6 +56,7 @@ _GALLERY_BY_KIND = {
     "icon": "icon",
     "image": "image",
     "document": "document",
+    "audio": "audio",
     "profile": "profiles",
 }
 
@@ -225,12 +226,12 @@ def handle_upload(
                 f"icons must be SVG (got '.{upload_ext}')"
             )
         final_bytes, ext = file_bytes, "svg"
-    elif kind == "document":
+    elif kind in ("document", "audio"):
         ext = _ext_of(filename)
         if not ext:
-            raise UploadError("document upload must have a file extension")
+            raise UploadError(f"{kind} upload must have a file extension")
         if not _SAFE_SEGMENT.match(ext):
-            raise UploadError(f"unsafe document extension: {ext!r}")
+            raise UploadError(f"unsafe {kind} extension: {ext!r}")
         final_bytes, ext = file_bytes, ext
     else:  # profile
         final_bytes, ext = file_bytes, "yaml"

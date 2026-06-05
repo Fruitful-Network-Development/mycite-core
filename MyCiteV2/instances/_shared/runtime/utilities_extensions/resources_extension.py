@@ -609,9 +609,16 @@ def propagate_profile(
     """After a canonical save: re-derive every per-site excerpt for ``slug``
     and (optionally) rebuild each owning site so the edit reaches live HTML.
 
-    Returns {"derived": [paths], "rebuilt": [sites], "errors": [...]}.
+    Returns {"derived": [paths], "rebuilt": [sites], "errors": [...],
+    "fnd_network": <note|None>}. ``fnd_network`` is the result of regenerating
+    the FND agricultural-network map dataset when this profile feeds it.
     """
-    result: dict[str, Any] = {"derived": [], "rebuilt": [], "errors": []}
+    result: dict[str, Any] = {
+        "derived": [],
+        "rebuilt": [],
+        "errors": [],
+        "fnd_network": None,
+    }
     if not webapps_root or not slug:
         result["errors"].append("missing_webapps_root_or_slug")
         return result
@@ -639,7 +646,83 @@ def propagate_profile(
                     rebuilt_frontends.add(frontend_dir)
         else:
             result["errors"].append(f"derive_failed:{excerpt}")
+    # The FND agricultural-network MAP renders from a pre-generated dataset, not
+    # from excerpts — so a profile that feeds the map needs the dataset
+    # regenerated separately. Best-effort: only runs when the slug is one of the
+    # FND network's profile_refs.
+    if rebuild:
+        ok, note = _regenerate_fnd_network_dataset(webapps_root, slug)
+        if note:
+            result["fnd_network"] = note
+        if not ok and note and not note.startswith("skipped"):
+            result["errors"].append(f"fnd_network:{note}")
     return result
+
+
+# FND agricultural-network map: the panel keypath whose profile_refs the map's
+# dataset is built from, and the generator that rebuilds it.
+_FND_SITE_DIR = "fruitfulnetworkdevelopment.com"
+_FND_NETWORK_KEYPATH = ("pages", "more", "content", "network")
+
+
+def _fnd_network_refs(webapps_root: str | Path) -> set[str]:
+    """The set of profile slugs the FND network map is built from.
+
+    Reads ``pages.more.content.network.panel.{profile_refs,farm_profile_refs}``
+    from the FND site manifest JSON. Empty set on any miss.
+    """
+    import json
+
+    manifest = (
+        Path(webapps_root)
+        / "clients"
+        / _FND_SITE_DIR
+        / "frontend"
+        / "assets"
+        / "0000-00-00.manifest.fnd.fnd.site.json"
+    )
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    node: Any = data
+    for key in _FND_NETWORK_KEYPATH:
+        node = node.get(key, {}) if isinstance(node, dict) else {}
+    panel = node.get("panel", {}) if isinstance(node, dict) else {}
+    refs = panel.get("profile_refs") or panel.get("farm_profile_refs") or []
+    return {_as_text(r) for r in refs if _as_text(r)} if isinstance(refs, list) else set()
+
+
+def _regenerate_fnd_network_dataset(
+    webapps_root: str | Path, slug: str
+) -> tuple[bool, str]:
+    """Regenerate the FND network-map dataset when ``slug`` feeds the map.
+
+    Runs the site's ``scripts/build_farm_network.py`` (writes only the dataset
+    JSON, no HTML). Returns ``(ok, note)``; ``("skipped...", )`` when the slug is
+    not a network ref or the FND site/script is absent. Mirrors the subprocess
+    pattern of ``_build_site_for_excerpt``.
+    """
+    if slug not in _fnd_network_refs(webapps_root):
+        return True, "skipped: slug not in FND network refs"
+    frontend_dir = Path(webapps_root) / "clients" / _FND_SITE_DIR / "frontend"
+    script = frontend_dir / "scripts" / "build_farm_network.py"
+    if not script.is_file():
+        return True, "skipped: no build_farm_network.py"
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            check=False,
+            capture_output=True,
+            timeout=300,
+            cwd=str(frontend_dir),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"build_farm_network failed to launch: {exc}"
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        return False, f"build_farm_network exited {completed.returncode}: {detail[:300]}"
+    return True, "fnd network dataset regenerated"
 
 
 # --------------------------------------------------------------------------- #
@@ -655,17 +738,12 @@ def _sha256(path: Path) -> str:
 
 
 def _icon_manifest_referenced_paths(webapps_root: str | Path) -> set[str]:
-    """Asset_paths referenced by any site *icon_use.yaml record-manifest."""
-    referenced: set[str] = set()
-    pattern = str(Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / "*icon_use.yaml")
-    for hit in glob.glob(pattern):
-        data = _load_yaml_mapping(Path(hit))
-        for entry in data.get("entries") or []:
-            if isinstance(entry, dict):
-                ap = _as_text(entry.get("asset_path"))
-                if ap:
-                    referenced.add(ap)
-    return referenced
+    """Asset_paths referenced by any site *icon_use.yaml record-manifest.
+
+    Thin alias over the generalized :func:`manifest_referenced_paths`; kept so
+    ``icon_duplicate_groups`` / ``remove_icon_duplicate`` read identically.
+    """
+    return manifest_referenced_paths(webapps_root, "icon")
 
 
 def icon_duplicate_groups(webapps_root: str | Path | None) -> list[dict[str, Any]]:
@@ -766,10 +844,9 @@ def add_asset_to_manifest(
     assets_dir = Path(webapps_root) / "clients" / site / "frontend" / "assets"
     if not assets_dir.is_dir():
         return {"ok": False, "error": "unknown_site"}
-    matches = glob.glob(str(assets_dir / f"*{kind}_use.yaml"))
-    if not matches:
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
         return {"ok": False, "error": "no_manifest_for_kind"}
-    manifest_path = Path(sorted(matches)[0])
     data = _load_yaml_mapping(manifest_path)
     entries = data.get("entries")
     if not isinstance(entries, list):
@@ -795,6 +872,473 @@ def add_asset_to_manifest(
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "detail": str(exc)}
     return {"ok": True, "added": True, "manifest": str(manifest_path)}
+
+
+def _site_manifest_path(
+    webapps_root: str | Path, site: str, kind: str
+) -> Path | None:
+    """Resolve a site's ``*<kind>_use.yaml`` record-manifest, or None."""
+    assets_dir = Path(webapps_root) / "clients" / os.path.basename(_as_text(site)) / "frontend" / "assets"
+    matches = glob.glob(str(assets_dir / f"*{_as_text(kind)}_use.yaml"))
+    return Path(sorted(matches)[0]) if matches else None
+
+
+def site_manifest_entries(
+    webapps_root: str | Path | None, site: str, kind: str
+) -> list[dict[str, Any]]:
+    """The entries currently allocated to a site's ``*<kind>_use.yaml`` manifest.
+
+    Each row = {asset_id, asset_path, entity_scope}. Empty list when the site or
+    manifest is absent. Reuses ``_load_yaml_mapping``.
+    """
+    if not webapps_root:
+        return []
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
+        return []
+    data = _load_yaml_mapping(manifest_path)
+    rows: list[dict[str, Any]] = []
+    for entry in data.get("entries") or []:
+        if isinstance(entry, dict):
+            rows.append(
+                {
+                    "asset_id": _as_text(entry.get("asset_id")),
+                    "asset_path": _as_text(entry.get("asset_path")),
+                    "entity_scope": _as_text(entry.get("entity_scope")),
+                }
+            )
+    return rows
+
+
+def remove_asset_from_manifest(
+    webapps_root: str | Path | None, *, site: str, kind: str, asset_path: str
+) -> dict[str, Any]:
+    """Drop the entry whose ``asset_path`` matches from a site's
+    ``*<kind>_use.yaml`` manifest (the de-allocation sibling of
+    ``add_asset_to_manifest``). Atomic; no-op when not present.
+    Returns ``{ok, removed: bool, manifest}``.
+    """
+    if not webapps_root:
+        return {"ok": False, "error": "no_webapps_root"}
+    site = os.path.basename(_as_text(site))
+    kind = _as_text(kind)
+    asset_path = _as_text(asset_path)
+    if not site or not kind or not asset_path:
+        return {"ok": False, "error": "missing_field"}
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
+        return {"ok": False, "error": "no_manifest_for_kind"}
+    data = _load_yaml_mapping(manifest_path)
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return {"ok": True, "removed": False, "manifest": str(manifest_path)}
+    kept = [
+        e
+        for e in entries
+        if not (isinstance(e, dict) and _as_text(e.get("asset_path")) == asset_path)
+    ]
+    if len(kept) == len(entries):
+        return {"ok": True, "removed": False, "manifest": str(manifest_path)}
+    data["entries"] = kept
+    text = yaml.safe_dump(
+        data, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
+    try:
+        _atomic_write_text(manifest_path, text)
+    except OSError as exc:
+        return {"ok": False, "error": "write_failed", "detail": str(exc)}
+    return {"ok": True, "removed": True, "manifest": str(manifest_path)}
+
+
+# --------------------------------------------------------------------------- #
+# collective gallery management — slug-grouped library (all leaflet types)
+# --------------------------------------------------------------------------- #
+# gallery dir name -> (manifest kind, nginx asset URL prefix). The manifest
+# kind is the token in clients/<site>/frontend/assets/*<kind>_use.yaml; the URL
+# prefix is where nginx serves that gallery (snippets/shared-assets.conf).
+_GALLERY_META: dict[str, dict[str, str]] = {
+    "profiles": {"kind": "profile", "url_prefix": "/assets/profiles/"},
+    "icon": {"kind": "icon", "url_prefix": "/assets/icons/"},
+    "image": {"kind": "image", "url_prefix": "/assets/images/"},
+    "document": {"kind": "document", "url_prefix": "/assets/document/"},
+    "audio": {"kind": "audio", "url_prefix": "/assets/audio/"},
+}
+# Galleries the operator can manage as a collective gallery (non-PII). events +
+# contacts are deliberately excluded — they stay read-only filename/count only.
+MANAGED_GALLERIES: tuple[str, ...] = ("profiles", "icon", "image", "document", "audio")
+
+# A slug segment: letters/digits start, then letters/digits/dash/underscore.
+_SLUG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def gallery_dir_for(webapps_root: str | Path | None, gallery: str) -> Path | None:
+    root = _site_core_root(webapps_root)
+    if root is None or gallery not in _GALLERY_META:
+        return None
+    return root / gallery
+
+
+def asset_url_prefix_for(gallery: str) -> str:
+    meta = _GALLERY_META.get(_as_text(gallery))
+    return meta["url_prefix"] if meta else ""
+
+
+def manifest_kind_for(gallery: str) -> str:
+    meta = _GALLERY_META.get(_as_text(gallery))
+    return meta["kind"] if meta else ""
+
+
+def manifest_referenced_paths(webapps_root: str | Path | None, kind: str) -> set[str]:
+    """Every ``asset_path`` referenced by any site ``*<kind>_use.yaml`` manifest.
+
+    Generalizes the icon-only ``_icon_manifest_referenced_paths`` to any kind
+    (profile/image/icon/document/audio); used to gate delete and to flag which
+    library members are in use by some site.
+    """
+    referenced: set[str] = set()
+    kind = _as_text(kind)
+    if not webapps_root or not kind:
+        return referenced
+    pattern = str(
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / f"*{kind}_use.yaml"
+    )
+    for hit in glob.glob(pattern):
+        data = _load_yaml_mapping(Path(hit))
+        for entry in data.get("entries") or []:
+            if isinstance(entry, dict):
+                ap = _as_text(entry.get("asset_path"))
+                if ap:
+                    referenced.add(ap)
+    return referenced
+
+
+def _asset_descriptor(filename: str) -> tuple[str, str, str]:
+    """Split a generic gallery filename into (slug, owner, ext).
+
+    ``0000-00-00.artifact-icon.mycite-ui.add.svg`` → ("add", "mycite-ui", "svg").
+    The slug is the dot-token immediately before the extension; the owner is the
+    token before the slug. NOT for profiles (use ``_profile_slug``).
+    """
+    name = str(filename)
+    ext = ""
+    stem = name
+    if "." in name:
+        stem, ext = name.rsplit(".", 1)
+    parts = stem.split(".")
+    slug = parts[-1] if parts else stem
+    owner = parts[-2] if len(parts) >= 2 else ""
+    return slug, owner, ext.lower()
+
+
+def _gallery_slug(gallery: str, filename: str) -> str:
+    """The organizing slug for a gallery member (profiles use _profile_slug)."""
+    if gallery == "profiles":
+        return _profile_slug(filename)
+    return _asset_descriptor(filename)[0]
+
+
+def _replace_last_token(stem: str, new_token: str) -> str:
+    """Replace the last dot-token of ``stem`` with ``new_token``.
+
+    When ``stem`` has no dot the slug IS the whole stem, so it is replaced
+    entirely (``add`` → ``plus``, not ``add.plus``).
+    """
+    if "." in stem:
+        return f"{stem.rsplit('.', 1)[0]}.{new_token}"
+    return new_token
+
+
+def _filename_with_slug(filename: str, gallery: str, new_slug: str) -> str:
+    """Return ``filename`` with its slug token swapped for ``new_slug``."""
+    name = str(filename)
+    if gallery == "profiles":
+        if not name.endswith(_PROFILE_SUFFIX):
+            return name
+        stem = name[: -len(_PROFILE_SUFFIX)]
+        return f"{_replace_last_token(stem, new_slug)}{_PROFILE_SUFFIX}"
+    stem, _, ext = name.rpartition(".")
+    if not stem:  # no extension — the whole name is the slug token
+        return new_slug
+    return f"{_replace_last_token(stem, new_slug)}.{ext}"
+
+
+def _gallery_members(gallery_dir: Path, gallery: str, slug: str) -> list[Path]:
+    """Files in ``gallery_dir`` whose organizing slug equals ``slug``."""
+    out: list[Path] = []
+    try:
+        children = sorted(gallery_dir.iterdir(), key=lambda p: p.name.lower())
+    except OSError:
+        return out
+    for p in children:
+        if not p.is_file() or p.name.startswith(".") or ".example." in p.name:
+            continue
+        if _gallery_slug(gallery, p.name) == slug:
+            out.append(p)
+    return out
+
+
+def build_grouped_gallery(
+    webapps_root: str | Path | None,
+    gallery: str,
+    *,
+    compute_referenced: bool = True,
+) -> dict[str, Any]:
+    """A gallery's leaflets grouped by slug (the operator's organizing key).
+
+    Returns ``{gallery, kind, url_prefix, count, groups:[{slug, label, count,
+    members:[{filename, asset_path, owner, ext, size_bytes, referenced,
+    image_url?, display_name?, subtitle?}]}]}``. Profiles reuse ``list_profiles``
+    (rich rows with display_name/image); the binary galleries enumerate the dir.
+    Members carry ``referenced`` (in some site manifest) so the library UI can
+    gate delete and show usage. Pass ``compute_referenced=False`` to skip the
+    all-sites manifest glob when the caller does not need it (e.g. allocation,
+    which derives its own per-site ``allocated`` flag).
+    """
+    gallery = _as_text(gallery)
+    meta = _GALLERY_META.get(gallery)
+    if meta is None:
+        return {"gallery": gallery, "kind": "", "url_prefix": "", "count": 0, "groups": []}
+    url_prefix = meta["url_prefix"]
+    referenced = (
+        manifest_referenced_paths(webapps_root, meta["kind"])
+        if compute_referenced
+        else set()
+    )
+    groups: dict[str, list[dict[str, Any]]] = {}
+
+    if gallery == "profiles":
+        for row in list_profiles(webapps_root):
+            asset_path = url_prefix + _as_text(row.get("filename"))
+            groups.setdefault(_as_text(row.get("slug")), []).append(
+                {
+                    "filename": _as_text(row.get("filename")),
+                    "asset_path": asset_path,
+                    "owner": _as_text(row.get("entity_scope")),
+                    "ext": "yaml",
+                    "size_bytes": 0,
+                    "referenced": asset_path in referenced,
+                    "display_name": _as_text(row.get("display_name")),
+                    "subtitle": _as_text(row.get("subtitle")),
+                    "image_url": _as_text(row.get("image_url")),
+                }
+            )
+    else:
+        gdir = gallery_dir_for(webapps_root, gallery)
+        if gdir is not None and gdir.is_dir():
+            for p in sorted(gdir.iterdir(), key=lambda x: x.name.lower()):
+                if not p.is_file() or p.name.startswith(".") or ".example." in p.name:
+                    continue
+                slug, owner, ext = _asset_descriptor(p.name)
+                asset_path = url_prefix + p.name
+                try:
+                    size = p.stat().st_size
+                except OSError:
+                    size = 0
+                groups.setdefault(slug, []).append(
+                    {
+                        "filename": p.name,
+                        "asset_path": asset_path,
+                        "owner": owner,
+                        "ext": ext,
+                        "size_bytes": int(size),
+                        "referenced": asset_path in referenced,
+                        # icons + images are previewable inline by URL.
+                        "image_url": asset_path if gallery in ("icon", "image") else "",
+                    }
+                )
+
+    group_list = [
+        {
+            "slug": slug,
+            "label": slug.replace("_", " ").replace("-", " ").title() or slug,
+            "count": len(members),
+            "members": members,
+        }
+        for slug, members in sorted(groups.items())
+    ]
+    return {
+        "gallery": gallery,
+        "kind": meta["kind"],
+        "url_prefix": url_prefix,
+        "count": sum(len(g["members"]) for g in group_list),
+        "groups": group_list,
+    }
+
+
+def _update_manifests_for_asset(
+    webapps_root: str | Path,
+    kind: str,
+    match_path: str,
+    *,
+    new_path: str | None = None,
+    patch: dict[str, Any] | None = None,
+) -> list[str]:
+    """Update every ``*<kind>_use.yaml`` entry whose asset_path == match_path.
+
+    Optionally set ``asset_path=new_path`` and/or merge ``patch`` into the
+    entry. Atomic per manifest. Returns the list of manifest paths changed.
+    """
+    updated: list[str] = []
+    pattern = str(
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / f"*{kind}_use.yaml"
+    )
+    for hit in sorted(glob.glob(pattern)):
+        manifest_path = Path(hit)
+        data = _load_yaml_mapping(manifest_path)
+        entries = data.get("entries")
+        if not isinstance(entries, list):
+            continue
+        changed = False
+        for entry in entries:
+            if isinstance(entry, dict) and _as_text(entry.get("asset_path")) == match_path:
+                if patch:
+                    for key, value in patch.items():
+                        entry[key] = value
+                    changed = True
+                if new_path is not None:
+                    entry["asset_path"] = new_path
+                    changed = True
+        if changed:
+            text = yaml.safe_dump(
+                data, default_flow_style=False, allow_unicode=True, sort_keys=False
+            )
+            try:
+                _atomic_write_text(manifest_path, text)
+                updated.append(str(manifest_path))
+            except OSError:
+                continue
+    return updated
+
+
+def retitle_asset(
+    webapps_root: str | Path | None, gallery: str, filename: str, new_asset_id: str
+) -> dict[str, Any]:
+    """Rename the *title* (not the file) of a gallery member.
+
+    Profiles: set the canonical ``display_name`` (via ``save_profile``) AND
+    propagate to the per-site excerpts + owning site (same as the profile-save
+    route) so the new title reaches the live page. Binary galleries: rewrite the
+    ``asset_id`` of every manifest entry referencing the asset — the file on
+    disk is untouched. Returns ``{ok, ...}``.
+    """
+    gallery = _as_text(gallery)
+    meta = _GALLERY_META.get(gallery)
+    if meta is None:
+        return {"ok": False, "error": "unknown_gallery"}
+    new_title = _as_text(new_asset_id)
+    if not new_title:
+        return {"ok": False, "error": "missing_title"}
+    name = os.path.basename(_as_text(filename))
+    if not name or name.startswith("."):
+        return {"ok": False, "error": "invalid_filename"}
+    if gallery == "profiles":
+        slug = _profile_slug(name)
+        saved = save_profile(webapps_root, slug, {"display_name": new_title})
+        if not saved.get("ok"):
+            return saved
+        propagation = propagate_profile(webapps_root, slug)
+        return {"ok": True, "saved": saved, "propagation": propagation, "retitled": name}
+    if not webapps_root:
+        return {"ok": False, "error": "no_webapps_root"}
+    asset_path = meta["url_prefix"] + name
+    updated = _update_manifests_for_asset(
+        webapps_root, meta["kind"], asset_path, patch={"asset_id": new_title}
+    )
+    return {"ok": True, "retitled": name, "manifests_updated": updated}
+
+
+def rename_slug(
+    webapps_root: str | Path | None, gallery: str, old_slug: str, new_slug: str
+) -> dict[str, Any]:
+    """Rename a slug group: rename its file(s) on disk and repoint every
+    manifest entry. Refuses on a name collision. For profiles, refuses when the
+    profile is in use by a site (has derived excerpts) — re-allocate first.
+    """
+    gallery = _as_text(gallery)
+    meta = _GALLERY_META.get(gallery)
+    if meta is None:
+        return {"ok": False, "error": "unknown_gallery"}
+    gdir = gallery_dir_for(webapps_root, gallery)
+    if gdir is None or not gdir.is_dir():
+        return {"ok": False, "error": "no_gallery_dir"}
+    old_slug = _as_text(old_slug)
+    new_slug = _as_text(new_slug)
+    if not old_slug or not new_slug:
+        return {"ok": False, "error": "missing_slug"}
+    if not _SLUG_RE.match(new_slug):
+        return {"ok": False, "error": "invalid_new_slug"}
+    if old_slug == new_slug:
+        return {"ok": True, "renamed": [], "note": "no_change"}
+    members = _gallery_members(gdir, gallery, old_slug)
+    if not members:
+        return {"ok": False, "error": "slug_not_found"}
+    if gallery == "profiles":
+        for src in members:
+            if _excerpt_paths_for_slug(webapps_root, _profile_slug(src.name)):
+                return {
+                    "ok": False,
+                    "error": "in_use",
+                    "detail": "profile is used by a site; remove its allocation first",
+                }
+    # Plan + collision-check before any mutation.
+    plan: list[tuple[Path, Path, str]] = []
+    for src in members:
+        new_name = _filename_with_slug(src.name, gallery, new_slug)
+        dst = gdir / new_name
+        if dst.exists():
+            return {"ok": False, "error": "collision", "detail": new_name}
+        plan.append((src, dst, new_name))
+    renamed: list[str] = []
+    for src, dst, new_name in plan:
+        old_path = meta["url_prefix"] + src.name
+        new_path = meta["url_prefix"] + new_name
+        try:
+            os.replace(str(src), str(dst))
+        except OSError as exc:
+            return {
+                "ok": False,
+                "error": "rename_failed",
+                "detail": str(exc),
+                "renamed": renamed,
+            }
+        if webapps_root:
+            _update_manifests_for_asset(
+                webapps_root, meta["kind"], old_path, new_path=new_path
+            )
+        renamed.append(new_name)
+    return {"ok": True, "renamed": renamed}
+
+
+def delete_asset_if_unreferenced(
+    webapps_root: str | Path | None, gallery: str, filename: str
+) -> dict[str, Any]:
+    """Delete a single gallery file ONLY when no site manifest references it
+    (and, for profiles, no per-site derived excerpt exists). Refuses otherwise —
+    never deletes an asset a live site is using.
+    """
+    gallery = _as_text(gallery)
+    meta = _GALLERY_META.get(gallery)
+    if meta is None:
+        return {"ok": False, "error": "unknown_gallery"}
+    gdir = gallery_dir_for(webapps_root, gallery)
+    if gdir is None:
+        return {"ok": False, "error": "no_webapps_root"}
+    name = os.path.basename(_as_text(filename))
+    if not name or name.startswith("."):
+        return {"ok": False, "error": "invalid_filename"}
+    target = gdir / name
+    if not target.is_file():
+        return {"ok": False, "error": "not_found"}
+    asset_path = meta["url_prefix"] + name
+    if asset_path in manifest_referenced_paths(webapps_root, meta["kind"]):
+        return {"ok": False, "error": "referenced"}
+    if gallery == "profiles" and _excerpt_paths_for_slug(webapps_root, _profile_slug(name)):
+        return {"ok": False, "error": "referenced"}
+    try:
+        target.unlink()
+    except OSError as exc:
+        return {"ok": False, "error": "delete_failed", "detail": str(exc)}
+    return {"ok": True, "removed": name}
 
 
 # --------------------------------------------------------------------------- #
@@ -961,62 +1505,153 @@ def contacts_detail(webapps_root: str | Path | None) -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
-# extension renderer
+# extension renderer — GLOBAL (Library) vs PER-GRANTEE (Allocation)
 # --------------------------------------------------------------------------- #
-def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
-    """Render the resources extension card payload.
+def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any]:
+    """GLOBAL mode: the shared Resource LIBRARY.
 
-    Unlike the operational extensions, resources is NOT grantee-scoped — it
-    reads the shared site-core galleries straight from ``webapps_root``. The
-    payload carries:
-      * ``galleries`` — the read gallery listing (reused from resources_surface)
-      * ``profiles`` — the phone-contacts roster (list_profiles)
-      * ``icon_duplicate_groups`` — dedup candidates
-      * ``upload_action`` / ``profile_save_route`` — route hints for the JS
-    The resources card JS (v2_portal_workbench_renderers) renders the contact
-    app, detail/edit, upload, and icon-dedup UI from this payload.
+    Search + view + manage every leaflet, organized BY SLUG per type. Carries
+    the slug-grouped managed galleries, the profiles contact-app roster + edit
+    routes, icon dedup, read-only PII views, and the management route hints
+    (retitle / rename-slug / delete / per-gallery lazy-load / upload). NOTE: the
+    allocation (add-to-manifest) affordance is intentionally ABSENT here — it
+    lives only in per-grantee mode.
     """
-    from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_surface import (
-        build_resources_surface_payload,
-    )
-
-    webapps_root = ctx.get("webapps_root")
-    gallery_payload = build_resources_surface_payload(webapps_root)
+    managed = {
+        gallery: build_grouped_gallery(webapps_root, gallery)
+        for gallery in MANAGED_GALLERIES
+    }
     return {
         "resources_app": True,
-        "galleries": gallery_payload.get("subtabs", []),
-        "site_core_root": gallery_payload.get("site_core_root", ""),
+        "resources_mode": "library",
+        "managed_galleries": managed,
+        "managed_gallery_order": list(MANAGED_GALLERIES),
         "profiles": list_profiles(webapps_root),
-        # Rich, read-only operator views for the PII galleries (Wave-2 P5):
-        # events as cards/rows + KPI, contacts grouped per entity.
+        # Rich, read-only operator views for the PII galleries (Wave-2 P5).
         "events_detail": events_detail(webapps_root),
         "contacts_detail": contacts_detail(webapps_root),
         "icon_duplicate_groups": icon_duplicate_groups(webapps_root),
         "image_url_prefix": _IMAGE_URL_PREFIX,
-        "upload_action": {
-            "route": "/portal/api/resources/upload",
-            "method": "POST",
-        },
+        "upload_action": {"route": "/portal/api/resources/upload", "method": "POST"},
         "profile_detail_route": "/__fnd/resources/profile/detail",
         "profile_save_route": "/__fnd/resources/profile/save",
         "icon_duplicates_route": "/__fnd/resources/icon/duplicates",
         "icon_dedup_route": "/__fnd/resources/icon/dedup",
-        "manifest_add_route": "/__fnd/resources/manifest/add",
+        "gallery_route": "/__fnd/resources/gallery",
+        "retitle_route": "/__fnd/resources/asset/retitle",
+        "rename_slug_route": "/__fnd/resources/asset/rename-slug",
+        "delete_route": "/__fnd/resources/asset/delete",
     }
 
 
+def _resources_allocation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """PER-GRANTEE mode: allocate library leaflets onto the selected grantee's
+    site manifests.
+
+    For the selected grantee's site (``ctx["domain"]`` → ``clients/<domain>/``),
+    list, per managed resource type, which leaflets are currently "used" (in
+    that type's ``*_use.yaml`` manifest) with remove affordances, plus the
+    candidate leaflets (the library, grouped by slug) to add from. Reuses
+    ``site_manifest_entries`` + ``build_grouped_gallery``. Carries the add +
+    remove route hints.
+    """
+    webapps_root = ctx.get("webapps_root")
+    grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
+    domain = _as_text(ctx.get("domain"))
+    site = os.path.basename(domain)
+    site_exists = bool(site) and (
+        Path(webapps_root) / "clients" / site / "frontend" / "assets"
+    ).is_dir() if webapps_root else False
+
+    allocations: list[dict[str, Any]] = []
+    for gallery in MANAGED_GALLERIES:
+        kind = manifest_kind_for(gallery)
+        used = site_manifest_entries(webapps_root, site, kind)
+        used_paths = {e["asset_path"] for e in used}
+        # Allocation derives its own per-site ``allocated`` flag from
+        # ``used_paths`` below, so skip the all-sites ``referenced`` glob.
+        grouped = build_grouped_gallery(
+            webapps_root, gallery, compute_referenced=False
+        )
+        candidates = [
+            {
+                "filename": m["filename"],
+                "asset_path": m["asset_path"],
+                "asset_id": m.get("display_name") or _gallery_slug(gallery, m["filename"]),
+                "slug": _gallery_slug(gallery, m["filename"]),
+                "allocated": m["asset_path"] in used_paths,
+                "image_url": m.get("image_url", ""),
+            }
+            for group in grouped["groups"]
+            for m in group["members"]
+        ]
+        allocations.append(
+            {
+                "gallery": gallery,
+                "kind": kind,
+                "url_prefix": asset_url_prefix_for(gallery),
+                "used": used,
+                "used_count": len(used),
+                "candidates": candidates,
+            }
+        )
+
+    return {
+        "resources_app": True,
+        "resources_mode": "allocation",
+        "grantee_msn_id": _as_text(grantee.get("msn_id")),
+        "grantee_label": _as_text(grantee.get("label")) or _as_text(grantee.get("msn_id")),
+        "site": site,
+        "domain": domain,
+        "site_exists": site_exists,
+        "allocations": allocations,
+        "manifest_add_route": "/__fnd/resources/manifest/add",
+        "manifest_remove_route": "/__fnd/resources/manifest/remove",
+    }
+
+
+def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Render the resources extension card payload.
+
+    Two modes (the operator's "overall library vs per-grantee allocation"):
+      * LIBRARY (default) → the shared Resource LIBRARY (search/view/manage all
+        leaflets by type, organized by slug). Reads the shared site-core
+        galleries straight from ``webapps_root`` (not grantee-scoped). This is
+        the default whenever no specific grantee is engaged — including a bare
+        ctx — so it is the back-compatible behavior.
+      * ALLOCATION → only when grantee mode is active AND a grantee is selected:
+        manage which leaflets are "used" in that site's per-type ``*_use.yaml``
+        manifest (``_resources_allocation_payload``, per-grantee phase).
+    """
+    grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
+    if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
+        return _resources_allocation_payload(ctx)
+    return _resources_library_payload(ctx.get("webapps_root"))
+
+
 __all__ = [
+    "MANAGED_GALLERIES",
     "_render_ext_resources",
     "add_asset_to_manifest",
+    "asset_url_prefix_for",
+    "build_grouped_gallery",
     "contacts_detail",
+    "delete_asset_if_unreferenced",
     "derive_profile_excerpt",
     "events_detail",
+    "gallery_dir_for",
     "grantee_profiles",
     "icon_duplicate_groups",
     "list_profiles",
+    "manifest_kind_for",
+    "manifest_referenced_paths",
     "profile_detail",
     "propagate_profile",
+    "remove_asset_from_manifest",
     "remove_icon_duplicate",
+    "rename_slug",
     "resolve_profile_image",
+    "retitle_asset",
     "save_profile",
+    "site_manifest_entries",
 ]
