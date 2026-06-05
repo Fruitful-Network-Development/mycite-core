@@ -155,8 +155,11 @@ def _profile_display_name(profile: dict[str, Any], slug: str) -> str:
 def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
     """Phone-contacts-style roster: one row per canonical profile.
 
-    Each row = {slug, filename, display_name, subtitle, image_url}. Sorted
-    by display_name. Tolerant of a missing profiles dir (returns []).
+    Each row = {slug, filename, display_name, subtitle, image_url, public,
+    entity_scope, related}. The ``public`` / ``entity_scope`` / ``related``
+    keys let grantee-scoped callers (the client dashboard) filter the roster
+    down to the public, in-scope subset without re-reading the YAML. Sorted by
+    display_name. Tolerant of a missing profiles dir (returns []).
     """
     profiles_dir = _profiles_dir(webapps_root)
     site_core = _site_core_root(webapps_root)
@@ -171,6 +174,7 @@ def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
             continue
         profile = _load_yaml_mapping(path)
         slug = _profile_slug(path.name)
+        related = profile.get("related")
         rows.append(
             {
                 "slug": slug,
@@ -179,10 +183,75 @@ def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
                 "subtitle": _as_text(profile.get("entity_type"))
                 or _as_text(profile.get("role")),
                 "image_url": resolve_profile_image(profile, slug, image_dir),
+                # Visibility + scoping hints (the dashboard never shows a
+                # non-public profile; the operator portal shows all of them).
+                "public": bool(profile.get("public", False)),
+                "entity_scope": _as_text(profile.get("entity_scope")),
+                "related": [_as_text(r) for r in related] if isinstance(related, list) else [],
             }
         )
     rows.sort(key=lambda r: r["display_name"].lower())
     return rows
+
+
+def grantee_profiles(
+    webapps_root: str | Path | None, scope_tokens: list[str] | None = None
+) -> list[dict[str, Any]]:
+    """Read-only, grantee-facing profile roster for the client dashboard.
+
+    Returns the subset of ``list_profiles`` rows a grantee may see:
+
+      * always restricted to ``public: true`` profiles (a grantee never sees a
+        non-public/operator-only profile);
+      * when ``scope_tokens`` identifies the grantee's own entity (e.g. its
+        short_name / domain / slug), narrowed to profiles whose slug,
+        ``entity_scope`` or ``related`` references one of those tokens;
+      * when scoping is ambiguous (no token matches any profile — the common
+        case today, since canonical profiles carry no per-grantee scope yet),
+        the full public roster is returned. Read-only, so showing the public
+        roster is safe.
+    """
+    rows = [r for r in list_profiles(webapps_root) if r.get("public")]
+    tokens = {_normalize_scope_token(t) for t in (scope_tokens or [])}
+    tokens.discard("")
+    if not tokens:
+        return rows
+    scoped = [r for r in rows if _profile_in_scope(r, tokens)]
+    return scoped if scoped else rows
+
+
+def _normalize_scope_token(value: Any) -> str:
+    """Lower-case a scope token and collapse separators to underscores so a
+    grantee short_name / domain / slug compares against a profile slug.
+
+    ``"Bloom Hill Farm"`` / ``"bloom-hill-farm"`` / ``"bloomhillfarm.com"``
+    all normalize toward ``"bloom_hill_farm"`` segments for comparison.
+    """
+    text = _as_text(value).lower()
+    # Drop a domain TLD tail so "bloomhillfarm.com" → "bloomhillfarm".
+    if "." in text and "/" not in text and " " not in text:
+        text = text.rsplit(".", 1)[0]
+    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
+
+
+def _profile_in_scope(row: dict[str, Any], tokens: set[str]) -> bool:
+    """True when a profile row references any of the grantee's scope tokens.
+
+    Matches on WHOLE-token equality of the normalized values: a grantee token
+    must equal the profile's normalized slug, ``entity_scope`` or one of its
+    ``related`` references. Segment-membership matching is deliberately avoided
+    — a grantee whose short_name/label normalizes to a common word (e.g.
+    "valley", "farm", "market") must NOT scope-match every unrelated public
+    profile that happens to contain that word, which would silently hide the
+    rest of the public roster. When no token matches exactly, ``grantee_profiles``
+    falls back to the full public roster (read-only, so that is safe).
+    """
+    candidates = {_normalize_scope_token(row.get("slug"))}
+    candidates.add(_normalize_scope_token(row.get("entity_scope")))
+    for ref in row.get("related") or []:
+        candidates.add(_normalize_scope_token(ref))
+    candidates.discard("")
+    return bool(tokens & candidates)
 
 
 def _scalar_str(value: Any) -> str:
@@ -773,6 +842,7 @@ __all__ = [
     "_render_ext_resources",
     "add_asset_to_manifest",
     "derive_profile_excerpt",
+    "grantee_profiles",
     "icon_duplicate_groups",
     "list_profiles",
     "profile_detail",
