@@ -10216,6 +10216,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesUploadForm button:hover { background: var(--paper); }
 .v2-resourcesApp button.v2-rowAction--primary,
 .v2-resourcesUploadForm button { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+/* The shared component-library form's submit button (the profile editor's
+   "Save & publish") renders unstyled by default — unify it with the primary
+   resource button so it matches the rest and is theme-aware (not browser gray). */
+.v2-resourcesApp .v2-form__submit {
+  padding: 5px 14px; border-radius: 5px; cursor: pointer; font: inherit; font-weight: 600;
+  border: 1px solid var(--accent); background: var(--paper2); color: var(--accent);
+}
+.v2-resourcesApp .v2-form__submit:hover { background: var(--paper); }
 .v2-resourcesApp button.v2-rowAction--danger { border-color: #c0392b; color: #c0392b; }
 /* Wave-2 P5: read-only Events / Contacts operator views in ext_resources. */
 .v2-resourcesGallery { display: flex; flex-direction: column; gap: 8px; }
