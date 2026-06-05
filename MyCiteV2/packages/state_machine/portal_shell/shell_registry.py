@@ -17,6 +17,8 @@ from .shell_schemas import (
     NETWORK_ROOT_ROUTE,
     NETWORK_ROOT_SURFACE_ID,
     REDUCER_OWNED_SURFACE_IDS,
+    RESOURCES_ROOT_ROUTE,
+    RESOURCES_ROOT_SURFACE_ID,
     SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
@@ -72,6 +74,16 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             root_surface_id=UTILITIES_ROOT_SURFACE_ID,
             surface_kind="utilities_root",
             page_owner="utilities",
+        ),
+        # Wave-1 scaffold: top-level Resources root listing site-core
+        # galleries read-only (one subtab per gallery). Rich UX is Wave 2.
+        PortalSurfaceCatalogEntry(
+            surface_id=RESOURCES_ROOT_SURFACE_ID,
+            label="Resources",
+            route=RESOURCES_ROOT_ROUTE,
+            root_surface_id=RESOURCES_ROOT_SURFACE_ID,
+            surface_kind="resources_root",
+            page_owner="resources",
         ),
         PortalSurfaceCatalogEntry(
             surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,

@@ -144,9 +144,19 @@ class EmailDashboardTests(unittest.TestCase):
         self.contacts_dir.mkdir(parents=True)
 
     def _write_contact_log(self, contacts, dispatches=()):
-        payload = {"contacts": contacts, "dispatches": list(dispatches)}
-        (self.contacts_dir / f"newsletter.{DOMAIN}.contacts.json").write_text(
-            json.dumps(payload), encoding="utf-8")
+        # Store split (Wave-1): the ROSTER (contacts[]) lives in the per-entity
+        # YAML leaflet; DISPATCH history (dispatches[]) stays in the JSON log.
+        # Route each half to the store that owns it via the canonical adapter
+        # so this fixture mirrors how the live writers persist.
+        from MyCiteV2.packages.adapters.filesystem import (
+            FilesystemNewsletterStateAdapter,
+        )
+
+        adapter = FilesystemNewsletterStateAdapter(self.private_dir)
+        adapter.save_contact_log(
+            domain=DOMAIN,
+            payload={"contacts": list(contacts), "dispatches": list(dispatches)},
+        )
 
     def test_deliverability_available_false_when_no_ses_pipeline(self) -> None:
         # _StubDeliverabilityAdapter returns available=False shape.

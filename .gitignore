@@ -43,6 +43,11 @@ env/
 # (/srv/webapps/mycite/<grantee>/private/.../aws-csm); deployed/ is a DR
 # snapshot and must never be versioned (PII + operational drift).
 deployed/*/private/utilities/tools/aws-csm/
+# Contact-roster leaflets (per-entity YAML under site-core/contacts) hold real
+# PII — names/emails/phones. The canonical store is the LIVE webapps tree; these
+# files are runtime/untracked and must NEVER be versioned.
+**/clients/_shared/site-core/contacts/*.contacts.yaml
+*.contacts.yaml
 
 # Build artifacts
 dist/
