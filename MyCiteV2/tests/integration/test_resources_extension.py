@@ -215,5 +215,145 @@ class ManifestAndIconTests(unittest.TestCase):
         self.assertFalse(rx.remove_icon_duplicate(self.tmp, "unique.svg")["ok"])
 
 
+def _seed_events(webapps_root: Path) -> Path:
+    ev = webapps_root / "clients" / "_shared" / "site-core" / "events"
+    ev.mkdir(parents=True)
+    (ev / "2026-05-01.event-job.brocks_pressure_washing.driveway.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "mycite.site_core.event_job.v1",
+                "event_kind": "job",
+                "client": "brocks_pressure_washing",
+                "id": "2026-0001",
+                "date": "2026-05-01",
+                "status": "completed",
+                "title": "Driveway wash",
+                "location": "Akron",
+                "customer": {"name": "Jane Roe"},
+                "pricing": {"total": 250.0, "paid": True},
+                "tags": [{"type": "driveway"}],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (ev / "2026-04-10.event-job.brocks_pressure_washing.deck.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "mycite.site_core.event_job.v1",
+                "client": "brocks_pressure_washing",
+                "id": "2026-0002",
+                "date": "2026-04-10",
+                "status": "booked",
+                "title": "Deck",
+                "customer": {"name": "Bob"},
+                "pricing": {"total": 120},
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    # The tracked *.example.* template must be ignored, not counted.
+    (ev / "0000-00-00.event-job.sample.template.example.yaml").write_text(
+        "schema: mycite.site_core.event_job.v1\n", encoding="utf-8"
+    )
+    return webapps_root
+
+
+def _seed_contacts(webapps_root: Path) -> Path:
+    ct = webapps_root / "clients" / "_shared" / "site-core" / "contacts"
+    ct.mkdir(parents=True)
+    (ct / "0000-00-00.record-data.brocks_pressure_washing.contacts.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "schema": "mycite.site_core.contact_record.v1",
+                "entity": "brocks_pressure_washing",
+                "contacts": [
+                    {
+                        "email": "amy@x.com",
+                        "first_name": "Amy",
+                        "last_name": "Adams",
+                        "phone": "555-1",
+                        "subscribed": True,
+                        "organization": "Acme",
+                        "domain": "brockspressurewashing.com",
+                    },
+                    {"email": "ben@x.com", "first_name": "Ben", "subscribed": False},
+                ],
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    # example template ignored.
+    (ct / "0000-00-00.record-data.sample.contacts.example.yaml").write_text(
+        "schema: x\n", encoding="utf-8"
+    )
+    return webapps_root
+
+
+class EventsDetailTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_events_"))
+        _seed_events(self.tmp)
+
+    def test_events_detail_formats_rows_and_kpis(self) -> None:
+        detail = rx.events_detail(self.tmp)
+        self.assertEqual(detail["count"], 2)  # example skipped
+        # Sorted by date descending — the completed driveway job first.
+        first = detail["rows"][0]
+        self.assertEqual(first["date"], "2026-05-01")
+        self.assertEqual(first["title"], "Driveway wash")
+        self.assertEqual(first["status"], "completed")
+        self.assertEqual(first["customer"], "Jane Roe")
+        self.assertEqual(first["total"], 250.0)
+        # KPI line: total events + revenue (completed only).
+        self.assertEqual(detail["summary"]["total_events"], 2)
+        self.assertEqual(detail["summary"]["total_revenue"], 250.0)
+
+    def test_events_detail_empty_when_no_gallery(self) -> None:
+        empty = rx.events_detail(Path(tempfile.mkdtemp(prefix="ext_res_noev_")))
+        self.assertEqual(empty["rows"], [])
+        self.assertEqual(empty["count"], 0)
+
+
+class ContactsDetailTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_contacts_"))
+        _seed_contacts(self.tmp)
+
+    def test_contacts_detail_groups_per_entity(self) -> None:
+        detail = rx.contacts_detail(self.tmp)
+        self.assertEqual(detail["total_contacts"], 2)
+        entities = {e["entity"]: e for e in detail["entities"]}
+        self.assertIn("brocks_pressure_washing", entities)
+        ent = entities["brocks_pressure_washing"]
+        self.assertEqual(ent["count"], 2)
+        rows = {c["email"]: c for c in ent["contacts"]}
+        self.assertEqual(rows["amy@x.com"]["name"], "Amy Adams")
+        self.assertEqual(rows["amy@x.com"]["phone"], "555-1")
+        self.assertTrue(rows["amy@x.com"]["subscribed"])
+        self.assertEqual(rows["amy@x.com"]["organization"], "Acme")
+        # A contact with only a first name + no org falls back gracefully.
+        self.assertEqual(rows["ben@x.com"]["name"], "Ben")
+        self.assertFalse(rows["ben@x.com"]["subscribed"])
+
+    def test_contacts_detail_empty_when_no_gallery(self) -> None:
+        empty = rx.contacts_detail(Path(tempfile.mkdtemp(prefix="ext_res_noct_")))
+        self.assertEqual(empty["entities"], [])
+        self.assertEqual(empty["total_contacts"], 0)
+
+
+class RenderPayloadCarriesDetailTests(unittest.TestCase):
+    def test_render_includes_events_and_contacts_detail(self) -> None:
+        tmp = Path(tempfile.mkdtemp(prefix="ext_res_payload_"))
+        _seed_profiles(tmp)
+        _seed_events(tmp)
+        _seed_contacts(tmp)
+        payload = render_extension("ext_resources", {"webapps_root": tmp})
+        self.assertEqual(payload["events_detail"]["count"], 2)
+        self.assertEqual(payload["contacts_detail"]["total_contacts"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()

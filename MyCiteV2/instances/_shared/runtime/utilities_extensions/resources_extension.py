@@ -798,6 +798,169 @@ def add_asset_to_manifest(
 
 
 # --------------------------------------------------------------------------- #
+# events detail (read-only operator view) — reuses utilities_extensions.events
+# --------------------------------------------------------------------------- #
+def _customer_name(row: dict[str, Any]) -> str:
+    """Best-effort customer display name from a job-kind event leaflet.
+
+    The job extras nest the customer under ``customer.name``; fall back to
+    first/last name parts, then "".
+    """
+    customer = row.get("customer") if isinstance(row.get("customer"), dict) else {}
+    name = _as_text(customer.get("name"))
+    if name:
+        return name
+    parts = [
+        _as_text(customer.get("first_name")),
+        _as_text(customer.get("last_name")),
+    ]
+    return " ".join(p for p in parts if p)
+
+
+def _event_total(row: dict[str, Any]) -> float:
+    pricing = row.get("pricing") if isinstance(row.get("pricing"), dict) else {}
+    try:
+        return float(pricing.get("total") or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def events_detail(webapps_root: str | Path | None) -> dict[str, Any]:
+    """Formatted, read-only operator view of every event leaflet.
+
+    Reuses ``list_events`` (all clients — operator scope) + ``events_summary``.
+    Returns ``{rows, summary, count}`` where each row is a flat, display-ready
+    dict (``date · client · title · status · customer · total``). The total is
+    rounded to whole dollars-and-cents for display; the raw revenue KPIs come
+    from ``events_summary``. Tolerant of a missing gallery (returns empty).
+    """
+    from MyCiteV2.instances._shared.runtime.utilities_extensions.events import (
+        events_summary,
+        list_events,
+    )
+
+    if not webapps_root:
+        return {"rows": [], "summary": events_summary([]), "count": 0}
+    raw = list_events(webapps_root)
+    rows: list[dict[str, Any]] = []
+    for row in raw:
+        rows.append(
+            {
+                "id": _as_text(row.get("id")),
+                "date": _as_text(row.get("date")),
+                "client": _as_text(row.get("client")),
+                "title": _as_text(row.get("title")),
+                "status": _as_text(row.get("status")) or "unknown",
+                "location": _as_text(row.get("location")),
+                "customer": _customer_name(row),
+                "total": round(_event_total(row), 2),
+            }
+        )
+    return {"rows": rows, "summary": events_summary(raw), "count": len(rows)}
+
+
+# --------------------------------------------------------------------------- #
+# contacts detail (read-only operator view) — reuses contact_leaflet adapter
+# --------------------------------------------------------------------------- #
+_CONTACTS_REL = (*_SITE_CORE_REL, "contacts")
+_CONTACTS_SUFFIX = ".contacts.yaml"
+
+
+def _contacts_dir(webapps_root: str | Path | None) -> Path | None:
+    if not webapps_root:
+        return None
+    return Path(webapps_root).joinpath(*_CONTACTS_REL)
+
+
+def _contact_entity_slug(filename: str) -> str:
+    """Extract the entity slug from a contacts leaflet filename.
+
+    ``0000-00-00.record-data.<entity>.contacts.yaml`` → ``<entity>``. The
+    entity token may itself contain dots? No — entity slugs are
+    underscore-joined, so the token between ``record-data.`` and
+    ``.contacts.yaml`` is the entity.
+    """
+    name = str(filename)
+    if name.endswith(_CONTACTS_SUFFIX):
+        name = name[: -len(_CONTACTS_SUFFIX)]
+    # Strip the leading "<date>.record-data." prefix if present, else fall
+    # back to the last dot-token.
+    marker = ".record-data."
+    idx = name.find(marker)
+    if idx != -1:
+        return name[idx + len(marker):]
+    return name.rsplit(".", 1)[-1]
+
+
+def _entity_label(slug: str) -> str:
+    return slug.replace("_", " ").title()
+
+
+def _contact_display_name(contact: dict[str, Any]) -> str:
+    parts = [
+        _as_text(contact.get("first_name")),
+        _as_text(contact.get("middle_name")),
+        _as_text(contact.get("last_name")),
+    ]
+    name = " ".join(p for p in parts if p)
+    return name or _as_text(contact.get("email"))
+
+
+def contacts_detail(webapps_root: str | Path | None) -> dict[str, Any]:
+    """Formatted, read-only operator view of every per-entity contact roster.
+
+    Enumerates ``*.contacts.yaml`` leaflets under the contacts gallery (skips
+    dotfiles + ``.example.`` templates), loads each via the contact-leaflet
+    adapter (``load_roster``), and groups the rows by entity. Each contact row
+    is flattened to ``name · email · phone · subscribed · organization`` for
+    the operator table. Returns ``{entities, total_contacts}``.
+    """
+    from MyCiteV2.packages.adapters.filesystem.contact_leaflet import load_roster
+
+    contacts_dir = _contacts_dir(webapps_root)
+    if contacts_dir is None or not contacts_dir.is_dir():
+        return {"entities": [], "total_contacts": 0}
+    entities: list[dict[str, Any]] = []
+    total = 0
+    for path in sorted(contacts_dir.iterdir(), key=lambda p: p.name.lower()):
+        if not path.is_file() or not path.name.endswith(_CONTACTS_SUFFIX):
+            continue
+        if path.name.startswith(".") or ".example." in path.name:
+            continue
+        slug = _contact_entity_slug(path.name)
+        if not slug:
+            continue
+        # The adapter derives webapps_root from private_dir in the live layout;
+        # here we pass webapps_root explicitly so the contacts dir resolves to
+        # the same gallery we enumerated. private_dir is required by the
+        # signature but unused for resolution when webapps_root is given.
+        roster = load_roster(
+            slug, private_dir=webapps_root, webapps_root=webapps_root
+        )
+        rows = [
+            {
+                "name": _contact_display_name(c),
+                "email": _as_text(c.get("email")),
+                "phone": _as_text(c.get("phone")),
+                "subscribed": bool(c.get("subscribed")),
+                "organization": _as_text(c.get("organization")),
+                "domain": _as_text(c.get("domain")),
+            }
+            for c in roster
+        ]
+        total += len(rows)
+        entities.append(
+            {
+                "entity": slug,
+                "label": _entity_label(slug),
+                "count": len(rows),
+                "contacts": rows,
+            }
+        )
+    return {"entities": entities, "total_contacts": total}
+
+
+# --------------------------------------------------------------------------- #
 # extension renderer
 # --------------------------------------------------------------------------- #
 def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
@@ -824,6 +987,10 @@ def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
         "galleries": gallery_payload.get("subtabs", []),
         "site_core_root": gallery_payload.get("site_core_root", ""),
         "profiles": list_profiles(webapps_root),
+        # Rich, read-only operator views for the PII galleries (Wave-2 P5):
+        # events as cards/rows + KPI, contacts grouped per entity.
+        "events_detail": events_detail(webapps_root),
+        "contacts_detail": contacts_detail(webapps_root),
         "icon_duplicate_groups": icon_duplicate_groups(webapps_root),
         "image_url_prefix": _IMAGE_URL_PREFIX,
         "upload_action": {
@@ -841,7 +1008,9 @@ def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
 __all__ = [
     "_render_ext_resources",
     "add_asset_to_manifest",
+    "contacts_detail",
     "derive_profile_excerpt",
+    "events_detail",
     "grantee_profiles",
     "icon_duplicate_groups",
     "list_profiles",

@@ -10204,3 +10204,21 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesApp button.v2-rowAction--primary,
 .v2-resourcesUploadForm button { border-color: var(--accent, #1e6c93); }
 .v2-resourcesApp button.v2-rowAction--danger { border-color: #a3402f; color: #e88; }
+/* Wave-2 P5: read-only Events / Contacts operator views in ext_resources. */
+.v2-resourcesGallery { display: flex; flex-direction: column; gap: 8px; }
+.v2-resourcesGallery > h4 { margin: 8px 0 2px; font-size: 13px; }
+.v2-resourcesKpis {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  font-size: 12px; color: var(--ink2, #888888);
+}
+.v2-resourcesKpi {
+  padding: 4px 10px; border-radius: 6px;
+  border: 1px solid var(--line, #afafaa);
+  background: var(--paper2, #e8e5d0);
+}
+.v2-resourcesKpi strong { color: var(--ink, #464646); }
+.v2-resourcesContactGroup { display: flex; flex-direction: column; gap: 2px; }
+.v2-resourcesContactGroup > h5 {
+  margin: 8px 0 2px; font-size: 12px; color: var(--ink, #464646);
+}
+.v2-resourcesContactGroup__count { color: var(--ink2, #888888); font-weight: 400; }
