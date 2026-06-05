@@ -10180,11 +10180,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesDetail__head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .v2-resourcesDetail__head h4 { flex: 1; margin: 0; }
 .v2-resourcesField { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
-.v2-resourcesField input, .v2-resourcesField textarea,
-.v2-resourcesUploadForm input, .v2-resourcesUploadForm select {
-  width: 100%; padding: 5px 7px; font: inherit;
-  border: 1px solid var(--line, #afafaa); border-radius: 5px;
-  background: #fff; color: var(--ink, #464646);
+.v2-resourcesField input, .v2-resourcesField textarea, .v2-resourcesField select,
+.v2-resourcesUploadForm input, .v2-resourcesUploadForm select,
+.v2-resourcesApp input[type="text"], .v2-resourcesApp input[type="email"],
+.v2-resourcesApp input[type="url"], .v2-resourcesApp input[type="search"],
+.v2-resourcesApp input[type="password"], .v2-resourcesApp textarea, .v2-resourcesApp select {
+  width: 100%; padding: 5px 7px; font: inherit; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 5px;
+  background: var(--paper); color: var(--ink);
 }
 .v2-resourcesField--ro { flex-direction: row; gap: 8px; font-size: 12px; }
 .v2-resourcesField__label { opacity: 0.65; min-width: 140px; }
@@ -10194,16 +10197,26 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesUploadForm { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
 .v2-resourcesUploadForm label { display: flex; flex-direction: column; gap: 2px; }
 .v2-resourcesDedup__locked { opacity: 0.6; font-style: italic; }
+/* Unified, theme-aware resource controls — one convention for every button.
+   Uses ONLY defined theme vars (--paper/--paper2/--ink/--line/--accent), so it
+   reads correctly on light (Paper/Ocean/Forest) AND dark (Midnight) themes.
+   NEVER use --surface/--border (undefined → black box) or hardcoded #fff/#222. */
+.v2-resourcesApp button.v2-rowAction,
 .v2-resourcesApp button.v2-rowAction--primary,
 .v2-resourcesApp button.v2-rowAction--secondary,
 .v2-resourcesApp button.v2-rowAction--danger,
 .v2-resourcesUploadForm button {
-  padding: 5px 12px; border-radius: 5px; border: 1px solid var(--border, #2a2a2a);
-  background: var(--surface, #222); color: inherit; cursor: pointer; font: inherit;
+  padding: 4px 11px; border-radius: 5px; cursor: pointer; font: inherit;
+  border: 1px solid var(--line); background: var(--paper2); color: var(--ink);
 }
+.v2-resourcesApp button.v2-rowAction:hover,
+.v2-resourcesApp button.v2-rowAction--primary:hover,
+.v2-resourcesApp button.v2-rowAction--secondary:hover,
+.v2-resourcesApp button.v2-rowAction--danger:hover,
+.v2-resourcesUploadForm button:hover { background: var(--paper); }
 .v2-resourcesApp button.v2-rowAction--primary,
-.v2-resourcesUploadForm button { border-color: var(--accent, #1e6c93); }
-.v2-resourcesApp button.v2-rowAction--danger { border-color: #a3402f; color: #e88; }
+.v2-resourcesUploadForm button { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.v2-resourcesApp button.v2-rowAction--danger { border-color: #c0392b; color: #c0392b; }
 /* Wave-2 P5: read-only Events / Contacts operator views in ext_resources. */
 .v2-resourcesGallery { display: flex; flex-direction: column; gap: 8px; }
 .v2-resourcesGallery > h4 { margin: 8px 0 2px; font-size: 13px; }
@@ -10231,8 +10244,8 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesSearch {
   width: 100%; box-sizing: border-box; margin: 6px 0 10px;
   padding: 7px 10px; border-radius: 6px;
-  border: 1px solid var(--line, #afafaa);
-  background: #fff; color: var(--ink, #464646); font: inherit;
+  border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink); font: inherit;
 }
 .v2-resourcesManaged { font-size: 12px; margin: 4px 0; }
 .v2-resourcesManaged > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
@@ -10261,34 +10274,44 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   border: 1px solid var(--line, #afafaa); color: var(--ink2, #888888);
 }
 .v2-resourcesThumb--sm { width: 22px; height: 22px; flex-basis: 22px; }
-.v2-resourcesApp button.v2-rowAction {
-  padding: 3px 9px; border-radius: 5px; font: inherit; cursor: pointer;
-  border: 1px solid var(--line, #afafaa);
-  background: #fff; color: var(--ink, #464646);
-}
-.v2-resourcesApp button.v2-rowAction:hover { background: var(--paper, #f4f1e4); }
 .v2-resourcesMember.is-allocated { background: rgba(30,108,147,0.08); border-radius: 4px; }
 
-/* Unified, type-agnostic leaflet table (the naming-filtered library). */
-.v2-leafletTable {
-  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px;
+/* Two-pane master/detail Resource library (faceted search + list on the left,
+   view/edit on the right). Theme-aware throughout. */
+.v2-resourcesTwoPane { display: flex; gap: 12px; align-items: flex-start; margin-top: 6px; }
+.v2-resourcesPane { min-width: 0; }
+.v2-resourcesPane--list { flex: 0 0 44%; max-width: 44%; }
+.v2-resourcesPane--detail {
+  flex: 1 1 56%; min-width: 0; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--paper2);
 }
-.v2-leafletTable th, .v2-leafletTable td {
-  text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line, #afafaa);
-  vertical-align: middle;
+@media (max-width: 860px) {
+  .v2-resourcesTwoPane { flex-direction: column; }
+  .v2-resourcesPane--list, .v2-resourcesPane--detail { flex-basis: auto; max-width: none; width: 100%; }
 }
-.v2-leafletTable th {
-  font-weight: 600; color: var(--ink, #464646);
-  border-bottom: 2px solid var(--line, #afafaa); position: sticky; top: 0;
-  background: var(--paper, #f4f1e4);
+.v2-facetBar { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.v2-facetRow { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
+.v2-facet { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: var(--ink2); }
+.v2-facet select {
+  font: inherit; font-size: 12px; padding: 3px 6px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
 }
-.v2-leafletTable__sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-.v2-leafletRow { cursor: pointer; }
-.v2-leafletRow:hover { background: rgba(127,127,127,0.10); }
-.v2-leafletRow td code { font-size: 11px; word-break: break-all; }
-.v2-leafletRow__actions {
-  display: flex; gap: 4px; flex-wrap: wrap; white-space: nowrap; cursor: default;
+.v2-facet__sort { align-self: flex-end; }
+.v2-leafletList { max-height: 520px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.v2-leafletList__count { font-size: 10px; color: var(--ink2); padding: 2px 4px; }
+.v2-leafletItem {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 5px 8px; border: 1px solid transparent; border-radius: 6px;
+  background: none; color: var(--ink); cursor: pointer; font: inherit;
 }
+.v2-leafletItem:hover { background: var(--paper2); }
+.v2-leafletItem.is-active { background: var(--paper2); border-color: var(--accent); }
+.v2-leafletItem__text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.v2-leafletItem__title { font-weight: 600; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-leafletItem__sub { font-size: 10px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.v2-resourcesThumb--dot { border: 1px dashed var(--line); border-radius: 4px; background: var(--paper); }
+.v2-resourcesDetail__placeholder { color: var(--ink2); font-size: 12px; }
+.v2-resourcesDetail__result { font-size: 12px; color: var(--ink2); margin-top: 6px; display: block; }
 .v2-resourcesDetail__meta { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
 .v2-resourcesDetail__meta .v2-resourcesField label {
   font-size: 11px; font-weight: 600; color: var(--ink2, #888888);

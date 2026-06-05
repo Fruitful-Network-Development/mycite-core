@@ -2076,7 +2076,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         detail = resources_extension.profile_detail(host_config.webapps_root, slug)
         if detail is None:
             return jsonify({"ok": False, "error": "profile_not_found"}), 404
-        return jsonify({"ok": True, "profile": detail}), 200
+        # The component-library edit form (shared form system) + a read-only
+        # view of every field. The JS renders the form on the right pane.
+        edit_frame = resources_extension.build_profile_edit_frame(
+            host_config.webapps_root, slug
+        )
+        return jsonify({"ok": True, "profile": detail, "edit_frame": edit_frame}), 200
+
+    @app.get("/__fnd/resources/leaflets")
+    def fnd_resources_leaflets() -> tuple[Any, int]:
+        """The full flat leaflet index as JSON, so the library can refresh its
+        list after a mutation WITHOUT a full shell reload (preserving the
+        operator's facet selections + open detail)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        leaflets = resources_extension.build_leaflet_index(host_config.webapps_root)
+        return jsonify({"ok": True, "leaflets": leaflets}), 200
 
     @app.post("/__fnd/resources/profile/save")
     def fnd_resources_profile_save() -> tuple[Any, int]:

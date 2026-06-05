@@ -509,6 +509,62 @@ class AllocationTests(unittest.TestCase):
         self.assertTrue(allocated[0]["asset_path"].endswith("mail.svg"))
 
 
+class FullProfileEditTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_edit_"))
+        sc = self.tmp / "clients" / "_shared" / "site-core" / "profiles"
+        sc.mkdir(parents=True)
+        self.path = sc / "0000-00-00.artifact-profile-legal_entity.farm_z.profile.yaml"
+        self.path.write_text(
+            yaml.safe_dump(
+                {
+                    "name": "Farm Z",
+                    "summary_bio": "Old summary.",
+                    "bio": ["Para one.", "Para two."],
+                    "tags": ["historic"],
+                    "socials": [{"platform": "x", "value": "@z"}],  # structured: preserved
+                    "coordinates": {"lat": 1.0, "lng": 2.0},  # structured: preserved
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def test_save_typed_fields_round_trip(self) -> None:
+        # bio arrives as a multiline string (the textarea), tags as a list.
+        rx.save_profile(
+            self.tmp,
+            "farm_z",
+            {
+                "summary_bio": "New summary.",
+                "bio": "First paragraph.\n\nSecond paragraph.\n\nThird.",
+                "tags": ["historic", "agritourism"],
+                "name": "Farm Z",
+            },
+        )
+        data = yaml.safe_load(self.path.read_text())
+        self.assertEqual(data["summary_bio"], "New summary.")
+        self.assertEqual(data["bio"], ["First paragraph.", "Second paragraph.", "Third."])
+        self.assertEqual(data["tags"], ["historic", "agritourism"])
+        # Structured fields untouched.
+        self.assertEqual(data["socials"], [{"platform": "x", "value": "@z"}])
+        self.assertEqual(data["coordinates"], {"lat": 1.0, "lng": 2.0})
+
+    def test_edit_frame_field_types(self) -> None:
+        frame = rx.build_profile_edit_frame(self.tmp, "farm_z")
+        self.assertEqual(frame["component_type"], "form")
+        ftypes = {f["key"]: f["type"] for f in frame["payload"]["fields"]}
+        self.assertEqual(ftypes["bio"], "multiline")
+        self.assertEqual(ftypes["summary_bio"], "multiline")
+        # Simple lists render as multiline (one per line), not the unwired chips.
+        self.assertEqual(ftypes["tags"], "multiline")
+        tags_field = next(f for f in frame["payload"]["fields"] if f["key"] == "tags")
+        self.assertEqual(tags_field["value"], "historic")
+        bio_field = next(f for f in frame["payload"]["fields"] if f["key"] == "bio")
+        self.assertIn("Para one.", bio_field["value"])
+        self.assertIn("Para two.", bio_field["value"])
+
+
 class LeafletIndexTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_index_"))
@@ -542,6 +598,20 @@ class LeafletIndexTests(unittest.TestCase):
         mail = next(r for r in idx if r["slug"] == "mail" and r["kind"] == "icon")
         self.assertEqual(mail["entity_type"], "")
         self.assertTrue(mail["referenced"])  # referenced by the seeded manifest
+        # dash facet: slug split on first dash into base + variant.
+        self.assertEqual(mail["slug_base"], "mail")
+        self.assertEqual(mail["slug_variant"], "")
+
+    def test_slug_variant_facet(self) -> None:
+        # An icon whose slug carries an in-slug dash → base + variant.
+        icon_dir = self.tmp / "clients" / "_shared" / "site-core" / "icon"
+        (icon_dir / "0000-00-00.artifact-icon.org.logo-monochrome.svg").write_text(
+            "<svg/>", encoding="utf-8"
+        )
+        idx = rx.build_leaflet_index(self.tmp)
+        row = next(r for r in idx if r["slug"] == "logo-monochrome")
+        self.assertEqual(row["slug_base"], "logo")
+        self.assertEqual(row["slug_variant"], "monochrome")
 
 
 def _seed_cascade_tree(root: Path) -> Path:

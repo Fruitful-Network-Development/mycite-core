@@ -288,8 +288,9 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             required_capabilities=("fnd_peripheral_routing",),
             is_extension=True,
             summary=(
-                "Shared site-core asset library: view + edit entity profiles, "
-                "browse/upload images, icons and documents, and dedupe icons."
+                "Shared site-core leaflet library: search, view and edit every "
+                "resource by naming convention; allocate resources to a grantee's "
+                "site from a grantee view."
             ),
         ),
     )
