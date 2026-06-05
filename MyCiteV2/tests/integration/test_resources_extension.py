@@ -87,7 +87,8 @@ class ExtResourcesRegistrationTests(unittest.TestCase):
         _seed_profiles(tmp)
         payload = render_extension("ext_resources", {"webapps_root": tmp})
         self.assertTrue(payload.get("resources_app"))
-        slugs = {p["slug"] for p in payload["profiles"]}
+        # The library is a single flat leaflet index; profiles appear as rows.
+        slugs = {row["slug"] for row in payload["leaflets"] if row["kind"] == "profile"}
         self.assertEqual(slugs, {"jane_doe", "acme_farm"})
 
 
@@ -344,21 +345,25 @@ class ContactsDetailTests(unittest.TestCase):
         self.assertEqual(empty["total_contacts"], 0)
 
 
-class RenderPayloadCarriesDetailTests(unittest.TestCase):
-    def test_render_includes_events_and_contacts_detail(self) -> None:
+class RenderPayloadShapeTests(unittest.TestCase):
+    def test_library_is_a_flat_index_without_pii_views(self) -> None:
+        # The unified library is one type-agnostic leaflet index; the PII
+        # events/contacts read-only views are no longer part of this surface.
         tmp = Path(tempfile.mkdtemp(prefix="ext_res_payload_"))
         _seed_profiles(tmp)
         _seed_events(tmp)
         _seed_contacts(tmp)
         payload = render_extension("ext_resources", {"webapps_root": tmp})
-        self.assertEqual(payload["events_detail"]["count"], 2)
-        self.assertEqual(payload["contacts_detail"]["total_contacts"], 2)
+        self.assertEqual(payload["resources_mode"], "library")
+        self.assertIn("leaflets", payload)
+        self.assertNotIn("events_detail", payload)
+        self.assertNotIn("contacts_detail", payload)
 
 
 def _seed_managed_gallery(webapps_root: Path) -> Path:
     """A site-core icon gallery + a site icon_use manifest referencing one icon."""
     sc = webapps_root / "clients" / "_shared" / "site-core"
-    (sc / "icon").mkdir(parents=True)
+    (sc / "icon").mkdir(parents=True, exist_ok=True)
     used = sc / "icon" / "0000-00-00.artifact-icon.mycite-ui.mail.svg"
     unused = sc / "icon" / "0000-00-00.artifact-icon.mycite-ui.spare.svg"
     used.write_text("<svg/>", encoding="utf-8")
@@ -504,13 +509,157 @@ class AllocationTests(unittest.TestCase):
         self.assertTrue(allocated[0]["asset_path"].endswith("mail.svg"))
 
 
+class LeafletIndexTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_index_"))
+        _seed_profiles(self.tmp)
+        _seed_managed_gallery(self.tmp)
+
+    def test_entity_flavor_parsing(self) -> None:
+        self.assertEqual(
+            rx._profile_entity_flavor(
+                "0000-00-00.artifact-profile-legal_entity.wallace_farm.profile.yaml"
+            ),
+            "legal_entity",
+        )
+        self.assertEqual(
+            rx._profile_entity_flavor(
+                "0000-00-00.artifact-profile-natural_entity.jane_doe.profile.yaml"
+            ),
+            "natural_entity",
+        )
+
+    def test_index_flattens_all_types_with_naming(self) -> None:
+        idx = rx.build_leaflet_index(self.tmp)
+        kinds = {r["kind"] for r in idx}
+        self.assertIn("profile", kinds)
+        self.assertIn("icon", kinds)
+        jane = next(r for r in idx if r["slug"] == "jane_doe")
+        self.assertEqual(jane["kind"], "profile")
+        self.assertEqual(jane["entity_type"], "natural_entity")
+        self.assertIn("jane_doe", jane["naming"])
+        # icon members carry no entity_type but a slug + naming.
+        mail = next(r for r in idx if r["slug"] == "mail" and r["kind"] == "icon")
+        self.assertEqual(mail["entity_type"], "")
+        self.assertTrue(mail["referenced"])  # referenced by the seeded manifest
+
+
+def _seed_cascade_tree(root: Path) -> Path:
+    sc = root / "clients" / "_shared" / "site-core" / "profiles"
+    sc.mkdir(parents=True)
+    # farm_a (to be renamed) + farm_b (references farm_a via related stem).
+    (sc / "0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml").write_text(
+        yaml.safe_dump(
+            {"name": "Farm A", "display_name": "Farm A", "role": "grower",
+             "coordinates": {"lat": 41.0, "lng": -81.0}},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (sc / "0000-00-00.artifact-profile-legal_entity.farm_b.profile.yaml").write_text(
+        yaml.safe_dump(
+            {"name": "Farm B",
+             "related": ["0000-00-00.artifact-profile-legal_entity.farm_a.profile"]},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    # CVCC-style derived excerpt for farm_a.
+    assets = root / "clients" / "site.org" / "frontend" / "assets"
+    assets.mkdir(parents=True)
+    (assets / "0000-00-00.profile-legal_entity.site.farm_a-summary_bio.yaml").write_text(
+        yaml.safe_dump({"name": "Farm A", "role": "grower"}, sort_keys=False),
+        encoding="utf-8",
+    )
+    # profile_use manifest referencing farm_a's canonical.
+    (assets / "0000-00-00.record-manifest.site-website.profile_use.yaml").write_text(
+        yaml.safe_dump(
+            {"manifest_kind": "profile_use", "site_entity": "site", "entries": [
+                {"asset_id": "farm_a",
+                 "asset_path": "/assets/profiles/0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml",
+                 "consumers": [], "entity_scope": "site"}]},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    # Hand-authored data file with a /profile/farm_a URL.
+    data = root / "clients" / "site.org" / "frontend" / "data"
+    data.mkdir(parents=True)
+    (data / "timeline.json").write_text(
+        '{"items":[{"profile_path":"/profile/farm_a"}]}\n', encoding="utf-8"
+    )
+    # FND network manifest listing farm_a in profile_refs.
+    fnd = root / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "assets"
+    fnd.mkdir(parents=True)
+    (fnd / "0000-00-00.manifest.fnd.fnd.site.json").write_text(
+        '{"pages":{"more":{"content":{"network":{"panel":{"profile_refs":["farm_a","farm_b"]}}}}}}\n',
+        encoding="utf-8",
+    )
+    return root
+
+
+class CascadeRenameTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_cascade_"))
+        _seed_cascade_tree(self.tmp)
+
+    def test_dry_run_discovers_all_classes(self) -> None:
+        res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_c", apply=False)
+        self.assertTrue(res["ok"])
+        r = res["report"]
+        self.assertFalse(r["applied"])
+        self.assertEqual(len(r["excerpts"]), 1)
+        self.assertTrue(r["fnd_network"])
+        self.assertEqual(len(r["related"]), 1)
+        self.assertEqual(len(r["data_files"]), 1)
+        # Dry run mutates nothing.
+        self.assertTrue(
+            (self.tmp / "clients" / "_shared" / "site-core" / "profiles"
+             / "0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml").exists()
+        )
+
+    def test_apply_renames_and_repoints_everything(self) -> None:
+        res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_c", apply=True)
+        self.assertTrue(res["ok"], res)
+        profiles = self.tmp / "clients" / "_shared" / "site-core" / "profiles"
+        self.assertTrue((profiles / "0000-00-00.artifact-profile-legal_entity.farm_c.profile.yaml").exists())
+        self.assertFalse((profiles / "0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml").exists())
+        assets = self.tmp / "clients" / "site.org" / "frontend" / "assets"
+        self.assertTrue((assets / "0000-00-00.profile-legal_entity.site.farm_c-summary_bio.yaml").exists())
+        # profile_use repointed.
+        pu = yaml.safe_load((assets / "0000-00-00.record-manifest.site-website.profile_use.yaml").read_text())
+        self.assertIn("farm_c.profile.yaml", pu["entries"][0]["asset_path"])
+        # FND refs updated.
+        import json
+        fnd = json.loads((self.tmp / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "assets"
+                          / "0000-00-00.manifest.fnd.fnd.site.json").read_text())
+        refs = fnd["pages"]["more"]["content"]["network"]["panel"]["profile_refs"]
+        self.assertIn("farm_c", refs)
+        self.assertNotIn("farm_a", refs)
+        # farm_b's related stem updated.
+        fb = (profiles / "0000-00-00.artifact-profile-legal_entity.farm_b.profile.yaml").read_text()
+        self.assertIn("farm_c.profile", fb)
+        self.assertNotIn("farm_a.profile", fb)
+        # data-file /profile URL rewritten.
+        tl = (self.tmp / "clients" / "site.org" / "frontend" / "data" / "timeline.json").read_text()
+        self.assertIn("/profile/farm_c", tl)
+        self.assertNotIn("/profile/farm_a", tl)
+
+    def test_apply_refuses_collision(self) -> None:
+        res = rx.cascade_rename_profile_slug(self.tmp, "farm_a", "farm_b", apply=True)
+        self.assertFalse(res["ok"])
+        self.assertEqual(res["error"], "collision")
+
+
 class ResourcesModeDispatchTests(unittest.TestCase):
     def test_library_is_default_without_grantee(self) -> None:
         tmp = Path(tempfile.mkdtemp(prefix="ext_res_mode_lib_"))
         _seed_profiles(tmp)
         payload = render_extension("ext_resources", {"webapps_root": tmp, "mode": "global"})
         self.assertEqual(payload["resources_mode"], "library")
-        self.assertIn("managed_galleries", payload)
+        # The library is one uniform flat leaflet index (no per-type galleries).
+        self.assertIn("leaflets", payload)
+        self.assertNotIn("managed_galleries", payload)
         # No allocation affordance in the library.
         self.assertNotIn("manifest_add_route", payload)
 

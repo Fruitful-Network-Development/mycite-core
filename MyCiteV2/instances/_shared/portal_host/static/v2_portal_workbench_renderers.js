@@ -1169,30 +1169,6 @@
     );
   }
 
-  function renderResourcesProfileRow(p) {
-    var prof = asObject(p);
-    var img = asText(prof.image_url);
-    var thumb = img
-      ? '<img class="v2-resourcesThumb" src="' +
-        escapeHtml(img) +
-        '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
-      : renderResourcesPlaceholderThumb();
-    return (
-      '<button type="button" class="v2-resourcesRow" data-resources-profile="' +
-      escapeHtml(asText(prof.slug)) +
-      '">' +
-      thumb +
-      '<span class="v2-resourcesRow__text">' +
-      '<span class="v2-resourcesRow__name">' +
-      escapeHtml(asText(prof.display_name) || asText(prof.slug)) +
-      "</span>" +
-      (asText(prof.subtitle)
-        ? '<span class="v2-resourcesRow__sub">' + escapeHtml(asText(prof.subtitle)) + "</span>"
-        : "") +
-      "</span></button>"
-    );
-  }
-
   function renderResourcesUpload(payload) {
     var action = asObject(payload.upload_action);
     var route = asText(action.route) || "/portal/api/resources/upload";
@@ -1217,181 +1193,26 @@
     );
   }
 
-  function renderResourcesIconDuplicates(payload) {
-    var groups = asList(payload.icon_duplicate_groups);
-    if (!groups.length) return "";
-    var route = asText(payload.icon_dedup_route) || "/__fnd/resources/icon/dedup";
-    var body = groups
-      .map(function (g) {
-        var grp = asObject(g);
-        var members = asList(grp.members)
-          .map(function (m) {
-            var mem = asObject(m);
-            var ref = mem.referenced;
-            var btn = ref
-              ? '<span class="v2-resourcesDedup__locked">referenced</span>'
-              : '<button type="button" class="v2-rowAction--danger" ' +
-                'data-resources-dedup-route="' +
-                escapeHtml(route) +
-                '" data-resources-dedup-file="' +
-                escapeHtml(asText(mem.filename)) +
-                '">Remove</button>';
-            return (
-              '<li><code>' +
-              escapeHtml(asText(mem.filename)) +
-              "</code> " +
-              btn +
-              "</li>"
-            );
-          })
-          .join("");
-        return '<li class="v2-resourcesDedup__group"><ul>' + members + "</ul></li>";
-      })
-      .join("");
-    return (
-      '<details class="v2-resourcesDedup"><summary>Duplicate icons (' +
-      groups.length +
-      ")</summary><ul>" +
-      body +
-      "</ul></details>"
-    );
-  }
-
-  // Render a small dollar figure (no thousands separator dependency — the
-  // operator just needs the magnitude). null/blank → "—".
-  function renderResourcesMoney(value) {
-    if (value == null || value === "") return "—";
-    var n = Number(value);
-    if (!isFinite(n)) return "—";
-    return "$" + n.toFixed(2);
-  }
-
-  // ext_resources Events subtab: read-only operator view of every event
-  // leaflet (all clients) as a KPI strip + a row table. Reuses the events
-  // backend via the events_detail payload builder. CRUD lives on the
-  // dashboards; this surface is view-only.
-  function renderResourcesEvents(payload) {
-    var detail = asObject(asObject(payload).events_detail);
-    var rows = asList(detail.rows);
-    var summary = asObject(detail.summary);
-    if (!rows.length) {
-      return (
-        '<section class="v2-resourcesGallery">' +
-        "<h4>Events</h4>" +
-        '<p class="v2-extensionCard__empty">No events recorded yet.</p>' +
-        "</section>"
-      );
-    }
-    var kpi =
-      '<div class="v2-resourcesKpis">' +
-      '<span class="v2-resourcesKpi"><strong>' +
-      escapeHtml(String(summary.total_events != null ? summary.total_events : rows.length)) +
-      "</strong> events</span>" +
-      '<span class="v2-resourcesKpi"><strong>' +
-      escapeHtml(renderResourcesMoney(summary.total_revenue)) +
-      "</strong> revenue</span>" +
-      "</div>";
-    var displayRows = rows.map(function (r) {
-      var row = asObject(r);
-      return {
-        date: asText(row.date),
-        title: asText(row.title) || asText(row.id),
-        client: asText(row.client),
-        status: asText(row.status),
-        customer: asText(row.customer),
-        total: renderResourcesMoney(row.total),
-      };
-    });
-    return (
-      '<section class="v2-resourcesGallery">' +
-      "<h4>Events</h4>" +
-      kpi +
-      renderRowsTable("", displayRows, [
-        { key: "date", label: "Date" },
-        { key: "title", label: "Title" },
-        { key: "client", label: "Client" },
-        { key: "status", label: "Status" },
-        { key: "customer", label: "Customer" },
-        { key: "total", label: "Total" },
-      ]) +
-      "</section>"
-    );
-  }
-
-  // ext_resources Contacts subtab: read-only operator roster view, grouped
-  // per entity. Reuses the contact-leaflet adapter via contacts_detail.
-  function renderResourcesContacts(payload) {
-    var detail = asObject(asObject(payload).contacts_detail);
-    var entities = asList(detail.entities);
-    var withRows = entities.filter(function (e) {
-      return asList(asObject(e).contacts).length;
-    });
-    if (!withRows.length) {
-      return (
-        '<section class="v2-resourcesGallery">' +
-        "<h4>Contacts</h4>" +
-        '<p class="v2-extensionCard__empty">No contact rosters found.</p>' +
-        "</section>"
-      );
-    }
-    var groups = withRows
-      .map(function (e) {
-        var ent = asObject(e);
-        var rows = asList(ent.contacts).map(function (c) {
-          var contact = asObject(c);
-          return {
-            name: asText(contact.name),
-            email: asText(contact.email),
-            phone: asText(contact.phone),
-            subscribed: contact.subscribed ? "✓" : "—",
-            organization: asText(contact.organization),
-          };
-        });
-        return (
-          '<div class="v2-resourcesContactGroup">' +
-          "<h5>" +
-          escapeHtml(asText(ent.label) || asText(ent.entity)) +
-          ' <span class="v2-resourcesContactGroup__count">(' +
-          escapeHtml(String(rows.length)) +
-          ")</span></h5>" +
-          renderRowsTable("", rows, [
-            { key: "name", label: "Name" },
-            { key: "email", label: "Email" },
-            { key: "phone", label: "Phone" },
-            { key: "subscribed", label: "Subscribed" },
-            { key: "organization", label: "Organization" },
-          ]) +
-          "</div>"
-        );
-      })
-      .join("");
-    return (
-      '<section class="v2-resourcesGallery">' +
-      "<h4>Contacts</h4>" +
-      groups +
-      "</section>"
-    );
-  }
-
-  // A managed (editable) gallery: leaflets grouped by slug, each member with
-  // retitle / delete affordances and each slug-group with a rename action.
-  // Rows carry data-resources-search so the library search box can filter.
-  function renderResourcesManagedMember(member, gallery, routes) {
-    var m = asObject(member);
-    var filename = asText(m.filename);
-    var title = asText(m.display_name) || filename;
-    var referenced = m.referenced === true;
-    var search = (asText(m.owner) + " " + filename + " " + title).toLowerCase();
-    var thumb = asText(m.image_url)
+  // One uniform row per leaflet (any type) in the flat library table. Every
+  // type is treated identically; the only organizing variable is the naming
+  // convention (carried in data-resources-search for the filter). The full
+  // metadata rides on data-* so the binary detail panel needs no extra fetch.
+  function renderLeafletRow(leaflet, routes) {
+    var r = asObject(leaflet);
+    var kind = asText(r.kind);
+    var slug = asText(r.slug);
+    var gallery = asText(r.gallery);
+    var filename = asText(r.filename);
+    var title = asText(r.title) || slug;
+    var ownerCol = asText(r.entity_type) || asText(r.owner) || "—";
+    var inUse = r.in_use === true;
+    var thumb = asText(r.image_url)
       ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
-        escapeHtml(asText(m.image_url)) +
+        escapeHtml(asText(r.image_url)) +
         '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
       : "";
-    var refBadge = referenced
-      ? '<span class="v2-resourcesMember__badge" title="In use by a site manifest">in&nbsp;use</span>'
-      : "";
-    var del = referenced
-      ? '<span class="v2-resourcesDedup__locked">in use</span>'
+    var del = inUse
+      ? '<span class="v2-resourcesDedup__locked" title="In use by a site">in use</span>'
       : '<button type="button" class="v2-rowAction--danger" data-resources-manage="delete" ' +
         'data-route="' + escapeHtml(routes.delete) + '" data-gallery="' + escapeHtml(gallery) +
         '" data-filename="' + escapeHtml(filename) + '">Delete</button>';
@@ -1399,55 +1220,53 @@
       '<button type="button" class="v2-rowAction" data-resources-manage="retitle" ' +
       'data-route="' + escapeHtml(routes.retitle) + '" data-gallery="' + escapeHtml(gallery) +
       '" data-filename="' + escapeHtml(filename) + '">Retitle</button>';
+    var rename =
+      '<button type="button" class="v2-rowAction" data-resources-manage="rename-slug" ' +
+      'data-route="' + escapeHtml(routes.rename) + '" data-gallery="' + escapeHtml(gallery) +
+      '" data-slug="' + escapeHtml(slug) + '" data-in-use="' + (inUse ? "1" : "0") + '">Rename slug</button>';
     return (
-      '<div class="v2-resourcesMember" data-resources-search="' + escapeHtml(search) + '">' +
-      thumb +
-      '<code class="v2-resourcesMember__file">' + escapeHtml(filename) + "</code> " +
-      refBadge +
-      '<span class="v2-resourcesMember__actions">' + retitle + " " + del + "</span>" +
-      "</div>"
+      '<tr class="v2-leafletRow" data-resources-search="' + escapeHtml(asText(r.naming)) +
+      '" data-gallery="' + escapeHtml(gallery) + '" data-slug="' + escapeHtml(slug) +
+      '" data-filename="' + escapeHtml(filename) + '" data-kind="' + escapeHtml(kind) +
+      '" data-owner="' + escapeHtml(asText(r.owner)) + '" data-entity-type="' + escapeHtml(asText(r.entity_type)) +
+      '" data-asset-path="' + escapeHtml(asText(r.asset_path)) + '" data-ext="' + escapeHtml(asText(r.ext)) +
+      '" data-size="' + escapeHtml(String(r.size_bytes || 0)) + '" data-image-url="' + escapeHtml(asText(r.image_url)) +
+      '" data-title="' + escapeHtml(title) + '" data-in-use="' + (inUse ? "1" : "0") + '">' +
+      "<td>" + escapeHtml(kind) + "</td>" +
+      "<td>" + escapeHtml(ownerCol) + "</td>" +
+      '<td><code>' + escapeHtml(slug) + "</code></td>" +
+      "<td>" + thumb + escapeHtml(title) + "</td>" +
+      '<td class="v2-leafletRow__actions">' + retitle + " " + rename + " " + del + "</td>" +
+      "</tr>"
     );
   }
 
-  function renderResourcesManagedGallery(galleryObj, routes) {
-    var g = asObject(galleryObj);
-    var gallery = asText(g.gallery);
-    var groups = asList(g.groups);
-    if (!groups.length) {
-      return (
-        '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '">' +
-        "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " (0)</summary>" +
-        '<p class="v2-extensionCard__empty">Empty gallery.</p></details>'
-      );
-    }
-    var groupsHtml = groups
-      .map(function (grp) {
-        var group = asObject(grp);
-        var slug = asText(group.slug);
-        var members = asList(group.members)
-          .map(function (m) { return renderResourcesManagedMember(m, gallery, routes); })
-          .join("");
-        var renameBtn = gallery === "profiles"
-          ? ""  // profiles rename/delete via the profile detail view
-          : '<button type="button" class="v2-rowAction" data-resources-manage="rename-slug" ' +
-            'data-route="' + escapeHtml(routes.rename) + '" data-gallery="' + escapeHtml(gallery) +
-            '" data-slug="' + escapeHtml(slug) + '">Rename slug</button>';
-        return (
-          '<div class="v2-resourcesGroup" data-slug="' + escapeHtml(slug) +
-          '" data-resources-search="' + escapeHtml(slug.toLowerCase()) + '">' +
-          '<div class="v2-resourcesGroup__head"><span class="v2-resourcesGroup__slug">' +
-          escapeHtml(slug) + '</span> <span class="v2-resourcesGroup__count">(' +
-          escapeHtml(String(group.count)) + ")</span> " + renameBtn + "</div>" +
-          members +
-          "</div>"
-        );
-      })
-      .join("");
+  // Read-only metadata panel for a non-profile leaflet, built from the row's
+  // data-* attributes (no fetch needed). Profiles use the editable form path.
+  function renderLeafletDetailMeta(row) {
+    function d(k) { return asText(row.getAttribute(k)); }
+    var img = d("data-image-url");
+    var preview = img
+      ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(img) +
+        '" alt="" onerror="this.style.display=\'none\'" />'
+      : "";
+    var rows = [
+      ["Kind", d("data-kind")],
+      ["Slug", d("data-slug")],
+      ["Owner", d("data-owner")],
+      ["Filename", d("data-filename")],
+      ["Asset path", d("data-asset-path")],
+      ["Extension", d("data-ext")],
+      ["Size (bytes)", d("data-size")],
+      ["In use", d("data-in-use") === "1" ? "yes" : "no"],
+    ].map(function (kv) {
+      return '<div class="v2-resourcesField"><label>' + escapeHtml(kv[0]) +
+        "</label><div>" + escapeHtml(kv[1] || "—") + "</div></div>";
+    }).join("");
     return (
-      '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '">' +
-      "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " (" + escapeHtml(String(g.count)) +
-      " in " + escapeHtml(String(groups.length)) + " slugs)</summary>" +
-      '<div class="v2-resourcesManaged__groups">' + groupsHtml + "</div></details>"
+      '<button type="button" class="v2-resourcesDetail__back">← back</button>' +
+      "<h4>" + escapeHtml(d("data-title") || d("data-slug")) + "</h4>" +
+      preview + '<div class="v2-resourcesDetail__meta">' + rows + "</div>"
     );
   }
 
@@ -1457,41 +1276,35 @@
   }
 
   function renderResourcesLibrary(p) {
-    var profiles = asList(p.profiles);
-    var roster = profiles.length
-      ? '<div class="v2-resourcesList">' +
-        profiles.map(renderResourcesProfileRow).join("") +
-        "</div>"
-      : '<p class="v2-extensionCard__empty">No profiles found in the site-core library.</p>';
-    var managed = asObject(p.managed_galleries);
     var routes = {
       retitle: asText(p.retitle_route) || "/__fnd/resources/asset/retitle",
       rename: asText(p.rename_slug_route) || "/__fnd/resources/asset/rename-slug",
       delete: asText(p.delete_route) || "/__fnd/resources/asset/delete",
     };
-    var order = asList(p.managed_gallery_order);
-    var managedHtml = order
-      .filter(function (gallery) { return asText(gallery) !== "profiles"; })
-      .map(function (gallery) {
-        return renderResourcesManagedGallery(managed[asText(gallery)], routes);
-      })
+    var leaflets = asList(p.leaflets);
+    var rowsHtml = leaflets
+      .map(function (l) { return renderLeafletRow(l, routes); })
       .join("");
+    var table = leaflets.length
+      ? '<table class="v2-leafletTable"><thead><tr>' +
+        "<th>Kind</th><th>Entity / Owner</th>" +
+        '<th class="v2-leafletTable__sortable" data-sort="slug">Slug ▾</th>' +
+        "<th>Title</th><th>Actions</th></tr></thead><tbody>" + rowsHtml + "</tbody></table>"
+      : '<p class="v2-extensionCard__empty">No resource leaflets found.</p>';
     return (
       '<div class="v2-resourcesApp" data-resources-mode="library" data-resources-detail-route="' +
       escapeHtml(asText(p.profile_detail_route) || "/__fnd/resources/profile/detail") +
       '" data-resources-save-route="' +
       escapeHtml(asText(p.profile_save_route) || "/__fnd/resources/profile/save") +
+      '" data-rename-preview-route="' +
+      escapeHtml(asText(p.rename_preview_route) || "/__fnd/resources/asset/rename-preview") +
       '">' +
-      '<input type="search" class="v2-resourcesSearch" placeholder="Search resources by slug, name, or file…" aria-label="Search resources" />' +
+      '<p class="v2-extensionCard__intro">Every shared leaflet, one uniform list. Filter by naming convention (kind, owner, slug, title, filename) to review and reorganize. ' +
+      escapeHtml(String(leaflets.length)) + " leaflets.</p>" +
+      '<input type="search" class="v2-resourcesSearch" placeholder="Filter by naming convention…" aria-label="Filter leaflets" />' +
       '<div class="v2-resourcesApp__detail" hidden></div>' +
-      "<h4>Profiles</h4>" +
-      roster +
-      '<h4>Galleries</h4>' +
-      managedHtml +
-      renderResourcesEvents(p) +
-      renderResourcesContacts(p) +
+      table +
       renderResourcesUpload(p) +
-      renderResourcesIconDuplicates(p) +
       "</div>"
     );
   }
@@ -2012,6 +1825,7 @@
     if (!app || app.dataset.resourcesBound === "1") return;
     app.dataset.resourcesBound = "1";
     var detailRoute = app.getAttribute("data-resources-detail-route");
+    var renamePreviewRoute = app.getAttribute("data-rename-preview-route");
     var detailPane = app.querySelector(".v2-resourcesApp__detail");
 
     function showList() {
@@ -2021,33 +1835,45 @@
       }
     }
 
-    // Open a profile's detail/edit view.
+    function openProfileDetail(slug) {
+      if (!slug || !detailPane) return;
+      detailPane.hidden = false;
+      detailPane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
+      fetch(detailRoute + "?slug=" + encodeURIComponent(slug), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j || !j.ok) {
+            detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>';
+            return;
+          }
+          detailPane.innerHTML = renderResourcesDetailForm(app, j.profile);
+          var back = detailPane.querySelector(".v2-resourcesDetail__back");
+          if (back) back.addEventListener("click", showList);
+          var form = detailPane.querySelector("[data-resources-save-form]");
+          if (form) bindResourcesSaveForm(ctx, form);
+        })
+        .catch(function () {
+          detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>';
+        });
+    }
+
+    // Uniform leaflet-row open: profiles -> editable detail (fetched), every
+    // other leaflet -> read-only metadata (from the row). Clicks inside the
+    // actions cell are left to the manage buttons.
     Array.prototype.forEach.call(
-      app.querySelectorAll("[data-resources-profile]"),
+      app.querySelectorAll(".v2-leafletRow"),
       function (row) {
-        row.addEventListener("click", function () {
-          var slug = row.getAttribute("data-resources-profile");
-          if (!slug || !detailPane) return;
-          detailPane.hidden = false;
-          detailPane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
-          fetch(detailRoute + "?slug=" + encodeURIComponent(slug), {
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-              if (!j || !j.ok) {
-                detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>';
-                return;
-              }
-              detailPane.innerHTML = renderResourcesDetailForm(app, j.profile);
-              var back = detailPane.querySelector(".v2-resourcesDetail__back");
-              if (back) back.addEventListener("click", showList);
-              var form = detailPane.querySelector("[data-resources-save-form]");
-              if (form) bindResourcesSaveForm(ctx, form);
-            })
-            .catch(function () {
-              detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>';
-            });
+        row.addEventListener("click", function (e) {
+          if (e.target.closest && e.target.closest(".v2-leafletRow__actions")) return;
+          if (!detailPane) return;
+          if (row.getAttribute("data-gallery") === "profiles") {
+            openProfileDetail(row.getAttribute("data-slug"));
+          } else {
+            detailPane.hidden = false;
+            detailPane.innerHTML = renderLeafletDetailMeta(row);
+            var back = detailPane.querySelector(".v2-resourcesDetail__back");
+            if (back) back.addEventListener("click", showList);
+          }
         });
       }
     );
@@ -2056,47 +1882,40 @@
     var uploadForm = app.querySelector("[data-resources-upload-route]");
     if (uploadForm) bindResourcesUpload(uploadForm);
 
-    // Library search: substring-filter group + member rows by their
-    // data-resources-search text; auto-open galleries that contain a match.
+    // Naming-convention filter: hide leaflet rows whose data-resources-search
+    // does not contain the query. The ONLY organizing affordance in the view.
     var searchBox = app.querySelector(".v2-resourcesSearch");
     if (searchBox) {
       searchBox.addEventListener("input", function () {
         var q = (searchBox.value || "").trim().toLowerCase();
         Array.prototype.forEach.call(
-          app.querySelectorAll(".v2-resourcesManaged"),
-          function (details) {
-            var anyVisible = false;
-            Array.prototype.forEach.call(
-              details.querySelectorAll(".v2-resourcesGroup"),
-              function (group) {
-                var groupMatch = !q ||
-                  (group.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
-                var memberAnyVisible = false;
-                Array.prototype.forEach.call(
-                  group.querySelectorAll(".v2-resourcesMember"),
-                  function (member) {
-                    var hit = groupMatch || !q ||
-                      (member.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
-                    member.style.display = hit ? "" : "none";
-                    if (hit) memberAnyVisible = true;
-                  }
-                );
-                var showGroup = !q || groupMatch || memberAnyVisible;
-                group.style.display = showGroup ? "" : "none";
-                if (showGroup) anyVisible = true;
-              }
-            );
-            if (q) details.open = anyVisible;
-          }
-        );
-        // Also filter the profiles contact-app roster.
-        Array.prototype.forEach.call(
-          app.querySelectorAll(".v2-resourcesList .v2-resourcesRow"),
+          app.querySelectorAll(".v2-leafletRow"),
           function (row) {
-            var txt = (row.textContent || "").toLowerCase();
-            row.style.display = !q || txt.indexOf(q) !== -1 ? "" : "none";
+            var hit = !q || (row.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
+            row.style.display = hit ? "" : "none";
           }
         );
+      });
+    }
+
+    // Sort toggle on the Slug column header (ascending / descending).
+    var sortHeader = app.querySelector(".v2-leafletTable__sortable");
+    if (sortHeader) {
+      sortHeader.style.cursor = "pointer";
+      sortHeader.addEventListener("click", function () {
+        var tbody = app.querySelector(".v2-leafletTable tbody");
+        if (!tbody) return;
+        var desc = sortHeader.getAttribute("data-dir") !== "desc";
+        sortHeader.setAttribute("data-dir", desc ? "desc" : "asc");
+        sortHeader.textContent = "Slug " + (desc ? "▴" : "▾");
+        var rows = Array.prototype.slice.call(tbody.querySelectorAll(".v2-leafletRow"));
+        rows.sort(function (a, b) {
+          var av = a.getAttribute("data-slug") || "";
+          var bv = b.getAttribute("data-slug") || "";
+          if (av === bv) return 0;
+          return desc ? (av < bv ? 1 : -1) : (av < bv ? -1 : 1);
+        });
+        rows.forEach(function (r) { tbody.appendChild(r); });
       });
     }
 
@@ -2112,6 +1931,56 @@
           surface_query: envelope.surface_query || {},
         });
       }
+    }
+
+    // Profile slug rename is a CASCADE (excerpts, FND map refs, related refs,
+    // data files, site rebuilds). Show the dry-run change-set first, confirm,
+    // then apply.
+    function cascadeRenameProfile(btn, oldSlug, newSlug) {
+      var renameRoute = btn.getAttribute("data-route");
+      var payload = { gallery: "profiles", old_slug: oldSlug, new_slug: newSlug };
+      btn.disabled = true;
+      fetch(renamePreviewRoute, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (out) {
+          btn.disabled = false;
+          var rep = out.body || {};
+          if (!rep.ok) {
+            try { window.alert("Cannot rename: " + (rep.detail || rep.error || ("HTTP " + out.status))); } catch (_) {}
+            return;
+          }
+          var c = asObject(rep.report);
+          var msg = "Rename profile slug '" + oldSlug + "' → '" + newSlug + "'?\n\nThis cascade will update:\n" +
+            "  • canonical profile\n" +
+            "  • " + asList(c.excerpts).length + " per-site excerpt(s)\n" +
+            "  • " + asList(c.related).length + " related-reference(s)\n" +
+            "  • FND network refs: " + (c.fnd_network ? "yes" : "no") + "\n" +
+            "  • " + asList(c.data_files).length + " data-file URL ref(s)\n" +
+            "  • rebuild " + asList(c.sites).length + " site(s)";
+          if (typeof window.confirm === "function" && !window.confirm(msg)) return;
+          btn.disabled = true;
+          fetch(renameRoute, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (out2) {
+              btn.disabled = false;
+              if (out2.body && out2.body.ok) reloadSurface();
+              else {
+                try { window.alert("Rename failed: " + ((out2.body && (out2.body.detail || out2.body.error)) || ("HTTP " + out2.status))); } catch (_) {}
+              }
+            })
+            .catch(function () { btn.disabled = false; });
+        })
+        .catch(function () { btn.disabled = false; });
     }
     Array.prototype.forEach.call(
       app.querySelectorAll("[data-resources-manage]"),
@@ -2131,6 +2000,11 @@
             var oldSlug = btn.getAttribute("data-slug");
             var newSlug = window.prompt && window.prompt("Rename slug '" + oldSlug + "' to:", oldSlug);
             if (!newSlug || newSlug === oldSlug) return;
+            if (gallery === "profiles") {
+              // Profiles cascade through excerpts/manifests/FND refs/sites.
+              cascadeRenameProfile(btn, oldSlug, newSlug);
+              return;
+            }
             body.old_slug = oldSlug;
             body.new_slug = newSlug;
           } else if (action === "delete") {
@@ -2158,38 +2032,6 @@
                   window.alert((action === "delete" ? "Delete" : "Update") + " failed: " +
                     ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status)));
                 } catch (_) {}
-              }
-            })
-            .catch(function () { btn.disabled = false; });
-        });
-      }
-    );
-
-    // Icon dedup buttons.
-    Array.prototype.forEach.call(
-      app.querySelectorAll("[data-resources-dedup-route]"),
-      function (btn) {
-        btn.addEventListener("click", function () {
-          var route = btn.getAttribute("data-resources-dedup-route");
-          var filename = btn.getAttribute("data-resources-dedup-file");
-          if (!route || !filename) return;
-          if (typeof window.confirm === "function" &&
-              !window.confirm("Remove duplicate icon " + filename + "?")) return;
-          btn.disabled = true;
-          fetch(route, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ filename: filename }),
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-            .then(function (out) {
-              btn.disabled = false;
-              if (out.body && out.body.ok) {
-                var li = btn.closest("li");
-                if (li) li.parentNode.removeChild(li);
-              } else {
-                try { window.alert("Remove failed: " + ((out.body && (out.body.error)) || out.status)); } catch (_) {}
               }
             })
             .catch(function () { btn.disabled = false; });
