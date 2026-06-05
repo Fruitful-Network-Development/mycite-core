@@ -339,26 +339,55 @@ def _resolve_profile_path(profiles_dir: Path, slug: str) -> Path | None:
 # --------------------------------------------------------------------------- #
 # edit / save (canonical) + propagation
 # --------------------------------------------------------------------------- #
-# Profile keys that are simple scalars editable through the form. List/dict
-# fields (bio, tags, socials, include, related) are preserved as-is — the form
-# only edits flat identity/contact/summary scalars to keep the round-trip safe.
-_EDITABLE_SCALAR_KEYS = (
-    "name",
-    "display_name",
-    "card_id",
-    "entity_type",
-    "role",
-    "organization",
-    "location",
-    "website",
-    "email",
-    "secondary_email",
-    "org_email",
-    "phone",
-    "summary_bio",
-    "image_ref",
-    "logo_ref",
-)
+# Editable profile fields and their FORM TYPE. The type drives both the editor
+# (build_profile_edit_frame → component-library form) and save_profile's
+# decoding: ``text`` → scalar str/None; ``multiline`` → scalar str; ``bio`` →
+# a multiline textarea stored as a paragraph list; ``string_list`` → a chip
+# editor stored as list[str]. Structured dict-lists (socials/operations/
+# coordinates/include) and admin keys are NOT listed → preserved untouched.
+_PROFILE_FIELD_TYPES: dict[str, str] = {
+    "display_name": "text",
+    "name": "text",
+    "card_id": "text",
+    "entity_type": "text",
+    "role": "text",
+    "organization": "text",
+    "location": "text",
+    "website": "url",
+    "email": "email",
+    "secondary_email": "email",
+    "org_email": "email",
+    "phone": "text",
+    "image_ref": "text",
+    "logo_ref": "text",
+    "summary_bio": "multiline",
+    "bio": "bio",
+    "tags": "string_list",
+    "offerings": "string_list",
+    "gallery_refs": "string_list",
+    "related": "string_list",
+}
+
+
+def _split_paragraphs(text: str) -> list[str]:
+    """A multi-paragraph textarea → a list of paragraph strings.
+
+    Splits on blank lines (the natural paragraph break); falls back to single
+    newlines when the operator used those. Empty paragraphs are dropped.
+    """
+    chunks = re.split(r"\n\s*\n", _as_text(text).replace("\r\n", "\n").strip())
+    if len(chunks) <= 1:
+        chunks = _as_text(text).replace("\r\n", "\n").split("\n")
+    return [c.strip() for c in chunks if c.strip()]
+
+
+def _coerce_string_list(value: Any) -> list[str]:
+    """A string_list form value (array, or newline/comma text) → list[str]."""
+    if isinstance(value, list):
+        items = value
+    else:
+        items = re.split(r"[\n,]", _as_text(value))
+    return [_as_text(x).strip() for x in items if _as_text(x).strip()]
 
 
 def save_profile(
@@ -386,12 +415,17 @@ def save_profile(
     profile = _load_yaml_mapping(path)
     if not profile:
         return {"ok": False, "error": "profile_unreadable"}
-    for key in _EDITABLE_SCALAR_KEYS:
-        if key in fields:
-            value = fields[key]
+    for key, ftype in _PROFILE_FIELD_TYPES.items():
+        if key not in fields:
+            continue
+        value = fields[key]
+        if ftype == "string_list":
+            profile[key] = _coerce_string_list(value)
+        elif ftype == "bio":
+            profile[key] = _split_paragraphs(_as_text(value))
+        else:  # text / url / email / multiline scalar
             text = _as_text(value)
-            # Preserve YAML null for cleared optional fields.
-            profile[key] = text if text else None
+            profile[key] = text if text else None  # YAML null for cleared optionals
     text = yaml.safe_dump(
         profile, default_flow_style=False, allow_unicode=True, sort_keys=False
     )
@@ -400,6 +434,71 @@ def save_profile(
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "detail": str(exc)}
     return {"ok": True, "filename": path.name, "path": str(path)}
+
+
+def build_profile_edit_frame(
+    webapps_root: str | Path | None, slug: str
+) -> dict[str, Any] | None:
+    """A component-library FORM frame for editing a profile.
+
+    Uses the portal's shared form-component system (the same one
+    ``ext_grantee_profile`` uses via ``build_form_component_frame``) rather than
+    a one-off editor: scalars → text, summary_bio/bio → multiline, simple lists
+    → string_list chips. Values are read from the RAW canonical YAML so
+    list/multiline fields round-trip. Returns None when the profile is missing.
+    """
+    from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
+        build_form_component_frame,
+    )
+
+    profiles_dir = _profiles_dir(webapps_root)
+    path = _resolve_profile_path(profiles_dir, slug) if profiles_dir else None
+    if path is None:
+        return None
+    profile = _load_yaml_mapping(path)
+    fields: list[dict[str, Any]] = []
+    for key, ftype in _PROFILE_FIELD_TYPES.items():
+        if key not in profile:
+            continue
+        raw = profile.get(key)
+        if ftype == "string_list":
+            value: Any = [_as_text(x) for x in raw] if isinstance(raw, list) else []
+            field_type = "string_list"
+        elif ftype == "bio":
+            value = "\n\n".join(_as_text(x) for x in raw) if isinstance(raw, list) else _as_text(raw)
+            field_type = "multiline"
+        elif ftype == "multiline":
+            value = _as_text(raw)
+            field_type = "multiline"
+        else:
+            value = _as_text(raw)
+            field_type = ftype if ftype in ("text", "url", "email") else "text"
+        fields.append(
+            {
+                "key": key,
+                "label": key.replace("_", " ").title(),
+                "type": field_type,
+                "value": value,
+            }
+        )
+    if not fields:
+        return None
+    return build_form_component_frame(
+        frame_id=f"profile_edit_{slug}",
+        label=_profile_display_name(profile, slug),
+        intro=(
+            "Edit this profile. Saving re-derives the per-site excerpts and "
+            "rebuilds the owning sites so the change reaches the live pages."
+        ),
+        fields=fields,
+        submit_action={
+            "route": "/__fnd/resources/profile/save",
+            "schema": "mycite.v2.resources.profile.save.v1",
+            "payload": {"slug": slug},
+        },
+        submit_label="Save & publish",
+        target_authority="utilities",
+    )
 
 
 def derive_profile_excerpt(canonical_path: str | Path, excerpt_path: str | Path) -> bool:
@@ -1227,8 +1326,13 @@ def build_leaflet_index(webapps_root: str | Path | None) -> list[dict[str, Any]]
                     title = slug
                     in_use = referenced
                 owner = _as_text(member.get("owner"))
+                # The in-slug dash convention: split the slug on its FIRST dash
+                # into base + variant (suffix). The variant (e.g. profile_headshot,
+                # after, before, mark, monochrome, brochure) is a facet so the
+                # operator can group all headshots / before-after pairs / marks.
+                base, _, variant = slug.partition("-")
                 naming = " ".join(
-                    [filename, slug, owner, entity_type, kind, title]
+                    [filename, slug, owner, entity_type, kind, title, variant]
                 ).lower()
                 rows.append(
                     {
@@ -1236,6 +1340,8 @@ def build_leaflet_index(webapps_root: str | Path | None) -> list[dict[str, Any]]
                         "kind": kind,
                         "filename": filename,
                         "slug": slug,
+                        "slug_base": base,
+                        "slug_variant": variant,
                         "owner": owner,
                         "entity_type": entity_type,
                         "title": title,
@@ -1893,6 +1999,7 @@ def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any
         "rename_slug_route": "/__fnd/resources/asset/rename-slug",
         "rename_preview_route": "/__fnd/resources/asset/rename-preview",
         "delete_route": "/__fnd/resources/asset/delete",
+        "leaflets_route": "/__fnd/resources/leaflets",
     }
 
 
@@ -1988,6 +2095,7 @@ __all__ = [
     "asset_url_prefix_for",
     "build_grouped_gallery",
     "build_leaflet_index",
+    "build_profile_edit_frame",
     "cascade_rename_profile_slug",
     "contacts_detail",
     "delete_asset_if_unreferenced",

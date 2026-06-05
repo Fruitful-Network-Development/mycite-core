@@ -1160,15 +1160,6 @@
   // opens a per-profile detail/edit view, gallery counts, an upload form, and
   // icon-dedup affordances. All actions post to the /__fnd/resources/* +
   // /portal/api/resources/* routes. See resources_extension.py.
-  function renderResourcesPlaceholderThumb() {
-    return (
-      '<span class="v2-resourcesThumb v2-resourcesThumb--empty" aria-hidden="true">' +
-      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
-      '<circle cx="12" cy="9" r="3.2"></circle><path d="M5 19c1.5-3 4-4.5 7-4.5s5.5 1.5 7 4.5"></path>' +
-      "</svg></span>"
-    );
-  }
-
   function renderResourcesUpload(payload) {
     var action = asObject(payload.upload_action);
     var route = asText(action.route) || "/portal/api/resources/upload";
@@ -1197,77 +1188,65 @@
   // type is treated identically; the only organizing variable is the naming
   // convention (carried in data-resources-search for the filter). The full
   // metadata rides on data-* so the binary detail panel needs no extra fetch.
-  function renderLeafletRow(leaflet, routes) {
-    var r = asObject(leaflet);
-    var kind = asText(r.kind);
-    var slug = asText(r.slug);
-    var gallery = asText(r.gallery);
-    var filename = asText(r.filename);
-    var title = asText(r.title) || slug;
-    var ownerCol = asText(r.entity_type) || asText(r.owner) || "—";
-    var inUse = r.in_use === true;
-    var thumb = asText(r.image_url)
+  // One compact, selectable list item per leaflet (any type). The full leaflet
+  // object lives in JS state keyed by filename; the right pane shows detail +
+  // actions on select. No per-row action buttons (those live in the detail).
+  function renderLeafletListItem(r) {
+    var leaf = asObject(r);
+    var thumb = asText(leaf.image_url)
       ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
-        escapeHtml(asText(r.image_url)) +
+        escapeHtml(asText(leaf.image_url)) +
         '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
-      : "";
-    var del = inUse
-      ? '<span class="v2-resourcesDedup__locked" title="In use by a site">in use</span>'
-      : '<button type="button" class="v2-rowAction--danger" data-resources-manage="delete" ' +
-        'data-route="' + escapeHtml(routes.delete) + '" data-gallery="' + escapeHtml(gallery) +
-        '" data-filename="' + escapeHtml(filename) + '">Delete</button>';
-    var retitle =
-      '<button type="button" class="v2-rowAction" data-resources-manage="retitle" ' +
-      'data-route="' + escapeHtml(routes.retitle) + '" data-gallery="' + escapeHtml(gallery) +
-      '" data-filename="' + escapeHtml(filename) + '">Retitle</button>';
-    var rename =
-      '<button type="button" class="v2-rowAction" data-resources-manage="rename-slug" ' +
-      'data-route="' + escapeHtml(routes.rename) + '" data-gallery="' + escapeHtml(gallery) +
-      '" data-slug="' + escapeHtml(slug) + '" data-in-use="' + (inUse ? "1" : "0") + '">Rename slug</button>';
+      : '<span class="v2-resourcesThumb v2-resourcesThumb--sm v2-resourcesThumb--dot" aria-hidden="true"></span>';
+    var sub = asText(leaf.kind) +
+      (asText(leaf.entity_type) ? " · " + asText(leaf.entity_type) : "") +
+      (asText(leaf.owner) ? " · " + asText(leaf.owner) : "");
     return (
-      '<tr class="v2-leafletRow" data-resources-search="' + escapeHtml(asText(r.naming)) +
-      '" data-gallery="' + escapeHtml(gallery) + '" data-slug="' + escapeHtml(slug) +
-      '" data-filename="' + escapeHtml(filename) + '" data-kind="' + escapeHtml(kind) +
-      '" data-owner="' + escapeHtml(asText(r.owner)) + '" data-entity-type="' + escapeHtml(asText(r.entity_type)) +
-      '" data-asset-path="' + escapeHtml(asText(r.asset_path)) + '" data-ext="' + escapeHtml(asText(r.ext)) +
-      '" data-size="' + escapeHtml(String(r.size_bytes || 0)) + '" data-image-url="' + escapeHtml(asText(r.image_url)) +
-      '" data-title="' + escapeHtml(title) + '" data-in-use="' + (inUse ? "1" : "0") + '">' +
-      "<td>" + escapeHtml(kind) + "</td>" +
-      "<td>" + escapeHtml(ownerCol) + "</td>" +
-      '<td><code>' + escapeHtml(slug) + "</code></td>" +
-      "<td>" + thumb + escapeHtml(title) + "</td>" +
-      '<td class="v2-leafletRow__actions">' + retitle + " " + rename + " " + del + "</td>" +
-      "</tr>"
+      '<button type="button" class="v2-leafletItem" data-filename="' +
+      escapeHtml(asText(leaf.filename)) + '">' + thumb +
+      '<span class="v2-leafletItem__text">' +
+      '<span class="v2-leafletItem__title">' + escapeHtml(asText(leaf.title) || asText(leaf.slug)) + "</span>" +
+      '<span class="v2-leafletItem__sub">' + escapeHtml(sub) + "</span></span>" +
+      (leaf.in_use ? '<span class="v2-resourcesMember__badge">in use</span>' : "") +
+      "</button>"
     );
   }
 
-  // Read-only metadata panel for a non-profile leaflet, built from the row's
-  // data-* attributes (no fetch needed). Profiles use the editable form path.
-  function renderLeafletDetailMeta(row) {
-    function d(k) { return asText(row.getAttribute(k)); }
-    var img = d("data-image-url");
-    var preview = img
-      ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(img) +
+  function renderProfileHead(r) {
+    var img = asText(r.image_url)
+      ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(asText(r.image_url)) +
+        '" alt="" onerror="this.style.display=\'none\'" />'
+      : "";
+    return '<div class="v2-resourcesDetail__head">' + img + "<h4>" +
+      escapeHtml(asText(r.title) || asText(r.slug)) + "</h4></div>";
+  }
+
+  // Read-only metadata for a non-profile leaflet, built from the leaflet object.
+  function renderBinaryDetail(r) {
+    var img = asText(r.image_url)
+      ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(asText(r.image_url)) +
         '" alt="" onerror="this.style.display=\'none\'" />'
       : "";
     var rows = [
-      ["Kind", d("data-kind")],
-      ["Slug", d("data-slug")],
-      ["Owner", d("data-owner")],
-      ["Filename", d("data-filename")],
-      ["Asset path", d("data-asset-path")],
-      ["Extension", d("data-ext")],
-      ["Size (bytes)", d("data-size")],
-      ["In use", d("data-in-use") === "1" ? "yes" : "no"],
+      ["Kind", r.kind], ["Slug", r.slug], ["Variant", r.slug_variant], ["Owner", r.owner],
+      ["Filename", r.filename], ["Asset path", r.asset_path], ["Extension", r.ext],
+      ["Size (bytes)", String(r.size_bytes || 0)], ["In use", r.in_use ? "yes" : "no"],
     ].map(function (kv) {
       return '<div class="v2-resourcesField"><label>' + escapeHtml(kv[0]) +
-        "</label><div>" + escapeHtml(kv[1] || "—") + "</div></div>";
+        "</label><div>" + escapeHtml(asText(kv[1]) || "—") + "</div></div>";
     }).join("");
-    return (
-      '<button type="button" class="v2-resourcesDetail__back">← back</button>' +
-      "<h4>" + escapeHtml(d("data-title") || d("data-slug")) + "</h4>" +
-      preview + '<div class="v2-resourcesDetail__meta">' + rows + "</div>"
-    );
+    return "<h4>" + escapeHtml(asText(r.title) || asText(r.slug)) + "</h4>" + img +
+      '<div class="v2-resourcesDetail__meta">' + rows + "</div>";
+  }
+
+  function renderManageActions(r) {
+    var del = r.in_use
+      ? '<span class="v2-resourcesDedup__locked" title="In use by a site">in use — protected</span>'
+      : '<button type="button" class="v2-rowAction--danger" data-manage="delete">Delete</button>';
+    return '<div class="v2-resourcesDetail__actions">' +
+      '<button type="button" class="v2-rowAction" data-manage="retitle">Retitle</button>' +
+      '<button type="button" class="v2-rowAction" data-manage="rename">Rename slug</button>' +
+      del + "</div>";
   }
 
   function titleCaseLabel(value) {
@@ -1276,36 +1255,36 @@
   }
 
   function renderResourcesLibrary(p) {
-    var routes = {
-      retitle: asText(p.retitle_route) || "/__fnd/resources/asset/retitle",
-      rename: asText(p.rename_slug_route) || "/__fnd/resources/asset/rename-slug",
-      delete: asText(p.delete_route) || "/__fnd/resources/asset/delete",
-    };
     var leaflets = asList(p.leaflets);
-    var rowsHtml = leaflets
-      .map(function (l) { return renderLeafletRow(l, routes); })
-      .join("");
-    var table = leaflets.length
-      ? '<table class="v2-leafletTable"><thead><tr>' +
-        "<th>Kind</th><th>Entity / Owner</th>" +
-        '<th class="v2-leafletTable__sortable" data-sort="slug">Slug ▾</th>' +
-        "<th>Title</th><th>Actions</th></tr></thead><tbody>" + rowsHtml + "</tbody></table>"
-      : '<p class="v2-extensionCard__empty">No resource leaflets found.</p>';
+    // Embed the leaflet index as JSON for the client-side controller (filtering
+    // + no-reload refresh read from JS state, not the DOM). Escape "<" so the
+    // JSON can never close the script element early.
+    var data = JSON.stringify(leaflets).replace(/</g, "\\u003c");
+    function attr(name, val, dflt) { return " " + name + '="' + escapeHtml(asText(val) || dflt) + '"'; }
     return (
-      '<div class="v2-resourcesApp" data-resources-mode="library" data-resources-detail-route="' +
-      escapeHtml(asText(p.profile_detail_route) || "/__fnd/resources/profile/detail") +
-      '" data-resources-save-route="' +
-      escapeHtml(asText(p.profile_save_route) || "/__fnd/resources/profile/save") +
-      '" data-rename-preview-route="' +
-      escapeHtml(asText(p.rename_preview_route) || "/__fnd/resources/asset/rename-preview") +
-      '">' +
-      '<p class="v2-extensionCard__intro">Every shared leaflet, one uniform list. Filter by naming convention (kind, owner, slug, title, filename) to review and reorganize. ' +
-      escapeHtml(String(leaflets.length)) + " leaflets.</p>" +
-      '<input type="search" class="v2-resourcesSearch" placeholder="Filter by naming convention…" aria-label="Filter leaflets" />' +
-      '<div class="v2-resourcesApp__detail" hidden></div>' +
-      table +
-      renderResourcesUpload(p) +
-      "</div>"
+      '<div class="v2-resourcesApp" data-resources-mode="library"' +
+      attr("data-detail-route", p.profile_detail_route, "/__fnd/resources/profile/detail") +
+      attr("data-save-route", p.profile_save_route, "/__fnd/resources/profile/save") +
+      attr("data-retitle-route", p.retitle_route, "/__fnd/resources/asset/retitle") +
+      attr("data-rename-route", p.rename_slug_route, "/__fnd/resources/asset/rename-slug") +
+      attr("data-rename-preview-route", p.rename_preview_route, "/__fnd/resources/asset/rename-preview") +
+      attr("data-delete-route", p.delete_route, "/__fnd/resources/asset/delete") +
+      attr("data-leaflets-route", p.leaflets_route, "/__fnd/resources/leaflets") + ">" +
+      '<p class="v2-extensionCard__intro">Every shared leaflet in one place (' +
+      escapeHtml(String(leaflets.length)) + "). Filter by naming convention on the left; " +
+      "select a leaflet to view or edit it on the right.</p>" +
+      '<script type="application/json" class="v2-leafletData">' + data + "</script>" +
+      '<div class="v2-resourcesTwoPane">' +
+        '<div class="v2-resourcesPane v2-resourcesPane--list">' +
+          '<div class="v2-facetBar"></div>' +
+          '<div class="v2-leafletList"></div>' +
+          renderResourcesUpload(p) +
+        "</div>" +
+        '<div class="v2-resourcesPane v2-resourcesPane--detail">' +
+          '<div class="v2-resourcesApp__detail">' +
+          '<p class="v2-resourcesDetail__placeholder">Select a leaflet to view or edit.</p></div>' +
+        "</div>" +
+      "</div></div>"
     );
   }
 
@@ -1761,370 +1740,270 @@
   }
 
   // --- ext_resources interactions ---------------------------------------
-  function renderResourcesDetailForm(app, profile) {
-    var prof = asObject(profile);
-    var saveRoute = app.getAttribute("data-resources-save-route");
-    var fields = asList(prof.fields);
-    // Scalar identity/contact fields the backend accepts for editing.
-    var editable = {
-      name: 1, display_name: 1, card_id: 1, entity_type: 1, role: 1,
-      organization: 1, location: 1, website: 1, email: 1, secondary_email: 1,
-      org_email: 1, phone: 1, summary_bio: 1, image_ref: 1, logo_ref: 1,
+  // The Library is a stateful master/detail controller: leaflets live in JS
+  // state, filtering + sorting + mutations happen client-side, and mutations
+  // refresh the list via GET /__fnd/resources/leaflets — NO full shell reload
+  // (the operator's facets, scroll and open detail survive).
+  function bindResourcesLibrary(ctx, app) {
+    var listEl = app.querySelector(".v2-leafletList");
+    var facetEl = app.querySelector(".v2-facetBar");
+    var detailPane = app.querySelector(".v2-resourcesApp__detail");
+    var dataEl = app.querySelector(".v2-leafletData");
+    var routes = {
+      detail: app.getAttribute("data-detail-route"),
+      save: app.getAttribute("data-save-route"),
+      retitle: app.getAttribute("data-retitle-route"),
+      rename: app.getAttribute("data-rename-route"),
+      renamePreview: app.getAttribute("data-rename-preview-route"),
+      del: app.getAttribute("data-delete-route"),
+      leaflets: app.getAttribute("data-leaflets-route"),
     };
-    var img = asText(prof.image_url);
-    var head =
-      '<div class="v2-resourcesDetail__head">' +
-      (img
-        ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(img) + '" alt="" />'
-        : renderResourcesPlaceholderThumb()) +
-      "<h4>" +
-      escapeHtml(asText(prof.display_name) || asText(prof.slug)) +
-      "</h4>" +
-      '<button type="button" class="v2-rowAction--secondary v2-resourcesDetail__back">Back to list</button>' +
-      "</div>";
-    // Render ALL fields (incl. empty) as read rows; editable ones as inputs.
-    var inputs = fields
-      .map(function (f) {
-        var fld = asObject(f);
-        var key = asText(fld.key);
-        var val = asText(fld.value);
-        var label = escapeHtml(asText(fld.label) || key);
-        if (editable[key]) {
-          var multiline = key === "summary_bio" || val.indexOf("\n") >= 0;
-          var control = multiline
-            ? '<textarea data-resources-field="' + escapeHtml(key) + '" rows="3">' + escapeHtml(val) + "</textarea>"
-            : '<input type="text" data-resources-field="' + escapeHtml(key) + '" value="' + escapeHtml(val) + '" />';
-          return '<label class="v2-resourcesField">' + label + control + "</label>";
+    var FACETS = [
+      { key: "kind", label: "Kind", field: "kind" },
+      { key: "owner", label: "Owner", field: "owner" },
+      { key: "entity_type", label: "Entity", field: "entity_type" },
+      { key: "ext", label: "Ext", field: "ext" },
+      { key: "variant", label: "Variant", field: "slug_variant" },
+    ];
+    var state = { leaflets: [], filters: { text: "" }, sortDesc: false, selected: "" };
+    try { state.leaflets = JSON.parse((dataEl && dataEl.textContent) || "[]"); } catch (_) { state.leaflets = []; }
+
+    function byFilename(fn) {
+      for (var i = 0; i < state.leaflets.length; i++) {
+        if (asText(state.leaflets[i].filename) === fn) return state.leaflets[i];
+      }
+      return null;
+    }
+    function distinct(field) {
+      var seen = {};
+      state.leaflets.forEach(function (r) { var v = asText(r[field]); if (v) seen[v] = 1; });
+      return Object.keys(seen).sort();
+    }
+    function filtered() {
+      var f = state.filters;
+      var rows = state.leaflets.filter(function (r) {
+        for (var i = 0; i < FACETS.length; i++) {
+          var fc = FACETS[i];
+          if (f[fc.key] && asText(r[fc.field]) !== f[fc.key]) return false;
         }
-        return (
-          '<div class="v2-resourcesField v2-resourcesField--ro"><span class="v2-resourcesField__label">' +
-          label +
-          '</span><span class="v2-resourcesField__value">' +
-          (val ? escapeHtml(val).replace(/\n/g, "<br />") : "—") +
-          "</span></div>"
-        );
-      })
-      .join("");
-    return (
-      head +
-      '<form class="v2-resourcesDetail__form" data-resources-save-form data-slug="' +
-      escapeHtml(asText(prof.slug)) +
-      '" data-save-route="' +
-      escapeHtml(saveRoute) +
-      '">' +
-      inputs +
-      '<div class="v2-resourcesDetail__actions">' +
-      '<button type="submit" class="v2-rowAction--primary">Save &amp; publish</button>' +
-      '<span class="v2-resourcesDetail__result"></span>' +
-      "</div></form>"
-    );
+        if (f.text && asText(r.naming).indexOf(f.text) === -1) return false;
+        return true;
+      });
+      rows.sort(function (a, b) {
+        var av = asText(a.slug), bv = asText(b.slug);
+        if (av === bv) return 0;
+        return state.sortDesc ? (av < bv ? 1 : -1) : (av < bv ? -1 : 1);
+      });
+      return rows;
+    }
+    function renderFacets() {
+      var selects = FACETS.map(function (fc) {
+        var opts = distinct(fc.field).map(function (v) {
+          return '<option value="' + escapeHtml(v) + '"' + (state.filters[fc.key] === v ? " selected" : "") + ">" + escapeHtml(v) + "</option>";
+        }).join("");
+        return '<label class="v2-facet"><span>' + escapeHtml(fc.label) + "</span>" +
+          '<select data-facet="' + fc.key + '"><option value="">all</option>' + opts + "</select></label>";
+      }).join("");
+      facetEl.innerHTML =
+        '<input type="search" class="v2-resourcesSearch" data-facet-text placeholder="Filter by naming…" value="' + escapeHtml(state.filters.text) + '" />' +
+        '<div class="v2-facetRow">' + selects +
+        '<button type="button" class="v2-rowAction v2-facet__sort" data-facet-sort>Slug ' + (state.sortDesc ? "▴" : "▾") + "</button></div>";
+      Array.prototype.forEach.call(facetEl.querySelectorAll("select[data-facet]"), function (sel) {
+        sel.addEventListener("change", function () { state.filters[sel.getAttribute("data-facet")] = sel.value; renderList(); });
+      });
+      var textBox = facetEl.querySelector("[data-facet-text]");
+      if (textBox) textBox.addEventListener("input", function () { state.filters.text = (textBox.value || "").trim().toLowerCase(); renderList(); });
+      var sortBtn = facetEl.querySelector("[data-facet-sort]");
+      if (sortBtn) sortBtn.addEventListener("click", function () { state.sortDesc = !state.sortDesc; renderFacets(); renderList(); });
+    }
+    function renderList() {
+      var rows = filtered();
+      listEl.innerHTML = rows.length
+        ? '<div class="v2-leafletList__count">' + rows.length + " of " + state.leaflets.length + "</div>" +
+          rows.map(renderLeafletListItem).join("")
+        : '<p class="v2-extensionCard__empty">No leaflets match.</p>';
+      Array.prototype.forEach.call(listEl.querySelectorAll(".v2-leafletItem"), function (item) {
+        if (item.getAttribute("data-filename") === state.selected) item.classList.add("is-active");
+        item.addEventListener("click", function () {
+          Array.prototype.forEach.call(listEl.querySelectorAll(".v2-leafletItem.is-active"), function (n) { n.classList.remove("is-active"); });
+          item.classList.add("is-active");
+          openDetail(byFilename(item.getAttribute("data-filename")));
+        });
+      });
+    }
+    function refresh() {
+      if (!routes.leaflets) return;
+      fetch(routes.leaflets, { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j || !j.ok) return;
+          state.leaflets = asList(j.leaflets);
+          renderFacets(); renderList();
+          if (state.selected && !byFilename(state.selected)) {
+            detailPane.innerHTML = '<p class="v2-resourcesDetail__placeholder">Select a leaflet to view or edit.</p>';
+            state.selected = "";
+          }
+        })
+        .catch(function () {});
+    }
+    function openDetail(r) {
+      if (!r || !detailPane) return;
+      state.selected = asText(r.filename);
+      if (asText(r.gallery) === "profiles") { openProfileDetail(r); }
+      else { detailPane.innerHTML = renderBinaryDetail(r) + renderManageActions(r); bindManage(r); }
+    }
+    function openProfileDetail(r) {
+      detailPane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
+      fetch(routes.detail + "?slug=" + encodeURIComponent(asText(r.slug)), { credentials: "same-origin" })
+        .then(function (x) { return x.json(); })
+        .then(function (j) {
+          if (!j || !j.ok) { detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>'; return; }
+          var lib = componentLibrary();
+          var formHtml = (lib && j.edit_frame && typeof lib.renderComponentFrame === "function")
+            ? lib.renderComponentFrame(j.edit_frame)
+            : '<p class="v2-resourcesDetail__error">Editor unavailable.</p>';
+          detailPane.innerHTML = renderProfileHead(r) + formHtml +
+            '<div class="v2-resourcesDetail__result"></div>' + renderManageActions(r);
+          bindProfileSave(r);
+          bindManage(r);
+        })
+        .catch(function () { detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>'; });
+    }
+    function bindProfileSave(r) {
+      var form = detailPane.querySelector("form");
+      if (!form) return;
+      var resultEl = detailPane.querySelector(".v2-resourcesDetail__result");
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var fields = collectFormFieldValues(form);
+        var btn = form.querySelector('button[type="submit"]');
+        if (btn) btn.disabled = true;
+        if (resultEl) resultEl.textContent = "Saving & rebuilding…";
+        fetch(routes.save, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: asText(r.slug), fields: fields }), credentials: "same-origin" })
+          .then(function (x) { return x.json().then(function (j) { return { status: x.status, body: j }; }); })
+          .then(function (out) {
+            if (btn) btn.disabled = false;
+            var ok = out.body && out.body.ok;
+            if (resultEl) {
+              if (ok) {
+                var prop = (out.body && out.body.propagation) || {};
+                var rebuilt = (prop.rebuilt || []).length;
+                resultEl.textContent = "Saved." + (rebuilt ? " Rebuilt " + rebuilt + " site(s)." : "");
+              } else {
+                resultEl.textContent = "Save failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
+              }
+            }
+            if (ok) refresh();
+          })
+          .catch(function () { if (btn) btn.disabled = false; if (resultEl) resultEl.textContent = "Network error."; });
+      });
+    }
+    function postManage(btn, route, body, clearDetail) {
+      btn.disabled = true;
+      fetch(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin" })
+        .then(function (x) { return x.json().then(function (j) { return { status: x.status, body: j }; }); })
+        .then(function (out) {
+          btn.disabled = false;
+          if (out.body && out.body.ok) {
+            if (clearDetail) { detailPane.innerHTML = '<p class="v2-resourcesDetail__placeholder">Select a leaflet to view or edit.</p>'; state.selected = ""; }
+            refresh();
+          } else {
+            try { window.alert("Failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status))); } catch (_) {}
+          }
+        })
+        .catch(function () { btn.disabled = false; });
+    }
+    function cascadeRename(btn, oldSlug, newSlug) {
+      var payload = { gallery: "profiles", old_slug: oldSlug, new_slug: newSlug };
+      btn.disabled = true;
+      fetch(routes.renamePreview, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload), credentials: "same-origin" })
+        .then(function (x) { return x.json().then(function (j) { return { status: x.status, body: j }; }); })
+        .then(function (out) {
+          btn.disabled = false;
+          var rep = out.body || {};
+          if (!rep.ok) { try { window.alert("Cannot rename: " + (rep.detail || rep.error || ("HTTP " + out.status))); } catch (_) {} return; }
+          var c = asObject(rep.report);
+          var msg = "Rename profile slug '" + oldSlug + "' → '" + newSlug + "'?\n\nThis cascade will update:\n" +
+            "  • canonical profile\n  • " + asList(c.excerpts).length + " per-site excerpt(s)\n" +
+            "  • " + asList(c.related).length + " related-reference(s)\n  • FND network refs: " + (c.fnd_network ? "yes" : "no") + "\n" +
+            "  • " + asList(c.data_files).length + " data-file URL ref(s)\n  • rebuild " + asList(c.sites).length + " site(s)";
+          if (typeof window.confirm === "function" && !window.confirm(msg)) return;
+          postManage(btn, routes.rename, payload, true);
+        })
+        .catch(function () { btn.disabled = false; });
+    }
+    function bindManage(r) {
+      Array.prototype.forEach.call(detailPane.querySelectorAll("[data-manage]"), function (btn) {
+        btn.addEventListener("click", function () {
+          var action = btn.getAttribute("data-manage");
+          if (action === "retitle") {
+            var nt = window.prompt && window.prompt("New title for " + asText(r.filename) + ":", asText(r.title));
+            if (!nt) return;
+            postManage(btn, routes.retitle, { gallery: asText(r.gallery), filename: asText(r.filename), new_asset_id: nt });
+          } else if (action === "rename") {
+            var ns = window.prompt && window.prompt("Rename slug '" + asText(r.slug) + "' to:", asText(r.slug));
+            if (!ns || ns === asText(r.slug)) return;
+            if (asText(r.gallery) === "profiles") { cascadeRename(btn, asText(r.slug), ns); return; }
+            postManage(btn, routes.rename, { gallery: asText(r.gallery), old_slug: asText(r.slug), new_slug: ns });
+          } else if (action === "delete") {
+            if (typeof window.confirm === "function" && !window.confirm("Delete " + asText(r.filename) + "? (only if unused)")) return;
+            postManage(btn, routes.del, { gallery: asText(r.gallery), filename: asText(r.filename) }, true);
+          }
+        });
+      });
+    }
+    renderFacets();
+    renderList();
+  }
+
+  function bindResourcesAllocation(ctx, app) {
+    function reloadSurface() {
+      if (typeof ctx.loadShell !== "function") return;
+      var env = ctx.getEnvelope && ctx.getEnvelope();
+      if (env) ctx.loadShell({ schema: "mycite.v2.portal.shell.request.v1", requested_surface_id: env.surface_id, surface_query: env.surface_query || {} });
+    }
+    var searchBox = app.querySelector(".v2-resourcesSearch");
+    if (searchBox) searchBox.addEventListener("input", function () {
+      var q = (searchBox.value || "").trim().toLowerCase();
+      Array.prototype.forEach.call(app.querySelectorAll(".v2-resourcesMember"), function (m) {
+        var hit = !q || (m.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
+        m.style.display = hit ? "" : "none";
+      });
+    });
+    var allocSite = app.getAttribute("data-site");
+    var allocAddRoute = app.getAttribute("data-add-route");
+    var allocRemoveRoute = app.getAttribute("data-remove-route");
+    Array.prototype.forEach.call(app.querySelectorAll("[data-resources-alloc]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var action = btn.getAttribute("data-resources-alloc");
+        var route = action === "remove" ? allocRemoveRoute : allocAddRoute;
+        if (!route || !allocSite) return;
+        var body = { site: allocSite, kind: btn.getAttribute("data-kind"), asset_path: btn.getAttribute("data-asset-path") };
+        if (action === "add") body.asset_id = btn.getAttribute("data-asset-id") || "";
+        btn.disabled = true;
+        fetch(route, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin" })
+          .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+          .then(function (out) {
+            btn.disabled = false;
+            if (out.body && out.body.ok) reloadSurface();
+            else { try { window.alert("Allocation failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status))); } catch (_) {} }
+          })
+          .catch(function () { btn.disabled = false; });
+      });
+    });
   }
 
   function bindResourcesApp(ctx, target) {
     var app = target.querySelector(".v2-resourcesApp");
     if (!app || app.dataset.resourcesBound === "1") return;
     app.dataset.resourcesBound = "1";
-    var detailRoute = app.getAttribute("data-resources-detail-route");
-    var renamePreviewRoute = app.getAttribute("data-rename-preview-route");
-    var detailPane = app.querySelector(".v2-resourcesApp__detail");
-
-    function showList() {
-      if (detailPane) {
-        detailPane.hidden = true;
-        detailPane.innerHTML = "";
-      }
-    }
-
-    function openProfileDetail(slug) {
-      if (!slug || !detailPane) return;
-      detailPane.hidden = false;
-      detailPane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
-      fetch(detailRoute + "?slug=" + encodeURIComponent(slug), { credentials: "same-origin" })
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (!j || !j.ok) {
-            detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>';
-            return;
-          }
-          detailPane.innerHTML = renderResourcesDetailForm(app, j.profile);
-          var back = detailPane.querySelector(".v2-resourcesDetail__back");
-          if (back) back.addEventListener("click", showList);
-          var form = detailPane.querySelector("[data-resources-save-form]");
-          if (form) bindResourcesSaveForm(ctx, form);
-        })
-        .catch(function () {
-          detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>';
-        });
-    }
-
-    // Uniform leaflet-row open: profiles -> editable detail (fetched), every
-    // other leaflet -> read-only metadata (from the row). Clicks inside the
-    // actions cell are left to the manage buttons.
-    Array.prototype.forEach.call(
-      app.querySelectorAll(".v2-leafletRow"),
-      function (row) {
-        row.addEventListener("click", function (e) {
-          if (e.target.closest && e.target.closest(".v2-leafletRow__actions")) return;
-          if (!detailPane) return;
-          if (row.getAttribute("data-gallery") === "profiles") {
-            openProfileDetail(row.getAttribute("data-slug"));
-          } else {
-            detailPane.hidden = false;
-            detailPane.innerHTML = renderLeafletDetailMeta(row);
-            var back = detailPane.querySelector(".v2-resourcesDetail__back");
-            if (back) back.addEventListener("click", showList);
-          }
-        });
-      }
-    );
-
-    // Upload form (multipart).
     var uploadForm = app.querySelector("[data-resources-upload-route]");
     if (uploadForm) bindResourcesUpload(uploadForm);
-
-    // Naming-convention filter: hide leaflet rows whose data-resources-search
-    // does not contain the query. The ONLY organizing affordance in the view.
-    var searchBox = app.querySelector(".v2-resourcesSearch");
-    if (searchBox) {
-      searchBox.addEventListener("input", function () {
-        var q = (searchBox.value || "").trim().toLowerCase();
-        Array.prototype.forEach.call(
-          app.querySelectorAll(".v2-leafletRow"),
-          function (row) {
-            var hit = !q || (row.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
-            row.style.display = hit ? "" : "none";
-          }
-        );
-      });
+    if (app.getAttribute("data-resources-mode") === "library") {
+      bindResourcesLibrary(ctx, app);
+    } else {
+      bindResourcesAllocation(ctx, app);
     }
-
-    // Sort toggle on the Slug column header (ascending / descending).
-    var sortHeader = app.querySelector(".v2-leafletTable__sortable");
-    if (sortHeader) {
-      sortHeader.style.cursor = "pointer";
-      sortHeader.addEventListener("click", function () {
-        var tbody = app.querySelector(".v2-leafletTable tbody");
-        if (!tbody) return;
-        var desc = sortHeader.getAttribute("data-dir") !== "desc";
-        sortHeader.setAttribute("data-dir", desc ? "desc" : "asc");
-        sortHeader.textContent = "Slug " + (desc ? "▴" : "▾");
-        var rows = Array.prototype.slice.call(tbody.querySelectorAll(".v2-leafletRow"));
-        rows.sort(function (a, b) {
-          var av = a.getAttribute("data-slug") || "";
-          var bv = b.getAttribute("data-slug") || "";
-          if (av === bv) return 0;
-          return desc ? (av < bv ? 1 : -1) : (av < bv ? -1 : 1);
-        });
-        rows.forEach(function (r) { tbody.appendChild(r); });
-      });
-    }
-
-    // Manage actions: retitle / rename-slug / delete. Each POSTs JSON and, on
-    // success, reloads the surface so the library reflects the change.
-    function reloadSurface() {
-      if (typeof ctx.loadShell !== "function") return;
-      var envelope = ctx.getEnvelope && ctx.getEnvelope();
-      if (envelope) {
-        ctx.loadShell({
-          schema: "mycite.v2.portal.shell.request.v1",
-          requested_surface_id: envelope.surface_id,
-          surface_query: envelope.surface_query || {},
-        });
-      }
-    }
-
-    // Profile slug rename is a CASCADE (excerpts, FND map refs, related refs,
-    // data files, site rebuilds). Show the dry-run change-set first, confirm,
-    // then apply.
-    function cascadeRenameProfile(btn, oldSlug, newSlug) {
-      var renameRoute = btn.getAttribute("data-route");
-      var payload = { gallery: "profiles", old_slug: oldSlug, new_slug: newSlug };
-      btn.disabled = true;
-      fetch(renamePreviewRoute, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-        credentials: "same-origin",
-      })
-        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-        .then(function (out) {
-          btn.disabled = false;
-          var rep = out.body || {};
-          if (!rep.ok) {
-            try { window.alert("Cannot rename: " + (rep.detail || rep.error || ("HTTP " + out.status))); } catch (_) {}
-            return;
-          }
-          var c = asObject(rep.report);
-          var msg = "Rename profile slug '" + oldSlug + "' → '" + newSlug + "'?\n\nThis cascade will update:\n" +
-            "  • canonical profile\n" +
-            "  • " + asList(c.excerpts).length + " per-site excerpt(s)\n" +
-            "  • " + asList(c.related).length + " related-reference(s)\n" +
-            "  • FND network refs: " + (c.fnd_network ? "yes" : "no") + "\n" +
-            "  • " + asList(c.data_files).length + " data-file URL ref(s)\n" +
-            "  • rebuild " + asList(c.sites).length + " site(s)";
-          if (typeof window.confirm === "function" && !window.confirm(msg)) return;
-          btn.disabled = true;
-          fetch(renameRoute, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-            .then(function (out2) {
-              btn.disabled = false;
-              if (out2.body && out2.body.ok) reloadSurface();
-              else {
-                try { window.alert("Rename failed: " + ((out2.body && (out2.body.detail || out2.body.error)) || ("HTTP " + out2.status))); } catch (_) {}
-              }
-            })
-            .catch(function () { btn.disabled = false; });
-        })
-        .catch(function () { btn.disabled = false; });
-    }
-    Array.prototype.forEach.call(
-      app.querySelectorAll("[data-resources-manage]"),
-      function (btn) {
-        btn.addEventListener("click", function () {
-          var action = btn.getAttribute("data-resources-manage");
-          var route = btn.getAttribute("data-route");
-          var gallery = btn.getAttribute("data-gallery");
-          var body = { gallery: gallery };
-          if (action === "retitle") {
-            var filename = btn.getAttribute("data-filename");
-            var newTitle = window.prompt && window.prompt("New title for " + filename + ":");
-            if (!newTitle) return;
-            body.filename = filename;
-            body.new_asset_id = newTitle;
-          } else if (action === "rename-slug") {
-            var oldSlug = btn.getAttribute("data-slug");
-            var newSlug = window.prompt && window.prompt("Rename slug '" + oldSlug + "' to:", oldSlug);
-            if (!newSlug || newSlug === oldSlug) return;
-            if (gallery === "profiles") {
-              // Profiles cascade through excerpts/manifests/FND refs/sites.
-              cascadeRenameProfile(btn, oldSlug, newSlug);
-              return;
-            }
-            body.old_slug = oldSlug;
-            body.new_slug = newSlug;
-          } else if (action === "delete") {
-            var delFile = btn.getAttribute("data-filename");
-            if (typeof window.confirm === "function" &&
-                !window.confirm("Delete " + delFile + "? (only allowed if unused)")) return;
-            body.filename = delFile;
-          } else {
-            return;
-          }
-          btn.disabled = true;
-          fetch(route, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-            .then(function (out) {
-              btn.disabled = false;
-              if (out.body && out.body.ok) {
-                reloadSurface();
-              } else {
-                try {
-                  window.alert((action === "delete" ? "Delete" : "Update") + " failed: " +
-                    ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status)));
-                } catch (_) {}
-              }
-            })
-            .catch(function () { btn.disabled = false; });
-        });
-      }
-    );
-
-    // Allocation actions (per-grantee mode): add/remove a leaflet from this
-    // site's *_use.yaml manifest. site + routes are carried on the app element.
-    var allocSite = app.getAttribute("data-site");
-    var allocAddRoute = app.getAttribute("data-add-route");
-    var allocRemoveRoute = app.getAttribute("data-remove-route");
-    Array.prototype.forEach.call(
-      app.querySelectorAll("[data-resources-alloc]"),
-      function (btn) {
-        btn.addEventListener("click", function () {
-          var action = btn.getAttribute("data-resources-alloc");
-          var route = action === "remove" ? allocRemoveRoute : allocAddRoute;
-          if (!route || !allocSite) return;
-          var body = {
-            site: allocSite,
-            kind: btn.getAttribute("data-kind"),
-            asset_path: btn.getAttribute("data-asset-path"),
-          };
-          if (action === "add") body.asset_id = btn.getAttribute("data-asset-id") || "";
-          btn.disabled = true;
-          fetch(route, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-            credentials: "same-origin",
-          })
-            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-            .then(function (out) {
-              btn.disabled = false;
-              if (out.body && out.body.ok) {
-                reloadSurface();
-              } else {
-                try {
-                  window.alert("Allocation failed: " +
-                    ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status)));
-                } catch (_) {}
-              }
-            })
-            .catch(function () { btn.disabled = false; });
-        });
-      }
-    );
-  }
-
-  function bindResourcesSaveForm(ctx, form) {
-    form.addEventListener("submit", function (event) {
-      event.preventDefault();
-      var route = form.getAttribute("data-save-route");
-      var slug = form.getAttribute("data-slug");
-      var resultEl = form.querySelector(".v2-resourcesDetail__result");
-      var fields = {};
-      Array.prototype.forEach.call(
-        form.querySelectorAll("[data-resources-field]"),
-        function (node) { fields[node.getAttribute("data-resources-field")] = node.value; }
-      );
-      var submitBtn = form.querySelector('button[type="submit"]');
-      if (submitBtn) submitBtn.disabled = true;
-      if (resultEl) resultEl.textContent = "Saving & rebuilding…";
-      fetch(route, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: slug, fields: fields }),
-        credentials: "same-origin",
-      })
-        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
-        .then(function (out) {
-          if (submitBtn) submitBtn.disabled = false;
-          var ok = out.body && out.body.ok;
-          if (resultEl) {
-            if (ok) {
-              var prop = out.body.propagation || {};
-              var rebuilt = (prop.rebuilt || []).length;
-              var errs = (prop.errors || []).length;
-              resultEl.textContent = "Saved." +
-                (rebuilt ? " Rebuilt " + rebuilt + " site(s)." : "") +
-                (errs ? " (" + errs + " propagation note(s))" : "");
-            } else {
-              resultEl.textContent = "Save failed: " +
-                ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
-            }
-          }
-        })
-        .catch(function (err) {
-          if (submitBtn) submitBtn.disabled = false;
-          if (resultEl) resultEl.textContent = "Network error: " + (err && err.message ? err.message : err);
-        });
-    });
   }
 
   function bindResourcesUpload(form) {
