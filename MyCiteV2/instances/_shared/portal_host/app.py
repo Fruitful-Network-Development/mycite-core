@@ -2205,8 +2205,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         if result.get("ok"):
             return jsonify(result), 200
-        # collision / in_use are conflicts; bad slug / unknown are 400.
-        conflict = result.get("error") in {"collision", "in_use"}
+        # collision / in_use / site_entity_slug are conflicts; others are 400.
+        conflict = result.get("error") in {"collision", "in_use", "site_entity_slug"}
+        return jsonify(result), 409 if conflict else 400
+
+    @app.post("/__fnd/resources/asset/rename-preview")
+    def fnd_resources_asset_rename_preview() -> tuple[Any, int]:
+        """Dry-run the profile slug-rename cascade: return the change-set
+        (excerpts/related/FND refs/data files/sites) WITHOUT mutating anything,
+        so the UI can show the operator the impact before applying."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.cascade_rename_profile_slug(
+            host_config.webapps_root,
+            _as_text(payload.get("old_slug")),
+            _as_text(payload.get("new_slug")),
+            apply=False,
+        )
+        if result.get("ok"):
+            return jsonify(result), 200
+        conflict = result.get("error") in {"collision", "site_entity_slug"}
         return jsonify(result), 409 if conflict else 400
 
     @app.post("/__fnd/resources/asset/delete")

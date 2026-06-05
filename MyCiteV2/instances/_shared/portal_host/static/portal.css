@@ -10268,3 +10268,29 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 .v2-resourcesApp button.v2-rowAction:hover { background: var(--paper, #f4f1e4); }
 .v2-resourcesMember.is-allocated { background: rgba(30,108,147,0.08); border-radius: 4px; }
+
+/* Unified, type-agnostic leaflet table (the naming-filtered library). */
+.v2-leafletTable {
+  width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px;
+}
+.v2-leafletTable th, .v2-leafletTable td {
+  text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line, #afafaa);
+  vertical-align: middle;
+}
+.v2-leafletTable th {
+  font-weight: 600; color: var(--ink, #464646);
+  border-bottom: 2px solid var(--line, #afafaa); position: sticky; top: 0;
+  background: var(--paper, #f4f1e4);
+}
+.v2-leafletTable__sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+.v2-leafletRow { cursor: pointer; }
+.v2-leafletRow:hover { background: rgba(127,127,127,0.10); }
+.v2-leafletRow td code { font-size: 11px; word-break: break-all; }
+.v2-leafletRow__actions {
+  display: flex; gap: 4px; flex-wrap: wrap; white-space: nowrap; cursor: default;
+}
+.v2-resourcesDetail__meta { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.v2-resourcesDetail__meta .v2-resourcesField label {
+  font-size: 11px; font-weight: 600; color: var(--ink2, #888888);
+}
+.v2-resourcesDetail__meta .v2-resourcesField > div { word-break: break-all; }

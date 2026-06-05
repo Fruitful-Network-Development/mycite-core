@@ -84,6 +84,21 @@ def _profile_slug(filename: str) -> str:
     return name.rsplit(".", 1)[-1]
 
 
+def _profile_entity_flavor(filename: str) -> str:
+    """Return the entity flavor of a profile filename, or "".
+
+    ``0000-00-00.artifact-profile-legal_entity.bloom_hill_farm.profile.yaml``
+    → ``legal_entity`` (the token between ``artifact-profile-`` and the slug).
+    """
+    name = str(filename)
+    if name.endswith(_PROFILE_SUFFIX):
+        name = name[: -len(_PROFILE_SUFFIX)]
+    head = name.rsplit(".", 1)[0]  # drop the trailing .<slug>
+    marker = "artifact-profile-"
+    idx = head.find(marker)
+    return head[idx + len(marker):] if idx != -1 else ""
+
+
 def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -689,8 +704,15 @@ def _fnd_network_refs(webapps_root: str | Path) -> set[str]:
     for key in _FND_NETWORK_KEYPATH:
         node = node.get(key, {}) if isinstance(node, dict) else {}
     panel = node.get("panel", {}) if isinstance(node, dict) else {}
-    refs = panel.get("profile_refs") or panel.get("farm_profile_refs") or []
-    return {_as_text(r) for r in refs if _as_text(r)} if isinstance(refs, list) else set()
+    # Union BOTH ref lists for presence detection — a slug present in only
+    # ``farm_profile_refs`` (back-compat alias) must still register as in-network
+    # so the cascade updates it and the dataset regen fires.
+    out: set[str] = set()
+    for refs_key in ("profile_refs", "farm_profile_refs"):
+        refs = panel.get(refs_key)
+        if isinstance(refs, list):
+            out.update(_as_text(r) for r in refs if _as_text(r))
+    return out
 
 
 def _regenerate_fnd_network_dataset(
@@ -1165,6 +1187,71 @@ def build_grouped_gallery(
     }
 
 
+def build_leaflet_index(webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """A single, type-agnostic, flat index of EVERY managed leaflet.
+
+    Flattens all ``MANAGED_GALLERIES`` (reusing ``build_grouped_gallery``) into
+    one uniform row list so the Resource view can present every leaflet
+    identically and the operator can filter purely by naming convention. Each
+    row:
+    ``{gallery, kind, filename, slug, owner, entity_type, title, ext,
+    asset_path, referenced, in_use, image_url, size_bytes, naming}`` where
+    ``entity_type`` is the profile flavor (legal_entity/natural_entity) or "",
+    ``in_use`` means a site consumes it (profiles: a derived excerpt or a
+    manifest reference; binaries: a manifest reference), and ``naming`` is the
+    lowercased substring-filter key. Sorted by (slug, kind, filename).
+    """
+    # The FND network map consumes profiles by slug from its manifest (NOT via
+    # excerpts or *_use.yaml), so fold those refs into a profile's in_use.
+    # Computed once and reused across all profile rows.
+    fnd_refs = _fnd_network_refs(webapps_root) if webapps_root else set()
+    rows: list[dict[str, Any]] = []
+    for gallery in MANAGED_GALLERIES:
+        grouped = build_grouped_gallery(webapps_root, gallery)
+        kind = grouped["kind"]
+        for group in grouped["groups"]:
+            slug = _as_text(group.get("slug"))
+            for member in group.get("members", []):
+                filename = _as_text(member.get("filename"))
+                referenced = bool(member.get("referenced"))
+                if gallery == "profiles":
+                    entity_type = _profile_entity_flavor(filename)
+                    title = _as_text(member.get("display_name")) or slug
+                    in_use = (
+                        referenced
+                        or slug in fnd_refs
+                        or bool(_excerpt_paths_for_slug(webapps_root, slug))
+                    )
+                else:
+                    entity_type = ""
+                    title = slug
+                    in_use = referenced
+                owner = _as_text(member.get("owner"))
+                naming = " ".join(
+                    [filename, slug, owner, entity_type, kind, title]
+                ).lower()
+                rows.append(
+                    {
+                        "gallery": gallery,
+                        "kind": kind,
+                        "filename": filename,
+                        "slug": slug,
+                        "owner": owner,
+                        "entity_type": entity_type,
+                        "title": title,
+                        "ext": _as_text(member.get("ext")),
+                        "asset_path": _as_text(member.get("asset_path")),
+                        "referenced": referenced,
+                        "in_use": in_use,
+                        "image_url": _as_text(member.get("image_url")),
+                        "size_bytes": int(member.get("size_bytes") or 0),
+                        "naming": naming,
+                    }
+                )
+    rows.sort(key=lambda r: (r["slug"], r["kind"], r["filename"]))
+    return rows
+
+
 def _update_manifests_for_asset(
     webapps_root: str | Path,
     kind: str,
@@ -1247,12 +1334,285 @@ def retitle_asset(
     return {"ok": True, "retitled": name, "manifests_updated": updated}
 
 
+def _replace_slug_token(name: str, old: str, new: str) -> str:
+    """Replace the slug token ``old`` with ``new`` in a filename, respecting
+    token boundaries (start/end or one of ``.`` ``-`` ``_``) so a mere substring
+    is never hit. Works for canonical, profile-excerpt, and operation-excerpt
+    filenames alike (the slug always sits between such boundaries)."""
+    return re.sub(
+        rf"(^|[._-]){re.escape(old)}([.\-]|$)",
+        lambda m: f"{m.group(1)}{new}{m.group(2)}",
+        name,
+    )
+
+
+def _backup_file(path: Path) -> None:
+    """Best-effort ``<name>.bak`` copy before an in-place edit."""
+    try:
+        Path(str(path) + ".bak").write_bytes(path.read_bytes())
+    except OSError:
+        pass
+
+
+def _find_related_referencing(
+    webapps_root: str | Path, stem: str, *, exclude: set[str]
+) -> list[str]:
+    """Canonical + excerpt YAML files (other than ``exclude``) whose text
+    contains ``stem`` — i.e. they reference the profile by its filename stem in a
+    ``related:`` list. ``stem`` is a long unique string, so a plain containment
+    test has no realistic false positives."""
+    hits: list[str] = []
+    patterns = [
+        str(Path(webapps_root) / "clients" / "_shared" / "site-core" / "profiles" / "*.yaml"),
+        str(Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / "*.yaml"),
+    ]
+    for pattern in patterns:
+        for f in glob.glob(pattern):
+            name = Path(f).name
+            # Skip the file itself, templates, and record-manifests (the
+            # profile_use manifest's asset_path contains the stem but is handled
+            # separately by _update_manifests_for_asset, not as a related-ref).
+            if f in exclude or ".example." in name or "record-manifest" in name:
+                continue
+            try:
+                if stem in Path(f).read_text(encoding="utf-8"):
+                    hits.append(f)
+            except OSError:
+                continue
+    return sorted(set(hits))
+
+
+def _find_data_profile_refs(
+    webapps_root: str | Path, slug: str
+) -> tuple[list[str], list[str]]:
+    """Hand-authored ``clients/<domain>/frontend/data/*.json`` files: ones with a
+    ``/profile/<slug>`` URL (auto-rewritten) and ones with OTHER ``<slug>``
+    occurrences (reported for operator review, not auto-edited)."""
+    url = "/profile/" + slug
+    with_url: list[str] = []
+    other: list[str] = []
+    pattern = str(Path(webapps_root) / "clients" / "*" / "frontend" / "data" / "*.json")
+    for f in glob.glob(pattern):
+        try:
+            text = Path(f).read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if url in text:
+            with_url.append(f)
+        if slug in text.replace(url, ""):
+            other.append(f)
+    return sorted(with_url), sorted(other)
+
+
+def _excerpt_is_owned_by_slug(filename: str, slug: str) -> bool:
+    """True when ``slug`` is the SUBJECT of this excerpt — not its owner /
+    site-entity segment.
+
+    Profile excerpts are ``...profile-<flavor>.<owner>.<slug>-<role>.yaml`` (the
+    slug sits immediately before ``-<role>``); operation excerpts are
+    ``...profile-operation.<slug>.<op>.yaml`` (slug right after the marker). The
+    org/site-entity slug appears only in the ``<owner>`` segment (followed by a
+    dot), so it is NOT owned by this test — which is what stops a cascade rename
+    of an org profile from clobbering every farm/board excerpt it merely owns.
+    """
+    name = str(filename)
+    if ".profile-operation." in name:
+        after = name.split(".profile-operation.", 1)[1]
+        return after.split(".", 1)[0] == slug
+    return re.search(rf"(?:^|[.]){re.escape(slug)}-", name) is not None
+
+
+def cascade_rename_profile_slug(
+    webapps_root: str | Path | None,
+    old_slug: str,
+    new_slug: str,
+    *,
+    apply: bool = False,
+) -> dict[str, Any]:
+    """Rename a profile's slug across EVERY reference (in-use safe).
+
+    Runs a discovery pass always; mutates only when ``apply=True``, with ``.bak``
+    backups + atomic writes and a collision guard. Returns
+    ``{ok, report}`` where ``report`` lists the change-set (so the UI can preview
+    it before applying), or ``{ok: False, error, detail}`` on a guard failure.
+
+    Reference classes (see the profile-rename reference map): canonical file,
+    per-site profile + operation excerpts, ``related:`` cross-refs in other
+    profiles/excerpts, FND network ``profile_refs``, ``profile_use`` manifests,
+    hand-authored ``/profile/<slug>`` URLs, then ``propagate_profile`` re-derives
+    excerpts + rebuilds sites + regenerates the FND map dataset.
+    """
+    import json
+
+    old_slug = _as_text(old_slug)
+    new_slug = _as_text(new_slug)
+    report: dict[str, Any] = {
+        "old_slug": old_slug,
+        "new_slug": new_slug,
+        "applied": False,
+        "canonical": None,
+        "excerpts": [],
+        "related": [],
+        "profile_use": [],
+        "fnd_network": False,
+        "data_files": [],
+        "data_other": [],
+        "sites": [],
+    }
+    if not webapps_root:
+        return {"ok": False, "error": "no_webapps_root"}
+    if not old_slug or not new_slug:
+        return {"ok": False, "error": "missing_slug"}
+    if not _SLUG_RE.match(new_slug):
+        return {"ok": False, "error": "invalid_new_slug"}
+    if old_slug == new_slug:
+        return {"ok": True, "report": report, "note": "no_change"}
+    profiles_dir = _profiles_dir(webapps_root)
+    canonical = _resolve_profile_path(profiles_dir, old_slug) if profiles_dir else None
+    if canonical is None:
+        return {"ok": False, "error": "profile_not_found"}
+    if _resolve_profile_path(profiles_dir, new_slug) is not None:
+        return {"ok": False, "error": "collision", "detail": new_slug}
+
+    webapps = Path(webapps_root)
+    new_canonical_name = _replace_slug_token(canonical.name, old_slug, new_slug)
+    # Direct filename collision — guards the case where the canonical resolver
+    # returns None on an AMBIGUOUS new_slug (0-or-many) yet the target file
+    # already exists on disk.
+    if (canonical.parent / new_canonical_name).exists():
+        return {"ok": False, "error": "collision", "detail": new_canonical_name}
+    report["canonical"] = {"old": canonical.name, "new": new_canonical_name}
+
+    # Excerpts: keep ONLY those this profile is the SUBJECT of. A slug that also
+    # appears as the OWNER/site-entity segment of OTHER profiles' excerpts (an
+    # org profile) must NOT be renamed here — that would rewrite the owner token
+    # of every excerpt it owns. Refuse such a rename outright.
+    all_excerpts = _excerpt_paths_for_slug(webapps_root, old_slug)
+    owned = [p for p in all_excerpts if _excerpt_is_owned_by_slug(p.name, old_slug)]
+    owner_only = [p for p in all_excerpts if p not in owned]
+    if owner_only:
+        return {
+            "ok": False,
+            "error": "site_entity_slug",
+            "detail": (
+                "this slug names a site entity that owns other profiles' "
+                "excerpts; renaming it here is not supported"
+            ),
+            "owned_count": len(owned),
+            "owner_count": len(owner_only),
+        }
+    excerpt_plan: list[tuple[Path, Path]] = []
+    for ex in owned:
+        new_ex = ex.parent / _replace_slug_token(ex.name, old_slug, new_slug)
+        if new_ex != ex and new_ex.exists():
+            return {"ok": False, "error": "collision", "detail": new_ex.name}
+        excerpt_plan.append((ex, new_ex))
+        report["excerpts"].append({"old": str(ex), "new": str(new_ex)})
+
+    old_stem = canonical.name[: -len(".yaml")]
+    new_stem = new_canonical_name[: -len(".yaml")]
+    exclude = {str(canonical)} | {str(ex) for ex, _ in excerpt_plan}
+    related_files = _find_related_referencing(webapps_root, old_stem, exclude=exclude)
+    report["related"] = related_files
+
+    fnd_manifest = (
+        webapps / "clients" / _FND_SITE_DIR / "frontend" / "assets"
+        / "0000-00-00.manifest.fnd.fnd.site.json"
+    )
+    report["fnd_network"] = old_slug in _fnd_network_refs(webapps_root)
+
+    old_asset = "/assets/profiles/" + canonical.name
+    new_asset = "/assets/profiles/" + new_canonical_name
+
+    data_files, data_other = _find_data_profile_refs(webapps_root, old_slug)
+    report["data_files"] = data_files
+    report["data_other"] = data_other
+    report["sites"] = sorted({str(ex.parent.parent) for ex, _ in excerpt_plan})
+
+    if not apply:
+        return {"ok": True, "report": report}
+
+    # ---- APPLY (backups on edits; renames recorded in the report). Best-effort
+    # atomic: discovery + collision checks ran above, so the remaining work is
+    # mechanical. A mid-way failure is surfaced (with the partial report) rather
+    # than silently swallowed; full rollback is intentionally out of scope. ----
+    try:
+        os.replace(str(canonical), str(canonical.parent / new_canonical_name))
+        for ex, new_ex in excerpt_plan:
+            if new_ex != ex:
+                os.replace(str(ex), str(new_ex))
+            # Operation excerpts carry an internal ``entity_slug`` field that
+            # derive_profile_excerpt cannot repair (the canonical does not define
+            # it) — rewrite it to the new slug.
+            if ".profile-operation." in new_ex.name:
+                op = _load_yaml_mapping(new_ex)
+                if _as_text(op.get("entity_slug")) == old_slug:
+                    op["entity_slug"] = new_slug
+                    _atomic_write_text(
+                        new_ex,
+                        yaml.safe_dump(
+                            op, default_flow_style=False, allow_unicode=True, sort_keys=False
+                        ),
+                    )
+        for rel in related_files:
+            p = Path(rel)
+            try:
+                text = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            if old_stem in text:
+                _backup_file(p)
+                _atomic_write_text(p, text.replace(old_stem, new_stem))
+        if report["fnd_network"] and fnd_manifest.is_file():
+            try:
+                data = json.loads(fnd_manifest.read_text(encoding="utf-8"))
+                node: Any = data
+                for key in _FND_NETWORK_KEYPATH:
+                    node = node.get(key, {}) if isinstance(node, dict) else {}
+                panel = node.get("panel", {}) if isinstance(node, dict) else {}
+                changed = False
+                for refs_key in ("profile_refs", "farm_profile_refs"):
+                    refs = panel.get(refs_key)
+                    if isinstance(refs, list):
+                        new_refs = [new_slug if _as_text(r) == old_slug else r for r in refs]
+                        if new_refs != refs:
+                            panel[refs_key] = new_refs
+                            changed = True
+                if changed:
+                    _backup_file(fnd_manifest)
+                    _atomic_write_text(
+                        fnd_manifest, json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+                    )
+            except (OSError, ValueError):
+                pass
+        report["profile_use"] = _update_manifests_for_asset(
+            webapps_root, "profile", old_asset, new_path=new_asset
+        )
+        for df in data_files:
+            p = Path(df)
+            try:
+                text = p.read_text(encoding="utf-8")
+            except OSError:
+                continue
+            needle = "/profile/" + old_slug
+            if needle in text:
+                _backup_file(p)
+                _atomic_write_text(p, text.replace(needle, "/profile/" + new_slug))
+        # Re-derive the (now new-named) excerpts + rebuild owning sites +
+        # regenerate the FND map dataset (new_slug is now in the FND refs).
+        report["propagation"] = propagate_profile(webapps_root, new_slug)
+    except OSError as exc:
+        return {"ok": False, "error": "apply_failed", "detail": str(exc), "report": report}
+    report["applied"] = True
+    return {"ok": True, "report": report}
+
+
 def rename_slug(
     webapps_root: str | Path | None, gallery: str, old_slug: str, new_slug: str
 ) -> dict[str, Any]:
     """Rename a slug group: rename its file(s) on disk and repoint every
-    manifest entry. Refuses on a name collision. For profiles, refuses when the
-    profile is in use by a site (has derived excerpts) — re-allocate first.
+    manifest entry. Refuses on a name collision. Profiles route through
+    :func:`cascade_rename_profile_slug` (in-use safe).
     """
     gallery = _as_text(gallery)
     meta = _GALLERY_META.get(gallery)
@@ -1269,17 +1629,16 @@ def rename_slug(
         return {"ok": False, "error": "invalid_new_slug"}
     if old_slug == new_slug:
         return {"ok": True, "renamed": [], "note": "no_change"}
+    if gallery == "profiles":
+        # Profile slug renames CASCADE through the canonical file, every per-site
+        # excerpt, profile_use manifests, the FND network refs, related-refs, and
+        # hand-authored profile-URL refs, then rebuild the owning sites.
+        return cascade_rename_profile_slug(
+            webapps_root, old_slug, new_slug, apply=True
+        )
     members = _gallery_members(gdir, gallery, old_slug)
     if not members:
         return {"ok": False, "error": "slug_not_found"}
-    if gallery == "profiles":
-        for src in members:
-            if _excerpt_paths_for_slug(webapps_root, _profile_slug(src.name)):
-                return {
-                    "ok": False,
-                    "error": "in_use",
-                    "detail": "profile is used by a site; remove its allocation first",
-                }
     # Plan + collision-check before any mutation.
     plan: list[tuple[Path, Path, str]] = []
     for src in members:
@@ -1332,8 +1691,12 @@ def delete_asset_if_unreferenced(
     asset_path = meta["url_prefix"] + name
     if asset_path in manifest_referenced_paths(webapps_root, meta["kind"]):
         return {"ok": False, "error": "referenced"}
-    if gallery == "profiles" and _excerpt_paths_for_slug(webapps_root, _profile_slug(name)):
-        return {"ok": False, "error": "referenced"}
+    if gallery == "profiles":
+        pslug = _profile_slug(name)
+        # A profile is "in use" if a site has a derived excerpt OR the FND
+        # network map references its slug (which is not a manifest/excerpt ref).
+        if _excerpt_paths_for_slug(webapps_root, pslug) or pslug in _fnd_network_refs(webapps_root):
+            return {"ok": False, "error": "referenced"}
     try:
         target.unlink()
     except OSError as exc:
@@ -1508,38 +1871,27 @@ def contacts_detail(webapps_root: str | Path | None) -> dict[str, Any]:
 # extension renderer — GLOBAL (Library) vs PER-GRANTEE (Allocation)
 # --------------------------------------------------------------------------- #
 def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any]:
-    """GLOBAL mode: the shared Resource LIBRARY.
+    """GLOBAL mode: the shared Resource LIBRARY as ONE uniform, type-agnostic
+    leaflet index.
 
-    Search + view + manage every leaflet, organized BY SLUG per type. Carries
-    the slug-grouped managed galleries, the profiles contact-app roster + edit
-    routes, icon dedup, read-only PII views, and the management route hints
-    (retitle / rename-slug / delete / per-gallery lazy-load / upload). NOTE: the
-    allocation (add-to-manifest) affordance is intentionally ABSENT here — it
-    lives only in per-grantee mode.
+    No per-type differentiation: every leaflet (profile/icon/image/document/
+    audio) is a uniform row in a single flat list (``build_leaflet_index``),
+    the operator filters purely by naming convention, and opening a row shows
+    its detail (profiles editable via the existing routes, binaries metadata).
+    Carries only the uniform management route hints + upload. The allocation
+    (add-to-manifest) affordance lives only in per-grantee mode.
     """
-    managed = {
-        gallery: build_grouped_gallery(webapps_root, gallery)
-        for gallery in MANAGED_GALLERIES
-    }
     return {
         "resources_app": True,
         "resources_mode": "library",
-        "managed_galleries": managed,
-        "managed_gallery_order": list(MANAGED_GALLERIES),
-        "profiles": list_profiles(webapps_root),
-        # Rich, read-only operator views for the PII galleries (Wave-2 P5).
-        "events_detail": events_detail(webapps_root),
-        "contacts_detail": contacts_detail(webapps_root),
-        "icon_duplicate_groups": icon_duplicate_groups(webapps_root),
+        "leaflets": build_leaflet_index(webapps_root),
         "image_url_prefix": _IMAGE_URL_PREFIX,
         "upload_action": {"route": "/portal/api/resources/upload", "method": "POST"},
         "profile_detail_route": "/__fnd/resources/profile/detail",
         "profile_save_route": "/__fnd/resources/profile/save",
-        "icon_duplicates_route": "/__fnd/resources/icon/duplicates",
-        "icon_dedup_route": "/__fnd/resources/icon/dedup",
-        "gallery_route": "/__fnd/resources/gallery",
         "retitle_route": "/__fnd/resources/asset/retitle",
         "rename_slug_route": "/__fnd/resources/asset/rename-slug",
+        "rename_preview_route": "/__fnd/resources/asset/rename-preview",
         "delete_route": "/__fnd/resources/asset/delete",
     }
 
@@ -1635,6 +1987,8 @@ __all__ = [
     "add_asset_to_manifest",
     "asset_url_prefix_for",
     "build_grouped_gallery",
+    "build_leaflet_index",
+    "cascade_rename_profile_slug",
     "contacts_detail",
     "delete_asset_if_unreferenced",
     "derive_profile_excerpt",
