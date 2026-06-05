@@ -65,6 +65,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
 
+      - name: Install avifenc (resource-upload AVIF conversion)
+        # libavif-bin provides /usr/bin/avifenc, used by the portal upload route
+        # to convert raster uploads to AVIF (the prod host has it installed).
+        run: sudo apt-get update && sudo apt-get install -y libavif-bin
+
       - name: Run pytest (no smoke, no e2e)
         # Excludes tests/smoke/ and tests/e2e/ — both need a real browser and run
         # in the smoke job below with playwright + chromium.

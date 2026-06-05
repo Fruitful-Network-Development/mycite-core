@@ -17,6 +17,7 @@ from __future__ import annotations
 import base64
 import importlib.util
 import io
+import os
 import sys
 import tempfile
 import unittest
@@ -27,6 +28,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
+# AVIF conversion shells out to the avifenc binary (prod + CI install it). Guard
+# the conversion-dependent tests so the suite skips (not fails) on a machine
+# without it.
+HAS_AVIFENC = os.path.exists("/usr/bin/avifenc")
 
 if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
@@ -81,6 +86,7 @@ class ResourceUploadRouteTests(unittest.TestCase):
             base_url="http://fruitfulnetworkdevelopment.com",
         )
 
+    @unittest.skipUnless(HAS_AVIFENC, "avifenc (/usr/bin/avifenc) not installed")
     def test_png_image_is_converted_to_avif(self) -> None:
         client, tmp = self._build_client()
         resp = self._post(
@@ -109,6 +115,7 @@ class ResourceUploadRouteTests(unittest.TestCase):
         self.assertEqual(head[4:8], b"ftyp")
         self.assertNotEqual(written.read_bytes()[:8], _PNG_1X1[:8])
 
+    @unittest.skipUnless(HAS_AVIFENC, "avifenc (/usr/bin/avifenc) not installed")
     def test_already_avif_passes_through(self) -> None:
         client, tmp = self._build_client()
         # Minimal AVIF-looking header is not enough for avifenc; reuse a real
