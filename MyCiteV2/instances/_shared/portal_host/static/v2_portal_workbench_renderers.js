@@ -1193,19 +1193,6 @@
     );
   }
 
-  function renderResourcesGalleryCounts(galleries) {
-    var list = asList(galleries);
-    if (!list.length) return "";
-    var rows = list.map(function (g) {
-      var gg = asObject(g);
-      return { gallery: asText(gg.label) || asText(gg.gallery), count: gg.count };
-    });
-    return renderRowsTable("Galleries", rows, [
-      { key: "gallery", label: "Gallery" },
-      { key: "count", label: "Items" },
-    ]);
-  }
-
   function renderResourcesUpload(payload) {
     var action = asObject(payload.upload_action);
     var route = asText(action.route) || "/portal/api/resources/upload";

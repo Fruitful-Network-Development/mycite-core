@@ -35,23 +35,6 @@ def is_global(ctx: dict[str, Any]) -> bool:
     return _as_text(ctx.get("mode")) == "global"
 
 
-def global_stub(label: str) -> dict[str, Any]:
-    """Placeholder global payload used until an extension's overall view lands.
-
-    Replaced by a real ``_build_*_overall`` in a later phase; keeps global mode
-    coherent (and clearly labelled) without rendering a confusing empty
-    per-grantee card.
-    """
-    return {
-        "mode": "global",
-        "overall_pending": True,
-        "notice": (
-            f"{label}: the Overall (all-grantees) view is coming soon. "
-            "Select a grantee above to manage it individually."
-        ),
-    }
-
-
 def build_overall_roster(
     ctx: dict[str, Any],
     *,
@@ -140,6 +123,5 @@ __all__ = [
     "build_overall_roster",
     "enumerate_grantees",
     "for_each_grantee",
-    "global_stub",
     "is_global",
 ]

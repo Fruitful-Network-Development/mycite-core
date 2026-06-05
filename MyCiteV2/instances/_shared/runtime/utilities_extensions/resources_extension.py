@@ -844,10 +844,9 @@ def add_asset_to_manifest(
     assets_dir = Path(webapps_root) / "clients" / site / "frontend" / "assets"
     if not assets_dir.is_dir():
         return {"ok": False, "error": "unknown_site"}
-    matches = glob.glob(str(assets_dir / f"*{kind}_use.yaml"))
-    if not matches:
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
         return {"ok": False, "error": "no_manifest_for_kind"}
-    manifest_path = Path(sorted(matches)[0])
     data = _load_yaml_mapping(manifest_path)
     entries = data.get("entries")
     if not isinstance(entries, list):
@@ -1038,6 +1037,17 @@ def _gallery_slug(gallery: str, filename: str) -> str:
     return _asset_descriptor(filename)[0]
 
 
+def _replace_last_token(stem: str, new_token: str) -> str:
+    """Replace the last dot-token of ``stem`` with ``new_token``.
+
+    When ``stem`` has no dot the slug IS the whole stem, so it is replaced
+    entirely (``add`` → ``plus``, not ``add.plus``).
+    """
+    if "." in stem:
+        return f"{stem.rsplit('.', 1)[0]}.{new_token}"
+    return new_token
+
+
 def _filename_with_slug(filename: str, gallery: str, new_slug: str) -> str:
     """Return ``filename`` with its slug token swapped for ``new_slug``."""
     name = str(filename)
@@ -1045,14 +1055,11 @@ def _filename_with_slug(filename: str, gallery: str, new_slug: str) -> str:
         if not name.endswith(_PROFILE_SUFFIX):
             return name
         stem = name[: -len(_PROFILE_SUFFIX)]
-        prefix, _old = stem.rsplit(".", 1) if "." in stem else (stem, "")
-        return f"{prefix}.{new_slug}{_PROFILE_SUFFIX}"
+        return f"{_replace_last_token(stem, new_slug)}{_PROFILE_SUFFIX}"
     stem, _, ext = name.rpartition(".")
-    if not stem:  # no extension
-        prefix, _old = name.rsplit(".", 1) if "." in name else (name, "")
-        return f"{prefix}.{new_slug}"
-    prefix, _old = stem.rsplit(".", 1) if "." in stem else (stem, "")
-    return f"{prefix}.{new_slug}.{ext}"
+    if not stem:  # no extension — the whole name is the slug token
+        return new_slug
+    return f"{_replace_last_token(stem, new_slug)}.{ext}"
 
 
 def _gallery_members(gallery_dir: Path, gallery: str, slug: str) -> list[Path]:
@@ -1071,7 +1078,10 @@ def _gallery_members(gallery_dir: Path, gallery: str, slug: str) -> list[Path]:
 
 
 def build_grouped_gallery(
-    webapps_root: str | Path | None, gallery: str
+    webapps_root: str | Path | None,
+    gallery: str,
+    *,
+    compute_referenced: bool = True,
 ) -> dict[str, Any]:
     """A gallery's leaflets grouped by slug (the operator's organizing key).
 
@@ -1079,15 +1089,21 @@ def build_grouped_gallery(
     members:[{filename, asset_path, owner, ext, size_bytes, referenced,
     image_url?, display_name?, subtitle?}]}]}``. Profiles reuse ``list_profiles``
     (rich rows with display_name/image); the binary galleries enumerate the dir.
-    Members carry ``referenced`` (in some site manifest) so the UI can gate
-    delete and show usage.
+    Members carry ``referenced`` (in some site manifest) so the library UI can
+    gate delete and show usage. Pass ``compute_referenced=False`` to skip the
+    all-sites manifest glob when the caller does not need it (e.g. allocation,
+    which derives its own per-site ``allocated`` flag).
     """
     gallery = _as_text(gallery)
     meta = _GALLERY_META.get(gallery)
     if meta is None:
         return {"gallery": gallery, "kind": "", "url_prefix": "", "count": 0, "groups": []}
     url_prefix = meta["url_prefix"]
-    referenced = manifest_referenced_paths(webapps_root, meta["kind"])
+    referenced = (
+        manifest_referenced_paths(webapps_root, meta["kind"])
+        if compute_referenced
+        else set()
+    )
     groups: dict[str, list[dict[str, Any]]] = {}
 
     if gallery == "profiles":
@@ -1199,9 +1215,11 @@ def retitle_asset(
 ) -> dict[str, Any]:
     """Rename the *title* (not the file) of a gallery member.
 
-    Profiles: set the canonical ``display_name`` (via ``save_profile``). Binary
-    galleries: rewrite the ``asset_id`` of every manifest entry referencing the
-    asset — the file on disk is untouched. Returns ``{ok, ...}``.
+    Profiles: set the canonical ``display_name`` (via ``save_profile``) AND
+    propagate to the per-site excerpts + owning site (same as the profile-save
+    route) so the new title reaches the live page. Binary galleries: rewrite the
+    ``asset_id`` of every manifest entry referencing the asset — the file on
+    disk is untouched. Returns ``{ok, ...}``.
     """
     gallery = _as_text(gallery)
     meta = _GALLERY_META.get(gallery)
@@ -1214,7 +1232,12 @@ def retitle_asset(
     if not name or name.startswith("."):
         return {"ok": False, "error": "invalid_filename"}
     if gallery == "profiles":
-        return save_profile(webapps_root, _profile_slug(name), {"display_name": new_title})
+        slug = _profile_slug(name)
+        saved = save_profile(webapps_root, slug, {"display_name": new_title})
+        if not saved.get("ok"):
+            return saved
+        propagation = propagate_profile(webapps_root, slug)
+        return {"ok": True, "saved": saved, "propagation": propagation, "retitled": name}
     if not webapps_root:
         return {"ok": False, "error": "no_webapps_root"}
     asset_path = meta["url_prefix"] + name
@@ -1494,11 +1517,6 @@ def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any
     allocation (add-to-manifest) affordance is intentionally ABSENT here — it
     lives only in per-grantee mode.
     """
-    from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_surface import (
-        build_resources_surface_payload,
-    )
-
-    gallery_payload = build_resources_surface_payload(webapps_root)
     managed = {
         gallery: build_grouped_gallery(webapps_root, gallery)
         for gallery in MANAGED_GALLERIES
@@ -1506,10 +1524,8 @@ def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any
     return {
         "resources_app": True,
         "resources_mode": "library",
-        "galleries": gallery_payload.get("subtabs", []),
         "managed_galleries": managed,
         "managed_gallery_order": list(MANAGED_GALLERIES),
-        "site_core_root": gallery_payload.get("site_core_root", ""),
         "profiles": list_profiles(webapps_root),
         # Rich, read-only operator views for the PII galleries (Wave-2 P5).
         "events_detail": events_detail(webapps_root),
@@ -1552,7 +1568,11 @@ def _resources_allocation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         kind = manifest_kind_for(gallery)
         used = site_manifest_entries(webapps_root, site, kind)
         used_paths = {e["asset_path"] for e in used}
-        grouped = build_grouped_gallery(webapps_root, gallery)
+        # Allocation derives its own per-site ``allocated`` flag from
+        # ``used_paths`` below, so skip the all-sites ``referenced`` glob.
+        grouped = build_grouped_gallery(
+            webapps_root, gallery, compute_referenced=False
+        )
         candidates = [
             {
                 "filename": m["filename"],
