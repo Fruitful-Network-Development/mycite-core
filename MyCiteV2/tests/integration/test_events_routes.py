@@ -118,6 +118,25 @@ class TestEventsModule(unittest.TestCase):
         # second delete is a no-op.
         self.assertFalse(ev.delete_event(event_id, webapps_root=self.webapps, client=client))
 
+    def test_example_template_is_excluded_from_listing(self) -> None:
+        # The tracked *.example.* schema template lives in the gallery for
+        # documentation; it must never be read as a real event.
+        client = "brocks_pressure_washing"
+        ev.save_event(_sample_payload(), webapps_root=self.webapps, client=client)
+        gallery = ev.ensure_events_root(self.webapps)
+        (gallery / "0000-00-00.event-job.example.brocks_pressure_washing.example.yaml").write_text(
+            "schema: mycite.site_core.event_job.v1\n"
+            "event_kind: job\n"
+            "client: brocks_pressure_washing\n"
+            "id: EXAMPLE\n"
+            "date: '0000-00-00'\n"
+            "status: booked\n",
+            encoding="utf-8",
+        )
+        rows = ev.list_events(self.webapps, client=client)
+        self.assertEqual(len(rows), 1)
+        self.assertNotIn("EXAMPLE", [r.get("id") for r in rows])
+
     def test_client_scope_isolation_on_delete(self) -> None:
         a = ev.save_event(_sample_payload(name="A One"), webapps_root=self.webapps,
                           client="client_a")

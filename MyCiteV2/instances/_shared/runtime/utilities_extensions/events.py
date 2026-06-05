@@ -84,6 +84,20 @@ def _load_yaml(path: Path) -> dict[str, Any] | None:
     return data if isinstance(data, dict) else None
 
 
+def _leaflet_paths(root: Path) -> list[str]:
+    """Return the real event-job leaflet paths under ``root``, sorted.
+
+    Excludes the tracked ``*.example.*`` schema template that lives in the
+    gallery for documentation — it must never be read as a real event (it
+    would otherwise pollute a client's list/analytics and id allocation).
+    """
+    return [
+        p
+        for p in sorted(glob.glob(str(root / "*.event-job.*.yaml")))
+        if ".example." not in Path(p).name
+    ]
+
+
 # --------------------------------------------------------------------
 # Read surface
 # --------------------------------------------------------------------
@@ -107,7 +121,7 @@ def list_events(
         return []
     want = _client_slug(client) if client else None
     rows: list[dict[str, Any]] = []
-    for path in sorted(glob.glob(str(root / "*.event-job.*.yaml"))):
+    for path in _leaflet_paths(root):
         data = _load_yaml(Path(path))
         if data is None:
             continue
@@ -420,9 +434,7 @@ def _path_for_id(
     if not _ID_RE.match(str(event_id or "")):
         return None
     want = _client_slug(client) if client else None
-    for path in sorted(
-        glob.glob(str(events_root(webapps_root) / "*.event-job.*.yaml"))
-    ):
+    for path in _leaflet_paths(events_root(webapps_root)):
         data = _load_yaml(Path(path))
         if data is None:
             continue
@@ -440,9 +452,7 @@ def _next_event_id(webapps_root: str | Path) -> str:
     year = datetime.utcnow().year
     prefix = f"{year}-"
     max_seen = 0
-    for path in sorted(
-        glob.glob(str(events_root(webapps_root) / "*.event-job.*.yaml"))
-    ):
+    for path in _leaflet_paths(events_root(webapps_root)):
         data = _load_yaml(Path(path))
         if data is None:
             continue
