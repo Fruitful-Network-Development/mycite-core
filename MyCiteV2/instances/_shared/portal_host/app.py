@@ -2145,6 +2145,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify(result), 200 if result.get("ok") else 400
 
+    @app.post("/__fnd/resources/manifest/remove")
+    def fnd_resources_manifest_remove() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.remove_asset_from_manifest(
+            host_config.webapps_root,
+            site=_as_text(payload.get("site")),
+            kind=_as_text(payload.get("kind")),
+            asset_path=_as_text(payload.get("asset_path")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
+
     @app.get("/__fnd/resources/gallery")
     def fnd_resources_gallery() -> tuple[Any, int]:
         """Lazy-load one managed gallery's slug-grouped contents."""

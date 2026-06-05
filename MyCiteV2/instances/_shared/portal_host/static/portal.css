@@ -10267,3 +10267,4 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: #fff; color: var(--ink, #464646);
 }
 .v2-resourcesApp button.v2-rowAction:hover { background: var(--paper, #f4f1e4); }
+.v2-resourcesMember.is-allocated { background: rgba(30,108,147,0.08); border-radius: 4px; }

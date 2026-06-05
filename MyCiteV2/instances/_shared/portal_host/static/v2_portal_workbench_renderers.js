@@ -1472,14 +1472,78 @@
     );
   }
 
-  function renderResourcesAllocation(p) {
-    // Per-grantee allocation view (populated in the allocation phase). For now
-    // a labelled placeholder so the global library can ship independently.
+  // Per-grantee ALLOCATION: per resource type, every library leaflet with an
+  // Add / Remove toggle reflecting whether it is in this site's *_use.yaml
+  // manifest. Allocated leaflets sort first. Posts to manifest add/remove.
+  function renderResourcesAllocationGallery(a, routes) {
+    var gallery = asText(a.gallery);
+    var kind = asText(a.kind);
+    var candidates = asList(a.candidates).slice();
+    candidates.sort(function (x, y) {
+      return (asObject(y).allocated ? 1 : 0) - (asObject(x).allocated ? 1 : 0);
+    });
+    var usedCount = a.used_count || 0;
+    var members = candidates
+      .map(function (c) {
+        var m = asObject(c);
+        var allocated = m.allocated === true;
+        var label = asText(m.slug) || asText(m.filename);
+        var search = (asText(m.slug) + " " + asText(m.filename) + " " + asText(m.asset_id)).toLowerCase();
+        var thumb = asText(m.image_url)
+          ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
+            escapeHtml(asText(m.image_url)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+          : "";
+        var btn = allocated
+          ? '<button type="button" class="v2-rowAction--danger" data-resources-alloc="remove" data-kind="' +
+            escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) + '">Remove</button>'
+          : '<button type="button" class="v2-rowAction" data-resources-alloc="add" data-kind="' +
+            escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) +
+            '" data-asset-id="' + escapeHtml(asText(m.asset_id)) + '">Add</button>';
+        return (
+          '<div class="v2-resourcesMember' + (allocated ? " is-allocated" : "") +
+          '" data-resources-search="' + escapeHtml(search) + '">' + thumb +
+          '<code class="v2-resourcesMember__file">' + escapeHtml(label) + "</code> " +
+          (allocated ? '<span class="v2-resourcesMember__badge">used</span>' : "") +
+          '<span class="v2-resourcesMember__actions">' + btn + "</span></div>"
+        );
+      })
+      .join("");
     return (
-      '<div class="v2-resourcesApp" data-resources-mode="allocation">' +
-      '<p class="v2-extensionCard__intro">' +
-      escapeHtml(asText(p.notice) || "Resource allocation for this grantee is coming soon.") +
-      "</p></div>"
+      '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '"' +
+      (usedCount ? " open" : "") + ">" +
+      "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " — " + escapeHtml(String(usedCount)) +
+      " used / " + escapeHtml(String(candidates.length)) + " available</summary>" +
+      '<div class="v2-resourcesManaged__groups"><div class="v2-resourcesGroup">' +
+      (members || '<p class="v2-extensionCard__empty">Empty gallery.</p>') +
+      "</div></div></details>"
+    );
+  }
+
+  function renderResourcesAllocation(p) {
+    var site = asText(p.site);
+    if (!p.site_exists) {
+      return (
+        '<div class="v2-resourcesApp" data-resources-mode="allocation">' +
+        '<p class="v2-extensionCard__empty">No website found for this grantee (' +
+        escapeHtml(asText(p.domain) || "no domain") + ").</p></div>"
+      );
+    }
+    var routes = {
+      add: asText(p.manifest_add_route) || "/__fnd/resources/manifest/add",
+      remove: asText(p.manifest_remove_route) || "/__fnd/resources/manifest/remove",
+    };
+    var sections = asList(p.allocations)
+      .map(function (a) { return renderResourcesAllocationGallery(asObject(a), routes); })
+      .join("");
+    return (
+      '<div class="v2-resourcesApp" data-resources-mode="allocation" data-site="' +
+      escapeHtml(site) + '" data-add-route="' + escapeHtml(routes.add) +
+      '" data-remove-route="' + escapeHtml(routes.remove) + '">' +
+      '<p class="v2-extensionCard__intro">Allocating shared resources to <strong>' +
+      escapeHtml(asText(p.grantee_label) || site) + "</strong> (" + escapeHtml(site) +
+      "). Add a leaflet to publish it in this site's manifest; remove to de-allocate.</p>" +
+      '<input type="search" class="v2-resourcesSearch" placeholder="Search resources…" aria-label="Search resources" />' +
+      sections + "</div>"
     );
   }
 
@@ -2102,6 +2166,48 @@
                 if (li) li.parentNode.removeChild(li);
               } else {
                 try { window.alert("Remove failed: " + ((out.body && (out.body.error)) || out.status)); } catch (_) {}
+              }
+            })
+            .catch(function () { btn.disabled = false; });
+        });
+      }
+    );
+
+    // Allocation actions (per-grantee mode): add/remove a leaflet from this
+    // site's *_use.yaml manifest. site + routes are carried on the app element.
+    var allocSite = app.getAttribute("data-site");
+    var allocAddRoute = app.getAttribute("data-add-route");
+    var allocRemoveRoute = app.getAttribute("data-remove-route");
+    Array.prototype.forEach.call(
+      app.querySelectorAll("[data-resources-alloc]"),
+      function (btn) {
+        btn.addEventListener("click", function () {
+          var action = btn.getAttribute("data-resources-alloc");
+          var route = action === "remove" ? allocRemoveRoute : allocAddRoute;
+          if (!route || !allocSite) return;
+          var body = {
+            site: allocSite,
+            kind: btn.getAttribute("data-kind"),
+            asset_path: btn.getAttribute("data-asset-path"),
+          };
+          if (action === "add") body.asset_id = btn.getAttribute("data-asset-id") || "";
+          btn.disabled = true;
+          fetch(route, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (out) {
+              btn.disabled = false;
+              if (out.body && out.body.ok) {
+                reloadSurface();
+              } else {
+                try {
+                  window.alert("Allocation failed: " +
+                    ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status)));
+                } catch (_) {}
               }
             })
             .catch(function () { btn.disabled = false; });

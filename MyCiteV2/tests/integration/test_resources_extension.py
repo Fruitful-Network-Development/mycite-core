@@ -454,6 +454,56 @@ class CollectiveGalleryManagementTests(unittest.TestCase):
         self.assertEqual(result["error"], "collision")
 
 
+class AllocationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_alloc_"))
+        _seed_managed_gallery(self.tmp)
+
+    def test_site_manifest_entries_lists_allocated(self) -> None:
+        rows = rx.site_manifest_entries(self.tmp, "site.org", "icon")
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["asset_id"], "mail")
+
+    def test_remove_then_add_round_trip(self) -> None:
+        path = "/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg"
+        removed = rx.remove_asset_from_manifest(
+            self.tmp, site="site.org", kind="icon", asset_path=path
+        )
+        self.assertTrue(removed["ok"])
+        self.assertTrue(removed["removed"])
+        self.assertEqual(rx.site_manifest_entries(self.tmp, "site.org", "icon"), [])
+        # removing again is a no-op (idempotent), still ok.
+        again = rx.remove_asset_from_manifest(
+            self.tmp, site="site.org", kind="icon", asset_path=path
+        )
+        self.assertTrue(again["ok"])
+        self.assertFalse(again["removed"])
+        # re-add via the existing helper.
+        added = rx.add_asset_to_manifest(
+            self.tmp, site="site.org", kind="icon", asset_id="mail", asset_path=path
+        )
+        self.assertTrue(added["ok"])
+        self.assertEqual(len(rx.site_manifest_entries(self.tmp, "site.org", "icon")), 1)
+
+    def test_allocation_payload_marks_allocated_candidates(self) -> None:
+        payload = render_extension(
+            "ext_resources",
+            {
+                "webapps_root": self.tmp,
+                "mode": "grantee",
+                "grantee": {"msn_id": "acme", "label": "Acme"},
+                "domain": "site.org",
+            },
+        )
+        self.assertEqual(payload["resources_mode"], "allocation")
+        self.assertTrue(payload["site_exists"])
+        icon_alloc = next(a for a in payload["allocations"] if a["gallery"] == "icon")
+        self.assertEqual(icon_alloc["used_count"], 1)
+        allocated = [c for c in icon_alloc["candidates"] if c["allocated"]]
+        self.assertEqual(len(allocated), 1)
+        self.assertTrue(allocated[0]["asset_path"].endswith("mail.svg"))
+
+
 class ResourcesModeDispatchTests(unittest.TestCase):
     def test_library_is_default_without_grantee(self) -> None:
         tmp = Path(tempfile.mkdtemp(prefix="ext_res_mode_lib_"))

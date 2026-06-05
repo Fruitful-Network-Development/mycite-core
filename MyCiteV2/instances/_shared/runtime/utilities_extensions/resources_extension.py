@@ -609,9 +609,16 @@ def propagate_profile(
     """After a canonical save: re-derive every per-site excerpt for ``slug``
     and (optionally) rebuild each owning site so the edit reaches live HTML.
 
-    Returns {"derived": [paths], "rebuilt": [sites], "errors": [...]}.
+    Returns {"derived": [paths], "rebuilt": [sites], "errors": [...],
+    "fnd_network": <note|None>}. ``fnd_network`` is the result of regenerating
+    the FND agricultural-network map dataset when this profile feeds it.
     """
-    result: dict[str, Any] = {"derived": [], "rebuilt": [], "errors": []}
+    result: dict[str, Any] = {
+        "derived": [],
+        "rebuilt": [],
+        "errors": [],
+        "fnd_network": None,
+    }
     if not webapps_root or not slug:
         result["errors"].append("missing_webapps_root_or_slug")
         return result
@@ -639,7 +646,83 @@ def propagate_profile(
                     rebuilt_frontends.add(frontend_dir)
         else:
             result["errors"].append(f"derive_failed:{excerpt}")
+    # The FND agricultural-network MAP renders from a pre-generated dataset, not
+    # from excerpts — so a profile that feeds the map needs the dataset
+    # regenerated separately. Best-effort: only runs when the slug is one of the
+    # FND network's profile_refs.
+    if rebuild:
+        ok, note = _regenerate_fnd_network_dataset(webapps_root, slug)
+        if note:
+            result["fnd_network"] = note
+        if not ok and note and not note.startswith("skipped"):
+            result["errors"].append(f"fnd_network:{note}")
     return result
+
+
+# FND agricultural-network map: the panel keypath whose profile_refs the map's
+# dataset is built from, and the generator that rebuilds it.
+_FND_SITE_DIR = "fruitfulnetworkdevelopment.com"
+_FND_NETWORK_KEYPATH = ("pages", "more", "content", "network")
+
+
+def _fnd_network_refs(webapps_root: str | Path) -> set[str]:
+    """The set of profile slugs the FND network map is built from.
+
+    Reads ``pages.more.content.network.panel.{profile_refs,farm_profile_refs}``
+    from the FND site manifest JSON. Empty set on any miss.
+    """
+    import json
+
+    manifest = (
+        Path(webapps_root)
+        / "clients"
+        / _FND_SITE_DIR
+        / "frontend"
+        / "assets"
+        / "0000-00-00.manifest.fnd.fnd.site.json"
+    )
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return set()
+    node: Any = data
+    for key in _FND_NETWORK_KEYPATH:
+        node = node.get(key, {}) if isinstance(node, dict) else {}
+    panel = node.get("panel", {}) if isinstance(node, dict) else {}
+    refs = panel.get("profile_refs") or panel.get("farm_profile_refs") or []
+    return {_as_text(r) for r in refs if _as_text(r)} if isinstance(refs, list) else set()
+
+
+def _regenerate_fnd_network_dataset(
+    webapps_root: str | Path, slug: str
+) -> tuple[bool, str]:
+    """Regenerate the FND network-map dataset when ``slug`` feeds the map.
+
+    Runs the site's ``scripts/build_farm_network.py`` (writes only the dataset
+    JSON, no HTML). Returns ``(ok, note)``; ``("skipped...", )`` when the slug is
+    not a network ref or the FND site/script is absent. Mirrors the subprocess
+    pattern of ``_build_site_for_excerpt``.
+    """
+    if slug not in _fnd_network_refs(webapps_root):
+        return True, "skipped: slug not in FND network refs"
+    frontend_dir = Path(webapps_root) / "clients" / _FND_SITE_DIR / "frontend"
+    script = frontend_dir / "scripts" / "build_farm_network.py"
+    if not script.is_file():
+        return True, "skipped: no build_farm_network.py"
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            check=False,
+            capture_output=True,
+            timeout=300,
+            cwd=str(frontend_dir),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"build_farm_network failed to launch: {exc}"
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        return False, f"build_farm_network exited {completed.returncode}: {detail[:300]}"
+    return True, "fnd network dataset regenerated"
 
 
 # --------------------------------------------------------------------------- #
@@ -790,6 +873,82 @@ def add_asset_to_manifest(
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "detail": str(exc)}
     return {"ok": True, "added": True, "manifest": str(manifest_path)}
+
+
+def _site_manifest_path(
+    webapps_root: str | Path, site: str, kind: str
+) -> Path | None:
+    """Resolve a site's ``*<kind>_use.yaml`` record-manifest, or None."""
+    assets_dir = Path(webapps_root) / "clients" / os.path.basename(_as_text(site)) / "frontend" / "assets"
+    matches = glob.glob(str(assets_dir / f"*{_as_text(kind)}_use.yaml"))
+    return Path(sorted(matches)[0]) if matches else None
+
+
+def site_manifest_entries(
+    webapps_root: str | Path | None, site: str, kind: str
+) -> list[dict[str, Any]]:
+    """The entries currently allocated to a site's ``*<kind>_use.yaml`` manifest.
+
+    Each row = {asset_id, asset_path, entity_scope}. Empty list when the site or
+    manifest is absent. Reuses ``_load_yaml_mapping``.
+    """
+    if not webapps_root:
+        return []
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
+        return []
+    data = _load_yaml_mapping(manifest_path)
+    rows: list[dict[str, Any]] = []
+    for entry in data.get("entries") or []:
+        if isinstance(entry, dict):
+            rows.append(
+                {
+                    "asset_id": _as_text(entry.get("asset_id")),
+                    "asset_path": _as_text(entry.get("asset_path")),
+                    "entity_scope": _as_text(entry.get("entity_scope")),
+                }
+            )
+    return rows
+
+
+def remove_asset_from_manifest(
+    webapps_root: str | Path | None, *, site: str, kind: str, asset_path: str
+) -> dict[str, Any]:
+    """Drop the entry whose ``asset_path`` matches from a site's
+    ``*<kind>_use.yaml`` manifest (the de-allocation sibling of
+    ``add_asset_to_manifest``). Atomic; no-op when not present.
+    Returns ``{ok, removed: bool, manifest}``.
+    """
+    if not webapps_root:
+        return {"ok": False, "error": "no_webapps_root"}
+    site = os.path.basename(_as_text(site))
+    kind = _as_text(kind)
+    asset_path = _as_text(asset_path)
+    if not site or not kind or not asset_path:
+        return {"ok": False, "error": "missing_field"}
+    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    if manifest_path is None:
+        return {"ok": False, "error": "no_manifest_for_kind"}
+    data = _load_yaml_mapping(manifest_path)
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        return {"ok": True, "removed": False, "manifest": str(manifest_path)}
+    kept = [
+        e
+        for e in entries
+        if not (isinstance(e, dict) and _as_text(e.get("asset_path")) == asset_path)
+    ]
+    if len(kept) == len(entries):
+        return {"ok": True, "removed": False, "manifest": str(manifest_path)}
+    data["entries"] = kept
+    text = yaml.safe_dump(
+        data, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
+    try:
+        _atomic_write_text(manifest_path, text)
+    except OSError as exc:
+        return {"ok": False, "error": "write_failed", "detail": str(exc)}
+    return {"ok": True, "removed": True, "manifest": str(manifest_path)}
 
 
 # --------------------------------------------------------------------------- #
@@ -1371,21 +1530,63 @@ def _resources_library_payload(webapps_root: str | Path | None) -> dict[str, Any
 
 def _resources_allocation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     """PER-GRANTEE mode: allocate library leaflets onto the selected grantee's
-    site manifests. Filled in by the per-grantee allocation phase; for now a
-    labelled placeholder so global-library work can land independently.
+    site manifests.
+
+    For the selected grantee's site (``ctx["domain"]`` → ``clients/<domain>/``),
+    list, per managed resource type, which leaflets are currently "used" (in
+    that type's ``*_use.yaml`` manifest) with remove affordances, plus the
+    candidate leaflets (the library, grouped by slug) to add from. Reuses
+    ``site_manifest_entries`` + ``build_grouped_gallery``. Carries the add +
+    remove route hints.
     """
+    webapps_root = ctx.get("webapps_root")
     grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
     domain = _as_text(ctx.get("domain"))
+    site = os.path.basename(domain)
+    site_exists = bool(site) and (
+        Path(webapps_root) / "clients" / site / "frontend" / "assets"
+    ).is_dir() if webapps_root else False
+
+    allocations: list[dict[str, Any]] = []
+    for gallery in MANAGED_GALLERIES:
+        kind = manifest_kind_for(gallery)
+        used = site_manifest_entries(webapps_root, site, kind)
+        used_paths = {e["asset_path"] for e in used}
+        grouped = build_grouped_gallery(webapps_root, gallery)
+        candidates = [
+            {
+                "filename": m["filename"],
+                "asset_path": m["asset_path"],
+                "asset_id": m.get("display_name") or _gallery_slug(gallery, m["filename"]),
+                "slug": _gallery_slug(gallery, m["filename"]),
+                "allocated": m["asset_path"] in used_paths,
+                "image_url": m.get("image_url", ""),
+            }
+            for group in grouped["groups"]
+            for m in group["members"]
+        ]
+        allocations.append(
+            {
+                "gallery": gallery,
+                "kind": kind,
+                "url_prefix": asset_url_prefix_for(gallery),
+                "used": used,
+                "used_count": len(used),
+                "candidates": candidates,
+            }
+        )
+
     return {
         "resources_app": True,
         "resources_mode": "allocation",
-        "allocation_pending": True,
         "grantee_msn_id": _as_text(grantee.get("msn_id")),
+        "grantee_label": _as_text(grantee.get("label")) or _as_text(grantee.get("msn_id")),
+        "site": site,
         "domain": domain,
-        "notice": (
-            "Resource allocation for this grantee is coming soon. Use the "
-            "Overall view to create and manage resources in the shared library."
-        ),
+        "site_exists": site_exists,
+        "allocations": allocations,
+        "manifest_add_route": "/__fnd/resources/manifest/add",
+        "manifest_remove_route": "/__fnd/resources/manifest/remove",
     }
 
 
@@ -1426,9 +1627,11 @@ __all__ = [
     "manifest_referenced_paths",
     "profile_detail",
     "propagate_profile",
+    "remove_asset_from_manifest",
     "remove_icon_duplicate",
     "rename_slug",
     "resolve_profile_image",
     "retitle_asset",
     "save_profile",
+    "site_manifest_entries",
 ]
