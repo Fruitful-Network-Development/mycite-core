@@ -270,10 +270,14 @@ def _build_analytics_extension_payload(
 
 
 def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
-    from ._global import global_stub, is_global
+    from ._global import build_overall_roster, is_global
 
     if is_global(ctx):
-        return global_stub("Analytics")
+        return build_overall_roster(
+            ctx,
+            extension_label="Analytics",
+            summarize=lambda g: f"{len(g.get('domains') or [])} domain(s)",
+        )
     # ctx may supply analytics_root directly, or a private_dir from which
     # we derive it, or the legacy webapps_root as a last resort.
     analytics_root = ctx.get("analytics_root")

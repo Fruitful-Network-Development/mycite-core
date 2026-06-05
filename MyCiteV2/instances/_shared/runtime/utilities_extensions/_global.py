@@ -52,6 +52,47 @@ def global_stub(label: str) -> dict[str, Any]:
     }
 
 
+def build_overall_roster(
+    ctx: dict[str, Any],
+    *,
+    extension_label: str,
+    summarize: Any = None,
+) -> dict[str, Any]:
+    """A read-only GLOBAL view: a roster of every grantee with a cheap per-row
+    status, for one extension.
+
+    ``summarize(grantee) -> str`` computes a short status from the grantee dict
+    only (no disk I/O), so the overall view is fast and cannot regress the live
+    per-grantee data path. To MANAGE one grantee the operator selects it in the
+    surface-level grantee selector (which engages per-grantee mode); this view
+    is purely informational.
+    """
+    rows: list[dict[str, Any]] = []
+    for grantee in enumerate_grantees(ctx):
+        summary = ""
+        if summarize is not None:
+            try:
+                summary = _as_text(summarize(grantee))
+            except Exception:
+                summary = ""
+        rows.append(
+            {
+                "msn_id": _as_text(grantee.get("msn_id")),
+                "label": _as_text(grantee.get("label")) or _as_text(grantee.get("msn_id")),
+                "short_name": _as_text(grantee.get("short_name")),
+                "domains": [_as_text(d) for d in (grantee.get("domains") or []) if _as_text(d)],
+                "summary": summary,
+            }
+        )
+    return {
+        "mode": "global",
+        "overall_roster": True,
+        "extension_label": extension_label,
+        "count": len(rows),
+        "grantees": rows,
+    }
+
+
 def enumerate_grantees(ctx: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the full grantee roster for aggregation.
 
@@ -95,4 +136,10 @@ def for_each_grantee(
             yield grantee, _as_text(domain), sub_ctx
 
 
-__all__ = ["enumerate_grantees", "for_each_grantee", "global_stub", "is_global"]
+__all__ = [
+    "build_overall_roster",
+    "enumerate_grantees",
+    "for_each_grantee",
+    "global_stub",
+    "is_global",
+]

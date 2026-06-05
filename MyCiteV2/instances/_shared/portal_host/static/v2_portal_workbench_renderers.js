@@ -976,6 +976,37 @@
     );
   }
 
+  // GLOBAL ("Overall") roster for an operational extension: one row per
+  // grantee with a cheap status. Informational — engagement is via the
+  // grantee selector at the top of the surface.
+  function renderOverallRoster(p) {
+    var grantees = asList(p.grantees);
+    var label = asText(p.extension_label) || "Overall";
+    var intro =
+      '<p class="v2-extensionCard__intro">' + escapeHtml(label) +
+      " — all grantees (" + escapeHtml(String(p.count != null ? p.count : grantees.length)) +
+      "). Select a grantee above to manage one individually.</p>";
+    if (!grantees.length) {
+      return intro + '<p class="v2-extensionCard__empty">No grantees configured.</p>';
+    }
+    var rows = grantees.map(function (g) {
+      var gg = asObject(g);
+      return {
+        grantee: asText(gg.label) || asText(gg.msn_id),
+        domains: asList(gg.domains).join(", ") || "—",
+        status: asText(gg.summary) || "—",
+      };
+    });
+    return (
+      intro +
+      renderRowsTable("", rows, [
+        { key: "grantee", label: "Grantee" },
+        { key: "domains", label: "Domains" },
+        { key: "status", label: "Status" },
+      ])
+    );
+  }
+
   function renderExtensionCardBody(payload) {
     var p = asObject(payload);
     var html = "";
@@ -983,6 +1014,12 @@
     // ext_resources renders its own self-contained asset-library app.
     if (p.resources_app) {
       return renderResourcesApp(p);
+    }
+
+    // GLOBAL ("Overall") mode: a read-only roster of every grantee for this
+    // extension. To manage one, select it in the grantee selector above.
+    if (p.overall_roster) {
+      return renderOverallRoster(p);
     }
 
     if (asObject(p.form_frame).component_type) {

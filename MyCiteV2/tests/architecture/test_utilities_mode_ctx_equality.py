@@ -113,5 +113,51 @@ class SelectorShape(unittest.TestCase):
         self.assertEqual(selector["mode"], "global")
 
 
+class GlobalRosterViews(unittest.TestCase):
+    """In global mode each grantee-scoped extension returns an overall roster
+    (additive branch), while per-grantee mode keeps its original payload."""
+
+    def _render(self, tool_id, ctx):
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            render_extension,
+        )
+
+        return render_extension(tool_id, ctx)
+
+    def test_operational_extensions_render_overall_roster_in_global(self) -> None:
+        grantees = [
+            {"msn_id": "a", "label": "Alpha", "short_name": "Alpha", "domains": ["a.org"]},
+            {"msn_id": "b", "label": "Beta", "domains": ["b.org", "b2.org"]},
+        ]
+        ctx = {"mode": "global", "grantees": grantees, "private_dir": None}
+        for tool_id in (
+            "ext_aws_email",
+            "ext_analytics",
+            "ext_newsletter",
+            "ext_paypal",
+            "ext_connect",
+            "ext_grantee_profile",
+        ):
+            payload = self._render(tool_id, ctx)
+            self.assertTrue(
+                payload.get("overall_roster"),
+                f"{tool_id} should render an overall roster in global mode",
+            )
+            self.assertEqual(payload.get("count"), 2)
+            labels = {g["label"] for g in payload["grantees"]}
+            self.assertEqual(labels, {"Alpha", "Beta"})
+
+    def test_grantee_mode_preserves_original_payload(self) -> None:
+        # A grantee-scoped extension in grantee mode does NOT return a roster.
+        ctx = {
+            "mode": "grantee",
+            "grantee": {"msn_id": "a", "label": "Alpha", "domains": ["a.org"]},
+            "domain": "a.org",
+            "private_dir": None,
+        }
+        payload = self._render("ext_grantee_profile", ctx)
+        self.assertFalse(payload.get("overall_roster"))
+
+
 if __name__ == "__main__":  # pragma: no cover
     unittest.main()
