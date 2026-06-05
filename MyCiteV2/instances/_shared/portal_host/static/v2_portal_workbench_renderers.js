@@ -1230,6 +1230,122 @@
     );
   }
 
+  // Render a small dollar figure (no thousands separator dependency — the
+  // operator just needs the magnitude). null/blank → "—".
+  function renderResourcesMoney(value) {
+    if (value == null || value === "") return "—";
+    var n = Number(value);
+    if (!isFinite(n)) return "—";
+    return "$" + n.toFixed(2);
+  }
+
+  // ext_resources Events subtab: read-only operator view of every event
+  // leaflet (all clients) as a KPI strip + a row table. Reuses the events
+  // backend via the events_detail payload builder. CRUD lives on the
+  // dashboards; this surface is view-only.
+  function renderResourcesEvents(payload) {
+    var detail = asObject(asObject(payload).events_detail);
+    var rows = asList(detail.rows);
+    var summary = asObject(detail.summary);
+    if (!rows.length) {
+      return (
+        '<section class="v2-resourcesGallery">' +
+        "<h4>Events</h4>" +
+        '<p class="v2-extensionCard__empty">No events recorded yet.</p>' +
+        "</section>"
+      );
+    }
+    var kpi =
+      '<div class="v2-resourcesKpis">' +
+      '<span class="v2-resourcesKpi"><strong>' +
+      escapeHtml(String(summary.total_events != null ? summary.total_events : rows.length)) +
+      "</strong> events</span>" +
+      '<span class="v2-resourcesKpi"><strong>' +
+      escapeHtml(renderResourcesMoney(summary.total_revenue)) +
+      "</strong> revenue</span>" +
+      "</div>";
+    var displayRows = rows.map(function (r) {
+      var row = asObject(r);
+      return {
+        date: asText(row.date),
+        title: asText(row.title) || asText(row.id),
+        client: asText(row.client),
+        status: asText(row.status),
+        customer: asText(row.customer),
+        total: renderResourcesMoney(row.total),
+      };
+    });
+    return (
+      '<section class="v2-resourcesGallery">' +
+      "<h4>Events</h4>" +
+      kpi +
+      renderRowsTable("", displayRows, [
+        { key: "date", label: "Date" },
+        { key: "title", label: "Title" },
+        { key: "client", label: "Client" },
+        { key: "status", label: "Status" },
+        { key: "customer", label: "Customer" },
+        { key: "total", label: "Total" },
+      ]) +
+      "</section>"
+    );
+  }
+
+  // ext_resources Contacts subtab: read-only operator roster view, grouped
+  // per entity. Reuses the contact-leaflet adapter via contacts_detail.
+  function renderResourcesContacts(payload) {
+    var detail = asObject(asObject(payload).contacts_detail);
+    var entities = asList(detail.entities);
+    var withRows = entities.filter(function (e) {
+      return asList(asObject(e).contacts).length;
+    });
+    if (!withRows.length) {
+      return (
+        '<section class="v2-resourcesGallery">' +
+        "<h4>Contacts</h4>" +
+        '<p class="v2-extensionCard__empty">No contact rosters found.</p>' +
+        "</section>"
+      );
+    }
+    var groups = withRows
+      .map(function (e) {
+        var ent = asObject(e);
+        var rows = asList(ent.contacts).map(function (c) {
+          var contact = asObject(c);
+          return {
+            name: asText(contact.name),
+            email: asText(contact.email),
+            phone: asText(contact.phone),
+            subscribed: contact.subscribed ? "✓" : "—",
+            organization: asText(contact.organization),
+          };
+        });
+        return (
+          '<div class="v2-resourcesContactGroup">' +
+          "<h5>" +
+          escapeHtml(asText(ent.label) || asText(ent.entity)) +
+          ' <span class="v2-resourcesContactGroup__count">(' +
+          escapeHtml(String(rows.length)) +
+          ")</span></h5>" +
+          renderRowsTable("", rows, [
+            { key: "name", label: "Name" },
+            { key: "email", label: "Email" },
+            { key: "phone", label: "Phone" },
+            { key: "subscribed", label: "Subscribed" },
+            { key: "organization", label: "Organization" },
+          ]) +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<section class="v2-resourcesGallery">' +
+      "<h4>Contacts</h4>" +
+      groups +
+      "</section>"
+    );
+  }
+
   function renderResourcesApp(payload) {
     var p = asObject(payload);
     var profiles = asList(p.profiles);
@@ -1247,6 +1363,8 @@
       '<div class="v2-resourcesApp__detail" hidden></div>' +
       "<h4>Profiles</h4>" +
       roster +
+      renderResourcesEvents(p) +
+      renderResourcesContacts(p) +
       renderResourcesUpload(p) +
       renderResourcesIconDuplicates(p) +
       renderResourcesGalleryCounts(p.galleries) +
