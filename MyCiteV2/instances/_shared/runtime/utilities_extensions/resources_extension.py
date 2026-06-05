@@ -372,12 +372,11 @@ _PROFILE_FIELD_TYPES: dict[str, str] = {
 def _split_paragraphs(text: str) -> list[str]:
     """A multi-paragraph textarea → a list of paragraph strings.
 
-    Splits on blank lines (the natural paragraph break); falls back to single
-    newlines when the operator used those. Empty paragraphs are dropped.
+    Paragraphs are separated by BLANK lines (the natural break); a single block
+    of text — even with soft line wraps — stays ONE paragraph (no per-line
+    shattering). Empty paragraphs are dropped.
     """
     chunks = re.split(r"\n\s*\n", _as_text(text).replace("\r\n", "\n").strip())
-    if len(chunks) <= 1:
-        chunks = _as_text(text).replace("\r\n", "\n").split("\n")
     return [c.strip() for c in chunks if c.strip()]
 
 
@@ -462,8 +461,11 @@ def build_profile_edit_frame(
             continue
         raw = profile.get(key)
         if ftype == "string_list":
-            value: Any = [_as_text(x) for x in raw] if isinstance(raw, list) else []
-            field_type = "string_list"
+            # Rendered as a multiline textarea (one item per line) rather than the
+            # component-library chip editor, which has no add/remove wiring.
+            # save_profile's _coerce_string_list accepts the newline text.
+            value: Any = "\n".join(_as_text(x) for x in raw) if isinstance(raw, list) else _as_text(raw)
+            field_type = "multiline"
         elif ftype == "bio":
             value = "\n\n".join(_as_text(x) for x in raw) if isinstance(raw, list) else _as_text(raw)
             field_type = "multiline"

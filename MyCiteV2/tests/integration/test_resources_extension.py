@@ -556,7 +556,10 @@ class FullProfileEditTests(unittest.TestCase):
         ftypes = {f["key"]: f["type"] for f in frame["payload"]["fields"]}
         self.assertEqual(ftypes["bio"], "multiline")
         self.assertEqual(ftypes["summary_bio"], "multiline")
-        self.assertEqual(ftypes["tags"], "string_list")
+        # Simple lists render as multiline (one per line), not the unwired chips.
+        self.assertEqual(ftypes["tags"], "multiline")
+        tags_field = next(f for f in frame["payload"]["fields"] if f["key"] == "tags")
+        self.assertEqual(tags_field["value"], "historic")
         bio_field = next(f for f in frame["payload"]["fields"] if f["key"] == "bio")
         self.assertIn("Para one.", bio_field["value"])
         self.assertIn("Para two.", bio_field["value"])

@@ -1862,7 +1862,11 @@
           var formHtml = (lib && j.edit_frame && typeof lib.renderComponentFrame === "function")
             ? lib.renderComponentFrame(j.edit_frame)
             : '<p class="v2-resourcesDetail__error">Editor unavailable.</p>';
-          detailPane.innerHTML = renderProfileHead(r) + formHtml +
+          // Build the head from the FETCHED profile so it reflects just-saved
+          // values (the list-row object can be stale right after a save).
+          var prof = asObject(j.profile);
+          var head = { title: asText(prof.display_name) || asText(r.slug), image_url: asText(prof.image_url), slug: asText(r.slug) };
+          detailPane.innerHTML = renderProfileHead(head) + formHtml +
             '<div class="v2-resourcesDetail__result"></div>' + renderManageActions(r);
           bindProfileSave(r);
           bindManage(r);
@@ -1893,7 +1897,7 @@
                 resultEl.textContent = "Save failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
               }
             }
-            if (ok) refresh();
+            if (ok) refresh();  // refresh the list; the form keeps the saved values + message
           })
           .catch(function () { if (btn) btn.disabled = false; if (resultEl) resultEl.textContent = "Network error."; });
       });
