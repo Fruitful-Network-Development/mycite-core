@@ -193,6 +193,11 @@ def _render_ext_grantee_profile(ctx: dict[str, Any]) -> dict[str, Any]:
         build_form_component_frame,
     )
 
+    from ._global import global_stub, is_global
+
+    if is_global(ctx):
+        return global_stub("Grantee Profile")
+
     grantee = _as_dict(ctx.get("grantee"))
     msn_id = _as_text(grantee.get("msn_id"))
     if not msn_id:

@@ -228,6 +228,10 @@ def _build_newsletter_extension_payload(
 
 
 def _render_ext_newsletter(ctx: dict[str, Any]) -> dict[str, Any]:
+    from ._global import global_stub, is_global
+
+    if is_global(ctx):
+        return global_stub("Newsletter")
     return _build_newsletter_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),

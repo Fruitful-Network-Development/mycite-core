@@ -605,6 +605,10 @@ def _lazy_overlay_adapter() -> Any:
 
 
 def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
+    from ._global import global_stub, is_global
+
+    if is_global(ctx):
+        return global_stub("Email")
     return _build_email_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),

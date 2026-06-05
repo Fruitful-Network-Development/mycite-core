@@ -220,9 +220,11 @@
         var name = asText(grantee.label) || msn || "—";
         var domains = asList(grantee.domains).join(", ");
         var active = grantee.active === true;
+        var isOverall = grantee.is_overall === true;
         return (
           '<button type="button" class="v2-granteeSelector__option' +
           (active ? " is-active" : "") +
+          (isOverall ? " is-overall" : "") +
           '" data-grantee-msn="' +
           escapeHtml(msn) +
           '" data-grantee-index="' +

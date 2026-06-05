@@ -110,6 +110,10 @@ def _build_connect_extension_payload(
 
 
 def _render_ext_connect(ctx: dict[str, Any]) -> dict[str, Any]:
+    from ._global import global_stub, is_global
+
+    if is_global(ctx):
+        return global_stub("Connect")
     return _build_connect_extension_payload(
         grantee=_as_dict(ctx.get("grantee")),
         domain=_as_text(ctx.get("domain")),
