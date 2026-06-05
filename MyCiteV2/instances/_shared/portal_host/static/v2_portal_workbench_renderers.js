@@ -1181,6 +1181,7 @@
       '<option value="image">image</option>' +
       '<option value="icon">icon</option>' +
       '<option value="document">document</option>' +
+      '<option value="audio">audio</option>' +
       "</select></label>" +
       '<label>Title<input type="text" name="title" /></label>' +
       '<label>Slug<input type="text" name="slug" /></label>' +
@@ -1348,30 +1349,146 @@
     );
   }
 
-  function renderResourcesApp(payload) {
-    var p = asObject(payload);
+  // A managed (editable) gallery: leaflets grouped by slug, each member with
+  // retitle / delete affordances and each slug-group with a rename action.
+  // Rows carry data-resources-search so the library search box can filter.
+  function renderResourcesManagedMember(member, gallery, routes) {
+    var m = asObject(member);
+    var filename = asText(m.filename);
+    var title = asText(m.display_name) || filename;
+    var referenced = m.referenced === true;
+    var search = (asText(m.owner) + " " + filename + " " + title).toLowerCase();
+    var thumb = asText(m.image_url)
+      ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
+        escapeHtml(asText(m.image_url)) +
+        '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+      : "";
+    var refBadge = referenced
+      ? '<span class="v2-resourcesMember__badge" title="In use by a site manifest">in&nbsp;use</span>'
+      : "";
+    var del = referenced
+      ? '<span class="v2-resourcesDedup__locked">in use</span>'
+      : '<button type="button" class="v2-rowAction--danger" data-resources-manage="delete" ' +
+        'data-route="' + escapeHtml(routes.delete) + '" data-gallery="' + escapeHtml(gallery) +
+        '" data-filename="' + escapeHtml(filename) + '">Delete</button>';
+    var retitle =
+      '<button type="button" class="v2-rowAction" data-resources-manage="retitle" ' +
+      'data-route="' + escapeHtml(routes.retitle) + '" data-gallery="' + escapeHtml(gallery) +
+      '" data-filename="' + escapeHtml(filename) + '">Retitle</button>';
+    return (
+      '<div class="v2-resourcesMember" data-resources-search="' + escapeHtml(search) + '">' +
+      thumb +
+      '<code class="v2-resourcesMember__file">' + escapeHtml(filename) + "</code> " +
+      refBadge +
+      '<span class="v2-resourcesMember__actions">' + retitle + " " + del + "</span>" +
+      "</div>"
+    );
+  }
+
+  function renderResourcesManagedGallery(galleryObj, routes) {
+    var g = asObject(galleryObj);
+    var gallery = asText(g.gallery);
+    var groups = asList(g.groups);
+    if (!groups.length) {
+      return (
+        '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '">' +
+        "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " (0)</summary>" +
+        '<p class="v2-extensionCard__empty">Empty gallery.</p></details>'
+      );
+    }
+    var groupsHtml = groups
+      .map(function (grp) {
+        var group = asObject(grp);
+        var slug = asText(group.slug);
+        var members = asList(group.members)
+          .map(function (m) { return renderResourcesManagedMember(m, gallery, routes); })
+          .join("");
+        var renameBtn = gallery === "profiles"
+          ? ""  // profiles rename/delete via the profile detail view
+          : '<button type="button" class="v2-rowAction" data-resources-manage="rename-slug" ' +
+            'data-route="' + escapeHtml(routes.rename) + '" data-gallery="' + escapeHtml(gallery) +
+            '" data-slug="' + escapeHtml(slug) + '">Rename slug</button>';
+        return (
+          '<div class="v2-resourcesGroup" data-slug="' + escapeHtml(slug) +
+          '" data-resources-search="' + escapeHtml(slug.toLowerCase()) + '">' +
+          '<div class="v2-resourcesGroup__head"><span class="v2-resourcesGroup__slug">' +
+          escapeHtml(slug) + '</span> <span class="v2-resourcesGroup__count">(' +
+          escapeHtml(String(group.count)) + ")</span> " + renameBtn + "</div>" +
+          members +
+          "</div>"
+        );
+      })
+      .join("");
+    return (
+      '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '">' +
+      "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " (" + escapeHtml(String(g.count)) +
+      " in " + escapeHtml(String(groups.length)) + " slugs)</summary>" +
+      '<div class="v2-resourcesManaged__groups">' + groupsHtml + "</div></details>"
+    );
+  }
+
+  function titleCaseLabel(value) {
+    var s = asText(value);
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  }
+
+  function renderResourcesLibrary(p) {
     var profiles = asList(p.profiles);
     var roster = profiles.length
       ? '<div class="v2-resourcesList">' +
         profiles.map(renderResourcesProfileRow).join("") +
         "</div>"
       : '<p class="v2-extensionCard__empty">No profiles found in the site-core library.</p>';
+    var managed = asObject(p.managed_galleries);
+    var routes = {
+      retitle: asText(p.retitle_route) || "/__fnd/resources/asset/retitle",
+      rename: asText(p.rename_slug_route) || "/__fnd/resources/asset/rename-slug",
+      delete: asText(p.delete_route) || "/__fnd/resources/asset/delete",
+    };
+    var order = asList(p.managed_gallery_order);
+    var managedHtml = order
+      .filter(function (gallery) { return asText(gallery) !== "profiles"; })
+      .map(function (gallery) {
+        return renderResourcesManagedGallery(managed[asText(gallery)], routes);
+      })
+      .join("");
     return (
-      '<div class="v2-resourcesApp" data-resources-detail-route="' +
+      '<div class="v2-resourcesApp" data-resources-mode="library" data-resources-detail-route="' +
       escapeHtml(asText(p.profile_detail_route) || "/__fnd/resources/profile/detail") +
       '" data-resources-save-route="' +
       escapeHtml(asText(p.profile_save_route) || "/__fnd/resources/profile/save") +
       '">' +
+      '<input type="search" class="v2-resourcesSearch" placeholder="Search resources by slug, name, or file…" aria-label="Search resources" />' +
       '<div class="v2-resourcesApp__detail" hidden></div>' +
       "<h4>Profiles</h4>" +
       roster +
+      '<h4>Galleries</h4>' +
+      managedHtml +
       renderResourcesEvents(p) +
       renderResourcesContacts(p) +
       renderResourcesUpload(p) +
       renderResourcesIconDuplicates(p) +
-      renderResourcesGalleryCounts(p.galleries) +
       "</div>"
     );
+  }
+
+  function renderResourcesAllocation(p) {
+    // Per-grantee allocation view (populated in the allocation phase). For now
+    // a labelled placeholder so the global library can ship independently.
+    return (
+      '<div class="v2-resourcesApp" data-resources-mode="allocation">' +
+      '<p class="v2-extensionCard__intro">' +
+      escapeHtml(asText(p.notice) || "Resource allocation for this grantee is coming soon.") +
+      "</p></div>"
+    );
+  }
+
+  function renderResourcesApp(payload) {
+    var p = asObject(payload);
+    if (asText(p.resources_mode) === "allocation") {
+      return renderResourcesAllocation(p);
+    }
+    return renderResourcesLibrary(p);
   }
 
   function renderExtensions(extensions) {
@@ -1850,6 +1967,115 @@
     // Upload form (multipart).
     var uploadForm = app.querySelector("[data-resources-upload-route]");
     if (uploadForm) bindResourcesUpload(uploadForm);
+
+    // Library search: substring-filter group + member rows by their
+    // data-resources-search text; auto-open galleries that contain a match.
+    var searchBox = app.querySelector(".v2-resourcesSearch");
+    if (searchBox) {
+      searchBox.addEventListener("input", function () {
+        var q = (searchBox.value || "").trim().toLowerCase();
+        Array.prototype.forEach.call(
+          app.querySelectorAll(".v2-resourcesManaged"),
+          function (details) {
+            var anyVisible = false;
+            Array.prototype.forEach.call(
+              details.querySelectorAll(".v2-resourcesGroup"),
+              function (group) {
+                var groupMatch = !q ||
+                  (group.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
+                var memberAnyVisible = false;
+                Array.prototype.forEach.call(
+                  group.querySelectorAll(".v2-resourcesMember"),
+                  function (member) {
+                    var hit = groupMatch || !q ||
+                      (member.getAttribute("data-resources-search") || "").indexOf(q) !== -1;
+                    member.style.display = hit ? "" : "none";
+                    if (hit) memberAnyVisible = true;
+                  }
+                );
+                var showGroup = !q || groupMatch || memberAnyVisible;
+                group.style.display = showGroup ? "" : "none";
+                if (showGroup) anyVisible = true;
+              }
+            );
+            if (q) details.open = anyVisible;
+          }
+        );
+        // Also filter the profiles contact-app roster.
+        Array.prototype.forEach.call(
+          app.querySelectorAll(".v2-resourcesList .v2-resourcesRow"),
+          function (row) {
+            var txt = (row.textContent || "").toLowerCase();
+            row.style.display = !q || txt.indexOf(q) !== -1 ? "" : "none";
+          }
+        );
+      });
+    }
+
+    // Manage actions: retitle / rename-slug / delete. Each POSTs JSON and, on
+    // success, reloads the surface so the library reflects the change.
+    function reloadSurface() {
+      if (typeof ctx.loadShell !== "function") return;
+      var envelope = ctx.getEnvelope && ctx.getEnvelope();
+      if (envelope) {
+        ctx.loadShell({
+          schema: "mycite.v2.portal.shell.request.v1",
+          requested_surface_id: envelope.surface_id,
+          surface_query: envelope.surface_query || {},
+        });
+      }
+    }
+    Array.prototype.forEach.call(
+      app.querySelectorAll("[data-resources-manage]"),
+      function (btn) {
+        btn.addEventListener("click", function () {
+          var action = btn.getAttribute("data-resources-manage");
+          var route = btn.getAttribute("data-route");
+          var gallery = btn.getAttribute("data-gallery");
+          var body = { gallery: gallery };
+          if (action === "retitle") {
+            var filename = btn.getAttribute("data-filename");
+            var newTitle = window.prompt && window.prompt("New title for " + filename + ":");
+            if (!newTitle) return;
+            body.filename = filename;
+            body.new_asset_id = newTitle;
+          } else if (action === "rename-slug") {
+            var oldSlug = btn.getAttribute("data-slug");
+            var newSlug = window.prompt && window.prompt("Rename slug '" + oldSlug + "' to:", oldSlug);
+            if (!newSlug || newSlug === oldSlug) return;
+            body.old_slug = oldSlug;
+            body.new_slug = newSlug;
+          } else if (action === "delete") {
+            var delFile = btn.getAttribute("data-filename");
+            if (typeof window.confirm === "function" &&
+                !window.confirm("Delete " + delFile + "? (only allowed if unused)")) return;
+            body.filename = delFile;
+          } else {
+            return;
+          }
+          btn.disabled = true;
+          fetch(route, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (out) {
+              btn.disabled = false;
+              if (out.body && out.body.ok) {
+                reloadSurface();
+              } else {
+                try {
+                  window.alert((action === "delete" ? "Delete" : "Update") + " failed: " +
+                    ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status)));
+                } catch (_) {}
+              }
+            })
+            .catch(function () { btn.disabled = false; });
+        });
+      }
+    );
 
     // Icon dedup buttons.
     Array.prototype.forEach.call(

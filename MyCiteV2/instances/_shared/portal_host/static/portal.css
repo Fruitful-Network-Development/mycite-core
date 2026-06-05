@@ -10222,3 +10222,48 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   margin: 8px 0 2px; font-size: 12px; color: var(--ink, #464646);
 }
 .v2-resourcesContactGroup__count { color: var(--ink2, #888888); font-weight: 400; }
+
+/* Refactor: GLOBAL "Overall" grantee-selector entry + collective gallery mgmt. */
+.v2-granteeSelector__option.is-overall {
+  font-weight: 600;
+  border-style: dashed;
+}
+.v2-resourcesSearch {
+  width: 100%; box-sizing: border-box; margin: 6px 0 10px;
+  padding: 7px 10px; border-radius: 6px;
+  border: 1px solid var(--line, #afafaa);
+  background: #fff; color: var(--ink, #464646); font: inherit;
+}
+.v2-resourcesManaged { font-size: 12px; margin: 4px 0; }
+.v2-resourcesManaged > summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.v2-resourcesManaged__groups {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-top: 6px; max-height: 460px; overflow-y: auto;
+}
+.v2-resourcesGroup {
+  border: 1px solid var(--line, #afafaa); border-radius: 6px;
+  padding: 6px 8px; background: var(--paper2, #e8e5d0);
+}
+.v2-resourcesGroup__head {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.v2-resourcesGroup__slug { font-weight: 600; color: var(--ink, #464646); }
+.v2-resourcesGroup__count { color: var(--ink2, #888888); }
+.v2-resourcesMember {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  padding: 3px 0;
+}
+.v2-resourcesMember__file { font-size: 11px; word-break: break-all; flex: 1 1 auto; }
+.v2-resourcesMember__actions { display: flex; gap: 4px; flex-shrink: 0; }
+.v2-resourcesMember__badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  border: 1px solid var(--line, #afafaa); color: var(--ink2, #888888);
+}
+.v2-resourcesThumb--sm { width: 22px; height: 22px; flex-basis: 22px; }
+.v2-resourcesApp button.v2-rowAction {
+  padding: 3px 9px; border-radius: 5px; font: inherit; cursor: pointer;
+  border: 1px solid var(--line, #afafaa);
+  background: #fff; color: var(--ink, #464646);
+}
+.v2-resourcesApp button.v2-rowAction:hover { background: var(--paper, #f4f1e4); }
