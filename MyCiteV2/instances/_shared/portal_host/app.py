@@ -6169,6 +6169,64 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify({"ok": True, **payload}), 200
 
+    def _grantee_scope_tokens(grantee: dict[str, Any] | None) -> list[str]:
+        """Identity tokens for a grantee used to scope the public profile
+        roster to its own entity: short_name + label + each owned domain."""
+        if not grantee:
+            return []
+        tokens = [
+            _as_text(grantee.get("short_name")),
+            _as_text(grantee.get("label")),
+        ]
+        tokens += [_as_text(d) for d in grantee.get("domains") or []]
+        return [t for t in tokens if t]
+
+    @app.get("/__fnd/resources/profiles")
+    def fnd_resources_profiles() -> tuple[Any, int]:
+        """READ-ONLY grantee-scoped profile roster for the dashboard RESOURCES
+        tab. Returns the public profiles relevant to the caller's entity (or
+        the full public roster when scoping is ambiguous — read-only is safe).
+        Never exposes a non-public/operator-only profile, and has no
+        write/edit path (editing lives in the operator portal)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn) if host_config.private_dir else None
+        profiles = resources_extension.grantee_profiles(
+            host_config.webapps_root, _grantee_scope_tokens(grantee)
+        )
+        return jsonify({"ok": True, "profiles": profiles}), 200
+
+    @app.get("/__fnd/resources/profile")
+    def fnd_resources_profile() -> tuple[Any, int]:
+        """READ-ONLY full detail for one profile, for the dashboard RESOURCES
+        tab. Grantee-scoped + restricted to public, in-scope profiles so a
+        grantee can only open a profile its roster could already list."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        slug = _as_text(request.args.get("slug"))
+        if not slug:
+            return jsonify({"ok": False, "error": "slug_required"}), 400
+        grantee = _contacts_caller_grantee(msn) if host_config.private_dir else None
+        roster = resources_extension.grantee_profiles(
+            host_config.webapps_root, _grantee_scope_tokens(grantee)
+        )
+        if not any(row.get("slug") == slug for row in roster):
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+        detail = resources_extension.profile_detail(host_config.webapps_root, slug)
+        if detail is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+        return jsonify({"ok": True, "profile": detail}), 200
+
     @app.get("/__fnd/grantee/summary")
     def fnd_grantee_summary() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
