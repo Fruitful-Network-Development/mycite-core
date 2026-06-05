@@ -45,6 +45,7 @@ from .paypal import (
     _hydrate_paypal_from_sidecar,
     _render_ext_paypal,
 )
+from .resources_extension import _render_ext_resources
 
 EXTENSION_RENDERERS: dict[str, Any] = {
     "ext_aws_email": _render_ext_aws_email,
@@ -53,6 +54,7 @@ EXTENSION_RENDERERS: dict[str, Any] = {
     "ext_paypal": _render_ext_paypal,
     "ext_connect": _render_ext_connect,
     "ext_grantee_profile": _render_ext_grantee_profile,
+    "ext_resources": _render_ext_resources,
 }
 
 

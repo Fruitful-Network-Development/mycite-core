@@ -1,21 +1,18 @@
-"""Wave-1 scaffold — top-level Resources surface (site-core gallery listing).
+"""Resources gallery-listing builder (the read half of ext_resources).
 
-The Resources root surface (``resources.root`` → ``/portal/resources``)
-lists the shared site-core galleries read-only, one subtab per gallery:
-profiles / icon / image / document / audio / events / contacts.
+Wave 2 RETIRED the Wave-1 ``resources.root`` top-level surface and re-homed
+resources as the ``ext_resources`` Utilities extension. These tests pin the
+gallery-listing builder that still backs the extension's gallery counts:
 
-These tests pin the scaffold contract:
+  1. ``build_resources_surface_payload`` against a temp webapps_root returns
+     correct per-gallery counts and tolerates a missing ``events/`` dir.
+  2. For PII galleries (events, contacts) only filenames/counts are listed —
+     file CONTENTS are never read or exposed.
+  3. The retired root surface is GONE: ``resources.root`` is no longer in the
+     surface catalog and ``/portal/resources`` is no longer a root route.
 
-  1. ``build_resources_surface_payload`` against a temp webapps_root with
-     a couple of fake gallery files returns correct counts and tolerates a
-     missing ``events/`` directory (empty subtab, not an error).
-  2. For PII galleries (events, contacts) only filenames/counts are
-     listed — file CONTENTS are never read or exposed.
-  3. ``GET /portal/resources`` returns 200.
-  4. The runtime bundle for the resources surface (the payload the shell
-     API serves) carries the gallery subtabs.
-
-Rich per-gallery UX (contact-app, icon dedup, editing, upload) is Wave 2.
+The extension itself (profiles contact-app, save/derive round-trip, icon
+dedup, manifest-add) is covered by ``test_resources_extension.py``.
 """
 
 from __future__ import annotations
@@ -32,15 +29,9 @@ if str(REPO_ROOT) not in sys.path:
 
 FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
 
-from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_shell_entry
 from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_surface import (
     RESOURCE_GALLERIES,
     build_resources_surface_payload,
-)
-from MyCiteV2.packages.state_machine.portal_shell import (
-    PORTAL_SHELL_REQUEST_SCHEMA,
-    RESOURCES_ROOT_SURFACE_ID,
-    PortalScope,
 )
 
 
@@ -60,7 +51,7 @@ def _seed_site_core(webapps_root: Path) -> Path:
     return webapps_root
 
 
-class ResourcesSurfaceBuilderTests(unittest.TestCase):
+class ResourcesGalleryBuilderTests(unittest.TestCase):
     def test_counts_and_missing_dir_tolerated(self) -> None:
         tmp = Path(tempfile.mkdtemp(prefix="resources_builder_"))
         _seed_site_core(tmp)
@@ -68,7 +59,6 @@ class ResourcesSurfaceBuilderTests(unittest.TestCase):
 
         self.assertEqual(payload["kind"], "resources")
         by_gallery = {sub["gallery"]: sub for sub in payload["subtabs"]}
-        # All declared galleries present as subtabs, in declared order.
         self.assertEqual(
             [sub["gallery"] for sub in payload["subtabs"]],
             [spec["gallery"] for spec in RESOURCE_GALLERIES],
@@ -76,7 +66,6 @@ class ResourcesSurfaceBuilderTests(unittest.TestCase):
         self.assertEqual(by_gallery["icon"]["count"], 2)
         self.assertTrue(by_gallery["icon"]["exists"])
         self.assertEqual(by_gallery["profiles"]["count"], 1)
-        # Missing events/ → empty subtab, not an error.
         self.assertEqual(by_gallery["events"]["count"], 0)
         self.assertFalse(by_gallery["events"]["exists"])
         self.assertEqual(by_gallery["events"]["entries"], [])
@@ -90,10 +79,7 @@ class ResourcesSurfaceBuilderTests(unittest.TestCase):
         self.assertTrue(contacts["pii"])
         self.assertEqual(contacts["count"], 1)
         for entry in contacts["entries"]:
-            # Only filename + cheap metadata — never the file body.
-            self.assertEqual(
-                set(entry.keys()), {"filename", "extension", "size_bytes"}
-            )
+            self.assertEqual(set(entry.keys()), {"filename", "extension", "size_bytes"})
             for value in entry.values():
                 self.assertNotIn("secret@example.test", str(value))
 
@@ -106,79 +92,49 @@ class ResourcesSurfaceBuilderTests(unittest.TestCase):
             self.assertFalse(sub["exists"])
 
 
-class ResourcesSurfaceRuntimeTests(unittest.TestCase):
-    def test_runtime_bundle_carries_gallery_subtabs(self) -> None:
-        tmp = Path(tempfile.mkdtemp(prefix="resources_runtime_"))
-        _seed_site_core(tmp)
-        request = {
-            "schema": PORTAL_SHELL_REQUEST_SCHEMA,
-            "requested_surface_id": RESOURCES_ROOT_SURFACE_ID,
-            "portal_scope": PortalScope(scope_id="fnd", capabilities=()).to_dict(),
-        }
-        envelope = run_portal_shell_entry(
-            request,
-            portal_instance_id="fnd",
-            portal_domain="example.test",
-            webapps_root=tmp,
-        )
-        surface_payload = envelope["surface_payload"]
-        self.assertEqual(surface_payload["kind"], "resources")
-        galleries = {sub["gallery"] for sub in surface_payload["subtabs"]}
-        self.assertEqual(
-            galleries, {spec["gallery"] for spec in RESOURCE_GALLERIES}
-        )
-        by_gallery = {sub["gallery"]: sub for sub in surface_payload["subtabs"]}
-        self.assertEqual(by_gallery["icon"]["count"], 2)
+class ResourcesRootSurfaceRetiredTests(unittest.TestCase):
+    """The Wave-1 root surface must be fully gone — resources is an extension."""
 
+    def test_resources_root_not_in_surface_catalog(self) -> None:
+        from MyCiteV2.packages.state_machine.portal_shell.shell_registry import (
+            build_portal_surface_catalog,
+        )
 
-@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
-class ResourcesSurfaceRouteTests(unittest.TestCase):
-    def _make_app(self):
+        surface_ids = {e.surface_id for e in build_portal_surface_catalog()}
+        self.assertNotIn("resources.root", surface_ids)
+
+    def test_resources_root_symbols_removed_from_schemas(self) -> None:
+        from MyCiteV2.packages.state_machine.portal_shell import shell_schemas
+
+        self.assertFalse(hasattr(shell_schemas, "RESOURCES_ROOT_SURFACE_ID"))
+        self.assertFalse(hasattr(shell_schemas, "RESOURCES_ROOT_ROUTE"))
+        self.assertNotIn("resources.root", shell_schemas.ROOT_SURFACE_IDS)
+
+    @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+    def test_portal_resources_route_gone_and_healthz_clean(self) -> None:
         from MyCiteV2.instances._shared.portal_host.app import (
             V2PortalHostConfig,
             create_app,
         )
 
-        tmp = Path(tempfile.mkdtemp(prefix="resources_route_"))
+        tmp = Path(tempfile.mkdtemp(prefix="resources_retired_"))
         for sub in ("public", "private", "data", "webapps"):
             (tmp / sub).mkdir()
         _seed_site_core(tmp / "webapps")
-        config = V2PortalHostConfig(
-            portal_instance_id="fnd",
-            public_dir=tmp / "public",
-            private_dir=tmp / "private",
-            data_dir=tmp / "data",
-            portal_domain="example.test",
-            webapps_root=tmp / "webapps",
+        app = create_app(
+            V2PortalHostConfig(
+                portal_instance_id="fnd",
+                public_dir=tmp / "public",
+                private_dir=tmp / "private",
+                data_dir=tmp / "data",
+                portal_domain="example.test",
+                webapps_root=tmp / "webapps",
+            )
         )
-        return create_app(config)
-
-    def test_get_resources_returns_200(self) -> None:
-        app = self._make_app()
         client = app.test_client()
-        response = client.get("/portal/resources")
-        self.assertEqual(response.status_code, 200)
-        # The shell HTML bootstraps the resources surface request.
-        self.assertIn(RESOURCES_ROOT_SURFACE_ID, response.get_data(as_text=True))
-
-    def test_shell_api_serves_gallery_subtabs(self) -> None:
-        app = self._make_app()
-        client = app.test_client()
-        response = client.post(
-            "/portal/api/v2/shell",
-            json={
-                "schema": PORTAL_SHELL_REQUEST_SCHEMA,
-                "requested_surface_id": RESOURCES_ROOT_SURFACE_ID,
-                "portal_scope": PortalScope(
-                    scope_id="fnd", capabilities=()
-                ).to_dict(),
-            },
-        )
-        self.assertEqual(response.status_code, 200)
-        body = response.get_data(as_text=True)
-        # The serialized payload names every gallery subtab.
-        for spec in RESOURCE_GALLERIES:
-            self.assertIn(spec["gallery"], body)
+        self.assertEqual(client.get("/portal/resources").status_code, 404)
+        healthz = client.get("/portal/healthz").get_json()
+        self.assertNotIn("/portal/resources", healthz.get("root_routes", []))
 
 
 if __name__ == "__main__":

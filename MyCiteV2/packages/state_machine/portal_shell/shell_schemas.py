@@ -17,10 +17,6 @@ PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 SYSTEM_ROOT_SURFACE_ID = "system.root"
 NETWORK_ROOT_SURFACE_ID = "network.root"
 UTILITIES_ROOT_SURFACE_ID = "utilities.root"
-# Wave-1 scaffold: a top-level Resources root surface listing the site-core
-# galleries (profiles / icon / image / document / audio / events / contacts)
-# read-only, one subtab per gallery. Rich per-gallery UX is Wave 2.
-RESOURCES_ROOT_SURFACE_ID = "resources.root"
 UTILITIES_TOOL_EXPOSURE_SURFACE_ID = "utilities.tool_exposure"
 # Phase 14b: replace the single mixed-purpose tool-exposure surface
 # (which conflated extensions + tools + grantee profile + workbench UI)
@@ -78,7 +74,6 @@ AGRO_ERP_TOOL_ENTRYPOINT_ID = "portal.system.tools.agro_erp"
 SYSTEM_ROOT_ROUTE = "/portal/system"
 NETWORK_ROOT_ROUTE = "/portal/network"
 UTILITIES_ROOT_ROUTE = "/portal/utilities"
-RESOURCES_ROOT_ROUTE = "/portal/resources"
 UTILITIES_TOOL_EXPOSURE_ROUTE = "/portal/utilities/tool-exposure"
 # Phase 14b: per-surface canonical routes.
 UTILITIES_EXTENSIONS_ROUTE = "/portal/utilities/extensions"
@@ -161,7 +156,6 @@ ROOT_SURFACE_IDS = frozenset(
         SYSTEM_ROOT_SURFACE_ID,
         NETWORK_ROOT_SURFACE_ID,
         UTILITIES_ROOT_SURFACE_ID,
-        RESOURCES_ROOT_SURFACE_ID,
     }
 )
 TOOL_SURFACE_IDS = frozenset(
@@ -173,7 +167,6 @@ TOOL_SURFACE_IDS = frozenset(
 )
 SYSTEM_SURFACE_IDS = frozenset({SYSTEM_ROOT_SURFACE_ID, *TOOL_SURFACE_IDS})
 NETWORK_SURFACE_IDS = frozenset({NETWORK_ROOT_SURFACE_ID})
-RESOURCES_SURFACE_IDS = frozenset({RESOURCES_ROOT_SURFACE_ID})
 UTILITIES_SURFACE_IDS = frozenset(
     {
         UTILITIES_ROOT_SURFACE_ID,

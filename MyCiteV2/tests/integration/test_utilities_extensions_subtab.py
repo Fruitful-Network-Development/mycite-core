@@ -103,8 +103,9 @@ def _surface_payload(**surface_query) -> dict:
 
 
 class ExtensionSubtabSelectorTests(unittest.TestCase):
-    def test_default_surface_lists_5_tabs_with_email_active(self) -> None:
-        # Phase 17b adds ext_connect as the 5th tab.
+    def test_default_surface_lists_6_tabs_with_email_active(self) -> None:
+        # Phase 17b adds ext_connect as the 5th tab; Wave 2 adds ext_resources
+        # as the 6th (the retired resources.root surface re-homed as an extension).
         payload = _surface_payload()
         selector = payload.get("extension_subtab_selector")
         self.assertIsNotNone(selector, "extension_subtab_selector missing")
@@ -117,6 +118,7 @@ class ExtensionSubtabSelectorTests(unittest.TestCase):
                 "ext_newsletter",
                 "ext_paypal",
                 "ext_connect",
+                "ext_resources",
             ],
         )
         self.assertEqual(selector.get("selected_tool_id"), "ext_aws_email")

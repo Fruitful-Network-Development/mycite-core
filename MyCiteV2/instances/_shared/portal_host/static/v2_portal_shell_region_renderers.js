@@ -27,11 +27,6 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M4 7h16v10H4z"></path><path d="M9 7V5.5h6V7"></path><path d="M12 11v5"></path><path d="M9.5 13.5h5"></path>' +
         "</svg>";
-    } else if (id === "resources") {
-      svg =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M4 6.5h7v11H4z"></path><path d="M13 6.5h7v11h-7z"></path><path d="M6.5 9.5h2"></path><path d="M15.5 9.5h2"></path>' +
-        "</svg>";
     } else if (id === "cts_gis") {
       svg =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +

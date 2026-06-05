@@ -978,6 +978,11 @@
     var p = asObject(payload);
     var html = "";
 
+    // ext_resources renders its own self-contained asset-library app.
+    if (p.resources_app) {
+      return renderResourcesApp(p);
+    }
+
     if (asObject(p.form_frame).component_type) {
       var lib = componentLibrary();
       if (lib && typeof lib.renderComponentFrame === "function") {
@@ -1108,6 +1113,145 @@
       html += '<p class="v2-extensionCard__empty">' + escapeHtml(asText(p.empty_message)) + "</p>";
     }
     return html;
+  }
+
+  // --- ext_resources: the shared site-core asset library ----------------
+  // The resources extension is a small app rendered inside its extension
+  // card: a phone-contacts-style profiles roster (logo thumbnail + name) that
+  // opens a per-profile detail/edit view, gallery counts, an upload form, and
+  // icon-dedup affordances. All actions post to the /__fnd/resources/* +
+  // /portal/api/resources/* routes. See resources_extension.py.
+  function renderResourcesPlaceholderThumb() {
+    return (
+      '<span class="v2-resourcesThumb v2-resourcesThumb--empty" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<circle cx="12" cy="9" r="3.2"></circle><path d="M5 19c1.5-3 4-4.5 7-4.5s5.5 1.5 7 4.5"></path>' +
+      "</svg></span>"
+    );
+  }
+
+  function renderResourcesProfileRow(p) {
+    var prof = asObject(p);
+    var img = asText(prof.image_url);
+    var thumb = img
+      ? '<img class="v2-resourcesThumb" src="' +
+        escapeHtml(img) +
+        '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+      : renderResourcesPlaceholderThumb();
+    return (
+      '<button type="button" class="v2-resourcesRow" data-resources-profile="' +
+      escapeHtml(asText(prof.slug)) +
+      '">' +
+      thumb +
+      '<span class="v2-resourcesRow__text">' +
+      '<span class="v2-resourcesRow__name">' +
+      escapeHtml(asText(prof.display_name) || asText(prof.slug)) +
+      "</span>" +
+      (asText(prof.subtitle)
+        ? '<span class="v2-resourcesRow__sub">' + escapeHtml(asText(prof.subtitle)) + "</span>"
+        : "") +
+      "</span></button>"
+    );
+  }
+
+  function renderResourcesGalleryCounts(galleries) {
+    var list = asList(galleries);
+    if (!list.length) return "";
+    var rows = list.map(function (g) {
+      var gg = asObject(g);
+      return { gallery: asText(gg.label) || asText(gg.gallery), count: gg.count };
+    });
+    return renderRowsTable("Galleries", rows, [
+      { key: "gallery", label: "Gallery" },
+      { key: "count", label: "Items" },
+    ]);
+  }
+
+  function renderResourcesUpload(payload) {
+    var action = asObject(payload.upload_action);
+    var route = asText(action.route) || "/portal/api/resources/upload";
+    return (
+      '<details class="v2-resourcesUpload"><summary>Upload an asset</summary>' +
+      '<form class="v2-resourcesUploadForm" data-resources-upload-route="' +
+      escapeHtml(route) +
+      '">' +
+      '<label>Kind<select name="kind">' +
+      '<option value="image">image</option>' +
+      '<option value="icon">icon</option>' +
+      '<option value="document">document</option>' +
+      "</select></label>" +
+      '<label>Title<input type="text" name="title" /></label>' +
+      '<label>Slug<input type="text" name="slug" /></label>' +
+      '<label>Owner<input type="text" name="owner" /></label>' +
+      '<label>File<input type="file" name="file" required /></label>' +
+      '<button type="submit" class="v2-rowAction--primary">Upload</button>' +
+      '<p class="v2-resourcesUpload__result" hidden></p>' +
+      "</form></details>"
+    );
+  }
+
+  function renderResourcesIconDuplicates(payload) {
+    var groups = asList(payload.icon_duplicate_groups);
+    if (!groups.length) return "";
+    var route = asText(payload.icon_dedup_route) || "/__fnd/resources/icon/dedup";
+    var body = groups
+      .map(function (g) {
+        var grp = asObject(g);
+        var members = asList(grp.members)
+          .map(function (m) {
+            var mem = asObject(m);
+            var ref = mem.referenced;
+            var btn = ref
+              ? '<span class="v2-resourcesDedup__locked">referenced</span>'
+              : '<button type="button" class="v2-rowAction--danger" ' +
+                'data-resources-dedup-route="' +
+                escapeHtml(route) +
+                '" data-resources-dedup-file="' +
+                escapeHtml(asText(mem.filename)) +
+                '">Remove</button>';
+            return (
+              '<li><code>' +
+              escapeHtml(asText(mem.filename)) +
+              "</code> " +
+              btn +
+              "</li>"
+            );
+          })
+          .join("");
+        return '<li class="v2-resourcesDedup__group"><ul>' + members + "</ul></li>";
+      })
+      .join("");
+    return (
+      '<details class="v2-resourcesDedup"><summary>Duplicate icons (' +
+      groups.length +
+      ")</summary><ul>" +
+      body +
+      "</ul></details>"
+    );
+  }
+
+  function renderResourcesApp(payload) {
+    var p = asObject(payload);
+    var profiles = asList(p.profiles);
+    var roster = profiles.length
+      ? '<div class="v2-resourcesList">' +
+        profiles.map(renderResourcesProfileRow).join("") +
+        "</div>"
+      : '<p class="v2-extensionCard__empty">No profiles found in the site-core library.</p>';
+    return (
+      '<div class="v2-resourcesApp" data-resources-detail-route="' +
+      escapeHtml(asText(p.profile_detail_route) || "/__fnd/resources/profile/detail") +
+      '" data-resources-save-route="' +
+      escapeHtml(asText(p.profile_save_route) || "/__fnd/resources/profile/save") +
+      '">' +
+      '<div class="v2-resourcesApp__detail" hidden></div>' +
+      "<h4>Profiles</h4>" +
+      roster +
+      renderResourcesUpload(p) +
+      renderResourcesIconDuplicates(p) +
+      renderResourcesGalleryCounts(p.galleries) +
+      "</div>"
+    );
   }
 
   function renderExtensions(extensions) {
@@ -1478,8 +1622,222 @@
     );
   }
 
+  // --- ext_resources interactions ---------------------------------------
+  function renderResourcesDetailForm(app, profile) {
+    var prof = asObject(profile);
+    var saveRoute = app.getAttribute("data-resources-save-route");
+    var fields = asList(prof.fields);
+    // Scalar identity/contact fields the backend accepts for editing.
+    var editable = {
+      name: 1, display_name: 1, card_id: 1, entity_type: 1, role: 1,
+      organization: 1, location: 1, website: 1, email: 1, secondary_email: 1,
+      org_email: 1, phone: 1, summary_bio: 1, image_ref: 1, logo_ref: 1,
+    };
+    var img = asText(prof.image_url);
+    var head =
+      '<div class="v2-resourcesDetail__head">' +
+      (img
+        ? '<img class="v2-resourcesThumb v2-resourcesThumb--lg" src="' + escapeHtml(img) + '" alt="" />'
+        : renderResourcesPlaceholderThumb()) +
+      "<h4>" +
+      escapeHtml(asText(prof.display_name) || asText(prof.slug)) +
+      "</h4>" +
+      '<button type="button" class="v2-rowAction--secondary v2-resourcesDetail__back">Back to list</button>' +
+      "</div>";
+    // Render ALL fields (incl. empty) as read rows; editable ones as inputs.
+    var inputs = fields
+      .map(function (f) {
+        var fld = asObject(f);
+        var key = asText(fld.key);
+        var val = asText(fld.value);
+        var label = escapeHtml(asText(fld.label) || key);
+        if (editable[key]) {
+          var multiline = key === "summary_bio" || val.indexOf("\n") >= 0;
+          var control = multiline
+            ? '<textarea data-resources-field="' + escapeHtml(key) + '" rows="3">' + escapeHtml(val) + "</textarea>"
+            : '<input type="text" data-resources-field="' + escapeHtml(key) + '" value="' + escapeHtml(val) + '" />';
+          return '<label class="v2-resourcesField">' + label + control + "</label>";
+        }
+        return (
+          '<div class="v2-resourcesField v2-resourcesField--ro"><span class="v2-resourcesField__label">' +
+          label +
+          '</span><span class="v2-resourcesField__value">' +
+          (val ? escapeHtml(val).replace(/\n/g, "<br />") : "—") +
+          "</span></div>"
+        );
+      })
+      .join("");
+    return (
+      head +
+      '<form class="v2-resourcesDetail__form" data-resources-save-form data-slug="' +
+      escapeHtml(asText(prof.slug)) +
+      '" data-save-route="' +
+      escapeHtml(saveRoute) +
+      '">' +
+      inputs +
+      '<div class="v2-resourcesDetail__actions">' +
+      '<button type="submit" class="v2-rowAction--primary">Save &amp; publish</button>' +
+      '<span class="v2-resourcesDetail__result"></span>' +
+      "</div></form>"
+    );
+  }
+
+  function bindResourcesApp(ctx, target) {
+    var app = target.querySelector(".v2-resourcesApp");
+    if (!app || app.dataset.resourcesBound === "1") return;
+    app.dataset.resourcesBound = "1";
+    var detailRoute = app.getAttribute("data-resources-detail-route");
+    var detailPane = app.querySelector(".v2-resourcesApp__detail");
+
+    function showList() {
+      if (detailPane) {
+        detailPane.hidden = true;
+        detailPane.innerHTML = "";
+      }
+    }
+
+    // Open a profile's detail/edit view.
+    Array.prototype.forEach.call(
+      app.querySelectorAll("[data-resources-profile]"),
+      function (row) {
+        row.addEventListener("click", function () {
+          var slug = row.getAttribute("data-resources-profile");
+          if (!slug || !detailPane) return;
+          detailPane.hidden = false;
+          detailPane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
+          fetch(detailRoute + "?slug=" + encodeURIComponent(slug), {
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+              if (!j || !j.ok) {
+                detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>';
+                return;
+              }
+              detailPane.innerHTML = renderResourcesDetailForm(app, j.profile);
+              var back = detailPane.querySelector(".v2-resourcesDetail__back");
+              if (back) back.addEventListener("click", showList);
+              var form = detailPane.querySelector("[data-resources-save-form]");
+              if (form) bindResourcesSaveForm(ctx, form);
+            })
+            .catch(function () {
+              detailPane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>';
+            });
+        });
+      }
+    );
+
+    // Upload form (multipart).
+    var uploadForm = app.querySelector("[data-resources-upload-route]");
+    if (uploadForm) bindResourcesUpload(uploadForm);
+
+    // Icon dedup buttons.
+    Array.prototype.forEach.call(
+      app.querySelectorAll("[data-resources-dedup-route]"),
+      function (btn) {
+        btn.addEventListener("click", function () {
+          var route = btn.getAttribute("data-resources-dedup-route");
+          var filename = btn.getAttribute("data-resources-dedup-file");
+          if (!route || !filename) return;
+          if (typeof window.confirm === "function" &&
+              !window.confirm("Remove duplicate icon " + filename + "?")) return;
+          btn.disabled = true;
+          fetch(route, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ filename: filename }),
+            credentials: "same-origin",
+          })
+            .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+            .then(function (out) {
+              btn.disabled = false;
+              if (out.body && out.body.ok) {
+                var li = btn.closest("li");
+                if (li) li.parentNode.removeChild(li);
+              } else {
+                try { window.alert("Remove failed: " + ((out.body && (out.body.error)) || out.status)); } catch (_) {}
+              }
+            })
+            .catch(function () { btn.disabled = false; });
+        });
+      }
+    );
+  }
+
+  function bindResourcesSaveForm(ctx, form) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var route = form.getAttribute("data-save-route");
+      var slug = form.getAttribute("data-slug");
+      var resultEl = form.querySelector(".v2-resourcesDetail__result");
+      var fields = {};
+      Array.prototype.forEach.call(
+        form.querySelectorAll("[data-resources-field]"),
+        function (node) { fields[node.getAttribute("data-resources-field")] = node.value; }
+      );
+      var submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      if (resultEl) resultEl.textContent = "Saving & rebuilding…";
+      fetch(route, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: slug, fields: fields }),
+        credentials: "same-origin",
+      })
+        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (out) {
+          if (submitBtn) submitBtn.disabled = false;
+          var ok = out.body && out.body.ok;
+          if (resultEl) {
+            if (ok) {
+              var prop = out.body.propagation || {};
+              var rebuilt = (prop.rebuilt || []).length;
+              var errs = (prop.errors || []).length;
+              resultEl.textContent = "Saved." +
+                (rebuilt ? " Rebuilt " + rebuilt + " site(s)." : "") +
+                (errs ? " (" + errs + " propagation note(s))" : "");
+            } else {
+              resultEl.textContent = "Save failed: " +
+                ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
+            }
+          }
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          if (resultEl) resultEl.textContent = "Network error: " + (err && err.message ? err.message : err);
+        });
+    });
+  }
+
+  function bindResourcesUpload(form) {
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+      var route = form.getAttribute("data-resources-upload-route");
+      var resultEl = form.querySelector(".v2-resourcesUpload__result");
+      var data = new FormData(form);
+      var submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) submitBtn.disabled = true;
+      if (resultEl) { resultEl.hidden = false; resultEl.textContent = "Uploading…"; }
+      fetch(route, { method: "POST", body: data, credentials: "same-origin" })
+        .then(function (r) { return r.json().then(function (j) { return { status: r.status, body: j }; }); })
+        .then(function (out) {
+          if (submitBtn) submitBtn.disabled = false;
+          if (resultEl) {
+            resultEl.textContent = out.body && out.body.ok
+              ? "Uploaded: " + (out.body.asset_path || out.body.asset_id || "")
+              : "Upload failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
+          }
+        })
+        .catch(function (err) {
+          if (submitBtn) submitBtn.disabled = false;
+          if (resultEl) resultEl.textContent = "Network error: " + (err && err.message ? err.message : err);
+        });
+    });
+  }
+
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
+    bindResourcesApp(ctx, target);
     Array.prototype.forEach.call(
       target.querySelectorAll("form[data-form-submit-route]"),
       function (form) {

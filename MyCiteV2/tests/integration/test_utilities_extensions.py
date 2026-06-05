@@ -47,6 +47,10 @@ EXPECTED_EXTENSION_IDS = (
     # under its own utilities.grantee_profile surface alongside the
     # operational extensions tab strip.
     "ext_grantee_profile",
+    # Wave 2: the resources asset-library extension RETIRES the Wave-1
+    # ``resources.root`` top-level surface and re-homes resources under
+    # Utilities → Extensions like every other operator feature.
+    "ext_resources",
 )
 
 

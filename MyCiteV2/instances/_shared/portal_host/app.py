@@ -53,7 +53,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     AGRO_ERP_TOOL_SURFACE_ID,
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
-    RESOURCES_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
     UTILITIES_EXTENSIONS_SURFACE_ID,
     UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
@@ -919,7 +918,6 @@ def _build_health(config: V2PortalHostConfig) -> dict[str, Any]:
             "/portal/system",
             "/portal/network",
             "/portal/utilities",
-            "/portal/resources",
         ],
         "tool_routes": [f"/portal/system/tools/{slug}" for slug in TOOL_SLUG_TO_SURFACE_ID],
         "shell_endpoint": "/portal/api/v2/shell",
@@ -1904,12 +1902,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def portal_utilities_root() -> str:
         return _render_surface(UTILITIES_ROOT_SURFACE_ID, host_config)
 
-    # Wave-1 scaffold: top-level Resources surface listing the site-core
-    # galleries read-only (one subtab per gallery). Rich UX is Wave 2.
-    @app.get("/portal/resources")
-    def portal_resources_root() -> str:
-        return _render_surface(RESOURCES_ROOT_SURFACE_ID, host_config)
-
     # Phase 14b: four dedicated surfaces under Utilities. The old
     # /tool-exposure and /integrations routes 302-redirect for one
     # transition cycle so external bookmarks keep resolving.
@@ -2067,6 +2059,91 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             ),
             200,
         )
+
+    # ---- Resources extension (ext_resources) backend ------------------
+    # Operator-scoped, behind the nginx ^~ /portal + /__fnd oauth blocks.
+    # These power the resources extension's profiles contact-app (view +
+    # edit + live propagation), icon dedup, and add-to-manifest affordances.
+    @app.get("/__fnd/resources/profile/detail")
+    def fnd_resources_profile_detail() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        slug = _as_text(request.args.get("slug"))
+        if not slug:
+            return jsonify({"ok": False, "error": "slug_required"}), 400
+        detail = resources_extension.profile_detail(host_config.webapps_root, slug)
+        if detail is None:
+            return jsonify({"ok": False, "error": "profile_not_found"}), 404
+        return jsonify({"ok": True, "profile": detail}), 200
+
+    @app.post("/__fnd/resources/profile/save")
+    def fnd_resources_profile_save() -> tuple[Any, int]:
+        """Persist edits to a canonical site-core profile, then re-derive the
+        per-site excerpt(s) and rebuild the owning site so the change reaches
+        the live page (the gap the operator hit with Nathan Seals)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        slug = _as_text(payload.get("slug"))
+        fields = payload.get("fields")
+        if not slug or not isinstance(fields, dict):
+            return jsonify({"ok": False, "error": "invalid_request"}), 400
+        saved = resources_extension.save_profile(host_config.webapps_root, slug, fields)
+        if not saved.get("ok"):
+            return jsonify(saved), 400 if saved.get("error") == "profile_not_found" else 500
+        # Propagate to per-site excerpts + rebuild. Best-effort: a propagation
+        # failure does not undo the canonical save, but is reported so the
+        # operator knows the live page may lag.
+        rebuild = bool(payload.get("rebuild", True))
+        propagation = resources_extension.propagate_profile(
+            host_config.webapps_root, slug, rebuild=rebuild
+        )
+        return jsonify({"ok": True, "saved": saved, "propagation": propagation}), 200
+
+    @app.get("/__fnd/resources/icon/duplicates")
+    def fnd_resources_icon_duplicates() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        groups = resources_extension.icon_duplicate_groups(host_config.webapps_root)
+        return jsonify({"ok": True, "groups": groups}), 200
+
+    @app.post("/__fnd/resources/icon/dedup")
+    def fnd_resources_icon_dedup() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        filename = _as_text(payload.get("filename"))
+        if not filename:
+            return jsonify({"ok": False, "error": "filename_required"}), 400
+        result = resources_extension.remove_icon_duplicate(
+            host_config.webapps_root, filename
+        )
+        return jsonify(result), 200 if result.get("ok") else 409
+
+    @app.post("/__fnd/resources/manifest/add")
+    def fnd_resources_manifest_add() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.add_asset_to_manifest(
+            host_config.webapps_root,
+            site=_as_text(payload.get("site")),
+            kind=_as_text(payload.get("kind")),
+            asset_id=_as_text(payload.get("asset_id")),
+            asset_path=_as_text(payload.get("asset_path")),
+            entity_scope=_as_text(payload.get("entity_scope")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
 
     # ---- Email health surface -----------------------------------------
     # Operator-facing view of the email stack (forwarder routes + DNS/SES

@@ -256,11 +256,11 @@ class GranteeProfileSaveRouteTests(unittest.TestCase):
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class UtilitiesSurfaceListsGranteeExtensionTests(unittest.TestCase):
-    def test_utilities_surface_lists_six_extensions_now(self) -> None:
+    def test_utilities_surface_lists_seven_extensions_now(self) -> None:
         # Phase 17b: ext_connect joins ext_aws_email + ext_analytics
         # + ext_newsletter + ext_paypal + ext_grantee_profile on the
         # legacy tool_exposure surface (which keeps the all-in-one
-        # listing for back-compat).
+        # listing for back-compat). Wave 2 adds ext_resources → 7.
         tmp = Path(tempfile.mkdtemp(prefix="phase9_surface_"))
         for sub in ("public", "private", "data", "webapps"):
             (tmp / sub).mkdir()
@@ -282,7 +282,8 @@ class UtilitiesSurfaceListsGranteeExtensionTests(unittest.TestCase):
         ]
         self.assertIn("ext_grantee_profile", tool_ids)
         self.assertIn("ext_connect", tool_ids)
-        self.assertEqual(len(tool_ids), 6)
+        self.assertIn("ext_resources", tool_ids)
+        self.assertEqual(len(tool_ids), 7)
 
 
 if __name__ == "__main__":
