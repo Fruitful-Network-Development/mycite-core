@@ -60,6 +60,11 @@ def _gallery_entries(gallery_dir: Path) -> list[dict[str, Any]]:
         try:
             if not child.is_file():
                 continue
+            # Skip dotfiles (e.g. .gitkeep placeholders) and the tracked
+            # *.example.* schema templates — they are scaffolding, not real
+            # resources, and shouldn't show or be counted in the gallery.
+            if child.name.startswith(".") or ".example." in child.name:
+                continue
             size_bytes = child.stat().st_size
         except OSError:
             continue
