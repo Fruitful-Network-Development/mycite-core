@@ -19,7 +19,9 @@ These tests pin:
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -30,6 +32,20 @@ if str(REPO_ROOT) not in sys.path:
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
     _build_utilities_surface_context,
 )
+
+
+def _seed_private_with_grantee() -> Path:
+    """A temp private_dir holding one grantee JSON the loader can glob."""
+    private_dir = Path(tempfile.mkdtemp(prefix="mode_selector_"))
+    grantee_dir = private_dir / "utilities" / "tools" / "fnd-csm"
+    grantee_dir.mkdir(parents=True)
+    (grantee_dir / "grantee.fnd-msn.acme.json").write_text(
+        json.dumps(
+            {"msn_id": "acme", "label": "Acme", "short_name": "acme", "domains": ["acme.org"]}
+        ),
+        encoding="utf-8",
+    )
+    return private_dir
 
 # The ctx keys that existed before the mode mechanism. Grantee mode must
 # preserve exactly these, plus the single additive "mode" key.
@@ -97,8 +113,19 @@ class GlobalModeCtx(unittest.TestCase):
 
 
 class SelectorShape(unittest.TestCase):
+    def _seeded_selector(self, **kw):
+        private_dir = _seed_private_with_grantee()
+        return _build_utilities_surface_context(
+            surface_query=kw.get("query"),
+            private_dir=private_dir,
+            webapps_root="/tmp/webapps",
+            authority_db_file=None,
+            portal_instance_id="test-instance",
+            default_to_global=kw.get("default_to_global", True),
+        )["grantee_selector"]
+
     def test_selector_leads_with_overall_entry(self) -> None:
-        selector = _build(default_to_global=True)["grantee_selector"]
+        selector = self._seeded_selector()
         first = selector["grantees"][0]
         self.assertTrue(first.get("is_overall"))
         self.assertEqual(first["msn_id"], "")
@@ -108,9 +135,15 @@ class SelectorShape(unittest.TestCase):
         )
 
     def test_overall_entry_active_in_global_mode(self) -> None:
-        selector = _build(default_to_global=True)["grantee_selector"]
+        selector = self._seeded_selector()
         self.assertTrue(selector["grantees"][0].get("active"))
         self.assertEqual(selector["mode"], "global")
+
+    def test_no_overall_entry_when_no_grantees(self) -> None:
+        # With no grantees configured the selector list is empty (Overall is
+        # meaningless) so the empty-state help text shows instead.
+        selector = _build(default_to_global=True)["grantee_selector"]
+        self.assertEqual(selector["grantees"], [])
 
 
 class GlobalRosterViews(unittest.TestCase):

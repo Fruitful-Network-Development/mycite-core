@@ -133,6 +133,9 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 # Phase 15a: ext_paypal lives behind a subtab — request it
                 # explicitly via selected_extension_tool_id so the API
                 # returns the paypal card.
+                # Refactor: the surface now DEFAULTS to the global ("Overall")
+                # view, so select a grantee explicitly to exercise the
+                # per-grantee extension payload pivot.
                 api_resp = page.request.post(
                     f"{base}/portal/api/v2/shell",
                     data=json.dumps(
@@ -140,7 +143,8 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                             "schema": "mycite.v2.portal.shell.request.v1",
                             "requested_surface_id": "utilities.extensions",
                             "surface_query": {
-                                "selected_extension_tool_id": "ext_paypal"
+                                "selected_grantee_msn": "alpha",
+                                "selected_extension_tool_id": "ext_paypal",
                             },
                         }
                     ),
@@ -151,14 +155,20 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 surface = payload.get("surface_payload") or {}
                 selector = surface.get("grantee_selector")
                 self.assertIsNotNone(selector, "grantee_selector missing from surface_payload")
+                # The list leads with a synthetic "All — Overall" entry; the
+                # real grantees follow.
                 self.assertEqual(
-                    sorted(g["msn_id"] for g in selector.get("grantees") or []),
+                    sorted(
+                        g["msn_id"]
+                        for g in (selector.get("grantees") or [])
+                        if not g.get("is_overall")
+                    ),
                     ["alpha", "beta"],
                 )
                 self.assertEqual(
                     len([g for g in selector["grantees"] if g.get("active")]),
                     1,
-                    "exactly one grantee should be active by default",
+                    "exactly one entry should be active",
                 )
 
                 # Switching grantees via surface_query pivots extension domain.
@@ -218,7 +228,10 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 active_count = page.eval_on_selector_all(
                     ".v2-granteeSelector__option.is-active", "els => els.length"
                 )
-                self.assertEqual(option_count, 2)
+                # 3 options: the synthetic "All — Overall" entry + the 2
+                # grantees. On a default (no-query) load the surface is in the
+                # global view, so the Overall entry is the single active one.
+                self.assertEqual(option_count, 3)
                 self.assertEqual(active_count, 1)
 
                 with page.expect_response(

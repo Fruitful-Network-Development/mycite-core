@@ -720,35 +720,35 @@ def _build_utilities_surface_context(
             },
         },
     }
+    real_entries = [
+        {
+            "msn_id": _as_text(g.get("msn_id")),
+            "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
+            "short_name": _as_text(g.get("short_name")),
+            "domains": list(g.get("domains") or []),
+            "active": mode == "grantee" and _as_text(g.get("msn_id")) == selected_msn,
+            "select_action": {
+                "route": "/portal/api/v2/shell",
+                "schema": "mycite.v2.portal.shell.request.v1",
+                "payload": {
+                    "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
+                    "surface_query": {
+                        "selected_grantee_msn": _as_text(g.get("msn_id")),
+                        "utilities_mode": "grantee",
+                    },
+                },
+            },
+        }
+        for g in grantees
+    ]
+    # The synthetic "All — Overall" entry leads the list when there is at least
+    # one grantee; with no grantees configured the list stays empty (Overall is
+    # meaningless) so the empty-state help text shows.
     grantee_selector = {
         "label": "Grantee",
         "selected_grantee_msn": selected_msn,
         "mode": mode,
-        "grantees": [
-            overall_entry,
-            *[
-                {
-                    "msn_id": _as_text(g.get("msn_id")),
-                    "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
-                    "short_name": _as_text(g.get("short_name")),
-                    "domains": list(g.get("domains") or []),
-                    "active": mode == "grantee"
-                    and _as_text(g.get("msn_id")) == selected_msn,
-                    "select_action": {
-                        "route": "/portal/api/v2/shell",
-                        "schema": "mycite.v2.portal.shell.request.v1",
-                        "payload": {
-                            "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-                            "surface_query": {
-                                "selected_grantee_msn": _as_text(g.get("msn_id")),
-                                "utilities_mode": "grantee",
-                            },
-                        },
-                    },
-                }
-                for g in grantees
-            ],
-        ],
+        "grantees": [overall_entry, *real_entries] if real_entries else [],
         "empty_message": "No grantees configured. Add a grantee JSON file under "
         "{private_dir}/utilities/tools/fnd-csm/grantee.*.json.",
     }

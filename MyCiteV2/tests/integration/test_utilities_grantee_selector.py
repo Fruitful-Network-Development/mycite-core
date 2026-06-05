@@ -95,7 +95,12 @@ class UtilitiesGranteeSelectorTests(unittest.TestCase):
         self.assertIn("grantee_selector", payload)
         selector = payload["grantee_selector"]
         self.assertEqual(selector["label"], "Grantee")
-        listed_msns = [g["msn_id"] for g in selector["grantees"]]
+        # The list now leads with a synthetic "All — Overall" entry (engages the
+        # global view); the real grantees follow.
+        self.assertTrue(selector["grantees"][0].get("is_overall"))
+        listed_msns = [
+            g["msn_id"] for g in selector["grantees"] if not g.get("is_overall")
+        ]
         self.assertEqual(sorted(listed_msns), ["g1", "g2"])
 
     def test_one_grantee_is_marked_active_by_default(self) -> None:
