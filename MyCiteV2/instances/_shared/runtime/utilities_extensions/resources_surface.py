@@ -1,16 +1,18 @@
-"""Resources surface builder — Wave-1 scaffold.
+"""Resources gallery listing — the read-only gallery half of ext_resources.
 
-Produces a read-only payload for the top-level Resources root surface:
-one subtab per site-core gallery, each listing the gallery's entries
-(filename + basic metadata) and a count, read from
+Produces a read-only payload listing one subtab per site-core gallery, each
+listing the gallery's entries (filename + basic metadata) and a count, read
+from
 
     <webapps_root>/clients/_shared/site-core/<gallery>/
 
-This is the SCAFFOLD only. Wave 2 layers in the rich per-gallery UX
-(contact-app, icon dedup, in-place editing, upload UI). Until then the
-surface is strictly read-only: it never writes, mutates, or deletes,
-and for the PII galleries (events, contacts) it lists filenames and
-counts ONLY — it does not read or expose file CONTENTS.
+Wave 2 re-homed this under the ``ext_resources`` Utilities extension (the
+Wave-1 ``resources.root`` top-level surface was retired); the rich
+per-gallery UX (contact-app, icon dedup, editing, upload) is layered on top
+by ``resources_extension.py``. This builder stays strictly read-only: it
+never writes, mutates, or deletes, and for the PII galleries (events,
+contacts) it lists filenames and counts ONLY — it does not read or expose
+file CONTENTS.
 
 Galleries may not exist yet on disk (events / contacts are forthcoming);
 a missing directory yields an empty subtab rather than an error.
@@ -21,10 +23,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    RESOURCES_ROOT_SURFACE_ID,
-    surface_schema_for_surface,
-)
+# Schema for the resources gallery listing payload. Formerly derived from the
+# retired ``resources.root`` surface; now a stable standalone identifier so the
+# builder no longer depends on a top-level surface registration.
+RESOURCES_GALLERY_SCHEMA = "mycite.v2.portal.resources.gallery.v1"
 
 # Path of the shared site-core gallery root relative to webapps_root.
 SITE_CORE_RELATIVE_PATH = ("clients", "_shared", "site-core")
@@ -135,7 +137,7 @@ def build_resources_surface_payload(webapps_root: str | Path | None) -> dict[str
         )
 
     return {
-        "schema": surface_schema_for_surface(RESOURCES_ROOT_SURFACE_ID),
+        "schema": RESOURCES_GALLERY_SCHEMA,
         "kind": "resources",
         "title": "Resources",
         "subtitle": (

@@ -1,0 +1,783 @@
+"""ext_resources — the shared site-core asset library, as a Utilities extension.
+
+Wave 2 RETIRES the Wave-1 ``resources.root`` top-level surface and re-homes
+resources where every comparable operator feature lives: under
+**Utilities → Extensions**, beside ext_aws_email / ext_paypal / etc.
+
+This module owns:
+
+  * ``_render_ext_resources(ctx)`` — the EXTENSION_RENDERERS entry. Builds the
+    payload the resources extension card renders from (gallery galleries +
+    the profiles "contact app" list + per-profile detail/edit form).
+  * pure backend helpers used by the POST/GET routes in ``portal_host/app.py``:
+      - ``list_profiles`` / ``profile_detail`` / ``resolve_profile_image``
+      - ``save_profile`` (atomic canonical write)
+      - ``derive_profile_excerpt`` (refill a per-site excerpt from canonical)
+      - ``propagate_profile`` (derive every excerpt + rebuild the owning site)
+      - ``icon_duplicate_groups`` / ``remove_icon_duplicate`` (sha256 dedup)
+      - ``add_asset_to_manifest`` (append an entry to a site record-manifest)
+
+Profiles are the operator's core need: a phone-contacts-style list (logo
+thumbnail + name) whose rows open a full detail view (every field, including
+EMPTY ones) and an edit form that writes the canonical
+``clients/_shared/site-core/profiles/<file>.profile.yaml`` AND re-derives the
+per-site excerpt + rebuilds the owning site so the edit reaches the live page.
+"""
+
+from __future__ import annotations
+
+import glob
+import hashlib
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from ._shared import _as_text
+
+# Path of the shared site-core gallery root relative to webapps_root.
+_SITE_CORE_REL = ("clients", "_shared", "site-core")
+
+# Profile filename suffix; the slug is the token between the archetype and
+# ``.profile.yaml`` (e.g. ``nathan_seals`` in
+# ``0000-00-00.artifact-profile-natural_entity.nathan_seals.profile.yaml``).
+_PROFILE_SUFFIX = ".profile.yaml"
+
+# Tokens a per-entity image filename carries when it is the entity's logo /
+# headshot (used when a profile has no explicit image_ref/logo_ref).
+_IMAGE_ROLE_TOKENS = ("logo", "primary_mark", "headshot", "profile_headshot", "brand-mark")
+
+# Image gallery URL prefix served by nginx (snippets/shared-assets.conf, also
+# included by the portal vhost) → /assets/images/<file>.avif.
+_IMAGE_URL_PREFIX = "/assets/images/"
+
+
+# --------------------------------------------------------------------------- #
+# path helpers
+# --------------------------------------------------------------------------- #
+def _site_core_root(webapps_root: str | Path | None) -> Path | None:
+    if not webapps_root:
+        return None
+    return Path(webapps_root).joinpath(*_SITE_CORE_REL)
+
+
+def _profiles_dir(webapps_root: str | Path | None) -> Path | None:
+    root = _site_core_root(webapps_root)
+    return root / "profiles" if root is not None else None
+
+
+def _profile_slug(filename: str) -> str:
+    """Return the entity slug from a profile filename.
+
+    ``0000-00-00.artifact-profile-legal_entity.bloom_hill_farm.profile.yaml``
+    → ``bloom_hill_farm``. Falls back to the basename sans suffix.
+    """
+    name = str(filename)
+    if name.endswith(_PROFILE_SUFFIX):
+        name = name[: -len(_PROFILE_SUFFIX)]
+    # The slug is the last dot-separated token of the remaining stem.
+    return name.rsplit(".", 1)[-1]
+
+
+def _load_yaml_mapping(path: Path) -> dict[str, Any]:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _atomic_write_text(path: Path, text: str) -> None:
+    """Write ``text`` to ``path`` atomically (temp file + os.replace)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+# --------------------------------------------------------------------------- #
+# image resolution — "assumed logo if present"
+# --------------------------------------------------------------------------- #
+def resolve_profile_image(
+    profile: dict[str, Any], slug: str, image_gallery_dir: Path | None
+) -> str:
+    """Resolve a profile's display image URL, or "" when none is found.
+
+    Order:
+      1. explicit ``image_ref`` / ``logo_ref`` → /assets/images/<ref>.avif
+      2. a gallery file whose name contains the slug AND a role token
+         (logo / primary_mark / headshot / profile_headshot / brand-mark)
+      3. "" (the UI renders a neutral placeholder).
+    """
+    for key in ("image_ref", "logo_ref"):
+        ref = _as_text(profile.get(key))
+        if ref:
+            # refs are stored without the .avif extension by convention.
+            if ref.lower().endswith((".avif", ".png", ".jpg", ".jpeg", ".svg")):
+                return _IMAGE_URL_PREFIX + ref
+            return _IMAGE_URL_PREFIX + ref + ".avif"
+    if image_gallery_dir is None or not slug:
+        return ""
+    try:
+        names = sorted(p.name for p in image_gallery_dir.iterdir() if p.is_file())
+    except OSError:
+        return ""
+    for name in names:
+        lower = name.lower()
+        if slug in lower and any(token in lower for token in _IMAGE_ROLE_TOKENS):
+            return _IMAGE_URL_PREFIX + name
+    return ""
+
+
+# --------------------------------------------------------------------------- #
+# profile listing + detail
+# --------------------------------------------------------------------------- #
+def _profile_display_name(profile: dict[str, Any], slug: str) -> str:
+    for key in ("display_name", "name", "card_id", "title"):
+        value = _as_text(profile.get(key))
+        if value:
+            return value
+    return slug.replace("_", " ").title()
+
+
+def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """Phone-contacts-style roster: one row per canonical profile.
+
+    Each row = {slug, filename, display_name, subtitle, image_url}. Sorted
+    by display_name. Tolerant of a missing profiles dir (returns []).
+    """
+    profiles_dir = _profiles_dir(webapps_root)
+    site_core = _site_core_root(webapps_root)
+    image_dir = (site_core / "image") if site_core is not None else None
+    if profiles_dir is None or not profiles_dir.is_dir():
+        return []
+    rows: list[dict[str, Any]] = []
+    for path in sorted(profiles_dir.iterdir(), key=lambda p: p.name.lower()):
+        if not path.is_file() or not path.name.endswith(_PROFILE_SUFFIX):
+            continue
+        if path.name.startswith(".") or ".example." in path.name:
+            continue
+        profile = _load_yaml_mapping(path)
+        slug = _profile_slug(path.name)
+        rows.append(
+            {
+                "slug": slug,
+                "filename": path.name,
+                "display_name": _profile_display_name(profile, slug),
+                "subtitle": _as_text(profile.get("entity_type"))
+                or _as_text(profile.get("role")),
+                "image_url": resolve_profile_image(profile, slug, image_dir),
+            }
+        )
+    rows.sort(key=lambda r: r["display_name"].lower())
+    return rows
+
+
+def _scalar_str(value: Any) -> str:
+    """Flatten a YAML value to a display string (lists → newline-joined)."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        parts = [_scalar_str(v) for v in value]
+        return "\n".join(p for p in parts if p)
+    if isinstance(value, dict):
+        return yaml.safe_dump(value, default_flow_style=False, allow_unicode=True).strip()
+    return str(value)
+
+
+def profile_detail(
+    webapps_root: str | Path | None, slug: str
+) -> dict[str, Any] | None:
+    """Full detail view for one profile: every field as {label, key, value}
+    INCLUDING empty ones (value-or-""). Returns None when not found.
+    """
+    profiles_dir = _profiles_dir(webapps_root)
+    site_core = _site_core_root(webapps_root)
+    image_dir = (site_core / "image") if site_core is not None else None
+    if profiles_dir is None or not profiles_dir.is_dir() or not slug:
+        return None
+    path = _resolve_profile_path(profiles_dir, slug)
+    if path is None:
+        return None
+    profile = _load_yaml_mapping(path)
+    fields = [
+        {
+            "key": key,
+            "label": str(key).replace("_", " ").title(),
+            "value": _scalar_str(profile.get(key)),
+        }
+        for key in profile
+    ]
+    return {
+        "slug": slug,
+        "filename": path.name,
+        "display_name": _profile_display_name(profile, slug),
+        "image_url": resolve_profile_image(profile, slug, image_dir),
+        "fields": fields,
+    }
+
+
+def _resolve_profile_path(profiles_dir: Path, slug: str) -> Path | None:
+    """Find the single canonical profile file whose slug matches.
+
+    Match is exact on the slug token; rejects ambiguous matches (None).
+    """
+    if not slug:
+        return None
+    matches = [
+        p
+        for p in profiles_dir.iterdir()
+        if p.is_file()
+        and p.name.endswith(_PROFILE_SUFFIX)
+        and not p.name.startswith(".")
+        and ".example." not in p.name
+        and _profile_slug(p.name) == slug
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# edit / save (canonical) + propagation
+# --------------------------------------------------------------------------- #
+# Profile keys that are simple scalars editable through the form. List/dict
+# fields (bio, tags, socials, include, related) are preserved as-is — the form
+# only edits flat identity/contact/summary scalars to keep the round-trip safe.
+_EDITABLE_SCALAR_KEYS = (
+    "name",
+    "display_name",
+    "card_id",
+    "entity_type",
+    "role",
+    "organization",
+    "location",
+    "website",
+    "email",
+    "secondary_email",
+    "org_email",
+    "phone",
+    "summary_bio",
+    "image_ref",
+    "logo_ref",
+)
+
+
+def save_profile(
+    webapps_root: str | Path | None, slug: str, fields: dict[str, Any]
+) -> dict[str, Any]:
+    """Patch the editable scalar fields of a canonical profile and write it
+    back atomically. Non-editable / unknown keys are preserved untouched.
+
+    NOTE: the canonical YAML is round-tripped through PyYAML, so the cosmetic
+    ``# --- Section ---`` comment dividers in the hand-authored files are
+    dropped on first save (PyYAML is not comment-preserving). Key order and all
+    data are preserved (``sort_keys=False``); only the decorative comments are
+    lost. This is intentional for now — adopting a comment-preserving loader
+    (ruamel) would add a dependency for a purely cosmetic gain.
+
+    Returns {"ok": True, "filename": ..., "path": ...} or
+    {"ok": False, "error": ...}.
+    """
+    profiles_dir = _profiles_dir(webapps_root)
+    if profiles_dir is None or not profiles_dir.is_dir():
+        return {"ok": False, "error": "no_profiles_dir"}
+    path = _resolve_profile_path(profiles_dir, slug)
+    if path is None:
+        return {"ok": False, "error": "profile_not_found"}
+    profile = _load_yaml_mapping(path)
+    if not profile:
+        return {"ok": False, "error": "profile_unreadable"}
+    for key in _EDITABLE_SCALAR_KEYS:
+        if key in fields:
+            value = fields[key]
+            text = _as_text(value)
+            # Preserve YAML null for cleared optional fields.
+            profile[key] = text if text else None
+    text = yaml.safe_dump(
+        profile, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
+    try:
+        _atomic_write_text(path, text)
+    except OSError as exc:
+        return {"ok": False, "error": "write_failed", "detail": str(exc)}
+    return {"ok": True, "filename": path.name, "path": str(path)}
+
+
+def derive_profile_excerpt(canonical_path: str | Path, excerpt_path: str | Path) -> bool:
+    """Refill an EXISTING per-site excerpt's keys from the canonical profile.
+
+    The excerpt is a strict subset of canonical keys (see
+    ``...nathan_seals-board_member_bio.yaml``). This re-reads each key the
+    excerpt already declares from the canonical and rewrites the excerpt
+    atomically, preserving the excerpt's key SET and order. Returns True when
+    the excerpt was rewritten, False when either file is missing/unreadable.
+    """
+    canonical = _load_yaml_mapping(Path(canonical_path))
+    excerpt_p = Path(excerpt_path)
+    if not canonical or not excerpt_p.is_file():
+        return False
+    excerpt = _load_yaml_mapping(excerpt_p)
+    if not excerpt:
+        return False
+    # Refill only the keys the excerpt already declares AND the canonical
+    # still defines — never widen the excerpt's surface or invent keys.
+    refilled = {
+        key: canonical[key] if key in canonical else excerpt[key] for key in excerpt
+    }
+    text = yaml.safe_dump(
+        refilled, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
+    try:
+        _atomic_write_text(excerpt_p, text)
+    except OSError:
+        return False
+    return True
+
+
+def _excerpt_paths_for_slug(webapps_root: str | Path, slug: str) -> list[Path]:
+    """Glob every per-site excerpt whose filename references this slug.
+
+    Per-site excerpts live at clients/<site>/frontend/assets/*<slug>*.yaml and
+    are NOT record-manifests, NOT the canonical (which lives under
+    _shared/site-core), and NOT *.example.* templates.
+    """
+    clients_root = Path(webapps_root) / "clients"
+    out: list[Path] = []
+    pattern = str(clients_root / "*" / "frontend" / "assets" / f"*{slug}*.yaml")
+    for hit in glob.glob(pattern):
+        p = Path(hit)
+        name = p.name
+        if "_shared" in p.parts:
+            continue
+        if "record-manifest" in name or ".example." in name:
+            continue
+        # Guard against substring over-match (e.g. slug "localize" hitting a
+        # different entity's excerpt). The slug must appear as a whole token —
+        # bounded on each side by a name separator (start/dot/dash/underscore
+        # before, dash/dot/end after) — matching the
+        # ``<entity>.<slug>-<role>.yaml`` / ``<slug>.yaml`` convention.
+        if not _slug_is_token(name, slug):
+            continue
+        out.append(p)
+    return sorted(out)
+
+
+def _slug_is_token(filename: str, slug: str) -> bool:
+    """True when ``slug`` appears as a whole name-token within ``filename``.
+
+    A token boundary is the string start/end or one of ``. - _``. This rejects
+    a slug that is merely a substring of a longer unrelated token while still
+    accepting the real per-site excerpt naming (``...entity.slug-role.yaml``).
+    """
+    return re.search(rf"(?:^|[._-]){re.escape(slug)}(?:[.\-]|$)", filename) is not None
+
+
+def _git_dirty_paths(repo_cwd: Path) -> set[str]:
+    """Return the set of porcelain-reported dirty paths (repo-relative).
+
+    Empty set when not a git repo or git is unavailable — the caller then
+    skips scoping rather than failing the build.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "status", "--porcelain"],
+            check=False,
+            capture_output=True,
+            timeout=60,
+            cwd=str(repo_cwd),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return set()
+    if out.returncode != 0:
+        return set()
+    paths: set[str] = set()
+    for line in out.stdout.decode("utf-8", "replace").splitlines():
+        # Porcelain: XY <path> (rename uses " -> "; take the destination).
+        entry = line[3:].strip()
+        if " -> " in entry:
+            entry = entry.split(" -> ", 1)[1]
+        if entry:
+            paths.add(entry.strip('"'))
+    return paths
+
+
+def _build_site_for_excerpt(excerpt_path: Path, slug: str) -> tuple[bool, str]:
+    """Run the owning site's render_manifest build_site so the excerpt's edit
+    reaches the rendered HTML, then SCOPE the result to ``slug``.
+
+    GOTCHA (per Nathan Seals): build_site rebuilds the WHOLE site and can emit
+    render-noise / revert hand-edited rendered pages. So we capture the git
+    dirty set BEFORE the build and, after, ``git checkout --`` every rendered
+    .html the build newly dirtied that does NOT reference ``slug`` — keeping the
+    change scoped to the page(s) actually about this profile and never
+    clobbering unrelated hand-edits. Best-effort: when not a git repo, the build
+    still runs unscoped (the same behavior as before).
+    """
+    # excerpt: clients/<site>/frontend/assets/<file>.yaml → frontend dir is
+    # two parents up from the assets dir.
+    assets_dir = excerpt_path.parent
+    frontend_dir = assets_dir.parent
+    script = frontend_dir / "scripts" / "render_manifest.py"
+    if not script.is_file():
+        return False, f"no render_manifest.py at {script}"
+
+    dirty_before = _git_dirty_paths(frontend_dir)
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script)],
+            check=False,
+            capture_output=True,
+            timeout=300,
+            cwd=str(frontend_dir),
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f"build failed to launch: {exc}"
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", "replace").strip()
+        return False, f"build_site exited {completed.returncode}: {detail[:400]}"
+
+    reverted = _scope_rebuild_to_slug(frontend_dir, slug, dirty_before)
+    note = "rebuilt"
+    if reverted:
+        note = f"rebuilt (scoped: reverted {reverted} unrelated page(s))"
+    return True, note
+
+
+def _scope_rebuild_to_slug(
+    frontend_dir: Path, slug: str, dirty_before: set[str]
+) -> int:
+    """Revert rendered .html files the build newly dirtied that don't mention
+    ``slug``. Returns the count reverted. No-op outside a git repo.
+    """
+    dirty_after = _git_dirty_paths(frontend_dir)
+    newly = dirty_after - dirty_before
+    if not newly:
+        return 0
+    to_revert: list[str] = []
+    for rel in newly:
+        if not rel.endswith(".html"):
+            continue
+        # Porcelain paths are relative to the git repo root, not frontend_dir;
+        # recover the absolute path via the repo root.
+        candidate = _resolve_repo_relative(frontend_dir, rel)
+        if candidate is None or not candidate.is_file():
+            continue
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if slug.replace("_", " ").lower() in text.lower() or slug in text:
+            # This page legitimately reflects the profile — keep the rebuild.
+            continue
+        to_revert.append(rel)
+    if not to_revert:
+        return 0
+    # Porcelain paths are repo-root-relative, so run the checkout FROM the repo
+    # root (not frontend_dir) or the paths won't resolve.
+    repo_root = _git_repo_root(frontend_dir)
+    if repo_root is None:
+        return 0
+    try:
+        out = subprocess.run(
+            ["git", "checkout", "--", *to_revert],
+            check=False,
+            capture_output=True,
+            timeout=120,
+            cwd=str(repo_root),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return 0
+    if out.returncode != 0:
+        return 0
+    return len(to_revert)
+
+
+def _git_repo_root(cwd: Path) -> Path | None:
+    """Absolute path of the git repo root containing ``cwd``, or None."""
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            check=False,
+            capture_output=True,
+            timeout=60,
+            cwd=str(cwd),
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if out.returncode != 0:
+        return None
+    return Path(out.stdout.decode("utf-8", "replace").strip())
+
+
+def _resolve_repo_relative(frontend_dir: Path, rel: str) -> Path | None:
+    """Map a git-porcelain repo-relative path to an absolute path.
+
+    git status (run in frontend_dir) reports paths relative to the repo ROOT,
+    so we locate the repo root once and join.
+    """
+    root = _git_repo_root(frontend_dir)
+    return (root / rel) if root is not None else None
+
+
+def propagate_profile(
+    webapps_root: str | Path | None, slug: str, *, rebuild: bool = True
+) -> dict[str, Any]:
+    """After a canonical save: re-derive every per-site excerpt for ``slug``
+    and (optionally) rebuild each owning site so the edit reaches live HTML.
+
+    Returns {"derived": [paths], "rebuilt": [sites], "errors": [...]}.
+    """
+    result: dict[str, Any] = {"derived": [], "rebuilt": [], "errors": []}
+    if not webapps_root or not slug:
+        result["errors"].append("missing_webapps_root_or_slug")
+        return result
+    profiles_dir = _profiles_dir(webapps_root)
+    if profiles_dir is None:
+        result["errors"].append("no_profiles_dir")
+        return result
+    canonical = _resolve_profile_path(profiles_dir, slug)
+    if canonical is None:
+        result["errors"].append("canonical_not_found")
+        return result
+    excerpts = _excerpt_paths_for_slug(webapps_root, slug)
+    rebuilt_frontends: set[Path] = set()
+    for excerpt in excerpts:
+        if derive_profile_excerpt(canonical, excerpt):
+            result["derived"].append(str(excerpt))
+            if rebuild:
+                frontend_dir = excerpt.parent.parent
+                if frontend_dir not in rebuilt_frontends:
+                    ok, detail = _build_site_for_excerpt(excerpt, slug)
+                    if ok:
+                        result["rebuilt"].append(str(frontend_dir))
+                    else:
+                        result["errors"].append(detail)
+                    rebuilt_frontends.add(frontend_dir)
+        else:
+            result["errors"].append(f"derive_failed:{excerpt}")
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# icon dedup (sha256 byte-identical) + manifest referencing
+# --------------------------------------------------------------------------- #
+def _sha256(path: Path) -> str:
+    h = hashlib.sha256()
+    try:
+        h.update(path.read_bytes())
+    except OSError:
+        return ""
+    return h.hexdigest()
+
+
+def _icon_manifest_referenced_paths(webapps_root: str | Path) -> set[str]:
+    """Asset_paths referenced by any site *icon_use.yaml record-manifest."""
+    referenced: set[str] = set()
+    pattern = str(Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / "*icon_use.yaml")
+    for hit in glob.glob(pattern):
+        data = _load_yaml_mapping(Path(hit))
+        for entry in data.get("entries") or []:
+            if isinstance(entry, dict):
+                ap = _as_text(entry.get("asset_path"))
+                if ap:
+                    referenced.add(ap)
+    return referenced
+
+
+def icon_duplicate_groups(webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """Group byte-identical icons (sha256). Each group lists its members with
+    whether each is referenced in any site icon_use manifest. Single-member
+    groups (no duplicate) are omitted.
+    """
+    site_core = _site_core_root(webapps_root)
+    if site_core is None:
+        return []
+    icon_dir = site_core / "icon"
+    if not icon_dir.is_dir():
+        return []
+    referenced = _icon_manifest_referenced_paths(webapps_root)
+    by_hash: dict[str, list[dict[str, Any]]] = {}
+    for path in sorted(icon_dir.iterdir(), key=lambda p: p.name.lower()):
+        if not path.is_file() or path.name.startswith("."):
+            continue
+        digest = _sha256(path)
+        if not digest:
+            continue
+        asset_path = f"/assets/icons/{path.name}"
+        by_hash.setdefault(digest, []).append(
+            {
+                "filename": path.name,
+                "asset_path": asset_path,
+                "referenced": asset_path in referenced,
+            }
+        )
+    groups = [
+        {"sha256": digest, "members": members}
+        for digest, members in by_hash.items()
+        if len(members) > 1
+    ]
+    groups.sort(key=lambda g: g["members"][0]["filename"])
+    return groups
+
+
+def remove_icon_duplicate(
+    webapps_root: str | Path | None, filename: str
+) -> dict[str, Any]:
+    """Remove a single icon file ONLY when it is (a) part of a byte-identical
+    duplicate group and (b) itself unreferenced by any manifest. Refuses
+    otherwise — never deletes a unique or referenced asset.
+    """
+    site_core = _site_core_root(webapps_root)
+    if site_core is None:
+        return {"ok": False, "error": "no_webapps_root"}
+    name = os.path.basename(_as_text(filename))
+    if not name or name.startswith("."):
+        return {"ok": False, "error": "invalid_filename"}
+    target = site_core / "icon" / name
+    if not target.is_file():
+        return {"ok": False, "error": "not_found"}
+    asset_path = f"/assets/icons/{name}"
+    if asset_path in _icon_manifest_referenced_paths(webapps_root):
+        return {"ok": False, "error": "referenced"}
+    digest = _sha256(target)
+    duplicates = [
+        p
+        for p in (site_core / "icon").iterdir()
+        if p.is_file() and p.name != name and _sha256(p) == digest
+    ]
+    if not duplicates:
+        return {"ok": False, "error": "not_a_duplicate"}
+    try:
+        target.unlink()
+    except OSError as exc:
+        return {"ok": False, "error": "delete_failed", "detail": str(exc)}
+    return {"ok": True, "removed": name, "remaining": [p.name for p in duplicates]}
+
+
+# --------------------------------------------------------------------------- #
+# add-to-manifest
+# --------------------------------------------------------------------------- #
+def add_asset_to_manifest(
+    webapps_root: str | Path | None,
+    *,
+    site: str,
+    kind: str,
+    asset_id: str,
+    asset_path: str,
+    entity_scope: str = "",
+) -> dict[str, Any]:
+    """Append an asset entry to a site's *<kind>_use.yaml record-manifest.
+
+    Dedupes by asset_path (no-op when already present), preserves hand-edited
+    entries, writes atomically. ``site`` is the client domain dir under
+    clients/. Returns {"ok": True, "added": bool, "manifest": path}.
+    """
+    if not webapps_root:
+        return {"ok": False, "error": "no_webapps_root"}
+    site = os.path.basename(_as_text(site))
+    kind = _as_text(kind)
+    asset_path = _as_text(asset_path)
+    if not site or not kind or not asset_path:
+        return {"ok": False, "error": "missing_field"}
+    assets_dir = Path(webapps_root) / "clients" / site / "frontend" / "assets"
+    if not assets_dir.is_dir():
+        return {"ok": False, "error": "unknown_site"}
+    matches = glob.glob(str(assets_dir / f"*{kind}_use.yaml"))
+    if not matches:
+        return {"ok": False, "error": "no_manifest_for_kind"}
+    manifest_path = Path(sorted(matches)[0])
+    data = _load_yaml_mapping(manifest_path)
+    entries = data.get("entries")
+    if not isinstance(entries, list):
+        entries = []
+        data["entries"] = entries
+    for entry in entries:
+        if isinstance(entry, dict) and _as_text(entry.get("asset_path")) == asset_path:
+            return {"ok": True, "added": False, "manifest": str(manifest_path)}
+    entries.append(
+        {
+            "asset_id": _as_text(asset_id) or asset_path,
+            "asset_path": asset_path,
+            "consumers": [],
+            "entity_scope": _as_text(entity_scope)
+            or _as_text(data.get("site_entity")),
+        }
+    )
+    text = yaml.safe_dump(
+        data, default_flow_style=False, allow_unicode=True, sort_keys=False
+    )
+    try:
+        _atomic_write_text(manifest_path, text)
+    except OSError as exc:
+        return {"ok": False, "error": "write_failed", "detail": str(exc)}
+    return {"ok": True, "added": True, "manifest": str(manifest_path)}
+
+
+# --------------------------------------------------------------------------- #
+# extension renderer
+# --------------------------------------------------------------------------- #
+def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Render the resources extension card payload.
+
+    Unlike the operational extensions, resources is NOT grantee-scoped — it
+    reads the shared site-core galleries straight from ``webapps_root``. The
+    payload carries:
+      * ``galleries`` — the read gallery listing (reused from resources_surface)
+      * ``profiles`` — the phone-contacts roster (list_profiles)
+      * ``icon_duplicate_groups`` — dedup candidates
+      * ``upload_action`` / ``profile_save_route`` — route hints for the JS
+    The resources card JS (v2_portal_workbench_renderers) renders the contact
+    app, detail/edit, upload, and icon-dedup UI from this payload.
+    """
+    from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_surface import (
+        build_resources_surface_payload,
+    )
+
+    webapps_root = ctx.get("webapps_root")
+    gallery_payload = build_resources_surface_payload(webapps_root)
+    return {
+        "resources_app": True,
+        "galleries": gallery_payload.get("subtabs", []),
+        "site_core_root": gallery_payload.get("site_core_root", ""),
+        "profiles": list_profiles(webapps_root),
+        "icon_duplicate_groups": icon_duplicate_groups(webapps_root),
+        "image_url_prefix": _IMAGE_URL_PREFIX,
+        "upload_action": {
+            "route": "/portal/api/resources/upload",
+            "method": "POST",
+        },
+        "profile_detail_route": "/__fnd/resources/profile/detail",
+        "profile_save_route": "/__fnd/resources/profile/save",
+        "icon_duplicates_route": "/__fnd/resources/icon/duplicates",
+        "icon_dedup_route": "/__fnd/resources/icon/dedup",
+        "manifest_add_route": "/__fnd/resources/manifest/add",
+    }
+
+
+__all__ = [
+    "_render_ext_resources",
+    "add_asset_to_manifest",
+    "derive_profile_excerpt",
+    "icon_duplicate_groups",
+    "list_profiles",
+    "profile_detail",
+    "propagate_profile",
+    "remove_icon_duplicate",
+    "resolve_profile_image",
+    "save_profile",
+]

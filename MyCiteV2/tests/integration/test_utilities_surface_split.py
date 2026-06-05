@@ -91,6 +91,7 @@ class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
         # extensions via the subtab selector (tabs list), and renders
         # only the active tab's card in payload.extensions.
         # Phase 17b: ext_connect joins as the 5th operational tab.
+        # Wave 2: ext_resources joins as the 6th (retired resources.root surface).
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
         self.assertEqual(payload.get("kind"), "extensions")
         selector = payload.get("extension_subtab_selector") or {}
@@ -103,6 +104,7 @@ class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
                 "ext_newsletter",
                 "ext_paypal",
                 "ext_connect",
+                "ext_resources",
             },
             f"subtab tab_ids={tab_ids!r}",
         )

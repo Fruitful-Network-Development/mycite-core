@@ -17,8 +17,6 @@ from .shell_schemas import (
     NETWORK_ROOT_ROUTE,
     NETWORK_ROOT_SURFACE_ID,
     REDUCER_OWNED_SURFACE_IDS,
-    RESOURCES_ROOT_ROUTE,
-    RESOURCES_ROOT_SURFACE_ID,
     SURFACE_POSTURE_PALETTE_TARGET,
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
@@ -74,16 +72,6 @@ def build_portal_surface_catalog() -> tuple[PortalSurfaceCatalogEntry, ...]:
             root_surface_id=UTILITIES_ROOT_SURFACE_ID,
             surface_kind="utilities_root",
             page_owner="utilities",
-        ),
-        # Wave-1 scaffold: top-level Resources root listing site-core
-        # galleries read-only (one subtab per gallery). Rich UX is Wave 2.
-        PortalSurfaceCatalogEntry(
-            surface_id=RESOURCES_ROOT_SURFACE_ID,
-            label="Resources",
-            route=RESOURCES_ROOT_ROUTE,
-            root_surface_id=RESOURCES_ROOT_SURFACE_ID,
-            surface_kind="resources_root",
-            page_owner="resources",
         ),
         PortalSurfaceCatalogEntry(
             surface_id=UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
@@ -281,6 +269,28 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             required_capabilities=("fnd_peripheral_routing",),
             is_extension=True,
             summary="Editable form for grantee identity + credentials (paypal, aws_ses, newsletter).",
+        ),
+        # Wave 2 (resources extension): the shared site-core asset library —
+        # profiles (a viewer/editor "contact app"), images, icons, documents,
+        # events, contacts. RETIRES the Wave-1 ``resources.root`` top-level
+        # surface; resources is a proper Utilities → Extensions extension, the
+        # same as every other operator feature here. Renderer lives in
+        # utilities_extensions.EXTENSION_RENDERERS["ext_resources"].
+        PortalToolRegistryEntry(
+            tool_id="ext_resources",
+            label="Resources",
+            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
+            entrypoint_id="portal.utilities.ext_resources",
+            route=UTILITIES_EXTENSIONS_ROUTE,
+            tool_kind=TOOL_KIND_SERVICE,
+            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
+            read_write_posture="write",
+            required_capabilities=("fnd_peripheral_routing",),
+            is_extension=True,
+            summary=(
+                "Shared site-core asset library: view + edit entity profiles, "
+                "browse/upload images, icons and documents, and dedupe icons."
+            ),
         ),
     )
 
