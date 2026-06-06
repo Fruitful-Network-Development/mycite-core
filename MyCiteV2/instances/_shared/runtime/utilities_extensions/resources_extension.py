@@ -159,6 +159,45 @@ def resolve_profile_image(
 # --------------------------------------------------------------------------- #
 # profile listing + detail
 # --------------------------------------------------------------------------- #
+# Profile ``entity_type`` now holds a primary NAICS code (see the shared
+# profile convention). Short display titles for the codes in use; unknown
+# codes fall back to the raw code so nothing is hidden.
+_NAICS_TITLES: dict[str, str] = {
+    "111219": "Vegetable & Melon Farming",
+    "111331": "Apple Orchards",
+    "111339": "Noncitrus Fruit Farming",
+    "111411": "Mushroom Production",
+    "111419": "Food Crops Grown Under Cover",
+    "111421": "Nursery & Tree Production",
+    "111422": "Floriculture Production",
+    "111998": "Misc. Crop Farming",
+    "112120": "Dairy Cattle & Milk",
+    "112310": "Chicken Egg Production",
+    "112320": "Poultry & Egg Production",
+    "112410": "Sheep & Wool Farming",
+    "112420": "Goat Farming",
+    "112910": "Apiculture (Beekeeping)",
+    "112990": "Animal Production",
+    "312130": "Wineries",
+    "424480": "Produce Wholesale",
+    "445110": "Grocery Retailers",
+    "445230": "Fruit & Vegetable Retail",
+    "513210": "Software Publishers",
+    "541511": "Software / Services",
+    "541714": "Biotech R&D",
+    "611310": "Colleges & Universities",
+    "712120": "Historical Sites",
+    "813312": "Conservation Org",
+}
+
+
+def _naics_title(value: str | None) -> str:
+    """Human title for a NAICS code; the raw value if unknown; '' if empty."""
+    if not value:
+        return ""
+    return _NAICS_TITLES.get(str(value).strip(), str(value))
+
+
 def _profile_display_name(profile: dict[str, Any], slug: str) -> str:
     for key in ("display_name", "name", "card_id", "title"):
         value = _as_text(profile.get(key))
@@ -195,7 +234,7 @@ def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
                 "slug": slug,
                 "filename": path.name,
                 "display_name": _profile_display_name(profile, slug),
-                "subtitle": _as_text(profile.get("entity_type"))
+                "subtitle": _naics_title(_as_text(profile.get("entity_type")))
                 or _as_text(profile.get("role")),
                 "image_url": resolve_profile_image(profile, slug, image_dir),
                 # Visibility + scoping hints (the dashboard never shows a
@@ -298,14 +337,19 @@ def profile_detail(
     if path is None:
         return None
     profile = _load_yaml_mapping(path)
-    fields = [
-        {
+    fields = []
+    for key in profile:
+        value = _scalar_str(profile.get(key))
+        # entity_type now holds a NAICS code — annotate with its title.
+        if key == "entity_type" and value:
+            title = _naics_title(value)
+            if title and title != value:
+                value = f"{value} — {title}"
+        fields.append({
             "key": key,
-            "label": str(key).replace("_", " ").title(),
-            "value": _scalar_str(profile.get(key)),
-        }
-        for key in profile
-    ]
+            "label": "NAICS Code" if key == "entity_type" else str(key).replace("_", " ").title(),
+            "value": value,
+        })
     return {
         "slug": slug,
         "filename": path.name,

@@ -166,10 +166,15 @@ def _build_filename(
 ) -> str:
     if kind == "profile":
         given = _require_safe_segment(given_name, field="given_name")
-        if given not in _PROFILE_GIVEN_NAMES:
+        # The personhood token may carry an optional -<industry> dash spec
+        # (e.g. legal_entity-ag); validate the base token, per the naming
+        # convention that dashes are a secondary extension of a dot-field.
+        base = given.split("-", 1)[0]
+        if base not in _PROFILE_GIVEN_NAMES:
             raise UploadError(
                 "given_name for a profile must be 'legal_entity' or "
-                f"'natural_entity' (got {given_name!r})"
+                f"'natural_entity' (optionally with a -<industry> suffix; "
+                f"got {given_name!r})"
             )
         return f"0000-00-00.artifact-profile-{given}.{slug}.profile.yaml"
     # icon / image / document share the same shape.
