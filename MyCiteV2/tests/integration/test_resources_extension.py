@@ -844,5 +844,141 @@ class ResourcesModeDispatchTests(unittest.TestCase):
         self.assertEqual(payload["resources_mode"], "allocation")
 
 
+def _seed_fnd_network(root: Path, refs: list[str], extra_profiles: list[str] | None = None) -> Path:
+    """Shared profiles for ``refs`` (+ any ``extra_profiles`` off the map) and an
+    FND site manifest whose network panel lists ``refs`` as profile_refs."""
+    import json
+
+    sc = root / "clients" / "_shared" / "site-core" / "profiles"
+    sc.mkdir(parents=True)
+    for slug in list(refs) + list(extra_profiles or []):
+        (sc / f"0000-00-00.artifact-profile-legal_entity.{slug}.profile.yaml").write_text(
+            yaml.safe_dump({"name": slug.replace("_", " ").title()}, sort_keys=False),
+            encoding="utf-8",
+        )
+    fnd = root / "clients" / rx._FND_SITE_DIR / "frontend" / "assets"
+    fnd.mkdir(parents=True)
+    (fnd / "0000-00-00.manifest.fnd.fnd.site.json").write_text(
+        json.dumps(
+            {"pages": {"more": {"content": {"network": {"panel": {
+                "id": "network", "heading": "Network", "profile_refs": list(refs)}}}}}},
+            indent=2,
+        ) + "\n",
+        encoding="utf-8",
+    )
+    return root
+
+
+class NetworkRefsAllocationTests(unittest.TestCase):
+    """FND profiles allocate via the network map's profile_refs, not profile_use."""
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_netrefs_"))
+        _seed_fnd_network(self.tmp, ["wellspring_farm", "rose_leaf"], extra_profiles=["off_map_farm"])
+        # Stub the real build_farm_network.py subprocess (absent in the temp tree).
+        self._builds: list[str] = []
+        self._orig_build = rx._run_fnd_network_build
+        rx._run_fnd_network_build = lambda wr: (self._builds.append(str(wr)) or (True, "stub"))
+
+    def tearDown(self) -> None:
+        rx._run_fnd_network_build = self._orig_build
+
+    def test_network_profile_refs_ordered(self) -> None:
+        self.assertEqual(
+            rx.network_profile_refs(self.tmp), ["wellspring_farm", "rose_leaf"]
+        )
+
+    def test_add_and_remove_mutate_refs_and_rebuild(self) -> None:
+        added = rx.add_profile_to_network_refs(self.tmp, "off_map_farm")
+        self.assertTrue(added["ok"])
+        self.assertTrue(added["added"])
+        self.assertEqual(
+            rx.network_profile_refs(self.tmp),
+            ["wellspring_farm", "rose_leaf", "off_map_farm"],  # appended, order kept
+        )
+        # idempotent add = no-op, no second build.
+        again = rx.add_profile_to_network_refs(self.tmp, "off_map_farm")
+        self.assertTrue(again["ok"])
+        self.assertFalse(again["added"])
+        removed = rx.remove_profile_from_network_refs(self.tmp, "rose_leaf")
+        self.assertTrue(removed["ok"])
+        self.assertTrue(removed["removed"])
+        self.assertEqual(
+            rx.network_profile_refs(self.tmp), ["wellspring_farm", "off_map_farm"]
+        )
+        # idempotent remove.
+        noop = rx.remove_profile_from_network_refs(self.tmp, "rose_leaf")
+        self.assertTrue(noop["ok"])
+        self.assertFalse(noop["removed"])
+        # add(once) + remove(once) each rebuilt the dataset; the no-ops did not.
+        self.assertEqual(len(self._builds), 2)
+        # Manifest stays valid JSON with only the refs list touched.
+        import json
+        data = json.loads(
+            (self.tmp / "clients" / rx._FND_SITE_DIR / "frontend" / "assets"
+             / "0000-00-00.manifest.fnd.fnd.site.json").read_text()
+        )
+        panel = data["pages"]["more"]["content"]["network"]["panel"]
+        self.assertEqual(panel["heading"], "Network")  # sibling keys preserved
+
+    def test_manifest_helpers_delegate_for_fnd_profiles(self) -> None:
+        ap = "/assets/profiles/0000-00-00.artifact-profile-legal_entity.off_map_farm.profile.yaml"
+        res = rx.add_asset_to_manifest(
+            self.tmp, site=rx._FND_SITE_DIR, kind="profile", asset_id="off_map_farm", asset_path=ap
+        )
+        self.assertTrue(res["ok"])
+        self.assertTrue(res.get("added"))
+        self.assertIn("off_map_farm", rx.network_profile_refs(self.tmp))
+        rm = rx.remove_asset_from_manifest(
+            self.tmp, site=rx._FND_SITE_DIR, kind="profile", asset_path=ap
+        )
+        self.assertTrue(rm["ok"])
+        self.assertTrue(rm.get("removed"))
+        self.assertNotIn("off_map_farm", rx.network_profile_refs(self.tmp))
+
+    def test_non_fnd_profile_does_not_touch_network(self) -> None:
+        # A profile on a different site falls through to *_use.yaml — here there's
+        # no profile_use manifest, so it reports no_manifest_for_kind and leaves
+        # the FND network refs untouched.
+        ap = "/assets/profiles/0000-00-00.artifact-profile-legal_entity.wellspring_farm.profile.yaml"
+        res = rx.add_asset_to_manifest(
+            self.tmp, site="site.org", kind="profile", asset_id="w", asset_path=ap
+        )
+        self.assertFalse(res["ok"])
+        self.assertEqual(rx.network_profile_refs(self.tmp), ["wellspring_farm", "rose_leaf"])
+        self.assertEqual(self._builds, [])  # no rebuild for a non-FND site
+
+    def test_allocation_payload_profiles_reflect_network(self) -> None:
+        payload = render_extension(
+            "ext_resources",
+            {
+                "webapps_root": self.tmp,
+                "mode": "grantee",
+                "grantee": {"msn_id": "fnd", "label": "FND"},
+                "domain": rx._FND_SITE_DIR,
+            },
+        )
+        self.assertEqual(payload["resources_mode"], "allocation")
+        prof = next(a for a in payload["allocations"] if a["gallery"] == "profiles")
+        self.assertEqual(prof["used_count"], 2)  # the two map refs
+        allocated = {c["slug"] for c in prof["candidates"] if c["allocated"]}
+        self.assertEqual(allocated, {"wellspring_farm", "rose_leaf"})
+        available = {c["slug"] for c in prof["candidates"] if not c["allocated"]}
+        self.assertIn("off_map_farm", available)
+
+    def test_profile_usage_and_index_in_use_by(self) -> None:
+        self.assertIn(
+            "FND network map (/more)", rx.profile_usage(self.tmp, "wellspring_farm")
+        )
+        self.assertEqual(rx.profile_usage(self.tmp, "off_map_farm"), [])
+        idx = rx.build_leaflet_index(self.tmp)
+        on_map = next(r for r in idx if r["slug"] == "wellspring_farm")
+        self.assertTrue(on_map["in_use"])
+        self.assertIn("FND network map (/more)", on_map["in_use_by"])
+        off_map = next(r for r in idx if r["slug"] == "off_map_farm")
+        self.assertFalse(off_map["in_use"])
+        self.assertEqual(off_map["in_use_by"], [])
+
+
 if __name__ == "__main__":
     unittest.main()

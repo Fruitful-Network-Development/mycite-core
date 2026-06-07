@@ -1239,9 +1239,26 @@
       '<div class="v2-resourcesDetail__meta">' + rows + "</div>";
   }
 
+  function renderWhereUsed(r) {
+    // Protected-from-delete: tell the operator exactly where the leaflet is in
+    // use so they can de-allocate it (e.g. remove a profile from the network
+    // map in the per-grantee Allocation view) and unlock Delete.
+    var places = asList(r.in_use_by);
+    var items = places.length
+      ? "<ul class=\"v2-resourcesDetail__usedList\">" +
+        places.map(function (p) { return "<li>" + escapeHtml(asText(p)) + "</li>"; }).join("") +
+        "</ul>"
+      : "";
+    return '<div class="v2-resourcesDetail__protected">' +
+      '<span class="v2-resourcesDedup__locked" title="In use by a site">In use — protected from delete.</span>' +
+      items +
+      '<p class="v2-resourcesDetail__hint">Remove it from these first (Allocation view), then Delete becomes available.</p>' +
+      "</div>";
+  }
+
   function renderManageActions(r) {
     var del = r.in_use
-      ? '<span class="v2-resourcesDedup__locked" title="In use by a site">in use — protected</span>'
+      ? renderWhereUsed(r)
       : '<button type="button" class="v2-rowAction--danger" data-manage="delete">Delete</button>';
     return '<div class="v2-resourcesDetail__actions">' +
       '<button type="button" class="v2-rowAction" data-manage="retitle">Retitle</button>' +
@@ -1294,43 +1311,55 @@
   function renderResourcesAllocationGallery(a, routes) {
     var gallery = asText(a.gallery);
     var kind = asText(a.kind);
-    var candidates = asList(a.candidates).slice();
-    candidates.sort(function (x, y) {
-      return (asObject(y).allocated ? 1 : 0) - (asObject(x).allocated ? 1 : 0);
-    });
+    var candidates = asList(a.candidates);
+    function renderMember(c) {
+      var m = asObject(c);
+      var allocated = m.allocated === true;
+      var label = asText(m.slug) || asText(m.filename);
+      var search = (asText(m.slug) + " " + asText(m.filename) + " " + asText(m.asset_id)).toLowerCase();
+      var thumb = asText(m.image_url)
+        ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
+          escapeHtml(asText(m.image_url)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+        : "";
+      var btn = allocated
+        ? '<button type="button" class="v2-rowAction--danger" data-resources-alloc="remove" data-kind="' +
+          escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) + '">Remove</button>'
+        : '<button type="button" class="v2-rowAction" data-resources-alloc="add" data-kind="' +
+          escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) +
+          '" data-asset-id="' + escapeHtml(asText(m.asset_id)) + '">Add</button>';
+      return (
+        '<div class="v2-resourcesMember' + (allocated ? " is-allocated" : "") +
+        '" data-resources-search="' + escapeHtml(search) + '">' + thumb +
+        '<code class="v2-resourcesMember__file">' + escapeHtml(label) + "</code> " +
+        (allocated ? '<span class="v2-resourcesMember__badge">used</span>' : "") +
+        '<span class="v2-resourcesMember__actions">' + btn + "</span></div>"
+      );
+    }
+    // Split into "in use" (Remove) and "available" (Add) so the two affordances
+    // are never confused — the operator's reported gripe was Add appearing next
+    // to resources already in use.
+    var inUse = candidates.filter(function (c) { return asObject(c).allocated === true; });
+    var available = candidates.filter(function (c) { return asObject(c).allocated !== true; });
+    function subsection(title, list, emptyMsg) {
+      return '<p class="v2-resourcesManaged__subhead">' + escapeHtml(title) +
+        " (" + escapeHtml(String(list.length)) + ")</p>" +
+        (list.length
+          ? list.map(renderMember).join("")
+          : '<p class="v2-extensionCard__empty">' + escapeHtml(emptyMsg) + "</p>");
+    }
     var usedCount = a.used_count || 0;
-    var members = candidates
-      .map(function (c) {
-        var m = asObject(c);
-        var allocated = m.allocated === true;
-        var label = asText(m.slug) || asText(m.filename);
-        var search = (asText(m.slug) + " " + asText(m.filename) + " " + asText(m.asset_id)).toLowerCase();
-        var thumb = asText(m.image_url)
-          ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' +
-            escapeHtml(asText(m.image_url)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
-          : "";
-        var btn = allocated
-          ? '<button type="button" class="v2-rowAction--danger" data-resources-alloc="remove" data-kind="' +
-            escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) + '">Remove</button>'
-          : '<button type="button" class="v2-rowAction" data-resources-alloc="add" data-kind="' +
-            escapeHtml(kind) + '" data-asset-path="' + escapeHtml(asText(m.asset_path)) +
-            '" data-asset-id="' + escapeHtml(asText(m.asset_id)) + '">Add</button>';
-        return (
-          '<div class="v2-resourcesMember' + (allocated ? " is-allocated" : "") +
-          '" data-resources-search="' + escapeHtml(search) + '">' + thumb +
-          '<code class="v2-resourcesMember__file">' + escapeHtml(label) + "</code> " +
-          (allocated ? '<span class="v2-resourcesMember__badge">used</span>' : "") +
-          '<span class="v2-resourcesMember__actions">' + btn + "</span></div>"
-        );
-      })
-      .join("");
+    var body = candidates.length
+      ? subsection("In use — remove to de-allocate", inUse, "Nothing allocated yet.") +
+        '<hr class="v2-resourcesManaged__divider" />' +
+        subsection("Available — search and add", available, "Everything is allocated.")
+      : '<p class="v2-extensionCard__empty">Empty gallery.</p>';
     return (
       '<details class="v2-resourcesManaged" data-gallery="' + escapeHtml(gallery) + '"' +
       (usedCount ? " open" : "") + ">" +
       "<summary>" + escapeHtml(titleCaseLabel(gallery)) + " — " + escapeHtml(String(usedCount)) +
       " used / " + escapeHtml(String(candidates.length)) + " available</summary>" +
       '<div class="v2-resourcesManaged__groups"><div class="v2-resourcesGroup">' +
-      (members || '<p class="v2-extensionCard__empty">Empty gallery.</p>') +
+      body +
       "</div></div></details>"
     );
   }
@@ -1357,7 +1386,8 @@
       '" data-remove-route="' + escapeHtml(routes.remove) + '">' +
       '<p class="v2-extensionCard__intro">Allocating shared resources to <strong>' +
       escapeHtml(asText(p.grantee_label) || site) + "</strong> (" + escapeHtml(site) +
-      "). Add a leaflet to publish it in this site's manifest; remove to de-allocate.</p>" +
+      "). Add a leaflet to publish it in this site's manifest; remove to de-allocate. " +
+      "For the FND site, allocating a <em>profile</em> adds/removes it on the /more network map.</p>" +
       '<input type="search" class="v2-resourcesSearch" placeholder="Search resources…" aria-label="Search resources" />' +
       sections + "</div>"
     );

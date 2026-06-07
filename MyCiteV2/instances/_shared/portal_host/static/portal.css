@@ -10197,6 +10197,17 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-resourcesUploadForm { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; }
 .v2-resourcesUploadForm label { display: flex; flex-direction: column; gap: 2px; }
 .v2-resourcesDedup__locked { opacity: 0.6; font-style: italic; }
+/* Delete-protected "where used" detail + allocation In-use/Available split.
+   Theme-aware: only defined vars (--ink/--line/--accent), no --surface/#fff. */
+.v2-resourcesDetail__protected { margin-top: 8px; font-size: 12px; }
+.v2-resourcesDetail__usedList { margin: 6px 0; padding-left: 18px; }
+.v2-resourcesDetail__usedList li { margin: 2px 0; }
+.v2-resourcesDetail__hint { margin: 4px 0 0; opacity: 0.7; }
+.v2-resourcesManaged__subhead {
+  margin: 8px 0 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
+  text-transform: uppercase; opacity: 0.7; color: var(--ink);
+}
+.v2-resourcesManaged__divider { border: 0; border-top: 1px solid var(--line); margin: 10px 0; }
 /* Unified, theme-aware resource controls — one convention for every button.
    Uses ONLY defined theme vars (--paper/--paper2/--ink/--line/--accent), so it
    reads correctly on light (Paper/Ocean/Forest) AND dark (Midnight) themes.
