@@ -2,6 +2,14 @@
 """migrate_bpw_jobs_to_events — port the legacy BPW job corpus to the
 shared ``event-job`` leaflet gallery.
 
+DEPRECATED (2026-06-07, P2 leaflet unification): this one-shot migration is
+historical. The events gallery moved from ``site-core/events`` (monolithic
+``event-job`` leaflets) to ``site-core/event`` (the decomposed
+finite-event/custom/profile triple). The current migration is
+``clients/_shared/site-core/scripts/decompose_bpw_jobs.py``; this script is
+retained only as a record of the original job-tree -> events port and no longer
+matches the live ``events`` module shape.
+
 Reads every ``job.<date>.<slug>.yaml`` under the legacy jobs root
 (default ``/srv/webapps/mycite/fnd/private/utilities/tools/bpw-jobs/``)
 and writes one ``event-job`` leaflet per job into the shared events

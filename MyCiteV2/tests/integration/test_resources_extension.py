@@ -217,46 +217,97 @@ class ManifestAndIconTests(unittest.TestCase):
 
 
 def _seed_events(webapps_root: Path) -> Path:
-    ev = webapps_root / "clients" / "_shared" / "site-core" / "events"
-    ev.mkdir(parents=True)
-    (ev / "2026-05-01.event-job.brocks_pressure_washing.driveway.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "schema": "mycite.site_core.event_job.v1",
-                "event_kind": "job",
-                "client": "brocks_pressure_washing",
-                "id": "2026-0001",
-                "date": "2026-05-01",
-                "status": "completed",
-                "title": "Driveway wash",
-                "location": "Akron",
-                "customer": {"name": "Jane Roe"},
-                "pricing": {"total": 250.0, "paid": True},
-                "tags": [{"type": "driveway"}],
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    # Unified model: each job is a finite EVENT + CUSTOM residual + customer
+    # PROFILE. events_detail -> list_events hydrates the triple back to a flat
+    # row, so we seed all three leaflets per job.
+    sc = webapps_root / "clients" / "_shared" / "site-core"
+    ev = sc / "event"
+    cu = sc / "custom"
+    pr = sc / "profiles"
+    for d in (ev, cu, pr):
+        d.mkdir(parents=True, exist_ok=True)
+
+    def _profile(name_us: str, name: str) -> str:
+        stem = f"0000-00-00.artifact-profile-natural_entity.brocks_pressure_washing.{name_us}.profile"
+        (pr / f"{stem}.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "mycite.site_core.profile.v1",
+                    "profile_kind": "customer",
+                    "entity_class": "natural_entity",
+                    "owner": "brocks_pressure_washing",
+                    "public": False,
+                    "name": name,
+                    "phone": "",
+                    "address": "",
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+        return stem
+
+    def _custom(stem: str, total: float, paid: bool, tag: str) -> None:
+        (cu / f"{stem}.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "mycite.site_core.custom.v1",
+                    "kind": "artifact-custom",
+                    "owner": "brocks_pressure_washing",
+                    "customer_context": {"lead_source": None, "is_repeat": None, "referred_by": None},
+                    "home": {},
+                    "tags": [{"type": tag}] if tag else [],
+                    "pricing": {"total": total, "paid": paid},
+                    "notes": "",
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+    def _event(stem: str, *, eid, date, status, title, location, service, cref, xref) -> None:
+        (ev / f"{stem}.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "schema": "mycite.site_core.event.v2",
+                    "kind": "artifact-event-finite",
+                    "recurrence": "finite",
+                    "owner": "brocks_pressure_washing",
+                    "id": eid,
+                    "date": date,
+                    "status": status,
+                    "title": title,
+                    "location": location,
+                    "service": service,
+                    "customer_ref": cref,
+                    "custom_ref": xref,
+                },
+                sort_keys=False,
+            ),
+            encoding="utf-8",
+        )
+
+    p1 = _profile("jane_roe", "Jane Roe")
+    c1 = "2026-05-01.artifact-custom.brocks_pressure_washing-jobs.akron"
+    _custom(c1, 250.0, True, "driveway")
+    _event(
+        "2026-05-01.artifact-event-finite.brocks_pressure_washing.jane_roe",
+        eid="2026-0001", date="2026-05-01", status="completed",
+        title="Driveway wash", location="Akron", service="driveway", cref=p1, xref=c1,
     )
-    (ev / "2026-04-10.event-job.brocks_pressure_washing.deck.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "schema": "mycite.site_core.event_job.v1",
-                "client": "brocks_pressure_washing",
-                "id": "2026-0002",
-                "date": "2026-04-10",
-                "status": "booked",
-                "title": "Deck",
-                "customer": {"name": "Bob"},
-                "pricing": {"total": 120},
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+
+    p2 = _profile("bob", "Bob")
+    c2 = "2026-04-10.artifact-custom.brocks_pressure_washing-jobs.deck"
+    _custom(c2, 120, False, "deck")
+    _event(
+        "2026-04-10.artifact-event-finite.brocks_pressure_washing.bob",
+        eid="2026-0002", date="2026-04-10", status="booked",
+        title="Deck", location="", service="deck", cref=p2, xref=c2,
     )
+
     # The tracked *.example.* template must be ignored, not counted.
-    (ev / "0000-00-00.event-job.sample.template.example.yaml").write_text(
-        "schema: mycite.site_core.event_job.v1\n", encoding="utf-8"
+    (ev / "0000-00-00.artifact-event-finite.sample.template.example.yaml").write_text(
+        "schema: mycite.site_core.event.v2\n", encoding="utf-8"
     )
     return webapps_root
 

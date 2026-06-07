@@ -39,8 +39,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-#: Schema identifier stamped on every event leaflet.
+#: Legacy monolithic schema — still the in-memory shape produced by
+#: ``normalize_payload`` and returned (hydrated) to the dashboard JS.
 EVENT_SCHEMA = "mycite.site_core.event_job.v1"
+
+#: Unified-model schemas for the decomposed triple actually stored on disk.
+FINITE_EVENT_SCHEMA = "mycite.site_core.event.v2"
+CUSTOM_SCHEMA = "mycite.site_core.custom.v1"
+PROFILE_SCHEMA = "mycite.site_core.profile.v1"
 
 #: The only event_kind implemented today. Future kinds (e.g. ``visit``,
 #: ``inspection``) would reuse the same gallery + aggregation spine.
@@ -52,13 +58,26 @@ DEFAULT_EVENT_KIND = "job"
 # --------------------------------------------------------------------
 
 
-def events_root(webapps_root: str | Path) -> Path:
-    """Return the canonical events gallery dir under ``webapps_root``.
+def _site_core(webapps_root: str | Path) -> Path:
+    return Path(webapps_root) / "clients" / "_shared" / "site-core"
 
-    ``<webapps_root>/clients/_shared/site-core/events``. The directory is
-    NOT created here; use :func:`ensure_events_root` for that.
+
+def events_root(webapps_root: str | Path) -> Path:
+    """Return the canonical event gallery dir under ``webapps_root``.
+
+    ``<webapps_root>/clients/_shared/site-core/event`` (singular; the unified
+    artifact-event family). The directory is NOT created here; use
+    :func:`ensure_events_root` for that.
     """
-    return Path(webapps_root) / "clients" / "_shared" / "site-core" / "events"
+    return _site_core(webapps_root) / "event"
+
+
+def _profiles_root(webapps_root: str | Path) -> Path:
+    return _site_core(webapps_root) / "profiles"
+
+
+def _custom_root(webapps_root: str | Path) -> Path:
+    return _site_core(webapps_root) / "custom"
 
 
 def ensure_events_root(webapps_root: str | Path) -> Path:
@@ -93,9 +112,166 @@ def _leaflet_paths(root: Path) -> list[str]:
     """
     return [
         p
-        for p in sorted(glob.glob(str(root / "*.event-job.*.yaml")))
+        for p in sorted(glob.glob(str(root / "*.artifact-event-finite.*.yaml")))
         if ".example." not in Path(p).name
     ]
+
+
+# --------------------------------------------------------------------
+# Unified-model decomposition (write) <-> hydration (read)
+#
+# A job is stored as THREE leaflets so customers + residual job data are
+# reusable and the profile/event conventions stay simple:
+#   profiles/0000-00-00.artifact-profile-natural_entity.<owner>.<name>.profile.yaml
+#   event/<date>.artifact-event-finite.<owner>.<name>.yaml
+#   custom/<date>.artifact-custom.<owner>-jobs.<address>.yaml
+# The dashboard still posts + reads a FLAT monolithic shape; decompose-on-write
+# and hydrate-on-read make the split transparent and leave aggregate_analytics
+# unchanged. The field mapping MUST stay in sync with
+# clients/_shared/site-core/scripts/decompose_bpw_jobs.py.
+# --------------------------------------------------------------------
+
+_US_RE = re.compile(r"[^a-z0-9]+")
+
+
+def _us_slug(value: object) -> str:
+    """Underscore slug — one filename dot-token (no internal dots)."""
+    s = _US_RE.sub("_", str(value or "").strip().lower()).strip("_")
+    return s or "unknown"
+
+
+def _owner_of(data: dict[str, Any]) -> str:
+    return _client_slug(data.get("owner") or data.get("client"))
+
+
+def _profile_stem(owner: str, name_us: str) -> str:
+    return f"0000-00-00.artifact-profile-natural_entity.{owner}.{name_us}.profile"
+
+
+def _decompose(mono: dict[str, Any], owner: str) -> dict[str, tuple[str, dict[str, Any]]]:
+    """Split a monolithic (normalize_payload) job dict into the on-disk
+    profile / event / custom triple, each returned as ``(stem, dict)``."""
+    cust = mono.get("customer") if isinstance(mono.get("customer"), dict) else {}
+    name = str(cust.get("name") or "").strip()
+    name_us = _us_slug(name) if name else _us_slug(mono.get("id") or "unknown")
+    date = str(mono.get("date") or "")[:10] or "0000-00-00"
+    address = str(cust.get("address") or mono.get("location") or "").strip()
+    addr_us = _us_slug(address) if address else name_us
+
+    profile_stem = _profile_stem(owner, name_us)
+    event_stem = f"{date}.artifact-event-finite.{owner}.{name_us}"
+    custom_stem = f"{date}.artifact-custom.{owner}-jobs.{addr_us}"
+
+    tags = mono.get("tags") if isinstance(mono.get("tags"), list) else []
+    service = ""
+    for t in tags:
+        if isinstance(t, dict) and t.get("type"):
+            service = str(t["type"])
+            break
+
+    profile = {
+        "schema": PROFILE_SCHEMA,
+        "profile_kind": "customer",
+        "entity_class": "natural_entity",
+        "owner": owner,
+        "public": False,
+        "name": name,
+        "phone": str(cust.get("phone") or ""),
+        "address": address,
+    }
+    custom = {
+        "schema": CUSTOM_SCHEMA,
+        "kind": "artifact-custom",
+        "owner": owner,
+        "event_ref": event_stem,
+        "customer_ref": profile_stem,
+        "customer_context": {
+            "lead_source": cust.get("lead_source"),
+            "is_repeat": cust.get("is_repeat"),
+            "referred_by": cust.get("referred_by"),
+        },
+        "home": mono.get("home") or {},
+        "tags": tags,
+        "pricing": mono.get("pricing") or {},
+        "notes": mono.get("notes") or "",
+    }
+    event = {
+        "schema": FINITE_EVENT_SCHEMA,
+        "kind": "artifact-event-finite",
+        "recurrence": "finite",
+        "owner": owner,
+        "id": str(mono.get("id") or ""),
+        "date": date,
+        "status": str(mono.get("status") or "booked"),
+        "title": str(mono.get("title") or ""),
+        "location": str(mono.get("location") or address),
+        "description": str(mono.get("description") or ""),
+        "service": service,
+        "leaflet_url": mono.get("leaflet_url") or None,
+        "customer_ref": profile_stem,
+        "custom_ref": custom_stem,
+    }
+    return {
+        "profile": (profile_stem, profile),
+        "event": (event_stem, event),
+        "custom": (custom_stem, custom),
+    }
+
+
+def _hydrate(event: dict[str, Any], webapps_root: str | Path) -> dict[str, Any]:
+    """Reconstruct the FLAT monolithic shape from a finite event by resolving
+    customer_ref (profile) + custom_ref (custom). Inverse of :func:`_decompose`;
+    feeds aggregate_analytics + the dashboard JS unchanged."""
+    prof: dict[str, Any] = {}
+    cref = event.get("customer_ref")
+    if cref:
+        prof = _load_yaml(_profiles_root(webapps_root) / f"{cref}.yaml") or {}
+    cust_leaf: dict[str, Any] = {}
+    xref = event.get("custom_ref")
+    if xref:
+        cust_leaf = _load_yaml(_custom_root(webapps_root) / f"{xref}.yaml") or {}
+    ctx = (
+        cust_leaf.get("customer_context")
+        if isinstance(cust_leaf.get("customer_context"), dict)
+        else {}
+    )
+    customer = {
+        "name": prof.get("name"),
+        "phone": prof.get("phone"),
+        "address": prof.get("address"),
+        "lead_source": ctx.get("lead_source"),
+        "is_repeat": ctx.get("is_repeat"),
+        "referred_by": ctx.get("referred_by"),
+    }
+    return {
+        "schema": EVENT_SCHEMA,
+        "event_kind": DEFAULT_EVENT_KIND,
+        "client": _owner_of(event),
+        "id": str(event.get("id") or ""),
+        "date": event.get("date"),
+        "status": event.get("status"),
+        "title": event.get("title"),
+        "location": event.get("location"),
+        "description": event.get("description"),
+        "leaflet_url": event.get("leaflet_url"),
+        "customer": customer,
+        "home": cust_leaf.get("home") or {},
+        "tags": cust_leaf.get("tags") or [],
+        "pricing": cust_leaf.get("pricing") or {},
+        "notes": cust_leaf.get("notes") or "",
+    }
+
+
+def _remove_custom_for(event: dict[str, Any], webapps_root: str | Path) -> None:
+    """Remove the custom residual a finite event points at (the profile is
+    deduped/shared, so it is intentionally left in place)."""
+    xref = event.get("custom_ref")
+    if not xref:
+        return
+    try:
+        (_custom_root(webapps_root) / f"{xref}.yaml").unlink()
+    except OSError:
+        pass
 
 
 # --------------------------------------------------------------------
@@ -125,10 +301,11 @@ def list_events(
         data = _load_yaml(Path(path))
         if data is None:
             continue
-        if want is not None and _client_slug(data.get("client")) != want:
+        if want is not None and _owner_of(data) != want:
             continue
-        data["_source_file"] = Path(path).name
-        rows.append(data)
+        row = _hydrate(data, webapps_root)
+        row["_source_file"] = Path(path).name
+        rows.append(row)
 
     def _key(r: dict[str, Any]) -> tuple[str, str]:
         date = str(r.get("date") or "")
@@ -438,7 +615,7 @@ def _path_for_id(
         data = _load_yaml(Path(path))
         if data is None:
             continue
-        if want is not None and _client_slug(data.get("client")) != want:
+        if want is not None and _owner_of(data) != want:
             continue
         if str(data.get("id") or "") == str(event_id):
             return Path(path)
@@ -602,39 +779,52 @@ def save_event(
     if not isinstance(payload, dict):
         raise ValueError("payload must be a dict")
     ensure_events_root(webapps_root)
+    owner = _client_slug(
+        client if client is not None else (payload.get("client") or payload.get("owner"))
+    )
 
-    # On update, hydrate the incoming payload with the existing on-disk
-    # leaflet so nested extras the flat form doesn't carry survive. The
-    # incoming payload's keys override the existing ones; a present-but-
-    # empty nested key in the payload (rare) is treated as no-override.
+    # On update, hydrate the existing on-disk triple back to the flat shape so
+    # nested extras the flat edit form doesn't carry survive. Incoming payload
+    # keys override; an absent/empty nested extra is treated as no-override.
     event_id = payload.get("id") or payload.get("event_id")
     existing = (
-        _path_for_id(webapps_root, str(event_id), client=client)
-        if event_id
-        else None
+        _path_for_id(webapps_root, str(event_id), client=owner) if event_id else None
     )
-    if existing is not None:
-        base = _load_yaml(existing) or {}
+    existing_event = _load_yaml(existing) if existing is not None else None
+    if existing_event is not None:
+        base = _hydrate(existing_event, webapps_root)
         base.pop("_source_file", None)
         merged = dict(base)
         for key, value in payload.items():
-            # Don't let an absent/empty nested extra clobber the stored one.
             if key in ("customer", "home", "tags", "pricing") and not value:
                 continue
             merged[key] = value
         payload = merged
 
-    normalized = normalize_payload(payload, webapps_root=webapps_root, client=client)
-    event_id = str(normalized["id"])
-    target_path = events_root(webapps_root) / _filename_for(normalized)
-    if existing is not None and existing != target_path:
+    normalized = normalize_payload(payload, webapps_root=webapps_root, client=owner)
+    parts = _decompose(normalized, owner)
+    new_event_path = events_root(webapps_root) / f"{parts['event'][0]}.yaml"
+
+    # If the canonical event filename changed on update, drop the stale event +
+    # its old custom residual so the disk layout stays consistent.
+    if existing is not None and existing != new_event_path and existing_event is not None:
+        _remove_custom_for(existing_event, webapps_root)
         try:
             existing.unlink()
         except OSError:
             pass
-    _atomic_write_yaml(target_path, normalized)
-    normalized["_source_file"] = target_path.name
-    return normalized
+
+    _atomic_write_yaml(
+        _profiles_root(webapps_root) / f"{parts['profile'][0]}.yaml", parts["profile"][1]
+    )
+    _atomic_write_yaml(
+        _custom_root(webapps_root) / f"{parts['custom'][0]}.yaml", parts["custom"][1]
+    )
+    _atomic_write_yaml(new_event_path, parts["event"][1])
+
+    result = _hydrate(parts["event"][1], webapps_root)
+    result["_source_file"] = new_event_path.name
+    return result
 
 
 def delete_event(
@@ -649,8 +839,11 @@ def delete_event(
     path = _path_for_id(webapps_root, event_id, client=client)
     if path is None:
         return False
+    event = _load_yaml(path) or {}
     try:
         path.unlink()
     except OSError:
         return False
+    # Remove the per-job custom residual too (the deduped profile is left).
+    _remove_custom_for(event, webapps_root)
     return True

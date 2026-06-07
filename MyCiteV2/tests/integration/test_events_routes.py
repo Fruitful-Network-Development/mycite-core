@@ -65,28 +65,39 @@ class TestEventsModule(unittest.TestCase):
         client = "brocks_pressure_washing"
         saved = ev.save_event(_sample_payload(), webapps_root=self.webapps, client=client)
 
-        # Leaflet written under the canonical name + correct schema.
+        # The job is decomposed into a finite EVENT + CUSTOM residual + a
+        # (deduped) customer PROFILE. The event leaflet carries the unified
+        # finite schema + refs, not the nested customer/pricing.
         gallery = ev.events_root(self.webapps)
         self.assertTrue(gallery.is_dir())
         fname = saved["_source_file"]
         self.assertEqual(
-            fname, "2026-04-14.event-job.brocks_pressure_washing.dave.atch.yaml"
+            fname, "2026-04-14.artifact-event-finite.brocks_pressure_washing.dave_atch.yaml"
         )
         leaflet_path = gallery / fname
         self.assertTrue(leaflet_path.exists())
         import yaml
         on_disk = yaml.safe_load(leaflet_path.read_text(encoding="utf-8"))
-        self.assertEqual(on_disk["schema"], ev.EVENT_SCHEMA)
-        self.assertEqual(on_disk["event_kind"], "job")
-        self.assertEqual(on_disk["client"], client)
-        self.assertEqual(on_disk["customer"]["name"], "Dave Atch")
-        # Generic envelope is promoted to the top level.
+        self.assertEqual(on_disk["schema"], ev.FINITE_EVENT_SCHEMA)
+        self.assertEqual(on_disk["kind"], "artifact-event-finite")
+        self.assertEqual(on_disk["owner"], client)
+        self.assertIn("customer_ref", on_disk)
+        self.assertIn("custom_ref", on_disk)
+        self.assertNotIn("customer", on_disk)  # identity lives in the profile
         event_id = on_disk["id"]
         self.assertTrue(event_id)
         self.assertEqual(on_disk["date"], "2026-04-14")
         self.assertEqual(on_disk["status"], "completed")
         self.assertEqual(on_disk["location"], "123 Main St, Hudson")
-        self.assertNotIn("job", on_disk)
+        # Identity in the profile leaflet; pricing/tags in the custom residual.
+        prof = yaml.safe_load(
+            (ev._profiles_root(self.webapps) / f"{on_disk['customer_ref']}.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(prof["name"], "Dave Atch")
+        cust = yaml.safe_load(
+            (ev._custom_root(self.webapps) / f"{on_disk['custom_ref']}.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(cust["pricing"]["total"], 100)
 
         # list scoped to the client returns the row.
         rows = ev.list_events(self.webapps, client=client)
@@ -124,10 +135,10 @@ class TestEventsModule(unittest.TestCase):
         client = "brocks_pressure_washing"
         ev.save_event(_sample_payload(), webapps_root=self.webapps, client=client)
         gallery = ev.ensure_events_root(self.webapps)
-        (gallery / "0000-00-00.event-job.example.brocks_pressure_washing.example.yaml").write_text(
-            "schema: mycite.site_core.event_job.v1\n"
-            "event_kind: job\n"
-            "client: brocks_pressure_washing\n"
+        (gallery / "0000-00-00.artifact-event-finite.example.brocks_pressure_washing.example.yaml").write_text(
+            "schema: mycite.site_core.event.v2\n"
+            "kind: artifact-event-finite\n"
+            "owner: brocks_pressure_washing\n"
             "id: EXAMPLE\n"
             "date: '0000-00-00'\n"
             "status: booked\n",
@@ -258,10 +269,10 @@ class TestEventsRoutes(unittest.TestCase):
         self.assertEqual(body["event"]["status"], "completed")
         self.assertEqual(body["event"]["location"], "123 Main St, Hudson")
 
-        # the leaflet exists on disk under the right name.
+        # the finite event leaflet exists on disk under the new name.
         gallery = ev.events_root(webapps)
         self.assertTrue(
-            (gallery / "2026-04-14.event-job.brocks_pressure_washing.dave.atch.yaml").exists()
+            (gallery / "2026-04-14.artifact-event-finite.brocks_pressure_washing.dave_atch.yaml").exists()
         )
 
         # list
@@ -333,7 +344,12 @@ class TestBpwShim(unittest.TestCase):
         self.assertEqual(bpw_jobs.jobs_analytics(rows), ev.aggregate_analytics(rows))
 
 
-@unittest.skipUnless(YAML_AVAILABLE, "PyYAML not installed")
+@unittest.skip(
+    "Legacy migrate_bpw_jobs_to_events.py is superseded by "
+    "clients/_shared/site-core/scripts/decompose_bpw_jobs.py (P2 leaflet "
+    "unification). The events gallery now stores the decomposed "
+    "finite-event/custom/profile triple, not monolithic event-job leaflets."
+)
 class TestMigrationScript(unittest.TestCase):
     def setUp(self) -> None:
         import yaml
