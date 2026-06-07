@@ -5967,6 +5967,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             }
         ), 200
 
+    @app.get("/__fnd/custom/list")
+    def fnd_custom_list() -> tuple[Any, int]:
+        """Return the calling client's artifact-custom residual leaflets
+        (read-only) for the dashboard CUSTOM subtab. Grantee-scoped via the same
+        resolver as /events/*; these carry PII so a scoped client sees only its
+        own, an unauthenticated operator sees all."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resources_extension import (
+            custom_detail,
+        )
+        client, err = _resolve_event_scope()
+        if err:
+            return err
+        detail = custom_detail(host_config.webapps_root, client=client)
+        return jsonify({"ok": True, **detail}), 200
+
     @app.post("/__fnd/events/save")
     def fnd_events_save() -> tuple[Any, int]:
         """Create or update an event leaflet. Accepts the dashboard's

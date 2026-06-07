@@ -1129,9 +1129,17 @@ _GALLERY_META: dict[str, dict[str, str]] = {
     "image": {"kind": "image", "url_prefix": "/assets/images/"},
     "document": {"kind": "document", "url_prefix": "/assets/document/"},
     "audio": {"kind": "audio", "url_prefix": "/assets/audio/"},
+    # Declaration-only (non-nginx) galleries. Their leaflets may carry PII
+    # (BPW job residuals / finite events), so they are recognised here for
+    # kind/dir resolution but kept OUT of the global MANAGED_GALLERIES library
+    # scan — surfaced grantee-scoped via custom_detail + the dashboard CUSTOM
+    # subtab. asset_path is the logical /site-core/<dir>/<file> pseudo-path.
+    "event": {"kind": "event", "url_prefix": "/site-core/event/"},
+    "custom": {"kind": "custom", "url_prefix": "/site-core/custom/"},
 }
 # Galleries the operator can manage as a collective gallery (non-PII). events +
-# contacts are deliberately excluded — they stay read-only filename/count only.
+# contacts + custom are deliberately excluded — events/custom are PII-bearing and
+# managed grantee-scoped; contacts stay read-only filename/count only.
 MANAGED_GALLERIES: tuple[str, ...] = ("profiles", "icon", "image", "document", "audio")
 
 # A slug segment: letters/digits start, then letters/digits/dash/underscore.
@@ -2019,6 +2027,47 @@ def contacts_detail(webapps_root: str | Path | None) -> dict[str, Any]:
     return {"entities": entities, "total_contacts": total}
 
 
+def custom_detail(webapps_root: str | Path | None, client: str | None = None) -> dict[str, Any]:
+    """Read-only view of ``artifact-custom`` residual leaflets, optionally scoped
+    to a ``client`` (owner). These carry PII (BPW job residuals), so callers MUST
+    scope at the route — the dashboard CUSTOM subtab passes the grantee slug.
+    Returns ``{rows, count}`` where each row flattens the residual job data
+    (event_ref · services · total · paid · notes)."""
+    root = _site_core_root(webapps_root)
+    if root is None:
+        return {"rows": [], "count": 0}
+    cdir = root / "custom"
+    if not cdir.is_dir():
+        return {"rows": [], "count": 0}
+    want = _as_text(client).strip().lower() if client else None
+    rows: list[dict[str, Any]] = []
+    for path in sorted(cdir.iterdir(), key=lambda p: p.name.lower()):
+        if not path.is_file() or not path.name.endswith(".yaml"):
+            continue
+        if path.name.startswith(".") or ".example." in path.name:
+            continue
+        doc = _load_yaml_mapping(path)
+        owner = _as_text(doc.get("owner")).strip().lower()
+        if want and owner != want:
+            continue
+        pricing = doc.get("pricing") if isinstance(doc.get("pricing"), dict) else {}
+        tags = doc.get("tags") if isinstance(doc.get("tags"), list) else []
+        rows.append(
+            {
+                "file": path.name,
+                "event_ref": _as_text(doc.get("event_ref")),
+                "services": ", ".join(
+                    _as_text(t.get("type")) for t in tags
+                    if isinstance(t, dict) and t.get("type")
+                ),
+                "total": pricing.get("total"),
+                "paid": bool(pricing.get("paid")),
+                "notes": _as_text(doc.get("notes")),
+            }
+        )
+    return {"rows": rows, "count": len(rows)}
+
+
 # --------------------------------------------------------------------------- #
 # extension renderer — GLOBAL (Library) vs PER-GRANTEE (Allocation)
 # --------------------------------------------------------------------------- #
@@ -2144,6 +2193,7 @@ __all__ = [
     "build_profile_edit_frame",
     "cascade_rename_profile_slug",
     "contacts_detail",
+    "custom_detail",
     "delete_asset_if_unreferenced",
     "derive_profile_excerpt",
     "events_detail",

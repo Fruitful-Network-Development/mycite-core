@@ -363,6 +363,17 @@ class EventsDetailTests(unittest.TestCase):
         self.assertEqual(detail["summary"]["total_events"], 2)
         self.assertEqual(detail["summary"]["total_revenue"], 250.0)
 
+    def test_custom_detail_lists_and_scopes_residuals(self) -> None:
+        # _seed_events writes two artifact-custom residuals owned by BPW.
+        detail = rx.custom_detail(self.tmp)
+        self.assertEqual(detail["count"], 2)
+        row = detail["rows"][0]
+        self.assertIn("event_ref", row)
+        self.assertIn("services", row)
+        # Owner-scoping: the owning grantee sees them; another does not.
+        self.assertEqual(rx.custom_detail(self.tmp, client="brocks_pressure_washing")["count"], 2)
+        self.assertEqual(rx.custom_detail(self.tmp, client="other_co")["count"], 0)
+
     def test_events_detail_empty_when_no_gallery(self) -> None:
         empty = rx.events_detail(Path(tempfile.mkdtemp(prefix="ext_res_noev_")))
         self.assertEqual(empty["rows"], [])
