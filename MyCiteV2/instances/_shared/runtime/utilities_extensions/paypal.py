@@ -25,8 +25,6 @@ from urllib.parse import quote
 
 _log = logging.getLogger("mycite.portal_host")
 
-from MyCiteV2.packages.core.grantee import PaypalConfig
-
 from ._shared import _as_dict, _as_text, _grantee_edit_link, _mask_secret
 
 
@@ -39,37 +37,6 @@ def _export_action(domain: str) -> dict[str, Any]:
         "download": f"paypal-orders-{domain}.csv",
         "variant": "secondary",
     }
-
-
-def _hydrate_paypal_from_sidecar(
-    private_dir: Path, msn_id: str
-) -> PaypalConfig | None:
-    """Read a legacy ``paypal-webhook.{msn_id}.json`` sidecar into a PaypalConfig.
-
-    Phase 8 read-side backward compat: grantee JSON files written before
-    the inline ``paypal`` sub-config landed will not carry credentials.
-    If a sidecar file is present, hydrate the in-memory profile from it
-    so the Utilities extensions render correctly. Returns ``None`` when
-    no sidecar exists or its shape is unusable.
-    """
-    if not msn_id:
-        return None
-    sidecar_path = private_dir / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
-    if not sidecar_path.exists():
-        return None
-    try:
-        payload = json.loads(sidecar_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    webhook_url = _as_text(payload.get("webhook_url"))
-    if not webhook_url:
-        return None
-    try:
-        return PaypalConfig(webhook_url=webhook_url)
-    except ValueError:
-        return None
 
 
 def _build_paypal_extension_payload(
@@ -166,6 +133,5 @@ def _render_ext_paypal(ctx: dict[str, Any]) -> dict[str, Any]:
 
 __all__ = [
     "_build_paypal_extension_payload",
-    "_hydrate_paypal_from_sidecar",
     "_render_ext_paypal",
 ]

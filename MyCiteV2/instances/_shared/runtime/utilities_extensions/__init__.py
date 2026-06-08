@@ -42,7 +42,6 @@ from .grantee_profile import (
 from .newsletter import _build_newsletter_extension_payload, _render_ext_newsletter
 from .paypal import (
     _build_paypal_extension_payload,
-    _hydrate_paypal_from_sidecar,
     _render_ext_paypal,
 )
 from .resources_extension import _render_ext_resources
@@ -87,5 +86,4 @@ __all__ = [
     "_build_grantee_profile_form_fields",
     "_build_newsletter_extension_payload",
     "_build_paypal_extension_payload",
-    "_hydrate_paypal_from_sidecar",
 ]

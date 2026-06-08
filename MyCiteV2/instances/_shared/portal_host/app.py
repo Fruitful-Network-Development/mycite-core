@@ -1817,8 +1817,13 @@ def _send_receipt_for_capture(
 def _append_to_ndjson(path: Path, record: dict[str, Any]) -> None:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Durable single-line append: write the whole line then flush + fsync so a
+        # captured payment is on disk before we return (a torn/lost tail line would
+        # mean a captured-but-unrecorded order). Append stays atomic per line.
         with path.open("a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, separators=(",", ":")) + "\n")
+            fh.flush()
+            os.fsync(fh.fileno())
     except Exception:
         # A swallowed write here means a captured payment (or other event) goes
         # unrecorded — surface it so a captured-but-unlogged order is detectable.

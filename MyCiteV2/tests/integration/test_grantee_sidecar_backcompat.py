@@ -1,14 +1,11 @@
-"""Integration test for the Phase 8 paypal-webhook sidecar backcompat path.
+"""The legacy paypal-webhook.{msn_id}.json sidecar is RETIRED (2026-06-08).
 
-Per grantee_profile_contract.md, the runtime's _load_grantee_profiles
-hydrates a profile's paypal sub-config from the legacy
-paypal-webhook.{msn_id}.json sidecar when the grantee JSON itself lacks
-the inline `paypal` block. The on-disk grantee JSON is not modified by
-the read path; sidecar deprecation completes when an operator edits the
-profile through the Phase 9 form.
-
-This test exercises the runtime helper rather than a Flask round-trip
-because the read path is the hard part — the sidecar policy lives there.
+The runtime's load_grantee_profiles no longer consults the sidecar at all —
+the inline `grantee.paypal` sub-config is the sole source. A grantee JSON
+without an inline `paypal` block simply has no paypal key, even if a stray
+sidecar file is present. These tests pin that contract (sidecar ignored) so
+the dead read-path cannot creep back. See
+docs/contracts/instance_payment_storage.md + feedback_no_mos_for_grantee_paypal.
 """
 
 from __future__ import annotations
@@ -59,15 +56,16 @@ class SidecarBackcompatTests(unittest.TestCase):
         fnd_csm.mkdir(parents=True, exist_ok=True)
         return root, fnd_csm
 
-    def test_sidecar_hydrates_paypal_when_grantee_json_lacks_it(self) -> None:
+    def test_sidecar_is_ignored_when_grantee_json_lacks_paypal(self) -> None:
+        # RETIRED contract: a sidecar must NOT hydrate paypal. A grantee without
+        # an inline paypal block has no paypal key, sidecar present or not.
         private_dir, fnd_csm = self._build_tree()
         _seed_grantee(fnd_csm, msn_id="g1", with_paypal=False)
         _seed_sidecar(fnd_csm, "g1", "https://example.org/sidecar")
 
         profiles = load_grantee_profiles(private_dir)
         self.assertEqual(len(profiles), 1)
-        paypal = profiles[0].get("paypal") or {}
-        self.assertEqual(paypal.get("webhook_url"), "https://example.org/sidecar")
+        self.assertNotIn("paypal", profiles[0])
 
     def test_grantee_inline_paypal_wins_over_sidecar(self) -> None:
         private_dir, fnd_csm = self._build_tree()

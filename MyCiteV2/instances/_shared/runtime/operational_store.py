@@ -31,9 +31,6 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions._shared import (
     _as_list,
     _as_text,
 )
-from MyCiteV2.instances._shared.runtime.utilities_extensions.paypal import (
-    _hydrate_paypal_from_sidecar,
-)
 from MyCiteV2.packages.core.grantee import load_grantee_profile
 
 # Grantee profile location (operator-managed JSON, never MOS):
@@ -92,10 +89,6 @@ def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]
             profile = load_grantee_profile(path)
         except (FileNotFoundError, ValueError):
             continue
-        if profile.paypal is None:
-            sidecar_paypal = _hydrate_paypal_from_sidecar(base, profile.msn_id)
-            if sidecar_paypal is not None:
-                profile = profile.with_paypal(sidecar_paypal)
         profiles.append(profile.to_dict())
     result = sorted(profiles, key=lambda p: _as_text(p.get("label")).lower())
     _GRANTEE_PROFILES_CACHE[key] = (fingerprint, result)
