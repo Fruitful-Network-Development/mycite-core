@@ -507,12 +507,13 @@ def build_resources_summary(
 ) -> dict[str, Any]:
     """Per-grantee asset/resource inventory for the dashboard RESOURCES tab.
 
-    Reads each owned domain's record-manifests
-    (``…/frontend/assets/*record-manifest*.{image,icon,document,profile}_use.yaml``)
-    and returns the grantee's images / icons / documents / profiles. SCOPED:
-    only the caller grantee's own domains are read, and a manifest whose declared
-    ``site_domain`` is not one the caller owns is skipped (defence-in-depth — a
-    grantee must never enumerate another site's assets).
+    Reads each owned domain's single consolidated record-manifest
+    (``…/frontend/assets/*record-manifest*.shared_resources.yaml`` →
+    ``resources.{image,icon,document,profile}``) and returns the grantee's
+    images / icons / documents / profiles. SCOPED: only the caller grantee's own
+    domains are read, and a manifest whose declared ``site_domain`` is not one the
+    caller owns is skipped (defence-in-depth — a grantee must never enumerate
+    another site's assets).
     """
     import yaml
 
@@ -527,16 +528,17 @@ def build_resources_summary(
         assets_dir = clients_root / domain / "frontend" / "assets"
         if not assets_dir.is_dir():
             continue
-        for kind in kinds:
-            for path in sorted(assets_dir.glob(f"*record-manifest*.{kind}_use.yaml")):
-                try:
-                    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-                except (OSError, yaml.YAMLError):
-                    continue
-                man_domain = _as_text(data.get("site_domain")).lower()
-                if man_domain and man_domain not in owned:
-                    continue  # scope guard
-                for entry in data.get("entries") or []:
+        for path in sorted(assets_dir.glob("*record-manifest*.shared_resources.yaml")):
+            try:
+                data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except (OSError, yaml.YAMLError):
+                continue
+            man_domain = _as_text(data.get("site_domain")).lower()
+            if man_domain and man_domain not in owned:
+                continue  # scope guard
+            res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+            for kind in kinds:
+                for entry in res.get(kind) or []:
                     if not isinstance(entry, dict):
                         continue
                     resources[f"{kind}s"].append({

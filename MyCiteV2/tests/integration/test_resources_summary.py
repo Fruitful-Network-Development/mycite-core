@@ -32,15 +32,21 @@ def _seed_grantee(fnd_csm: Path, msn, short, domains):
 
 
 def _seed_manifest(clients_root: Path, domain, kind, entries):
+    """Merge a section into the domain's consolidated shared_resources manifest."""
+    import yaml as _yaml
     d = clients_root / domain / "frontend" / "assets"
     d.mkdir(parents=True, exist_ok=True)
-    lines = [f"manifest_kind: {kind}_use", f"site_domain: {domain}", "entries:"]
-    for e in entries:
-        lines.append(f"- asset_id: {e}")
-        lines.append(f"  asset_path: /assets/{kind}s/{e}.x")
-        lines.append("  consumers: []")
-    (d / f"0000-00-00.record-manifest.x-website.{kind}_use.yaml").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8")
+    path = d / "0000-00-00.record-manifest.x-website.shared_resources.yaml"
+    doc = (_yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else None) or {}
+    doc["manifest_kind"] = "shared_resources"
+    doc["site_domain"] = domain
+    res = doc.get("resources") if isinstance(doc.get("resources"), dict) else {}
+    res[kind] = [
+        {"asset_id": e, "asset_path": f"/assets/{kind}s/{e}.x", "consumers": []}
+        for e in entries
+    ]
+    doc["resources"] = res
+    path.write_text(_yaml.safe_dump(doc, sort_keys=False), encoding="utf-8")
 
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")

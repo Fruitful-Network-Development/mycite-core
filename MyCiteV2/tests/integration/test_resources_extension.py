@@ -40,6 +40,30 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_registry import (
     build_portal_tool_registry_entries,
 )
 
+_MANIFEST_KINDS = ("image", "icon", "audio", "document", "profile", "event", "custom")
+
+
+def _write_shared_manifest(assets: Path, entity: str, **sections) -> Path:
+    """Write a site's consolidated shared_resources.yaml with the given
+    resources sections (any omitted kind defaults to [])."""
+    res = {k: list(sections.get(k, [])) for k in _MANIFEST_KINDS}
+    assets.mkdir(parents=True, exist_ok=True)
+    path = assets / f"0000-00-00.record-manifest.{entity}-website.shared_resources.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "manifest_kind": "shared_resources",
+                "site_entity": entity,
+                "site_domain": "",
+                "generated_at": "0000-00-00",
+                "resources": res,
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
 
 def _seed_profiles(webapps_root: Path) -> Path:
     sc = webapps_root / "clients" / "_shared" / "site-core"
@@ -163,19 +187,9 @@ class ManifestAndIconTests(unittest.TestCase):
         sc = self.tmp / "clients" / "_shared" / "site-core"
         (sc / "icon").mkdir(parents=True)
         self.assets = self.tmp / "clients" / "site.org" / "frontend" / "assets"
-        self.assets.mkdir(parents=True)
-        (self.assets / "0000-00-00.record-manifest.site-website.icon_use.yaml").write_text(
-            yaml.safe_dump(
-                {
-                    "manifest_kind": "icon_use",
-                    "site_entity": "site",
-                    "entries": [
-                        {"asset_id": "a", "asset_path": "/assets/icons/keep.svg", "consumers": [], "entity_scope": "site"}
-                    ],
-                },
-                sort_keys=False,
-            ),
-            encoding="utf-8",
+        _write_shared_manifest(
+            self.assets, "site",
+            icon=[{"asset_id": "a", "asset_path": "/assets/icons/keep.svg", "consumers": [], "entity_scope": "site"}],
         )
 
     def test_add_asset_to_manifest_dedupes(self) -> None:
@@ -191,7 +205,7 @@ class ManifestAndIconTests(unittest.TestCase):
         self.assertTrue(again["ok"])
         self.assertFalse(again["added"])
         data = yaml.safe_load(Path(first["manifest"]).read_text())
-        paths = [e["asset_path"] for e in data["entries"]]
+        paths = [e["asset_path"] for e in data["resources"]["icon"]]
         self.assertEqual(paths.count("/assets/icons/new.svg"), 1)
 
     def test_icon_dedup_groups_and_safe_removal(self) -> None:
@@ -431,24 +445,14 @@ def _seed_managed_gallery(webapps_root: Path) -> Path:
     used.write_text("<svg/>", encoding="utf-8")
     unused.write_text("<svg/>", encoding="utf-8")
     assets = webapps_root / "clients" / "site.org" / "frontend" / "assets"
-    assets.mkdir(parents=True)
-    (assets / "0000-00-00.record-manifest.site-website.icon_use.yaml").write_text(
-        yaml.safe_dump(
-            {
-                "manifest_kind": "icon_use",
-                "site_entity": "site",
-                "entries": [
-                    {
-                        "asset_id": "mail",
-                        "asset_path": "/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg",
-                        "consumers": [],
-                        "entity_scope": "site",
-                    }
-                ],
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    _write_shared_manifest(
+        assets, "site",
+        icon=[{
+            "asset_id": "mail",
+            "asset_path": "/assets/icons/0000-00-00.artifact-icon.mycite-ui.mail.svg",
+            "consumers": [],
+            "entity_scope": "site",
+        }],
     )
     return webapps_root
 
@@ -477,10 +481,10 @@ class CollectiveGalleryManagementTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         manifest = (
             self.tmp / "clients" / "site.org" / "frontend" / "assets"
-            / "0000-00-00.record-manifest.site-website.icon_use.yaml"
+            / "0000-00-00.record-manifest.site-website.shared_resources.yaml"
         )
         data = yaml.safe_load(manifest.read_text())
-        self.assertEqual(data["entries"][0]["asset_id"], "Mail Glyph")
+        self.assertEqual(data["resources"]["icon"][0]["asset_id"], "Mail Glyph")
 
     def test_delete_refuses_referenced_asset(self) -> None:
         result = rx.delete_asset_if_unreferenced(
@@ -507,11 +511,11 @@ class CollectiveGalleryManagementTests(unittest.TestCase):
         self.assertFalse((icon_dir / "0000-00-00.artifact-icon.mycite-ui.mail.svg").exists())
         manifest = (
             self.tmp / "clients" / "site.org" / "frontend" / "assets"
-            / "0000-00-00.record-manifest.site-website.icon_use.yaml"
+            / "0000-00-00.record-manifest.site-website.shared_resources.yaml"
         )
         data = yaml.safe_load(manifest.read_text())
         self.assertEqual(
-            data["entries"][0]["asset_path"],
+            data["resources"]["icon"][0]["asset_path"],
             "/assets/icons/0000-00-00.artifact-icon.mycite-ui.envelope.svg",
         )
 
@@ -707,16 +711,14 @@ def _seed_cascade_tree(root: Path) -> Path:
         yaml.safe_dump({"entity_slug": "farm_a", "operation_id": "upick"}, sort_keys=False),
         encoding="utf-8",
     )
-    # profile_use manifest referencing farm_a's canonical.
-    (assets / "0000-00-00.record-manifest.site-website.profile_use.yaml").write_text(
-        yaml.safe_dump(
-            {"manifest_kind": "profile_use", "site_entity": "site", "entries": [
-                {"asset_id": "farm_a",
-                 "asset_path": "/assets/profiles/0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml",
-                 "consumers": [], "entity_scope": "site"}]},
-            sort_keys=False,
-        ),
-        encoding="utf-8",
+    # site.org consolidated manifest: profile section referencing farm_a's canonical.
+    _write_shared_manifest(
+        assets, "site",
+        profile=[{
+            "asset_id": "farm_a",
+            "asset_path": "/assets/profiles/0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml",
+            "consumers": [], "entity_scope": "site",
+        }],
     )
     # Hand-authored data file with a /profile/farm_a URL.
     data = root / "clients" / "site.org" / "frontend" / "data"
@@ -724,13 +726,23 @@ def _seed_cascade_tree(root: Path) -> Path:
     (data / "timeline.json").write_text(
         '{"items":[{"profile_path":"/profile/farm_a"}]}\n', encoding="utf-8"
     )
-    # FND network manifest listing farm_a in profile_refs.
+    # FND consolidated manifest: profile section drives the network map. A stub
+    # build_farm_network.py makes the site "mapped" (so the cascade regenerates).
     fnd = root / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "assets"
-    fnd.mkdir(parents=True)
-    (fnd / "0000-00-00.manifest.fnd.fnd.site.json").write_text(
-        '{"pages":{"more":{"content":{"network":{"panel":{"profile_refs":["farm_a","farm_b"]}}}}}}\n',
-        encoding="utf-8",
+    _write_shared_manifest(
+        fnd, "fruitful_network_development_llc",
+        profile=[
+            {"asset_id": "farm_a",
+             "asset_path": "/assets/profiles/0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml",
+             "consumers": [], "entity_scope": "fruitful_network_development_llc"},
+            {"asset_id": "farm_b",
+             "asset_path": "/assets/profiles/0000-00-00.artifact-profile-legal_entity.farm_b.profile.yaml",
+             "consumers": [], "entity_scope": "fruitful_network_development_llc"},
+        ],
     )
+    scripts = root / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "build_farm_network.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
     return root
 
 
@@ -762,16 +774,16 @@ class CascadeRenameTests(unittest.TestCase):
         self.assertFalse((profiles / "0000-00-00.artifact-profile-legal_entity.farm_a.profile.yaml").exists())
         assets = self.tmp / "clients" / "site.org" / "frontend" / "assets"
         self.assertTrue((assets / "0000-00-00.profile-legal_entity.site.farm_c-summary_bio.yaml").exists())
-        # profile_use repointed.
-        pu = yaml.safe_load((assets / "0000-00-00.record-manifest.site-website.profile_use.yaml").read_text())
-        self.assertIn("farm_c.profile.yaml", pu["entries"][0]["asset_path"])
-        # FND refs updated.
-        import json
-        fnd = json.loads((self.tmp / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "assets"
-                          / "0000-00-00.manifest.fnd.fnd.site.json").read_text())
-        refs = fnd["pages"]["more"]["content"]["network"]["panel"]["profile_refs"]
-        self.assertIn("farm_c", refs)
-        self.assertNotIn("farm_a", refs)
+        # site.org consolidated manifest profile section repointed.
+        pu = yaml.safe_load((assets / "0000-00-00.record-manifest.site-website.shared_resources.yaml").read_text())
+        self.assertIn("farm_c.profile.yaml", pu["resources"]["profile"][0]["asset_path"])
+        self.assertEqual(pu["resources"]["profile"][0]["asset_id"], "farm_c")
+        # FND consolidated manifest profile section (drives the map) updated.
+        fnd = yaml.safe_load((self.tmp / "clients" / "fruitfulnetworkdevelopment.com" / "frontend" / "assets"
+                              / "0000-00-00.record-manifest.fruitful_network_development_llc-website.shared_resources.yaml").read_text())
+        fnd_slugs = {e["asset_id"] for e in fnd["resources"]["profile"]}
+        self.assertIn("farm_c", fnd_slugs)
+        self.assertNotIn("farm_a", fnd_slugs)
         # farm_b's related stem updated.
         fb = (profiles / "0000-00-00.artifact-profile-legal_entity.farm_b.profile.yaml").read_text()
         self.assertIn("farm_c.profile", fb)
@@ -845,10 +857,9 @@ class ResourcesModeDispatchTests(unittest.TestCase):
 
 
 def _seed_fnd_network(root: Path, refs: list[str], extra_profiles: list[str] | None = None) -> Path:
-    """Shared profiles for ``refs`` (+ any ``extra_profiles`` off the map) and an
-    FND site manifest whose network panel lists ``refs`` as profile_refs."""
-    import json
-
+    """Shared profiles for ``refs`` (+ any ``extra_profiles`` off the map), an FND
+    CONSOLIDATED manifest whose profile section lists ``refs``, and a stub
+    build_farm_network.py so FND counts as a "mapped" site."""
     sc = root / "clients" / "_shared" / "site-core" / "profiles"
     sc.mkdir(parents=True)
     for slug in list(refs) + list(extra_profiles or []):
@@ -856,99 +867,81 @@ def _seed_fnd_network(root: Path, refs: list[str], extra_profiles: list[str] | N
             yaml.safe_dump({"name": slug.replace("_", " ").title()}, sort_keys=False),
             encoding="utf-8",
         )
-    fnd = root / "clients" / rx._FND_SITE_DIR / "frontend" / "assets"
-    fnd.mkdir(parents=True)
-    (fnd / "0000-00-00.manifest.fnd.fnd.site.json").write_text(
-        json.dumps(
-            {"pages": {"more": {"content": {"network": {"panel": {
-                "id": "network", "heading": "Network", "profile_refs": list(refs)}}}}}},
-            indent=2,
-        ) + "\n",
-        encoding="utf-8",
+    fnd_assets = root / "clients" / rx._FND_SITE_DIR / "frontend" / "assets"
+    _write_shared_manifest(
+        fnd_assets, "fruitful_network_development_llc",
+        profile=[
+            {"asset_id": slug,
+             "asset_path": f"/assets/profiles/0000-00-00.artifact-profile-legal_entity.{slug}.profile.yaml",
+             "consumers": [], "entity_scope": "fruitful_network_development_llc"}
+            for slug in refs
+        ],
     )
+    scripts = root / "clients" / rx._FND_SITE_DIR / "frontend" / "scripts"
+    scripts.mkdir(parents=True, exist_ok=True)
+    (scripts / "build_farm_network.py").write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
     return root
 
 
+def _fnd_profile_section(tmp: Path) -> list[str]:
+    """The slugs currently in the FND consolidated manifest profile section."""
+    return [e["asset_id"] for e in rx.site_manifest_entries(tmp, rx._FND_SITE_DIR, "profile")]
+
+
 class NetworkRefsAllocationTests(unittest.TestCase):
-    """FND profiles allocate via the network map's profile_refs, not profile_use."""
+    """FND profiles allocate via the consolidated manifest profile section, which
+    drives the /more network map (the section is the single source of truth)."""
 
     def setUp(self) -> None:
         self.tmp = Path(tempfile.mkdtemp(prefix="ext_res_netrefs_"))
         _seed_fnd_network(self.tmp, ["wellspring_farm", "rose_leaf"], extra_profiles=["off_map_farm"])
-        # Stub the real build_farm_network.py subprocess (absent in the temp tree).
+        # Stub the network-map rebuild subprocess (the seeded build script is a
+        # no-op stub anyway; this records invocations + avoids spawning python).
         self._builds: list[str] = []
-        self._orig_build = rx._run_fnd_network_build
-        rx._run_fnd_network_build = lambda wr: (self._builds.append(str(wr)) or (True, "stub"))
+        self._orig_build = rx._run_site_network_build
+        rx._run_site_network_build = lambda wr, site: (self._builds.append(site) or (True, "stub"))
 
     def tearDown(self) -> None:
-        rx._run_fnd_network_build = self._orig_build
+        rx._run_site_network_build = self._orig_build
 
-    def test_network_profile_refs_ordered(self) -> None:
-        self.assertEqual(
-            rx.network_profile_refs(self.tmp), ["wellspring_farm", "rose_leaf"]
-        )
+    def test_profile_section_ordered(self) -> None:
+        self.assertEqual(_fnd_profile_section(self.tmp), ["wellspring_farm", "rose_leaf"])
 
-    def test_add_and_remove_mutate_refs_and_rebuild(self) -> None:
-        added = rx.add_profile_to_network_refs(self.tmp, "off_map_farm")
-        self.assertTrue(added["ok"])
-        self.assertTrue(added["added"])
-        self.assertEqual(
-            rx.network_profile_refs(self.tmp),
-            ["wellspring_farm", "rose_leaf", "off_map_farm"],  # appended, order kept
-        )
-        # idempotent add = no-op, no second build.
-        again = rx.add_profile_to_network_refs(self.tmp, "off_map_farm")
-        self.assertTrue(again["ok"])
-        self.assertFalse(again["added"])
-        removed = rx.remove_profile_from_network_refs(self.tmp, "rose_leaf")
-        self.assertTrue(removed["ok"])
-        self.assertTrue(removed["removed"])
-        self.assertEqual(
-            rx.network_profile_refs(self.tmp), ["wellspring_farm", "off_map_farm"]
-        )
-        # idempotent remove.
-        noop = rx.remove_profile_from_network_refs(self.tmp, "rose_leaf")
-        self.assertTrue(noop["ok"])
-        self.assertFalse(noop["removed"])
-        # add(once) + remove(once) each rebuilt the dataset; the no-ops did not.
-        self.assertEqual(len(self._builds), 2)
-        # Manifest stays valid JSON with only the refs list touched.
-        import json
-        data = json.loads(
-            (self.tmp / "clients" / rx._FND_SITE_DIR / "frontend" / "assets"
-             / "0000-00-00.manifest.fnd.fnd.site.json").read_text()
-        )
-        panel = data["pages"]["more"]["content"]["network"]["panel"]
-        self.assertEqual(panel["heading"], "Network")  # sibling keys preserved
-
-    def test_manifest_helpers_delegate_for_fnd_profiles(self) -> None:
+    def test_add_and_remove_mutate_section_and_rebuild(self) -> None:
         ap = "/assets/profiles/0000-00-00.artifact-profile-legal_entity.off_map_farm.profile.yaml"
-        res = rx.add_asset_to_manifest(
+        added = rx.add_asset_to_manifest(
             self.tmp, site=rx._FND_SITE_DIR, kind="profile", asset_id="off_map_farm", asset_path=ap
         )
-        self.assertTrue(res["ok"])
-        self.assertTrue(res.get("added"))
-        self.assertIn("off_map_farm", rx.network_profile_refs(self.tmp))
-        rm = rx.remove_asset_from_manifest(
-            self.tmp, site=rx._FND_SITE_DIR, kind="profile", asset_path=ap
+        self.assertTrue(added["ok"] and added["added"])
+        self.assertEqual(
+            _fnd_profile_section(self.tmp),
+            ["wellspring_farm", "rose_leaf", "off_map_farm"],  # appended, order kept
         )
-        self.assertTrue(rm["ok"])
-        self.assertTrue(rm.get("removed"))
-        self.assertNotIn("off_map_farm", rx.network_profile_refs(self.tmp))
+        # idempotent add = no-op (still ok), but still ran the build hook once on add.
+        again = rx.add_asset_to_manifest(
+            self.tmp, site=rx._FND_SITE_DIR, kind="profile", asset_id="off_map_farm", asset_path=ap
+        )
+        self.assertTrue(again["ok"] and not again["added"])
+        removed = rx.remove_asset_from_manifest(
+            self.tmp, site=rx._FND_SITE_DIR, kind="profile",
+            asset_path="/assets/profiles/0000-00-00.artifact-profile-legal_entity.rose_leaf.profile.yaml",
+        )
+        self.assertTrue(removed["ok"] and removed["removed"])
+        self.assertEqual(_fnd_profile_section(self.tmp), ["wellspring_farm", "off_map_farm"])
+        # add(once-real) + remove(once) each fired the build hook; the no-op add did not.
+        self.assertEqual(self._builds, [rx._FND_SITE_DIR, rx._FND_SITE_DIR])
 
-    def test_non_fnd_profile_does_not_touch_network(self) -> None:
-        # A profile on a different site falls through to *_use.yaml — here there's
-        # no profile_use manifest, so it reports no_manifest_for_kind and leaves
-        # the FND network refs untouched.
+    def test_non_mapped_site_profile_does_not_rebuild(self) -> None:
+        # A profile on a site with NO build script writes the manifest but fires
+        # no rebuild. (site.org here has no consolidated manifest -> no_manifest.)
         ap = "/assets/profiles/0000-00-00.artifact-profile-legal_entity.wellspring_farm.profile.yaml"
         res = rx.add_asset_to_manifest(
             self.tmp, site="site.org", kind="profile", asset_id="w", asset_path=ap
         )
         self.assertFalse(res["ok"])
-        self.assertEqual(rx.network_profile_refs(self.tmp), ["wellspring_farm", "rose_leaf"])
-        self.assertEqual(self._builds, [])  # no rebuild for a non-FND site
+        self.assertEqual(self._builds, [])
 
-    def test_allocation_payload_profiles_reflect_network(self) -> None:
+    def test_allocation_payload_profiles_reflect_section(self) -> None:
         payload = render_extension(
             "ext_resources",
             {
@@ -960,21 +953,20 @@ class NetworkRefsAllocationTests(unittest.TestCase):
         )
         self.assertEqual(payload["resources_mode"], "allocation")
         prof = next(a for a in payload["allocations"] if a["gallery"] == "profiles")
-        self.assertEqual(prof["used_count"], 2)  # the two map refs
+        self.assertEqual(prof["used_count"], 2)  # the two profile-section entries
         allocated = {c["slug"] for c in prof["candidates"] if c["allocated"]}
         self.assertEqual(allocated, {"wellspring_farm", "rose_leaf"})
         available = {c["slug"] for c in prof["candidates"] if not c["allocated"]}
         self.assertIn("off_map_farm", available)
 
     def test_profile_usage_and_index_in_use_by(self) -> None:
-        self.assertIn(
-            "FND network map (/more)", rx.profile_usage(self.tmp, "wellspring_farm")
-        )
+        label = f"{rx._FND_SITE_DIR} (network map /more)"
+        self.assertIn(label, rx.profile_usage(self.tmp, "wellspring_farm"))
         self.assertEqual(rx.profile_usage(self.tmp, "off_map_farm"), [])
         idx = rx.build_leaflet_index(self.tmp)
         on_map = next(r for r in idx if r["slug"] == "wellspring_farm")
         self.assertTrue(on_map["in_use"])
-        self.assertIn("FND network map (/more)", on_map["in_use_by"])
+        self.assertIn(label, on_map["in_use_by"])
         off_map = next(r for r in idx if r["slug"] == "off_map_farm")
         self.assertFalse(off_map["in_use"])
         self.assertEqual(off_map["in_use_by"], [])

@@ -1306,8 +1306,9 @@
   }
 
   // Per-grantee ALLOCATION: per resource type, every library leaflet with an
-  // Add / Remove toggle reflecting whether it is in this site's *_use.yaml
-  // manifest. Allocated leaflets sort first. Posts to manifest add/remove.
+  // Add / Remove toggle reflecting whether it is in this site's consolidated
+  // shared_resources manifest (resources[kind]). In use / Available split.
+  // Posts to manifest add/remove.
   function renderResourcesAllocationGallery(a, routes) {
     var gallery = asText(a.gallery);
     var kind = asText(a.kind);

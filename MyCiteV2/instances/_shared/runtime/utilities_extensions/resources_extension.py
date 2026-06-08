@@ -806,12 +806,11 @@ def propagate_profile(
                     rebuilt_frontends.add(frontend_dir)
         else:
             result["errors"].append(f"derive_failed:{excerpt}")
-    # The FND agricultural-network MAP renders from a pre-generated dataset, not
-    # from excerpts — so a profile that feeds the map needs the dataset
-    # regenerated separately. Best-effort: only runs when the slug is one of the
-    # FND network's profile_refs.
+    # A network MAP renders from a pre-generated dataset, not from excerpts — so a
+    # profile that a site lists in its consolidated manifest profile section (and
+    # that site ships a build script) needs the dataset regenerated separately.
     if rebuild:
-        ok, note = _regenerate_fnd_network_dataset(webapps_root, slug)
+        ok, note = _regenerate_network_for_profile(webapps_root, slug)
         if note:
             result["fnd_network"] = note
         if not ok and note and not note.startswith("skipped"):
@@ -819,59 +818,43 @@ def propagate_profile(
     return result
 
 
-# FND agricultural-network map: the panel keypath whose profile_refs the map's
-# dataset is built from, and the generator that rebuilds it.
+# Per-site network map: the /more map renders from the site's CONSOLIDATED
+# manifest profile section (resources.profile) via the per-site
+# build_farm_network.py. A profile add/remove on a mapped site is followed by a
+# rebuild. FND is the only site shipping a map today, but nothing here is
+# FND-specific — any site with a build_farm_network.py participates.
 _FND_SITE_DIR = "fruitfulnetworkdevelopment.com"
-_FND_NETWORK_KEYPATH = ("pages", "more", "content", "network")
 
 
-def _fnd_network_refs(webapps_root: str | Path) -> set[str]:
-    """The set of profile slugs the FND network map is built from.
-
-    Reads ``pages.more.content.network.panel.{profile_refs,farm_profile_refs}``
-    from the FND site manifest JSON. Empty set on any miss.
-    """
-    import json
-
-    manifest = (
+def _network_build_script(webapps_root: str | Path, site: str) -> Path:
+    """Path to a site's network-map dataset builder (may not exist)."""
+    return (
         Path(webapps_root)
         / "clients"
-        / _FND_SITE_DIR
+        / os.path.basename(_as_text(site))
         / "frontend"
-        / "assets"
-        / "0000-00-00.manifest.fnd.fnd.site.json"
+        / "scripts"
+        / "build_farm_network.py"
     )
-    try:
-        data = json.loads(manifest.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return set()
-    node: Any = data
-    for key in _FND_NETWORK_KEYPATH:
-        node = node.get(key, {}) if isinstance(node, dict) else {}
-    panel = node.get("panel", {}) if isinstance(node, dict) else {}
-    # Union BOTH ref lists for presence detection — a slug present in only
-    # ``farm_profile_refs`` (back-compat alias) must still register as in-network
-    # so the cascade updates it and the dataset regen fires.
-    out: set[str] = set()
-    for refs_key in ("profile_refs", "farm_profile_refs"):
-        refs = panel.get(refs_key)
-        if isinstance(refs, list):
-            out.update(_as_text(r) for r in refs if _as_text(r))
-    return out
 
 
-def _run_fnd_network_build(webapps_root: str | Path) -> tuple[bool, str]:
-    """Run the FND site's ``build_farm_network.py`` unconditionally.
+def _site_has_network_build(webapps_root: str | Path, site: str) -> bool:
+    """True when the site ships a network-map dataset builder."""
+    return _network_build_script(webapps_root, site).is_file()
 
-    Writes only the network-map dataset JSON (no HTML). Returns ``(ok, note)``;
-    a skip note when the FND site/script is absent. Mirrors the subprocess
-    pattern of ``_build_site_for_excerpt``. The caller decides *whether* to run
-    (e.g. after mutating ``profile_refs``), so this does NOT gate on membership.
+
+def _run_site_network_build(webapps_root: str | Path, site: str) -> tuple[bool, str]:
+    """Run a site's ``build_farm_network.py`` to regenerate its map dataset.
+
+    The map renders from the site's consolidated manifest profile section, so a
+    profile add/remove on a mapped site is followed by this rebuild. Returns
+    ``(ok, note)``; a skip note when the site has no build script. Mirrors the
+    subprocess pattern of ``_build_site_for_excerpt``.
     """
-    frontend_dir = Path(webapps_root) / "clients" / _FND_SITE_DIR / "frontend"
-    script = frontend_dir / "scripts" / "build_farm_network.py"
+    script = _network_build_script(webapps_root, site)
     if not script.is_file():
         return True, "skipped: no build_farm_network.py"
+    frontend_dir = script.parent.parent
     try:
         completed = subprocess.run(
             [sys.executable, str(script)],
@@ -885,137 +868,60 @@ def _run_fnd_network_build(webapps_root: str | Path) -> tuple[bool, str]:
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
         return False, f"build_farm_network exited {completed.returncode}: {detail[:300]}"
-    return True, "fnd network dataset regenerated"
+    return True, "network dataset regenerated"
 
 
-def _regenerate_fnd_network_dataset(
+def _sites_using_profile(webapps_root: str | Path, slug: str) -> list[str]:
+    """Sites whose consolidated manifest profile section lists ``slug``."""
+    slug = _as_text(slug)
+    if not webapps_root or not slug:
+        return []
+    out: list[str] = []
+    pattern = str(
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets"
+        / "*.shared_resources.yaml"
+    )
+    for path in glob.glob(pattern):
+        site = Path(path).parts[-4]
+        for e in site_manifest_entries(webapps_root, site, "profile"):
+            if e["asset_id"] == slug or _profile_slug(os.path.basename(e["asset_path"])) == slug:
+                out.append(site)
+                break
+    return sorted(set(out))
+
+
+def _regenerate_network_for_profile(
     webapps_root: str | Path, slug: str
 ) -> tuple[bool, str]:
-    """Regenerate the FND network-map dataset when ``slug`` feeds the map.
-
-    Slug-gated wrapper around :func:`_run_fnd_network_build`, used by
-    ``propagate_profile`` so editing a profile already on the map refreshes the
-    dataset. Returns ``("skipped...", )`` when the slug is not a network ref.
+    """Rebuild the map dataset for every site whose consolidated manifest profile
+    section lists ``slug`` and that ships a build script. Used by
+    ``propagate_profile`` so editing a mapped profile refreshes the map.
     """
-    if slug not in _fnd_network_refs(webapps_root):
-        return True, "skipped: slug not in FND network refs"
-    return _run_fnd_network_build(webapps_root)
+    notes: list[str] = []
+    ok_all = True
+    for site in _sites_using_profile(webapps_root, slug):
+        if _site_has_network_build(webapps_root, site):
+            ok, note = _run_site_network_build(webapps_root, site)
+            ok_all = ok_all and ok
+            notes.append(f"{site}: {note}")
+    return ok_all, "; ".join(notes) or "skipped: profile not on any map"
 
 
-# --------------------------------------------------------------------------- #
-# FND network map: profile_refs as the per-site profile "use" manifest.
-# The map renders from ``network.panel.profile_refs`` (NOT from profile_use.yaml
-# or excerpts), so the per-grantee allocation view edits this list directly for
-# the FND site's profiles. Mutations regenerate the dataset.
-# --------------------------------------------------------------------------- #
-def _fnd_network_manifest_path(webapps_root: str | Path) -> Path:
-    """Path to the FND site manifest JSON whose network panel drives the map."""
-    return (
-        Path(webapps_root)
-        / "clients"
-        / _FND_SITE_DIR
-        / "frontend"
-        / "assets"
-        / "0000-00-00.manifest.fnd.fnd.site.json"
-    )
-
-
-def _fnd_network_panel(data: Any) -> dict[str, Any]:
-    """Navigate a loaded FND manifest to its network ``panel`` mapping ({} on miss).
-
-    Returns the live nested reference (so callers can mutate it in place).
-    """
-    node: Any = data
-    for key in _FND_NETWORK_KEYPATH:
-        node = node.get(key, {}) if isinstance(node, dict) else {}
-    panel = node.get("panel", {}) if isinstance(node, dict) else {}
-    return panel if isinstance(panel, dict) else {}
-
-
-def network_profile_refs(webapps_root: str | Path) -> list[str]:
-    """The ORDERED list of profile slugs the FND network map is built from.
-
-    Reads ``pages.more.content.network.panel.profile_refs`` from the FND site
-    manifest JSON, preserving order. Empty list on any miss. The set-returning
-    :func:`_fnd_network_refs` is the presence variant used to gate delete.
-    """
-    import json
-
-    try:
-        data = json.loads(
-            _fnd_network_manifest_path(webapps_root).read_text(encoding="utf-8")
-        )
-    except (OSError, ValueError):
-        return []
-    refs = _fnd_network_panel(data).get("profile_refs")
-    return [_as_text(r) for r in refs if _as_text(r)] if isinstance(refs, list) else []
-
-
-def _write_fnd_network_refs(webapps_root: str | Path, refs: list[str]) -> bool:
-    """Persist ``refs`` as the FND network panel's ``profile_refs`` list.
-
-    Replaces only ``panel['profile_refs']`` and writes the manifest back
-    2-space-indented + newline-terminated (matching the generated file, so the
-    diff stays limited to the refs list). Atomic. False on I/O/parse error or
-    when the network panel is absent.
-    """
-    import json
-
-    path = _fnd_network_manifest_path(webapps_root)
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    panel = _fnd_network_panel(data)
-    if not panel:
-        return False
-    panel["profile_refs"] = list(refs)
-    try:
-        _atomic_write_text(path, json.dumps(data, indent=2, ensure_ascii=False) + "\n")
-    except OSError:
-        return False
-    return True
-
-
-def add_profile_to_network_refs(
-    webapps_root: str | Path, slug: str
+def _after_profile_manifest_write(
+    webapps_root: str | Path, site: str, kind: str, result: dict[str, Any]
 ) -> dict[str, Any]:
-    """Add ``slug`` to the FND network map (append to ``profile_refs`` if absent)
-    and regenerate the dataset. Idempotent. Returns ``{ok, added, note}``.
+    """Post-write hook: when a PROFILE was allocated/de-allocated on a site that
+    ships a map, regenerate the dataset. The manifest is the source of truth, so
+    a build failure is reported as a warning but does NOT fail the write (the
+    dataset can be regenerated; a stale dataset is recoverable, a lost manifest
+    edit is not).
     """
-    slug = _as_text(slug)
-    if not slug:
-        return {"ok": False, "error": "missing_field"}
-    refs = network_profile_refs(webapps_root)
-    if slug in refs:
-        return {"ok": True, "added": False, "note": "already on map"}
-    refs.append(slug)
-    if not _write_fnd_network_refs(webapps_root, refs):
-        return {"ok": False, "error": "write_failed"}
-    ok, note = _run_fnd_network_build(webapps_root)
-    if not ok:
-        return {"ok": False, "error": "build_failed", "detail": note}
-    return {"ok": True, "added": True, "note": note}
-
-
-def remove_profile_from_network_refs(
-    webapps_root: str | Path, slug: str
-) -> dict[str, Any]:
-    """Remove ``slug`` from the FND network map (drop from ``profile_refs``) and
-    regenerate the dataset. Idempotent. Returns ``{ok, removed, note}``.
-    """
-    slug = _as_text(slug)
-    if not slug:
-        return {"ok": False, "error": "missing_field"}
-    refs = network_profile_refs(webapps_root)
-    if slug not in refs:
-        return {"ok": True, "removed": False, "note": "not on map"}
-    if not _write_fnd_network_refs(webapps_root, [r for r in refs if r != slug]):
-        return {"ok": False, "error": "write_failed"}
-    ok, note = _run_fnd_network_build(webapps_root)
-    if not ok:
-        return {"ok": False, "error": "build_failed", "detail": note}
-    return {"ok": True, "removed": True, "note": note}
+    if result.get("ok") and kind == "profile" and _site_has_network_build(webapps_root, site):
+        ok, note = _run_site_network_build(webapps_root, site)
+        result["network_build"] = note
+        if not ok:
+            result["network_build_ok"] = False
+    return result
 
 
 # --------------------------------------------------------------------------- #
@@ -1121,11 +1027,14 @@ def add_asset_to_manifest(
     asset_path: str,
     entity_scope: str = "",
 ) -> dict[str, Any]:
-    """Append an asset entry to a site's *<kind>_use.yaml record-manifest.
+    """Append an asset entry to the ``resources[<kind>]`` section of a site's
+    consolidated ``shared_resources.yaml`` record-manifest.
 
     Dedupes by asset_path (no-op when already present), preserves hand-edited
     entries, writes atomically. ``site`` is the client domain dir under
-    clients/. Returns {"ok": True, "added": bool, "manifest": path}.
+    clients/. When ``kind == 'profile'`` and the site ships a network-map build
+    script, the map dataset is regenerated afterward (see
+    ``_after_profile_manifest_write``). Returns {"ok", "added", "manifest"}.
     """
     if not webapps_root:
         return {"ok": False, "error": "no_webapps_root"}
@@ -1134,27 +1043,18 @@ def add_asset_to_manifest(
     asset_path = _as_text(asset_path)
     if not site or not kind or not asset_path:
         return {"ok": False, "error": "missing_field"}
-    # The FND network map consumes profiles via ``network.panel.profile_refs``
-    # (NOT profile_use.yaml), so allocating a profile to the FND site means
-    # adding its slug to that list + regenerating the map dataset.
-    if kind == "profile" and site == _FND_SITE_DIR:
-        slug = _gallery_slug("profiles", os.path.basename(asset_path))
-        return add_profile_to_network_refs(webapps_root, slug)
     assets_dir = Path(webapps_root) / "clients" / site / "frontend" / "assets"
     if not assets_dir.is_dir():
         return {"ok": False, "error": "unknown_site"}
-    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    manifest_path = _shared_manifest_path(webapps_root, site)
     if manifest_path is None:
-        return {"ok": False, "error": "no_manifest_for_kind"}
+        return {"ok": False, "error": "no_manifest"}
     data = _load_yaml_mapping(manifest_path)
-    entries = data.get("entries")
-    if not isinstance(entries, list):
-        entries = []
-        data["entries"] = entries
-    for entry in entries:
+    section = _manifest_section(data, kind)
+    for entry in section:
         if isinstance(entry, dict) and _as_text(entry.get("asset_path")) == asset_path:
             return {"ok": True, "added": False, "manifest": str(manifest_path)}
-    entries.append(
+    section.append(
         {
             "asset_id": _as_text(asset_id) or asset_path,
             "asset_path": asset_path,
@@ -1170,34 +1070,49 @@ def add_asset_to_manifest(
         _atomic_write_text(manifest_path, text)
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "detail": str(exc)}
-    return {"ok": True, "added": True, "manifest": str(manifest_path)}
+    result = {"ok": True, "added": True, "manifest": str(manifest_path)}
+    return _after_profile_manifest_write(webapps_root, site, kind, result)
 
 
-def _site_manifest_path(
-    webapps_root: str | Path, site: str, kind: str
-) -> Path | None:
-    """Resolve a site's ``*<kind>_use.yaml`` record-manifest, or None."""
+def _shared_manifest_path(webapps_root: str | Path, site: str) -> Path | None:
+    """Resolve a site's single consolidated ``*.shared_resources.yaml``
+    record-manifest, or None. Replaces the per-kind ``*_use.yaml`` files."""
     assets_dir = Path(webapps_root) / "clients" / os.path.basename(_as_text(site)) / "frontend" / "assets"
-    matches = glob.glob(str(assets_dir / f"*{_as_text(kind)}_use.yaml"))
+    matches = glob.glob(str(assets_dir / "*.shared_resources.yaml"))
     return Path(sorted(matches)[0]) if matches else None
+
+
+def _manifest_section(data: dict[str, Any], kind: str) -> list:
+    """The live ``resources[kind]`` list inside a loaded consolidated manifest,
+    creating empty containers as needed so callers can mutate it in place."""
+    res = data.get("resources")
+    if not isinstance(res, dict):
+        res = {}
+        data["resources"] = res
+    section = res.get(_as_text(kind))
+    if not isinstance(section, list):
+        section = []
+        res[_as_text(kind)] = section
+    return section
 
 
 def site_manifest_entries(
     webapps_root: str | Path | None, site: str, kind: str
 ) -> list[dict[str, Any]]:
-    """The entries currently allocated to a site's ``*<kind>_use.yaml`` manifest.
+    """The entries in a site's consolidated manifest ``resources[<kind>]`` section.
 
     Each row = {asset_id, asset_path, entity_scope}. Empty list when the site or
     manifest is absent. Reuses ``_load_yaml_mapping``.
     """
     if not webapps_root:
         return []
-    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    manifest_path = _shared_manifest_path(webapps_root, site)
     if manifest_path is None:
         return []
     data = _load_yaml_mapping(manifest_path)
+    res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
     rows: list[dict[str, Any]] = []
-    for entry in data.get("entries") or []:
+    for entry in res.get(_as_text(kind)) or []:
         if isinstance(entry, dict):
             rows.append(
                 {
@@ -1212,9 +1127,10 @@ def site_manifest_entries(
 def remove_asset_from_manifest(
     webapps_root: str | Path | None, *, site: str, kind: str, asset_path: str
 ) -> dict[str, Any]:
-    """Drop the entry whose ``asset_path`` matches from a site's
-    ``*<kind>_use.yaml`` manifest (the de-allocation sibling of
-    ``add_asset_to_manifest``). Atomic; no-op when not present.
+    """Drop the entry whose ``asset_path`` matches from the ``resources[<kind>]``
+    section of a site's consolidated ``shared_resources.yaml`` manifest (the
+    de-allocation sibling of ``add_asset_to_manifest``). Atomic; no-op when not
+    present. For ``profile`` on a mapped site the map dataset is regenerated.
     Returns ``{ok, removed: bool, manifest}``.
     """
     if not webapps_root:
@@ -1224,17 +1140,12 @@ def remove_asset_from_manifest(
     asset_path = _as_text(asset_path)
     if not site or not kind or not asset_path:
         return {"ok": False, "error": "missing_field"}
-    # FND profiles de-allocate by dropping the slug from the network map's
-    # ``profile_refs`` (see ``add_asset_to_manifest``), which also takes the farm
-    # off the /more map after the dataset regenerates.
-    if kind == "profile" and site == _FND_SITE_DIR:
-        slug = _gallery_slug("profiles", os.path.basename(asset_path))
-        return remove_profile_from_network_refs(webapps_root, slug)
-    manifest_path = _site_manifest_path(webapps_root, site, kind)
+    manifest_path = _shared_manifest_path(webapps_root, site)
     if manifest_path is None:
-        return {"ok": False, "error": "no_manifest_for_kind"}
+        return {"ok": False, "error": "no_manifest"}
     data = _load_yaml_mapping(manifest_path)
-    entries = data.get("entries")
+    res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+    entries = res.get(kind)
     if not isinstance(entries, list):
         return {"ok": True, "removed": False, "manifest": str(manifest_path)}
     kept = [
@@ -1244,7 +1155,8 @@ def remove_asset_from_manifest(
     ]
     if len(kept) == len(entries):
         return {"ok": True, "removed": False, "manifest": str(manifest_path)}
-    data["entries"] = kept
+    res[kind] = kept
+    data["resources"] = res
     text = yaml.safe_dump(
         data, default_flow_style=False, allow_unicode=True, sort_keys=False
     )
@@ -1252,7 +1164,8 @@ def remove_asset_from_manifest(
         _atomic_write_text(manifest_path, text)
     except OSError as exc:
         return {"ok": False, "error": "write_failed", "detail": str(exc)}
-    return {"ok": True, "removed": True, "manifest": str(manifest_path)}
+    result = {"ok": True, "removed": True, "manifest": str(manifest_path)}
+    return _after_profile_manifest_write(webapps_root, site, kind, result)
 
 
 # --------------------------------------------------------------------------- #
@@ -1302,22 +1215,23 @@ def manifest_kind_for(gallery: str) -> str:
 
 
 def manifest_referenced_paths(webapps_root: str | Path | None, kind: str) -> set[str]:
-    """Every ``asset_path`` referenced by any site ``*<kind>_use.yaml`` manifest.
+    """Every ``asset_path`` in any site's consolidated manifest
+    ``resources[<kind>]`` section.
 
-    Generalizes the icon-only ``_icon_manifest_referenced_paths`` to any kind
-    (profile/image/icon/document/audio); used to gate delete and to flag which
-    library members are in use by some site.
+    Works for any kind (profile/image/icon/document/audio/event/custom); used to
+    gate delete and to flag which library members are in use by some site.
     """
     referenced: set[str] = set()
     kind = _as_text(kind)
     if not webapps_root or not kind:
         return referenced
     pattern = str(
-        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / f"*{kind}_use.yaml"
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / "*.shared_resources.yaml"
     )
     for hit in glob.glob(pattern):
         data = _load_yaml_mapping(Path(hit))
-        for entry in data.get("entries") or []:
+        res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+        for entry in res.get(kind) or []:
             if isinstance(entry, dict):
                 ap = _as_text(entry.get("asset_path"))
                 if ap:
@@ -1478,27 +1392,55 @@ def build_grouped_gallery(
     }
 
 
-def _profile_usage_from(
-    *,
-    in_network: bool,
-    excerpt_paths: list[Path],
-    referenced: bool,
+def _profile_site_index(webapps_root: str | Path | None) -> dict[str, list[tuple[str, bool]]]:
+    """Reverse index ``slug -> [(site, site_has_network_build)]`` built from every
+    site's consolidated manifest ``resources.profile`` section.
+
+    Computed once per ``build_leaflet_index`` call so per-profile usage labels
+    don't re-scan every manifest. ``site_has_network_build`` lets the label say
+    "network map" vs a plain manifest reference.
+    """
+    idx: dict[str, list[tuple[str, bool]]] = {}
+    if not webapps_root:
+        return idx
+    pattern = str(
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets"
+        / "*.shared_resources.yaml"
+    )
+    for path in glob.glob(pattern):
+        site = Path(path).parts[-4]
+        has_build = _site_has_network_build(webapps_root, site)
+        data = _load_yaml_mapping(Path(path))
+        res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+        for entry in res.get("profile") or []:
+            if not isinstance(entry, dict):
+                continue
+            slug = _as_text(entry.get("asset_id")) or _profile_slug(
+                os.path.basename(_as_text(entry.get("asset_path")))
+            )
+            if slug:
+                idx.setdefault(slug, []).append((site, has_build))
+    return idx
+
+
+def _profile_usage_labels(
+    *, sites: list[tuple[str, bool]], excerpt_paths: list[Path]
 ) -> list[str]:
     """Human "in use by" labels from already-computed usage signals.
 
     De-duped, stable order. Shared by :func:`profile_usage` and
-    :func:`build_leaflet_index` so the two never drift.
+    :func:`build_leaflet_index` so the two never drift. A manifest reference on a
+    site that ships a network map reads as "network map"; otherwise as a plain
+    manifest reference. Excerpts read as page content.
     """
     labels: list[str] = []
-    if in_network:
-        labels.append("FND network map (/more)")
+    for site, has_build in sites:
+        labels.append(f"{site} (network map /more)" if has_build else f"{site} (site manifest)")
     for p in excerpt_paths:
         parts = p.parts
         site = parts[parts.index("clients") + 1] if "clients" in parts else ""
         if site:
             labels.append(f"{site} (page content)")
-    if referenced:
-        labels.append("a site's profile_use.yaml manifest")
     seen: set[str] = set()
     out: list[str] = []
     for label in labels:
@@ -1511,9 +1453,9 @@ def _profile_usage_from(
 def profile_usage(webapps_root: str | Path | None, slug: str) -> list[str]:
     """Human labels for every place a profile slug is consumed by a site.
 
-    Explains why the library refuses to delete an in-use profile: it covers the
-    FND network map (``profile_refs``), per-site derived excerpts, and
-    ``profile_use.yaml`` manifest references — the same signals
+    Explains why the library refuses to delete an in-use profile: it covers each
+    site's consolidated manifest ``resources.profile`` section (which drives the
+    network map where present) and per-site derived excerpts — the same signals
     :func:`delete_asset_if_unreferenced` gates on. Empty list = safe to delete.
     """
     if not webapps_root:
@@ -1521,14 +1463,9 @@ def profile_usage(webapps_root: str | Path | None, slug: str) -> list[str]:
     slug = _as_text(slug)
     if not slug:
         return []
-    referenced = any(
-        slug == _profile_slug(os.path.basename(ap))
-        for ap in manifest_referenced_paths(webapps_root, "profile")
-    )
-    return _profile_usage_from(
-        in_network=slug in _fnd_network_refs(webapps_root),
+    return _profile_usage_labels(
+        sites=_profile_site_index(webapps_root).get(slug, []),
         excerpt_paths=_excerpt_paths_for_slug(webapps_root, slug),
-        referenced=referenced,
     )
 
 
@@ -1546,10 +1483,9 @@ def build_leaflet_index(webapps_root: str | Path | None) -> list[dict[str, Any]]
     manifest reference; binaries: a manifest reference), and ``naming`` is the
     lowercased substring-filter key. Sorted by (slug, kind, filename).
     """
-    # The FND network map consumes profiles by slug from its manifest (NOT via
-    # excerpts or *_use.yaml), so fold those refs into a profile's in_use.
-    # Computed once and reused across all profile rows.
-    fnd_refs = _fnd_network_refs(webapps_root) if webapps_root else set()
+    # Reverse index slug -> [(site, has_map)] from every consolidated manifest's
+    # profile section, computed once and reused for every profile row's in_use_by.
+    profile_idx = _profile_site_index(webapps_root)
     rows: list[dict[str, Any]] = []
     for gallery in MANAGED_GALLERIES:
         grouped = build_grouped_gallery(webapps_root, gallery)
@@ -1565,12 +1501,11 @@ def build_leaflet_index(webapps_root: str | Path | None) -> list[dict[str, Any]]
                     # One excerpt glob, reused for both in_use and the "where
                     # used" labels (so the detail pane can tell the operator what
                     # to de-allocate before delete becomes available).
-                    in_use_by = _profile_usage_from(
-                        in_network=slug in fnd_refs,
+                    in_use_by = _profile_usage_labels(
+                        sites=profile_idx.get(slug, []),
                         excerpt_paths=_excerpt_paths_for_slug(webapps_root, slug)
                         if webapps_root
                         else [],
-                        referenced=referenced,
                     )
                     in_use = bool(in_use_by)
                 else:
@@ -1620,19 +1555,22 @@ def _update_manifests_for_asset(
     new_path: str | None = None,
     patch: dict[str, Any] | None = None,
 ) -> list[str]:
-    """Update every ``*<kind>_use.yaml`` entry whose asset_path == match_path.
+    """Update every consolidated-manifest ``resources[<kind>]`` entry whose
+    asset_path == match_path.
 
     Optionally set ``asset_path=new_path`` and/or merge ``patch`` into the
     entry. Atomic per manifest. Returns the list of manifest paths changed.
     """
     updated: list[str] = []
+    kind = _as_text(kind)
     pattern = str(
-        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / f"*{kind}_use.yaml"
+        Path(webapps_root) / "clients" / "*" / "frontend" / "assets" / "*.shared_resources.yaml"
     )
     for hit in sorted(glob.glob(pattern)):
         manifest_path = Path(hit)
         data = _load_yaml_mapping(manifest_path)
-        entries = data.get("entries")
+        res = data.get("resources") if isinstance(data.get("resources"), dict) else {}
+        entries = res.get(kind)
         if not isinstance(entries, list):
             continue
         changed = False
@@ -1802,8 +1740,6 @@ def cascade_rename_profile_slug(
     hand-authored ``/profile/<slug>`` URLs, then ``propagate_profile`` re-derives
     excerpts + rebuilds sites + regenerates the FND map dataset.
     """
-    import json
-
     old_slug = _as_text(old_slug)
     new_slug = _as_text(new_slug)
     report: dict[str, Any] = {
@@ -1834,7 +1770,6 @@ def cascade_rename_profile_slug(
     if _resolve_profile_path(profiles_dir, new_slug) is not None:
         return {"ok": False, "error": "collision", "detail": new_slug}
 
-    webapps = Path(webapps_root)
     new_canonical_name = _replace_slug_token(canonical.name, old_slug, new_slug)
     # Direct filename collision — guards the case where the canonical resolver
     # returns None on an AMBIGUOUS new_slug (0-or-many) yet the target file
@@ -1875,11 +1810,12 @@ def cascade_rename_profile_slug(
     related_files = _find_related_referencing(webapps_root, old_stem, exclude=exclude)
     report["related"] = related_files
 
-    fnd_manifest = (
-        webapps / "clients" / _FND_SITE_DIR / "frontend" / "assets"
-        / "0000-00-00.manifest.fnd.fnd.site.json"
+    # Does this profile feed a network map? (= listed in a mapped site's
+    # consolidated manifest profile section.) Informational + decides the regen.
+    report["fnd_network"] = any(
+        _site_has_network_build(webapps_root, s)
+        for s in _sites_using_profile(webapps_root, old_slug)
     )
-    report["fnd_network"] = old_slug in _fnd_network_refs(webapps_root)
 
     old_asset = "/assets/profiles/" + canonical.name
     new_asset = "/assets/profiles/" + new_canonical_name
@@ -1923,30 +1859,14 @@ def cascade_rename_profile_slug(
             if old_stem in text:
                 _backup_file(p)
                 _atomic_write_text(p, text.replace(old_stem, new_stem))
-        if report["fnd_network"] and fnd_manifest.is_file():
-            try:
-                data = json.loads(fnd_manifest.read_text(encoding="utf-8"))
-                node: Any = data
-                for key in _FND_NETWORK_KEYPATH:
-                    node = node.get(key, {}) if isinstance(node, dict) else {}
-                panel = node.get("panel", {}) if isinstance(node, dict) else {}
-                changed = False
-                for refs_key in ("profile_refs", "farm_profile_refs"):
-                    refs = panel.get(refs_key)
-                    if isinstance(refs, list):
-                        new_refs = [new_slug if _as_text(r) == old_slug else r for r in refs]
-                        if new_refs != refs:
-                            panel[refs_key] = new_refs
-                            changed = True
-                if changed:
-                    _backup_file(fnd_manifest)
-                    _atomic_write_text(
-                        fnd_manifest, json.dumps(data, indent=2, ensure_ascii=False) + "\n"
-                    )
-            except (OSError, ValueError):
-                pass
+        # The profile lives in each site's consolidated manifest profile section
+        # (which drives the map where present), so repointing that entry's
+        # asset_path + asset_id is all that's needed — the obsolete site-JSON
+        # ``profile_refs`` rewrite is gone. The map dataset is regenerated by the
+        # propagate_profile call below (new_slug now in the section).
         report["profile_use"] = _update_manifests_for_asset(
-            webapps_root, "profile", old_asset, new_path=new_asset
+            webapps_root, "profile", old_asset, new_path=new_asset,
+            patch={"asset_id": new_slug},
         )
         for df in data_files:
             p = Path(df)
@@ -2053,9 +1973,10 @@ def delete_asset_if_unreferenced(
         return {"ok": False, "error": "referenced"}
     if gallery == "profiles":
         pslug = _profile_slug(name)
-        # A profile is "in use" if a site has a derived excerpt OR the FND
-        # network map references its slug (which is not a manifest/excerpt ref).
-        if _excerpt_paths_for_slug(webapps_root, pslug) or pslug in _fnd_network_refs(webapps_root):
+        # A profile is "in use" if a site has a derived excerpt. (Manifest
+        # references — including a site's network-map profile section — are
+        # already caught by the manifest_referenced_paths check above.)
+        if _excerpt_paths_for_slug(webapps_root, pslug):
             return {"ok": False, "error": "referenced"}
     try:
         target.unlink()
@@ -2321,26 +2242,14 @@ def _resources_allocation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     for gallery in MANAGED_GALLERIES:
         kind = manifest_kind_for(gallery)
         # Allocation derives its own per-site ``allocated`` flag from
-        # ``used_paths`` below, so skip the all-sites ``referenced`` glob.
+        # ``used_paths`` below, so skip the all-sites ``referenced`` glob. Every
+        # kind (profiles included) reads from the site's consolidated manifest
+        # ``resources[kind]`` section — for a mapped site the profile section IS
+        # the /more network map, so Add/Remove there add/remove map farms.
         grouped = build_grouped_gallery(
             webapps_root, gallery, compute_referenced=False
         )
-        if gallery == "profiles" and site == _FND_SITE_DIR:
-            # FND profiles are "used" by being in the network map's
-            # ``profile_refs`` (NOT profile_use.yaml). Map each ref slug to its
-            # library asset_path so the Add/Remove toggle reflects the map.
-            slug_to_path = {
-                _gallery_slug("profiles", m["filename"]): m["asset_path"]
-                for group in grouped["groups"]
-                for m in group["members"]
-            }
-            used = [
-                {"asset_id": slug, "asset_path": slug_to_path[slug]}
-                for slug in network_profile_refs(webapps_root)
-                if slug in slug_to_path
-            ]
-        else:
-            used = site_manifest_entries(webapps_root, site, kind)
+        used = site_manifest_entries(webapps_root, site, kind)
         used_paths = {e["asset_path"] for e in used}
         candidates = [
             {
@@ -2402,7 +2311,6 @@ __all__ = [
     "MANAGED_GALLERIES",
     "_render_ext_resources",
     "add_asset_to_manifest",
-    "add_profile_to_network_refs",
     "asset_url_prefix_for",
     "build_grouped_gallery",
     "build_leaflet_index",
@@ -2419,13 +2327,11 @@ __all__ = [
     "list_profiles",
     "manifest_kind_for",
     "manifest_referenced_paths",
-    "network_profile_refs",
     "profile_detail",
     "profile_usage",
     "propagate_profile",
     "remove_asset_from_manifest",
     "remove_icon_duplicate",
-    "remove_profile_from_network_refs",
     "rename_slug",
     "resolve_profile_image",
     "retitle_asset",
