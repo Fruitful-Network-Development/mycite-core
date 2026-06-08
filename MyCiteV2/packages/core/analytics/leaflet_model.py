@@ -51,7 +51,7 @@ ANALYTICS_RECORD_KIND = "record-analytics"
 # Event types that become a stored event row. Everything else
 # (heartbeat, scroll) folds into the owning page_view.
 STORED_EVENT_TYPES = frozenset(
-    {"page_view", "click", "form_submit", "outbound_click", "download", "error"}
+    {"page_view", "click", "form_submit", "outbound_click", "download", "error", "ops_probe"}
 )
 FOLD_EVENT_TYPES = frozenset({"heartbeat", "scroll"})
 
@@ -283,8 +283,11 @@ def _fold_into_page_view(session: dict[str, Any], raw: dict[str, Any]) -> None:
         target["visible_time_ms"] = 0
         target["scroll_depth_percent"] = 0
         session["events"].append(target)
-    target["active_time_ms"] += _int(raw.get("active_time_ms"))
-    target["visible_time_ms"] += _int(raw.get("visible_time_ms"))
+    # Heartbeats carry the CUMULATIVE active/visible time for the page (a
+    # running total since page load), so keep the MAX, not the sum — summing the
+    # successive snapshots would multiply the real time by the heartbeat count.
+    target["active_time_ms"] = max(target["active_time_ms"], _int(raw.get("active_time_ms")))
+    target["visible_time_ms"] = max(target["visible_time_ms"], _int(raw.get("visible_time_ms")))
     target["scroll_depth_percent"] = max(
         target["scroll_depth_percent"], _int(raw.get("scroll_depth_percent"))
     )

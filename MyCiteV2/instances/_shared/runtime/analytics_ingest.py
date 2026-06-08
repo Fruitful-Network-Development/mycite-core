@@ -96,7 +96,15 @@ class AnalyticsIngestBuffer:
                 slot = {"entity": entity, "domain": domain, "events": [], "since": time.monotonic()}
                 self._pending[key] = slot
             slot["events"].append(raw)
-            if len(slot["events"]) >= FLUSH_COUNT:
+            # Coalesce the frequent low-value beacons (page_view/heartbeat), but
+            # flush a conversion / high-intent event right away so an
+            # acknowledged lead can't sit in memory and be lost if the worker is
+            # hard-killed (the durability the synchronous-append path used to give).
+            high_value = (
+                raw.get("event_type") in lm.CONVERSION_EVENT_TYPES
+                or raw.get("action") in lm.HIGH_INTENT_ACTIONS
+            )
+            if high_value or len(slot["events"]) >= FLUSH_COUNT:
                 flush_key = key
         self._ensure_timer()
         if flush_key is not None:

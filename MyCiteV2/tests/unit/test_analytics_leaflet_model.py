@@ -65,6 +65,25 @@ class LeafletModelTests(unittest.TestCase):
         self.assertEqual(s["events"][0]["scroll_depth_percent"], 70)
         self.assertEqual(s["session_summary"]["active_time_ms"], 15000)
 
+    def test_heartbeats_use_max_not_sum(self):
+        # The collector posts CUMULATIVE active time each heartbeat; folding must
+        # keep the max, not sum the snapshots (which would 3x a 45s visit).
+        m = _month()
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", page_path="/"))
+        for i, ms in enumerate((15000, 30000, 45000), start=1):
+            lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", page_path="/",
+                                   event_type="heartbeat", active_time_ms=ms,
+                                   event_id=f"hb{i}"))
+        ev = m["visitors"][0]["sessions"][0]["events"][0]
+        self.assertEqual(ev["active_time_ms"], 45000)
+        self.assertEqual(m["visitors"][0]["sessions"][0]["session_summary"]["active_time_ms"], 45000)
+
+    def test_ops_probe_is_stored(self):
+        m = _month()
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", event_type="ops_probe"))
+        self.assertEqual(len(m["visitors"][0]["sessions"][0]["events"]), 1)
+        self.assertEqual(m["visitors"][0]["sessions"][0]["events"][0]["event_type"], "ops_probe")
+
     def test_form_submit_is_conversion(self):
         m = _month()
         lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", page_path="/contact",

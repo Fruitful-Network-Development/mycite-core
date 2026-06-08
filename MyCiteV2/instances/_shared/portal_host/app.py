@@ -5603,9 +5603,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         from MyCiteV2.packages.core.analytics import derivations as _derivations
         from MyCiteV2.packages.core.analytics import leaflet_model as _lm
 
-        # One entity owns a grantee's domain(s) (CVCC owns two). The monthly
-        # leaflets are keyed by entity, so resolve it from the first domain.
-        entity = entity_for_domain(domains[0]) if domains else ""
+        # A grantee is normally one entity, but an entity may own several
+        # domains (CVCC owns two → one leaflet), and defensively a grantee's
+        # domains could resolve to more than one entity. Union the leaflets
+        # across every entity so the summary still sums all of the grantee's
+        # traffic (the per-domain summation the NDJSON path did explicitly).
+        entities = sorted({entity_for_domain(d) for d in domains})
 
         # Leaflets are one file per (entity, YYYY-MM). Enumerate every month
         # that overlaps the requested window (inclusive both ends).
@@ -5623,12 +5626,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # the dashboard's MTD/7d/30d presets set `to` to today, and a user
         # reading "through 2026-05-21" expects that day's events to count).
         all_events: list[dict[str, Any]] = []
-        for leaflet in store.read_range(entity, months):
-            for ev in _lm.flatten_events(leaflet):
-                occurred = _as_text(ev.get("occurred_at_utc"))[:10]
-                if occurred < start_d.isoformat() or occurred > end_d.isoformat():
-                    continue
-                all_events.append(ev)
+        for entity in entities:
+            for leaflet in store.read_range(entity, months):
+                for ev in _lm.flatten_events(leaflet):
+                    occurred = _as_text(ev.get("occurred_at_utc"))[:10]
+                    if occurred < start_d.isoformat() or occurred > end_d.isoformat():
+                        continue
+                    all_events.append(ev)
 
         total_events = 0
         bot_events = 0
