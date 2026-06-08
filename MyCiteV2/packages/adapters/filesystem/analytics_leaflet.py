@@ -72,6 +72,24 @@ def prev_period(period: str) -> str:
     return f"{y:04d}-{m:02d}"
 
 
+def atomic_write_text(path: Path, text: str) -> None:
+    """Atomically write ``text`` to ``path`` (temp in the same dir + os.replace).
+    Shared by the analytics + campaign leaflet stores so a torn write can never
+    read back as a truncated leaflet."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(text)
+        os.replace(tmp, str(path))
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def _month_token(period: str) -> str:
     parts = period.split("-")
     if len(parts) == 2 and parts[1].isdigit() and 1 <= int(parts[1]) <= 12:
@@ -171,23 +189,12 @@ class AnalyticsLeafletStore:
         return dict(payload) if isinstance(payload, dict) else {}
 
     def _write_yaml(self, path: Path, payload: dict[str, Any]) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
         text = yaml.safe_dump(
             payload, sort_keys=False, allow_unicode=True, default_flow_style=False
         )
         if len(text) > LARGE_LEAFLET_BYTES:
             _log.warning("analytics_leaflet_large path=%s bytes=%d", path, len(text))
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(text)
-            os.replace(tmp, str(path))
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        atomic_write_text(path, text)
 
     # -- month API -------------------------------------------------------------
 
@@ -215,14 +222,14 @@ class AnalyticsLeafletStore:
         """flock the month leaflet, load it, hand the dict to ``mutate``, and
         atomically write whatever ``mutate`` returns. ``mutate`` carries the
         analytics semantics (it lives in the runtime layer); this method owns
-        only the lock + load + atomic write.
+        only the lock + load + atomic write. (leaflet_path/load_month/save_month
+        each apply _entity_slug, which is idempotent, so entity passes through.)
         """
-        slug = _entity_slug(entity)
-        target = self.leaflet_path(slug, period)
+        target = self.leaflet_path(entity, period)
         with _FileLock(target):
-            current = self.load_month(slug, period)
+            current = self.load_month(entity, period)
             month = mutate(current)
-            self.save_month(slug, month)
+            self.save_month(entity, month)
             return month
 
 

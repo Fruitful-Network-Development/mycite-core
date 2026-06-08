@@ -58,10 +58,16 @@ def ingest_batch(
             month = lm.empty_month(
                 entity=entity, domain=domain, period=period, generated_at=""
             )
+        before = len(month["visitors"])
         for raw in raw_events:
             lm.merge_event(month, raw)
-        prior = store.load_month(entity, prev_period(period))
-        lm.link_prior_month(month, prior if prior.get("visitors") else None)
+        # Cross-month lineage only needs the prior month when this batch
+        # introduced a NEW visitor (a cookie's returning-flag is set once, when
+        # it first appears this month). Skipping the prior read otherwise avoids
+        # re-parsing the previous month's full leaflet on every heartbeat flush.
+        if len(month["visitors"]) > before:
+            prior = store.load_month(entity, prev_period(period))
+            lm.link_prior_month(month, prior if prior.get("visitors") else None)
         lm.finalize_month(month, generated_at=_now_iso())
         return month
 

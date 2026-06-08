@@ -4342,12 +4342,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # the canonical NDJSON without a stale 60s TTL hit.
 
     # ------------------------------------------------------------------
-    # FND Analytics raw-event collector (Phase 18a)
+    # FND Analytics raw-event collector
     # ------------------------------------------------------------------
     # Browser-facing collector. Every <script src="/__fnd/analytics.js">
-    # in the 3 webdesigns POSTs each captured event here. The endpoint
-    # validates + server-stamps + appends to the canonical NDJSON file
-    # under <webapps>/clients/<domain>/analytics/events/<YYYY-MM>.ndjson.
+    # in the webdesigns POSTs each captured event here. The endpoint
+    # validates + server-stamps + buffers the event into the monthly
+    # site-core analytics leaflet (the single store; see analytics_ingest).
     # Visitor identity is an HttpOnly first-party cookie ``fnd_vid``
     # minted on first request; the hash of that cookie + IP is what
     # actually lands in the event row (the raw values never persist).
@@ -5596,8 +5596,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             requested_msn, fnd_csm_root=_configured_fnd_csm_root()
         )
 
-        from collections import Counter as _Counter
-
         from MyCiteV2.packages.adapters.filesystem import (
             AnalyticsLeafletStore,
             entity_for_domain,
@@ -5610,14 +5608,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         entity = entity_for_domain(domains[0]) if domains else ""
 
         # Leaflets are one file per (entity, YYYY-MM). Enumerate every month
-        # that overlaps the requested window.
-        months: list[str] = []
-        cursor = start_d.replace(day=1)
-        while cursor <= end_d:
-            months.append(cursor.strftime("%Y-%m"))
-            year, month = cursor.year, cursor.month
-            cursor = cursor.replace(year=year + 1, month=1) if month == 12 \
-                else cursor.replace(month=month + 1)
+        # that overlaps the requested window (inclusive both ends).
+        months = _derivations._year_months_between(
+            start_d.strftime("%Y-%m"), end_d.strftime("%Y-%m")
+        )
 
         store = AnalyticsLeafletStore(
             private_dir=host_config.private_dir,
@@ -5665,74 +5659,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         def _top(d: dict[str, int], n: int = 10) -> list[dict[str, int | str]]:
             return [{"key": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:n]]
 
-        # Schema-v3 / JSON Analytics Log Vision derivations.
-        humans, bots = _derivations.filter_bots(all_events)
-        sessions = _derivations.sessionize(humans)
-
-        # Visitor summaries — top 10 by total active time.
-        visitor_tokens: list[str] = []
-        seen_v: set[str] = set()
-        for ev in humans:
-            t = _as_text(ev.get("visitor_cookie_id_hash"))
-            if t and t not in seen_v:
-                seen_v.add(t)
-                visitor_tokens.append(t)
-        v_summaries = [
-            _derivations.visitor_summary(humans, vt) for vt in visitor_tokens
-        ]
-        v_summaries.sort(key=lambda v: v.get("total_active_time_ms") or 0, reverse=True)
-        visitor_summary_top10 = v_summaries[:10]
-
-        # Interest-category rollup across all visitors.
-        interest_counts: _Counter = _Counter()
-        interest_total_views = 0
-        for vt in visitor_tokens:
-            prof = _derivations.visitor_interest_profile(humans, vt)
-            for cat, info in (prof.get("categories") or {}).items():
-                interest_counts[cat] += info.get("hits", 0)
-            interest_total_views += prof.get("total_page_views", 0)
-        interest_profile_categories = (
-            [
-                {
-                    "category": cat,
-                    "hits": hits,
-                    "pct_of_views": round(100 * hits / interest_total_views, 2)
-                    if interest_total_views
-                    else 0.0,
-                }
-                for cat, hits in interest_counts.most_common()
-            ]
-            if interest_total_views
-            else []
+        # Shared derivation pipeline — the SAME rollups the operator
+        # ext_analytics extension uses (one source, no drift).
+        from MyCiteV2.instances._shared.runtime.analytics_rollups import (
+            derive_insights,
         )
 
-        abandoned = _derivations.abandoned_intent_sessions(sessions)
-        dead_ends = _derivations.dead_end_pages(sessions)
-        assists = _derivations.conversion_assisting_pages(humans)
-        origin_dist = _derivations.traffic_origin_classification(humans)
-
-        # Bot-classifier breakdown for the bot_separation widget.
-        bot_class_counts: _Counter = _Counter()
-        for ev in bots:
-            bot_class_counts[_as_text(ev.get("bot_class")) or "unclassified"] += 1
-        bot_separation = {
-            "human_events": len(humans),
-            "bot_events": len(bots),
-            "bot_class_breakdown": [
-                {"bot_class": k, "count": v}
-                for k, v in bot_class_counts.most_common()
-            ],
-        }
-
-        # Quality-flag triage histogram (operator-only payload key).
-        quality_flag_counts: _Counter = _Counter()
-        for ev in all_events:
-            for tok in ev.get("quality_flags") or []:
-                quality_flag_counts[tok] += 1
-        debugging_triage_buckets = [
-            {"flag": flag, "count": count}
-            for flag, count in quality_flag_counts.most_common()
-        ]
+        ins = derive_insights(all_events)
+        humans, bots = ins["humans"], ins["bots"]
+        origin_dist = ins["origin_distribution"]
+        bot_separation = ins["bot_separation"]
+        visitor_summary_top10 = ins["visitor_summary_top10"]
+        interest_profile_categories = ins["interest_profile_categories"]
+        abandoned = ins["abandoned"]
+        dead_ends = ins["dead_ends"]
+        assists = ins["assists"]
+        debugging_triage_buckets = ins["quality_flag_buckets"]
 
         # Pie-chart-friendly aggregates for the Overview sub-tab. Each is a
         # ranked [{key, count}] list (plus the human/bot split) the dashboard
@@ -5740,7 +5682,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         widgets = {
             "referrers_by_sessions": [
                 {"key": r["referrer_domain"], "count": r["sessions"]}
-                for r in _derivations.rank_referrers(humans, top_k=8)
+                for r in ins["top_referrers_by_session"][:8]
             ],
             "origin_distribution": [
                 {"key": k, "count": v.get("sessions", 0)}

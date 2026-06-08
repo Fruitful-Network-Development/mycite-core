@@ -43,6 +43,7 @@ from itertools import pairwise
 from typing import Any
 
 from .derivations import classify_origin
+from .event_schema import _iso_to_epoch_ms
 
 ANALYTICS_RECORD_SCHEMA = "mycite.site_core.analytics_record.v1"
 ANALYTICS_RECORD_KIND = "record-analytics"
@@ -278,7 +279,6 @@ def _fold_into_page_view(session: dict[str, Any], raw: dict[str, Any]) -> None:
         # into; the active time still lands on the session via recompute.
         # Stash a synthetic page_view so the time isn't lost.
         target = _stored_event(raw, "page_view", _txt(raw.get("occurred_at_utc") or raw.get("occurred_at")))
-        target["event_type"] = "page_view"
         target["active_time_ms"] = 0
         target["visible_time_ms"] = 0
         target["scroll_depth_percent"] = 0
@@ -338,7 +338,7 @@ def _recompute_visitor_flags(visitor: dict[str, Any]) -> None:
     for s in visitor["sessions"]:
         for e in s["events"]:
             if e["event_type"] == "page_view":
-                ms = _iso_ms(e.get("occurred_at"))
+                ms = _iso_to_epoch_ms(e.get("occurred_at"))
                 if ms is not None:
                     occured.append(ms)
     occured.sort()
@@ -454,18 +454,6 @@ def _device_of(raw: dict[str, Any]) -> str:
     if width:
         return "desktop"
     return ""
-
-
-def _iso_ms(iso: Any) -> int | None:
-    token = _txt(iso)
-    if not token:
-        return None
-    try:
-        from datetime import datetime as _dt
-
-        return int(_dt.fromisoformat(token.replace("Z", "+00:00")).timestamp() * 1000)
-    except (TypeError, ValueError):
-        return None
 
 
 def _min_iso(a: Any, b: Any) -> str:

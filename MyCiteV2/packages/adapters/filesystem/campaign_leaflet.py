@@ -18,16 +18,14 @@ alongside the data they describe; only ``*.example.*`` is tracked.
 from __future__ import annotations
 
 import logging
-import os
 import secrets
-import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-from .analytics_leaflet import _analytics_dir_for
+from .analytics_leaflet import _analytics_dir_for, atomic_write_text
 from .contact_leaflet import _entity_slug  # entity→fs-safe slug, shared with the roster store
 
 _log = logging.getLogger("mycite.portal_host")
@@ -90,20 +88,8 @@ class CampaignLeafletStore:
             "domain": _txt(domain),
             "campaigns": campaigns,
         }
-        path = self.leaflet_path(slug)
-        path.parent.mkdir(parents=True, exist_ok=True)
         text = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
-        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(text)
-            os.replace(tmp, str(path))
-        except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
-            raise
+        atomic_write_text(self.leaflet_path(slug), text)
 
     def list_campaigns(self, entity: str) -> list[dict[str, Any]]:
         payload = self._read(entity)
