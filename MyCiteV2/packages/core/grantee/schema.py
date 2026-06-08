@@ -64,6 +64,11 @@ class PaypalConfig:
     # REST mediation. payment_link is the donate URL used in link mode.
     mode: str = "link"
     payment_link: str = ""
+    # PayPal Billing Plan id for a recurring subscription checkout (rest mode).
+    # When set, the site renders a subscription button (vault=true&intent=
+    # subscription, actions.subscription.create({plan_id})); when empty, the
+    # rest flow is a one-time order. Public (safe to serve to the browser).
+    plan_id: str = ""
 
     def __post_init__(self) -> None:
         env = _as_text(self.environment).lower() or "sandbox"
@@ -83,6 +88,7 @@ class PaypalConfig:
         object.__setattr__(self, "webhook_id", _as_text(self.webhook_id))
         object.__setattr__(self, "client_id", _as_text(self.client_id))
         object.__setattr__(self, "client_secret", _as_text(self.client_secret))
+        object.__setattr__(self, "plan_id", _as_text(self.plan_id))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -93,6 +99,7 @@ class PaypalConfig:
             "environment": self.environment,
             "mode": self.mode,
             "payment_link": self.payment_link,
+            "plan_id": self.plan_id,
         }
 
     @classmethod
@@ -111,6 +118,7 @@ class PaypalConfig:
             environment=_as_text(data.get("environment")) or "sandbox",
             mode=mode,
             payment_link=_as_text(data.get("payment_link")),
+            plan_id=_as_text(data.get("plan_id")),
         )
 
 

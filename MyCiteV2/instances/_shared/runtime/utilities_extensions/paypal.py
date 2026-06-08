@@ -76,53 +76,21 @@ def _build_paypal_extension_payload(
     grantee: dict[str, Any],
     domain: str,
     private_dir: str | Path | None,
-    authority_db_file: str | Path | None = None,
-    portal_instance_id: str | None = None,
+    authority_db_file: str | Path | None = None,  # accepted, no longer used (no MOS)
+    portal_instance_id: str | None = None,        # accepted, no longer used (no MOS)
 ) -> dict[str, Any]:
+    """PayPal dashboard payload sourced ENTIRELY from instance-specific files —
+    no MOS. The webhook URL is the canonical inline ``grantee.paypal.webhook_url``
+    (operator-edited in the grantee profile); the recent-orders log is read from
+    the instance NDJSON ledger. ``authority_db_file``/``portal_instance_id`` are
+    retained in the signature for call-site compatibility but are unused.
+    """
     orders: list[dict[str, Any]] = []
-    webhook_url = ""
 
-    # Phase 8 (grantee_profile_contract.md): inline grantee.paypal.webhook_url
-    # is the canonical source. MOS adapter + sidecar remain as fallbacks for
-    # one transition cycle.
-    grantee_paypal = _as_dict(grantee.get("paypal"))
-    if grantee_paypal:
-        webhook_url = _as_text(grantee_paypal.get("webhook_url"))
-
-    if authority_db_file is not None:
-        try:
-            from MyCiteV2.packages.adapters.sql.fnd_paypal import (
-                MosDatumPayPalOrdersAdapter,
-                MosDatumPayPalWebhookAdapter,
-            )
-
-            orders_adapter = MosDatumPayPalOrdersAdapter(
-                authority_db_file=authority_db_file,
-                tenant_id=portal_instance_id or "fnd",
-            )
-            if domain:
-                orders = orders_adapter.load_orders(domain=domain)
-            # Phase 8: only consult the MOS webhook adapter when the grantee
-            # JSON did not already supply a webhook_url. Grantee-inline wins.
-            if not webhook_url:
-                grantee_msn = _as_text(grantee.get("msn_id"))
-                if grantee_msn:
-                    webhook_adapter = MosDatumPayPalWebhookAdapter(
-                        authority_db_file=authority_db_file,
-                        tenant_id=portal_instance_id or "fnd",
-                    )
-                    hook = webhook_adapter.load_webhook(grantee_msn_id=grantee_msn)
-                    if hook:
-                        webhook_url = _as_text(hook.get("webhook_url"))
-        except Exception:
-            _log.warning("paypal_mos_orders_webhook_load_failed", exc_info=True)
-            orders = []
-            # Preserve a grantee-inline webhook_url even if the MOS adapter
-            # threw; it was set before this try block ran.
-
-    # Phase 10: build the configuration mirror up front so it's attached
-    # to whichever return path executes (MOS shortcut or filesystem fallback).
+    # Canonical webhook source: the inline grantee paypal sub-config (instance
+    # file). No MOS adapter, no paypal-webhook.<msn>.json sidecar fallback.
     paypal_subconfig = _as_dict(grantee.get("paypal"))
+    webhook_url = _as_text(paypal_subconfig.get("webhook_url"))
 
     def _paypal_configuration() -> dict[str, Any]:
         return {
@@ -137,16 +105,7 @@ def _build_paypal_extension_payload(
             "edit_link": _grantee_edit_link("paypal"),
         }
 
-    if orders or webhook_url:
-        return {
-            "domain": domain,
-            "webhook_url": webhook_url,
-            "orders": orders,
-            "configuration": _paypal_configuration(),
-            "export_action": _export_action(domain),
-        }
-
-    # Filesystem fallback (unchanged from the pre-MOS behavior).
+    # Recent-orders log: instance NDJSON ledger (most-recent-first, capped).
     if private_dir is not None:
         orders_path = Path(private_dir) / "utilities" / "tools" / "paypal-csm" / "orders.ndjson"
         try:
@@ -172,22 +131,9 @@ def _build_paypal_extension_payload(
                                 break
                     except Exception:
                         _log.warning("paypal_order_line_parse_failed", exc_info=True)
-                        pass
         except Exception:
             _log.warning("paypal_orders_ndjson_read_failed", exc_info=True)
-            pass
-        # Optional per-grantee webhook config — only consulted when no
-        # grantee-inline webhook_url (Phase 8 precedence).
-        if not webhook_url:
-            msn_id = _as_text(grantee.get("msn_id"))
-            webhook_path = Path(private_dir) / "utilities" / "tools" / "fnd-csm" / f"paypal-webhook.{msn_id}.json"
-            try:
-                if webhook_path.exists():
-                    wh = json.loads(webhook_path.read_text(encoding="utf-8"))
-                    webhook_url = _as_text(_as_dict(wh).get("webhook_url"))
-            except Exception:
-                _log.warning("paypal_webhook_sidecar_read_failed", exc_info=True)
-                pass
+
     return {
         "domain": domain,
         "webhook_url": webhook_url,

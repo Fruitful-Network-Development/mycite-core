@@ -4727,6 +4727,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "payment_link": _as_text(getattr(paypal, "payment_link", "")) if paypal else "",
             "client_id": client_id,
             "environment": _as_text(paypal.environment) if paypal else "sandbox",
+            "plan_id": _as_text(getattr(paypal, "plan_id", "")) if paypal else "",
             "webhook_url": _as_text(paypal.webhook_url) if paypal else "",
             "webhook_id": _as_text(paypal.webhook_id) if paypal else "",
             "has_secret": bool(secret),
@@ -4773,6 +4774,35 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "ok": True,
             "paypal": _paypal_config_view(profile.paypal),
             "receipt": _receipt_config_view(profile.receipt),
+        }), 200
+
+    @app.get("/__fnd/paypal/config")
+    def fnd_paypal_public_config() -> tuple[Any, int]:
+        """PUBLIC, domain-resolved PayPal config for the site's checkout JS.
+
+        Resolves the grantee by request Host (the same way create-order does) and
+        returns ONLY the fields the browser needs to load the SDK / pick the flow:
+        mode, client_id, environment, plan_id, payment_link. The client_secret is
+        NEVER returned (client_id is public by PayPal's design). No oauth gate —
+        this is consumed by the public donate/subscribe pages.
+        """
+        domain = _normalize_domain(request.host)
+        grantee = _load_grantee_for_domain(host_config.private_dir, domain)
+        cfg = (
+            grantee.get("paypal")
+            if grantee and isinstance(grantee.get("paypal"), dict)
+            else {}
+        )
+        mode = _as_text(cfg.get("mode")).lower()
+        if not mode:
+            mode = "rest" if _as_text(cfg.get("client_secret")) else "link"
+        return jsonify({
+            "ok": True,
+            "mode": mode,
+            "client_id": _as_text(cfg.get("client_id")),
+            "environment": _as_text(cfg.get("environment")) or "sandbox",
+            "plan_id": _as_text(cfg.get("plan_id")),
+            "payment_link": _as_text(cfg.get("payment_link")),
         }), 200
 
     @app.post("/__fnd/paypal/admin/update")
@@ -4850,6 +4880,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             new_client_secret = _as_text(body.get("client_secret"))
             if new_client_secret:
                 merged["client_secret"] = new_client_secret
+            # plan_id is public (GET returns it), so the form round-trips it;
+            # honor it whenever the key is present (allows set AND clear).
+            if "plan_id" in body:
+                merged["plan_id"] = _as_text(body.get("plan_id"))
 
         try:
             next_profile = _dc_replace(profile, paypal=PaypalConfig.from_dict(merged))
