@@ -1,8 +1,11 @@
 """ext_analytics — page-view + event aggregates + derived insights.
 
-Phase 18c rewrites the renderer so insights derive on demand from
-the canonical raw NDJSON log (Phase 18a) via the pure functions in
-``MyCiteV2.packages.core.analytics.derivations``. The operator sees:
+Insights derive on demand from the canonical monthly analytics *leaflet*
+(``<YYYY-MM>-00.record-analytics.<entity>-website.<month>_analytics.yaml`` under
+``clients/_shared/site-core/analytics``) via the pure functions in
+``MyCiteV2.packages.core.analytics.derivations``. The leaflet replaced the raw
+NDJSON log — it is the single store the dashboard reads too, so the operator
+extension and the grantee dashboard never diverge. The operator sees:
 
   * Summary counts (humans-only + bots-only)
   * Visitor count + repeat-visitor count
@@ -11,11 +14,8 @@ the canonical raw NDJSON log (Phase 18a) via the pure functions in
   * Top entry / exit pages
   * Common page-path sequences
 
-The read is bounded to the current + previous month's NDJSON files
-to keep per-request latency tight. No MOS-side persistence exists
-for analytics any more (the MosDatumAnalyticsSummaryAdapter was
-retired 2026-05; see docs/contracts/analytics_event_schema.md).
-Refresh just bumps the in-memory summary cache generation token.
+The read is bounded to the current + previous month's leaflet to keep
+per-request latency tight.
 """
 
 from __future__ import annotations
@@ -57,20 +57,24 @@ def _refresh_action(domain: str) -> dict[str, Any]:
 
 def _build_analytics_extension_payload(
     domain: str,
-    analytics_root: str | Path | None = None,
-    authority_db_file: str | Path | None = None,
-    portal_instance_id: str | None = None,
-    webapps_root: str | Path | None = None,  # legacy fallback only
+    private_dir: str | Path | None = None,
+    webapps_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+    from MyCiteV2.instances._shared.runtime.analytics_rollups import derive_insights
+    from MyCiteV2.packages.adapters.filesystem import (
+        AnalyticsLeafletStore,
+        entity_for_domain,
+    )
+    from MyCiteV2.packages.core.analytics import derivations
+    from MyCiteV2.packages.core.analytics import leaflet_model as lm
 
     data_source: dict[str, str] = {
         "label": "Data source",
-        "summary": "Raw events read from the canonical NDJSON log; insights derived on demand.",
+        "summary": "Monthly analytics leaflet (site-core); insights derived on demand.",
         "events_dir": "",
         "kind": "",
     }
-    if not domain:
+    if not domain or private_dir is None:
         return {
             "domain": domain,
             "summary": {},
@@ -80,25 +84,14 @@ def _build_analytics_extension_payload(
             "notice": "No domain selected.",
         }
 
-    if analytics_root is not None:
-        resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
-    elif webapps_root is not None:
-        resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
-    else:
-        resolver = AnalyticsEventPathResolver()
-    data_source["events_dir"] = str(resolver.analytics_root)
+    store = AnalyticsLeafletStore(private_dir=private_dir, webapps_root=webapps_root)
+    entity = entity_for_domain(domain)
+    data_source["events_dir"] = str(store.analytics_dir)
 
-    # Phase 18c: on-demand derivation from the raw NDJSON. Bounded
-    # to the last 2 month files so the read stays cheap (<200ms for
-    # any realistic event volume).
-    from MyCiteV2.packages.core.analytics import derivations
-
-    year_months = _current_year_months(n=2)
-    events = list(
-        derivations.read_events(
-            domain=domain, year_months=year_months, resolver=resolver
-        )
-    )
+    # Bounded to the last 2 monthly leaflets so the read stays cheap.
+    events: list[dict[str, Any]] = []
+    for leaflet in store.read_range(entity, _current_year_months(n=2)):
+        events.extend(lm.flatten_events(leaflet))
     if not events:
         data_source["kind"] = "pending"
         return {
@@ -114,12 +107,24 @@ def _build_analytics_extension_payload(
             "refresh_action": _refresh_action(domain),
         }
 
-    data_source["kind"] = "raw_events"
+    data_source["kind"] = "leaflet"
     data_source["computed_at"] = datetime.now(UTC).isoformat()
     data_source["event_count"] = str(len(events))
 
-    humans, bots = derivations.filter_bots(events)
-    sessions = derivations.sessionize(humans)
+    # Shared derivation pipeline — the SAME rollups the dashboard summary route
+    # uses (one source, no drift). The extension layers a few of its own views.
+    ins = derive_insights(events)
+    humans, bots, sessions = ins["humans"], ins["bots"], ins["sessions"]
+    top_paths = ins["top_paths"]
+    top_referrers = ins["top_referrers_by_session"]
+    visitor_summary_top10 = ins["visitor_summary_top10"]
+    interest_profile_categories = ins["interest_profile_categories"]
+    abandoned = ins["abandoned"]
+    dead_ends = ins["dead_ends"]
+    assists = ins["assists"]
+    origin_distribution = ins["origin_distribution"]
+    bot_separation = ins["bot_separation"]
+    debugging_triage_buckets = ins["quality_flag_buckets"]
 
     # 4-bucket summary (humans only) — matches the legacy shape so
     # the JS card's "Event totals" table keeps rendering.
@@ -141,95 +146,17 @@ def _build_analytics_extension_payload(
     ]
     recent_events.reverse()
 
-    top_paths = derivations.rank_pages_by_attention(humans, top_k=10)
-    top_referrers = derivations.rank_referrers(humans, top_k=10)
+    # Extension-only views the dashboard summary doesn't surface.
     top_entry_pages = derivations.top_entry_pages(sessions, top_k=10)
     top_exit_pages_ = derivations.top_exit_pages(sessions, top_k=10)
-    common_paths = derivations.find_common_paths(humans, min_length=2, top_k=10)
     common_paths_rows = [
         {"path": " → ".join(row["path"]), "count": row["count"]}
-        for row in common_paths
+        for row in derivations.find_common_paths(humans, min_length=2, top_k=10)
     ]
     visitor_count = derivations.count_visitors(humans, include_bots=False)
     repeat_visitor_count = derivations.count_repeat_visitors(sessions, min_sessions=2)
     high_intent_count = len(derivations.high_intent_sessions(sessions))
     vpn_flags = derivations.detect_vpn_geo_jumps(humans)
-
-    # Schema-v3 / JSON Analytics Log Vision additions.
-    abandoned = derivations.abandoned_intent_sessions(sessions)
-    dead_ends = derivations.dead_end_pages(sessions)
-    assists = derivations.conversion_assisting_pages(humans)
-    origin_distribution = derivations.traffic_origin_classification(humans)
-
-    # Top-10 visitor summaries by total active time. Built one visitor
-    # at a time over the de-duplicated set; cheaper than O(visitors^2)
-    # because each derivation pass is linear over the event list.
-    visitor_tokens: list[str] = []
-    seen_tokens: set[str] = set()
-    for ev in humans:
-        token = ev.get("visitor_cookie_id_hash") or ""
-        if token and token not in seen_tokens:
-            seen_tokens.add(token)
-            visitor_tokens.append(token)
-    visitor_summaries = [
-        derivations.visitor_summary(humans, vt) for vt in visitor_tokens
-    ]
-    visitor_summaries.sort(
-        key=lambda v: v.get("total_active_time_ms") or 0, reverse=True
-    )
-    visitor_summary_top10 = visitor_summaries[:10]
-
-    # Interest profile rolled up across all visitors: union the
-    # per-visitor category counters into one site-wide histogram.
-    interest_counts: Counter = Counter()
-    interest_total_views = 0
-    for vt in visitor_tokens:
-        prof = derivations.visitor_interest_profile(humans, vt)
-        for cat, info in (prof.get("categories") or {}).items():
-            interest_counts[cat] += info.get("hits", 0)
-        interest_total_views += prof.get("total_page_views", 0)
-    interest_profile_categories = (
-        [
-            {
-                "category": cat,
-                "hits": hits,
-                "pct_of_views": round(100 * hits / interest_total_views, 2)
-                if interest_total_views
-                else 0.0,
-            }
-            for cat, hits in interest_counts.most_common()
-        ]
-        if interest_total_views
-        else []
-    )
-
-    # Quality-flags triage histogram over the whole sample.
-    quality_flag_counts: Counter = Counter()
-    for ev in events:
-        for token in ev.get("quality_flags") or []:
-            quality_flag_counts[token] += 1
-    debugging_triage_buckets = [
-        {"flag": flag, "count": count}
-        for flag, count in quality_flag_counts.most_common()
-    ]
-
-    # Bot separation: counts split by classifier outcome.
-    bot_class_counts: Counter = Counter()
-    for ev in bots:
-        bot_class_counts[ev.get("bot_class") or "unclassified"] += 1
-    bot_separation = {
-        "human_events": len(humans),
-        "bot_events": len(bots),
-        "bot_class_breakdown": [
-            {"bot_class": k, "count": v}
-            for k, v in bot_class_counts.most_common()
-        ],
-    }
-
-    # Suppress the unused authority_db / instance_id args for now —
-    # the on-demand derivation path doesn't need MOS data. The
-    # caller's existing context still passes them through.
-    del authority_db_file, portal_instance_id
 
     return {
         "domain": domain,
@@ -263,7 +190,7 @@ def _build_analytics_extension_payload(
         "origin_type_distribution": origin_distribution,
         "bot_separation": bot_separation,
         "debugging_triage_buckets": debugging_triage_buckets,
-        "source": "raw_events",
+        "source": "leaflet",
         "data_source": data_source,
         "refresh_action": _refresh_action(domain),
     }
@@ -278,16 +205,9 @@ def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
             extension_label="Analytics",
             summarize=lambda g: f"{len(g.get('domains') or [])} domain(s)",
         )
-    # ctx may supply analytics_root directly, or a private_dir from which
-    # we derive it, or the legacy webapps_root as a last resort.
-    analytics_root = ctx.get("analytics_root")
-    if analytics_root is None and ctx.get("private_dir") is not None:
-        analytics_root = Path(ctx["private_dir"]) / "utilities" / "tools" / "analytics"
     return _build_analytics_extension_payload(
         domain=_as_text(ctx.get("domain")),
-        analytics_root=analytics_root,
-        authority_db_file=ctx.get("authority_db_file"),
-        portal_instance_id=ctx.get("portal_instance_id"),
+        private_dir=ctx.get("private_dir"),
         webapps_root=ctx.get("webapps_root"),
     )
 

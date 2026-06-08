@@ -1,14 +1,16 @@
-"""Phase 18a — /__fnd/analytics/event route contract.
+"""/__fnd/analytics/event route contract (leaflet cutover).
 
 Verifies:
-  * Valid event lands in the NDJSON file with the right schema +
-    server-stamped fields.
-  * First POST mints a fnd_vid cookie via Set-Cookie; second POST
-    re-uses the visitor hash.
-  * Googlebot UA flips is_bot=True + bot_class=verified_search.
-  * Invalid bodies (missing required field, unknown event_type)
-    → 400.
+  * Valid event lands in the monthly leaflet (visitor → session → event) with
+    the right server-stamped fields.
+  * First POST mints a fnd_vid cookie via Set-Cookie; a repeat visitor re-uses
+    the visitor hash (one visitor, two page_views).
+  * Googlebot UA flips the visitor's bot_assessment.is_bot + bot_class.
+  * Invalid bodies (missing required field, unknown event_type) → 400.
   * Same visitor + page + event_type within 250ms is dedup'd.
+
+The event route buffers writes (heartbeats are frequent); tests flush the
+in-process buffer explicitly before reading the leaflet off disk.
 """
 
 from __future__ import annotations
@@ -29,9 +31,11 @@ FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
 if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
 
+ENTITY = "fruitful_network_development_llc"  # entity_for_domain(fruitfulnetworkdevelopment.com)
+
 
 def _build_client():
-    tmp = Path(tempfile.mkdtemp(prefix="phase18a_event_route_"))
+    tmp = Path(tempfile.mkdtemp(prefix="analytics_event_route_"))
     for sub in ("public", "private", "data", "webapps"):
         (tmp / sub).mkdir()
     config = V2PortalHostConfig(
@@ -45,6 +49,16 @@ def _build_client():
     return create_app(config).test_client(), tmp
 
 
+def _flush_and_load(tmp: Path, period: str = "2026-05"):
+    """Flush the in-process ingest buffer then load the month leaflet."""
+    from MyCiteV2.instances._shared.runtime.analytics_ingest import get_ingest_buffer
+    from MyCiteV2.packages.adapters.filesystem import AnalyticsLeafletStore
+
+    get_ingest_buffer(private_dir=tmp / "private", webapps_root=tmp / "webapps").flush_all()
+    store = AnalyticsLeafletStore(private_dir=tmp / "private", webapps_root=tmp / "webapps")
+    return store.load_month(ENTITY, period)
+
+
 def _minimal_event():
     return {
         "event_type": "page_view",
@@ -56,7 +70,7 @@ def _minimal_event():
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class AnalyticsEventRouteTests(unittest.TestCase):
-    def test_valid_event_lands_in_ndjson(self) -> None:
+    def test_valid_event_lands_in_leaflet(self) -> None:
         client, tmp = _build_client()
         resp = client.post(
             "/__fnd/analytics/event",
@@ -66,21 +80,17 @@ class AnalyticsEventRouteTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(resp.get_json()["ok"])
-        # NDJSON file landed where the resolver expects.
-        # Canonical analytics layout (post-Phase-18a): events under
-        # <private>/utilities/tools/analytics/ as
-        # analytics.<domain>.events.<YYYY-MM>.ndjson.
-        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
-        files = list(events_dir.glob("*.ndjson"))
-        self.assertEqual(len(files), 1)
-        rows = files[0].read_text(encoding="utf-8").strip().splitlines()
-        self.assertEqual(len(rows), 1)
-        row = json.loads(rows[0])
-        self.assertEqual(row["event_type"], "page_view")
-        self.assertEqual(row["page_path"], "/")
-        self.assertEqual(row["domain"], "fruitfulnetworkdevelopment.com")
-        self.assertTrue(row["visitor_cookie_id_hash"])
-        self.assertTrue(row["received_at_utc"])
+        month = _flush_and_load(tmp)
+        self.assertEqual(month["domain"], "fruitfulnetworkdevelopment.com")
+        self.assertEqual(len(month["visitors"]), 1)
+        visitor = month["visitors"][0]
+        self.assertTrue(visitor["visitor_cookie_id_hash"])
+        self.assertEqual(len(visitor["sessions"]), 1)
+        events = visitor["sessions"][0]["events"]
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["event_type"], "page_view")
+        self.assertEqual(events[0]["page_path"], "/")
+        self.assertTrue(events[0]["received_at"])
 
     def test_first_post_mints_cookie(self) -> None:
         client, _ = _build_client()
@@ -93,7 +103,6 @@ class AnalyticsEventRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         cookies = resp.headers.getlist("Set-Cookie")
         self.assertTrue(any("fnd_vid=" in c for c in cookies))
-        # The set cookie should be HttpOnly + SameSite=Lax + Secure.
         vid = next(c for c in cookies if c.startswith("fnd_vid="))
         self.assertIn("HttpOnly", vid)
         self.assertIn("SameSite=Lax", vid)
@@ -101,12 +110,8 @@ class AnalyticsEventRouteTests(unittest.TestCase):
 
     def test_repeat_visitor_reuses_hash(self) -> None:
         client, tmp = _build_client()
-        # Use a different session to avoid the dedup window.
         first_body = dict(_minimal_event(), page_path="/")
         second_body = dict(_minimal_event(), page_path="/about")
-        # The test client persists cookies between requests when we
-        # pass them explicitly via headers — simulate by reading the
-        # first response's Set-Cookie and replaying on the second.
         r1 = client.post(
             "/__fnd/analytics/event",
             data=json.dumps(first_body),
@@ -122,18 +127,13 @@ class AnalyticsEventRouteTests(unittest.TestCase):
             headers={"Cookie": vid_cookie},
             base_url="http://fruitfulnetworkdevelopment.com",
         )
-        # Canonical analytics layout (post-Phase-18a): events under
-        # <private>/utilities/tools/analytics/ as
-        # analytics.<domain>.events.<YYYY-MM>.ndjson.
-        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
-        rows = [
-            json.loads(line)
-            for line in next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        self.assertEqual(len(rows), 2)
+        month = _flush_and_load(tmp)
+        # One visitor (cookie reused), one session, two page_view events.
+        self.assertEqual(len(month["visitors"]), 1)
+        events = month["visitors"][0]["sessions"][0]["events"]
+        self.assertEqual(len(events), 2)
         self.assertEqual(
-            rows[0]["visitor_cookie_id_hash"], rows[1]["visitor_cookie_id_hash"]
+            {e["page_path"] for e in events}, {"/", "/about"}
         )
 
     def test_googlebot_ua_flags_bot(self) -> None:
@@ -147,16 +147,11 @@ class AnalyticsEventRouteTests(unittest.TestCase):
                 "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
             },
         )
-        # Canonical analytics layout (post-Phase-18a): events under
-        # <private>/utilities/tools/analytics/ as
-        # analytics.<domain>.events.<YYYY-MM>.ndjson.
-        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
-        row = json.loads(
-            next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").splitlines()[0]
-        )
-        self.assertTrue(row["is_bot"])
-        self.assertEqual(row["bot_class"], "verified_search")
-        self.assertIn("ua_googlebot", row["bot_evidence"])
+        month = _flush_and_load(tmp)
+        ba = month["visitors"][0]["visitor_context"]["bot_assessment"]
+        self.assertTrue(ba["is_bot"])
+        self.assertEqual(ba["bot_class"], "verified_search")
+        self.assertIn("ua_googlebot", ba["bot_evidence"])
 
     def test_missing_required_field_is_400(self) -> None:
         client, _ = _build_client()
@@ -191,19 +186,11 @@ class AnalyticsEventRouteTests(unittest.TestCase):
                 content_type="application/json",
                 base_url="http://fruitfulnetworkdevelopment.com",
             )
-        # The first POST mints a cookie + writes 1 row.
-        # The next two POSTs hit the dedup window (same visitor hash
-        # for the no-cookie case → same hash because the cookie is
-        # fresh each time, but the test client carries cookies
-        # implicitly within a session so visitor_cookie_id_hash stays
-        # stable).
-        # Canonical analytics layout (post-Phase-18a): events under
-        # <private>/utilities/tools/analytics/ as
-        # analytics.<domain>.events.<YYYY-MM>.ndjson.
-        events_dir = tmp / "private" / "utilities" / "tools" / "analytics"
-        rows = next(events_dir.glob("*.ndjson")).read_text(encoding="utf-8").strip().splitlines()
-        # 1 written, 2 deduped.
-        self.assertEqual(len(rows), 1)
+        # The test client carries the minted cookie across requests, so all
+        # three share a visitor hash + page + event_type → 2 are deduped.
+        month = _flush_and_load(tmp)
+        events = month["visitors"][0]["sessions"][0]["events"]
+        self.assertEqual(len(events), 1)
 
     def test_analytics_js_route_serves_javascript(self) -> None:
         client, _ = _build_client()

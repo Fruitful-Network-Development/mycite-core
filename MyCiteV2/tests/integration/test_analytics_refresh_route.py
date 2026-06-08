@@ -152,15 +152,18 @@ class AnalyticsRefreshRouteTests(unittest.TestCase):
         self.assertFalse(body["ok"])
         self.assertEqual(body["error"], "missing_domain")
 
-    def test_refresh_no_events_dir_returns_404(self) -> None:
+    def test_refresh_unknown_domain_is_ok(self) -> None:
+        # The leaflet is authoritative; refresh just flushes the buffer + bumps
+        # the cache generation, so it is idempotent and harmless for any domain
+        # (no NDJSON events-directory gate any more).
         resp = self.client.post(
             "/__fnd/analytics/refresh",
             json={"domain": "no-such-domain.test"},
         )
-        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.status_code, 200)
         body = resp.get_json()
-        self.assertFalse(body["ok"])
-        self.assertEqual(body["error"], "no_events_directory")
+        self.assertTrue(body["ok"])
+        self.assertTrue(body.get("cache_generation_bumped"))
 
     def test_refresh_does_not_write_to_mos(self) -> None:
         before = _table_counts(self.authority_db)
