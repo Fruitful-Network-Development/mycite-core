@@ -652,7 +652,6 @@ _NEWSLETTER_TARGET_AUTHORITIES = frozenset(
     {
         "newsletter_contact_log",
         "newsletter_profile",
-        "paypal_webhook",
     }
 )
 _NEWSLETTER_OPERATIONS = frozenset(
@@ -669,7 +668,6 @@ _NEWSLETTER_OPERATIONS = frozenset(
         "update_subscription",
         "record_dispatch_result",
         "assign_sender",
-        "save_webhook",
     }
 )
 
@@ -1080,29 +1078,10 @@ def _newsletter_apply_or_preview(
             }
         raise ValueError(f"unsupported_newsletter_profile_operation:{operation}")
 
-    if target_authority == "paypal_webhook":
-        if operation == "save_webhook":
-            from MyCiteV2.packages.adapters.sql.fnd_paypal import (
-                MosDatumPayPalWebhookAdapter,
-            )
-
-            grantee_msn = _as_text(payload.get("grantee_msn_id"))
-            webhook_url = _as_text(payload.get("webhook_url"))
-            if not grantee_msn:
-                raise ValueError("grantee_msn_id is required for save_webhook")
-            adapter = MosDatumPayPalWebhookAdapter(
-                authority_db_file=authority_db_file, tenant_id=tenant_id
-            )
-            if apply:
-                adapter.save_webhook(grantee_msn_id=grantee_msn, webhook_url=webhook_url)
-            return {
-                "operation": operation,
-                "grantee_msn_id": grantee_msn,
-                "webhook_url": webhook_url,
-                "applied": apply,
-            }
-        raise ValueError(f"unsupported_paypal_webhook_operation:{operation}")
-
+    # NOTE: the legacy `paypal_webhook` workbench authority (MOS
+    # MosDatumPayPalWebhookAdapter) was removed 2026-06-08. PayPal webhook config
+    # is the canonical inline grantee.paypal.webhook_url (instance file, no MOS) —
+    # see docs/contracts/instance_payment_storage.md.
     raise ValueError(f"unsupported_target_authority:{target_authority}")
 
 

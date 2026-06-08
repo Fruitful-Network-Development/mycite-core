@@ -60,10 +60,28 @@ def _build_paypal_extension_payload(
     webhook_url = _as_text(paypal_subconfig.get("webhook_url"))
 
     def _paypal_configuration() -> dict[str, Any]:
+        # Surface the active MECHANISM up front so the operator can see, at a
+        # glance, which of link / order / subscription is live for this grantee
+        # without opening the editor: mode=link uses payment_link; mode=rest with
+        # a plan_id is a recurring subscription, without one is a one-time order.
+        mode = _as_text(paypal_subconfig.get("mode")) or (
+            "rest" if _as_text(paypal_subconfig.get("client_secret")) else "link"
+        )
+        plan_id = _as_text(paypal_subconfig.get("plan_id"))
+        if mode == "link":
+            mechanism = "link (hosted payment link)"
+        elif plan_id:
+            mechanism = "subscription (recurring)"
+        else:
+            mechanism = "order (one-time)"
         return {
             "label": "PayPal configuration",
-            "summary": "Webhook URL, client credentials, and environment. Edit in the Grantee Profile.",
+            "summary": "Active mechanism, webhook, credentials, and environment. Edit in the Grantee Profile.",
             "items": [
+                {"label": "Mechanism", "value": mechanism},
+                {"label": "Mode", "value": mode},
+                {"label": "Payment link (link mode)", "value": _as_text(paypal_subconfig.get("payment_link"))},
+                {"label": "Subscription plan ID", "value": plan_id},
                 {"label": "Webhook URL", "value": _as_text(paypal_subconfig.get("webhook_url")) or webhook_url},
                 {"label": "Environment", "value": _as_text(paypal_subconfig.get("environment")) or "sandbox"},
                 {"label": "Client ID", "value": _as_text(paypal_subconfig.get("client_id"))},

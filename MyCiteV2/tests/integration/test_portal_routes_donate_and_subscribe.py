@@ -121,6 +121,12 @@ class TestPreservationRoutesRegistered(unittest.TestCase):
     def test_paypal_capture_order_route_registered(self) -> None:
         self.assertIn("POST", _route_methods_for(self.app, "/__fnd/paypal/capture-order"))
 
+    def test_paypal_public_config_route_registered(self) -> None:
+        # The public, secret-free config endpoint paypal.js fetches to choose its
+        # mechanism. CVCC /donate 404'd here at the nginx layer
+        # (PAYPAL-CONVENTION-2026-06-08); this pins the portal route itself.
+        self.assertIn("GET", _route_methods_for(self.app, "/__fnd/paypal/config"))
+
     def test_newsletter_subscribe_route_registered(self) -> None:
         self.assertIn("POST", _route_methods_for(self.app, "/__fnd/newsletter/subscribe"))
 
@@ -223,6 +229,33 @@ class TestNewsletterKnownDomainsResolution(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix="newsletter_admin_empty_") as tmp:
             # No utilities/tools/newsletter-admin/ subdirectory at all.
             self.assertEqual(_newsletter_known_domains(Path(tmp)), [])
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class TestPaypalPublicConfigContract(unittest.TestCase):
+    """The public GET /__fnd/paypal/config is what frontend paypal.js fetches to
+    pick link vs order vs subscription. It must (a) respond 200 with the mechanism
+    fields and (b) NEVER leak the client secret. This is the contract a missing
+    nginx route silently broke (PAYPAL-CONVENTION-2026-06-08); here we pin the
+    portal's own response shape hermetically (no browser, no PayPal)."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.app = _build_minimal_portal_app()
+
+    def test_config_returns_mechanism_fields_without_secret(self) -> None:
+        client = self.app.test_client()
+        resp = client.get("/__fnd/paypal/config")
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.get_json()
+        self.assertIsInstance(payload, dict)
+        self.assertTrue(payload.get("ok"))
+        # The mechanism-selection fields paypal.js dispatches on must be present.
+        for key in ("mode", "client_id", "environment", "plan_id", "payment_link"):
+            self.assertIn(key, payload, f"config payload missing {key!r}")
+        # The secret is server-only and must NEVER appear in the public payload.
+        self.assertNotIn("client_secret", payload)
+        self.assertNotIn("secret", payload)
 
 
 if __name__ == "__main__":

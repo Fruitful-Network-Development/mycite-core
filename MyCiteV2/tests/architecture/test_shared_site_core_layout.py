@@ -47,8 +47,11 @@ class SharedLibraryLayoutTests(unittest.TestCase):
     def test_newsletter_extension_present(self) -> None:
         self.assertTrue((EXT_DIR / "newsletter.js").is_file())
 
-    def test_donate_extension_present(self) -> None:
-        self.assertTrue((EXT_DIR / "donate.js").is_file())
+    def test_paypal_extension_present(self) -> None:
+        # paypal.js is the unified payment module that replaced donate.js
+        # (PAYPAL-CONVENTION-2026-06-08). donate.js must be gone.
+        self.assertTrue((EXT_DIR / "paypal.js").is_file())
+        self.assertFalse((EXT_DIR / "donate.js").is_file(), "retired donate.js must be removed")
 
     def test_connect_extension_present(self) -> None:
         self.assertTrue((EXT_DIR / "connect.js").is_file())
@@ -68,7 +71,7 @@ class SharedLibraryContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.utils = (JS_DIR / "form-utils.js").read_text(encoding="utf-8")
         cls.newsletter = (EXT_DIR / "newsletter.js").read_text(encoding="utf-8")
-        cls.donate = (EXT_DIR / "donate.js").read_text(encoding="utf-8")
+        cls.paypal = (EXT_DIR / "paypal.js").read_text(encoding="utf-8")
         cls.connect = (EXT_DIR / "connect.js").read_text(encoding="utf-8")
         cls.analytics = (EXT_DIR / "analytics.js").read_text(encoding="utf-8")
 
@@ -89,11 +92,16 @@ class SharedLibraryContractTests(unittest.TestCase):
         self.assertIn('readField(form, "phone")', self.newsletter)
         self.assertIn('readField(form, "zip")', self.newsletter)
 
-    def test_donate_targets_canonical_endpoints(self) -> None:
-        self.assertIn("/__fnd/paypal/create-order", self.donate)
-        self.assertIn("/__fnd/paypal/capture-order", self.donate)
-        self.assertIn("MyciteExtensions.mountDonateForm", self.donate)
-        self.assertIn("data-mycite-donate", self.donate)
+    def test_paypal_targets_canonical_endpoints(self) -> None:
+        # Unified paypal.js: reads the public config endpoint, mediates orders via
+        # create/capture, keeps the legacy donate mount + back-compat global, and
+        # recognizes the declarative [data-paypal] mount.
+        self.assertIn("/__fnd/paypal/config", self.paypal)
+        self.assertIn("/__fnd/paypal/create-order", self.paypal)
+        self.assertIn("/__fnd/paypal/capture-order", self.paypal)
+        self.assertIn("mountDonateForm", self.paypal)
+        self.assertIn("data-mycite-donate", self.paypal)
+        self.assertIn("data-paypal", self.paypal)
 
     def test_connect_targets_canonical_endpoint(self) -> None:
         self.assertIn("/__fnd/connect/submit", self.connect)
@@ -145,7 +153,7 @@ class SiteSyncTargetsTests(unittest.TestCase):
         for leaf in (
             "form-utils.js",
             "newsletter.js",
-            "donate.js",
+            "paypal.js",
             "connect.js",
             "analytics.js",
         ):
@@ -156,7 +164,7 @@ class SiteSyncTargetsTests(unittest.TestCase):
         for leaf in (
             "form-utils.js",
             "newsletter.js",
-            "donate.js",
+            "paypal.js",
             "connect.js",
             "analytics.js",
         ):
@@ -167,7 +175,7 @@ class SiteSyncTargetsTests(unittest.TestCase):
         for leaf in (
             "form-utils.js",
             "newsletter.js",
-            "donate.js",
+            "paypal.js",
             "connect.js",
             "analytics.js",
         ):
@@ -266,7 +274,7 @@ class WebdesignFormWiringTests(unittest.TestCase):
             'data-domain="cuyahogavalleycountrysideconservancy.org"', html
         )
         self.assertIn("mycite-extensions/form-utils.js", html)
-        self.assertIn("mycite-extensions/donate.js", html)
+        self.assertIn("mycite-extensions/paypal.js", html)
 
     def test_fnd_contact_uses_canonical_endpoint(self) -> None:
         html = (
