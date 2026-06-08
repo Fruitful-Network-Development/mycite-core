@@ -4481,9 +4481,33 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         response.headers["Cache-Control"] = "public, max-age=300"
         return response
 
+    def _analytics_webapps_root() -> str | None:
+        # The leaflets live at <webapps_root>/clients/_shared/site-core/analytics.
+        # Live, private_dir is .../mycite/<instance>/private and the store derives
+        # webapps_root from it, so this can be None; tests pass an explicit
+        # webapps_root on the host config. Env is the last resort.
+        if getattr(host_config, "webapps_root", None):
+            return str(host_config.webapps_root)
+        import os as _os
+
+        return _os.environ.get("MYCITE_WEBAPPS_ROOT") or None
+
+    def _campaign_tracked_url(domain: str, campaign: dict[str, Any]) -> str:
+        """Public tracked URL for a campaign: the target page on the grantee's
+        primary domain with the ``?fnd_c=<token>`` attribution param appended.
+        analytics.js reads ``fnd_c`` and stamps it onto the session."""
+        domain = _as_text(domain)
+        target = _as_text(campaign.get("target_path")) or "/"
+        if not target.startswith("/"):
+            target = "/" + target
+        token = _as_text(campaign.get("token"))
+        if not domain:
+            return f"{target}?fnd_c={token}"
+        sep = "&" if "?" in target else "?"
+        return f"https://{domain}{target}{sep}fnd_c={token}"
+
     @app.post("/__fnd/analytics/event")
     def fnd_analytics_event() -> tuple[Any, int]:
-        from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
         from MyCiteV2.packages.core.analytics import RawEvent
 
         body = _json_payload()
@@ -4534,20 +4558,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return response, 200
 
         try:
-            year_month = received_at_utc[:7]
-            # Canonical analytics root: <private>/utilities/tools/analytics.
-            # The resolver falls back to MYCITE_ANALYTICS_ROOT env / default
-            # when no explicit root is provided, but we wire it explicitly
-            # from host_config so smoke tests can boot against a tempdir.
-            analytics_root = None
-            if host_config.private_dir is not None:
-                analytics_root = (
-                    Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
-                )
-            resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
-            resolver.append_payload(
-                domain=domain, year_month=year_month, payload=event.to_dict()
+            # Leaflet is the only store: buffer the event and let the
+            # write-coalescer flush it into the monthly site-core leaflet
+            # (visitors → sessions → events). The buffer keeps the beacon
+            # fast despite frequent heartbeats; the leaflet adapter folds
+            # heartbeats/scrolls into their page_view at merge time.
+            from MyCiteV2.instances._shared.runtime.analytics_ingest import (
+                get_ingest_buffer,
             )
+            from MyCiteV2.packages.adapters.filesystem import entity_for_domain
+
+            if host_config.private_dir is None:
+                return jsonify({"ok": False, "error": "no_private_dir"}), 500
+            entity = entity_for_domain(domain)
+            buffer = get_ingest_buffer(
+                private_dir=host_config.private_dir,
+                webapps_root=_analytics_webapps_root(),
+            )
+            buffer.add(entity, domain, event.to_dict())
         except Exception:
             return jsonify({"ok": False, "error": "storage_error"}), 500
 
@@ -4566,34 +4594,29 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.post("/__fnd/analytics/refresh")
     def fnd_analytics_refresh() -> tuple[Any, int]:
-        """Operator refresh: bump the analytics-cache generation token
-        so every gunicorn worker misses its cache on the next
-        /__fnd/analytics/summary call and recomputes from the canonical
-        NDJSON event log. No analytics state is persisted anywhere
-        outside that NDJSON — the legacy MOS summary adapter is retired
-        (see analytics_event_schema.md)."""
-        from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
-
-        if host_config.authority_db_file is None:
-            # Refresh doesn't touch the DB any more, but a missing
-            # authority_db is a deployment-misconfiguration signal we
-            # don't want to silently swallow. Operator ops monitoring
-            # historically watched for this 500.
-            return jsonify({"ok": False, "error": "authority_db_not_configured"}), 500
-
+        """Operator refresh: flush any buffered events into the monthly
+        leaflet and bump the analytics-cache generation token so every
+        gunicorn worker misses its summary cache on the next
+        /__fnd/analytics/summary call. The leaflet is the authoritative
+        store; this just forces a materialize + recompute."""
         payload = _json_payload()
         domain = _normalize_domain(_as_text(payload.get("domain")))
         if not domain:
             return jsonify({"ok": False, "error": "missing_domain"}), 400
 
-        analytics_root = None
-        if host_config.private_dir is not None:
-            analytics_root = (
-                Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
+        # Flush pending in-memory events so the recompute sees the latest.
+        try:
+            from MyCiteV2.instances._shared.runtime.analytics_ingest import (
+                get_ingest_buffer,
             )
-        resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
-        if not resolver.iter_domain_event_files(domain):
-            return jsonify({"ok": False, "error": "no_events_directory"}), 404
+
+            if host_config.private_dir is not None:
+                get_ingest_buffer(
+                    private_dir=host_config.private_dir,
+                    webapps_root=_analytics_webapps_root(),
+                ).flush_all()
+        except Exception:
+            pass
 
         # Touch the cache-generation token file. Every worker observes
         # the new mtime on its next request and naturally misses the
@@ -5532,14 +5555,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_analytics_summary() -> tuple[Any, int]:
         """Per-grantee analytics rollup for the dashboard Analytics tab.
 
-        Reads the per-domain NDJSON event logs at
-        /srv/webapps/mycite/fnd/private/utilities/tools/analytics/
-        analytics.<domain>.events.<YYYY-MM>.ndjson, filters by the
-        requested window + non-bot, and returns total events, unique
-        visitors, and top pages. Window is half-open: [from, to).
+        Reads the monthly analytics leaflets at
+        /srv/webapps/clients/_shared/site-core/analytics/
+        <YYYY-MM>-00.record-analytics.<entity>-website.<month>_analytics.yaml,
+        flattens them to the event shape the derivations consume, filters by
+        the requested window + non-bot, and returns totals, top pages, and the
+        widget aggregates. Window is inclusive on both ends.
         """
         import time as _time
-        from itertools import product
 
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
@@ -5569,11 +5592,25 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             for stale_key in [k for k in _ANALYTICS_SUMMARY_CACHE if k[3] < cache_gen]:
                 _ANALYTICS_SUMMARY_CACHE.pop(stale_key, None)
 
-        domains = domains_for_grantee(requested_msn)
-        analytics_root = Path(host_config.private_dir) / "utilities" / "tools" / "analytics"
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
 
-        # NDJSON shards are one file per (domain, YYYY-MM). Enumerate
-        # every month that overlaps the requested window.
+        from collections import Counter as _Counter
+
+        from MyCiteV2.packages.adapters.filesystem import (
+            AnalyticsLeafletStore,
+            entity_for_domain,
+        )
+        from MyCiteV2.packages.core.analytics import derivations as _derivations
+        from MyCiteV2.packages.core.analytics import leaflet_model as _lm
+
+        # One entity owns a grantee's domain(s) (CVCC owns two). The monthly
+        # leaflets are keyed by entity, so resolve it from the first domain.
+        entity = entity_for_domain(domains[0]) if domains else ""
+
+        # Leaflets are one file per (entity, YYYY-MM). Enumerate every month
+        # that overlaps the requested window.
         months: list[str] = []
         cursor = start_d.replace(day=1)
         while cursor <= end_d:
@@ -5582,16 +5619,22 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             cursor = cursor.replace(year=year + 1, month=1) if month == 12 \
                 else cursor.replace(month=month + 1)
 
-        # Single read pass: maintain the cheap inline counters AND
-        # collect the event list so the derivations module can compute
-        # the schema-v3 / JSON Analytics Log Vision rollups below. The
-        # 60-second TTL cache keeps a repeat call cheap even though
-        # this pass is now O(events) in memory; in practice the
-        # grantee-scoped window is a few thousand events / month per
-        # domain so this is fine.
-        from collections import Counter as _Counter
+        store = AnalyticsLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
 
-        from MyCiteV2.packages.core.analytics import derivations as _derivations
+        # Flatten every in-window leaflet month into the flat event shape the
+        # derivations consume, then filter to [from, to] (inclusive both ends:
+        # the dashboard's MTD/7d/30d presets set `to` to today, and a user
+        # reading "through 2026-05-21" expects that day's events to count).
+        all_events: list[dict[str, Any]] = []
+        for leaflet in store.read_range(entity, months):
+            for ev in _lm.flatten_events(leaflet):
+                occurred = _as_text(ev.get("occurred_at_utc"))[:10]
+                if occurred < start_d.isoformat() or occurred > end_d.isoformat():
+                    continue
+                all_events.append(ev)
 
         total_events = 0
         bot_events = 0
@@ -5599,47 +5642,25 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         page_counts: dict[str, int] = {}
         referrer_counts: dict[str, int] = {}
         event_type_counts: dict[str, int] = {}
-        all_events: list[dict[str, Any]] = []
-
-        for domain, month in product(domains, months):
-            path = analytics_root / f"analytics.{domain}.events.{month}.ndjson"
-            try:
-                fh = path.open("r", encoding="utf-8", errors="replace")
-            except OSError:
+        device_counts: dict[str, int] = {}
+        for event in all_events:
+            total_events += 1
+            if event.get("is_bot"):
+                bot_events += 1
                 continue
-            with fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        event = json.loads(line)
-                    except ValueError:
-                        continue
-                    occurred = _as_text(event.get("occurred_at_utc"))[:10]
-                    # Inclusive on both ends: the dashboard's MTD/7d/30d
-                    # presets set `to` to today, and a user reading
-                    # "through 2026-05-21" expects 2026-05-21 events to
-                    # count. Cost-side routes still use half-open per
-                    # AWS Cost Explorer convention; the divergence is
-                    # intentional.
-                    if occurred < start_d.isoformat() or occurred > end_d.isoformat():
-                        continue
-                    all_events.append(event)
-                    total_events += 1
-                    if event.get("is_bot"):
-                        bot_events += 1
-                        continue
-                    visitor = _as_text(event.get("visitor_cookie_id_hash"))
-                    if visitor:
-                        unique_visitors.add(visitor)
-                    page = _as_text(event.get("page_path")) or "/"
-                    page_counts[page] = page_counts.get(page, 0) + 1
-                    et = _as_text(event.get("event_type")) or "(unknown)"
-                    event_type_counts[et] = event_type_counts.get(et, 0) + 1
-                    ref = _as_text(event.get("referrer_domain"))
-                    if ref:
-                        referrer_counts[ref] = referrer_counts.get(ref, 0) + 1
+            visitor = _as_text(event.get("visitor_cookie_id_hash"))
+            if visitor:
+                unique_visitors.add(visitor)
+            page = _as_text(event.get("page_path")) or "/"
+            page_counts[page] = page_counts.get(page, 0) + 1
+            et = _as_text(event.get("event_type")) or "(unknown)"
+            event_type_counts[et] = event_type_counts.get(et, 0) + 1
+            ref = _as_text(event.get("referrer_domain"))
+            if ref:
+                referrer_counts[ref] = referrer_counts.get(ref, 0) + 1
+            dev = _as_text(event.get("device_type"))
+            if dev:
+                device_counts[dev] = device_counts.get(dev, 0) + 1
 
         def _top(d: dict[str, int], n: int = 10) -> list[dict[str, int | str]]:
             return [{"key": k, "count": v} for k, v in sorted(d.items(), key=lambda kv: -kv[1])[:n]]
@@ -5713,6 +5734,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             for flag, count in quality_flag_counts.most_common()
         ]
 
+        # Pie-chart-friendly aggregates for the Overview sub-tab. Each is a
+        # ranked [{key, count}] list (plus the human/bot split) the dashboard
+        # renders as a donut + legend.
+        widgets = {
+            "referrers_by_sessions": [
+                {"key": r["referrer_domain"], "count": r["sessions"]}
+                for r in _derivations.rank_referrers(humans, top_k=8)
+            ],
+            "origin_distribution": [
+                {"key": k, "count": v.get("sessions", 0)}
+                for k, v in sorted(
+                    origin_dist.items(), key=lambda kv: -kv[1].get("sessions", 0)
+                )
+            ],
+            "device_split": [
+                {"key": k, "count": v}
+                for k, v in sorted(device_counts.items(), key=lambda kv: -kv[1])
+            ],
+            "human_vs_bot": [
+                {"key": "human", "count": len(humans)},
+                {"key": "bot", "count": len(bots)},
+            ],
+            "bot_class_breakdown": [
+                {"key": b["bot_class"], "count": b["count"]}
+                for b in bot_separation["bot_class_breakdown"]
+            ],
+        }
+
         payload = {
             "ok": True,
             "grantee": {"msn_id": requested_msn, "domains": domains},
@@ -5729,6 +5778,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
             "top_pages": _top(page_counts, 10),
             "top_referrers": _top(referrer_counts, 10),
+            "widgets": widgets,
             # Schema-v3 / JSON Analytics Log Vision rollups.
             "visitor_summary_top10": visitor_summary_top10,
             "interest_profile_categories": interest_profile_categories,
@@ -5751,6 +5801,132 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             }
         _ANALYTICS_SUMMARY_CACHE[cache_key] = (now, payload)
         return jsonify(payload), 200
+
+    @app.get("/__fnd/analytics/records")
+    def fnd_analytics_records() -> tuple[Any, int]:
+        """Per-grantee monthly leaflet records for the Records sub-tab.
+
+        Without ``?period=`` → the list of available ``YYYY-MM`` periods plus
+        the newest month's leaflet. With ``?period=YYYY-MM`` → that month's
+        leaflet (visitors → sessions → events) for the per-month table view.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+        from MyCiteV2.packages.adapters.filesystem import (
+            AnalyticsLeafletStore,
+            entity_for_domain,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        entity = entity_for_domain(domains[0]) if domains else ""
+        store = AnalyticsLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        periods = store.available_periods(entity)
+        period = _as_text(request.args.get("period"))
+        if not period and periods:
+            period = periods[-1]
+        leaflet = store.load_month(entity, period) if period else None
+        return jsonify({
+            "ok": True,
+            "grantee": {"msn_id": requested_msn, "domains": domains},
+            "periods": periods,
+            "period": period,
+            "leaflet": leaflet,
+        }), 200
+
+    @app.route("/__fnd/analytics/campaigns", methods=["GET", "POST"])
+    def fnd_analytics_campaigns() -> tuple[Any, int]:
+        """Pre-tracked link + QR campaigns for the Campaigns sub-tab.
+
+        GET  → list campaigns with attributed session/visitor counts.
+        POST → create a campaign (mint token); returns the row + tracked URL.
+        Scope-guarded: a grantee only ever sees/creates its own campaigns.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+        from MyCiteV2.packages.adapters.filesystem import (
+            AnalyticsLeafletStore,
+            CampaignLeafletStore,
+            entity_for_domain,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        primary_domain = domains[0] if domains else ""
+        entity = entity_for_domain(primary_domain) if primary_domain else ""
+        cstore = CampaignLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+
+        if request.method == "POST":
+            body = _json_payload()
+            try:
+                row = cstore.add_campaign(
+                    entity,
+                    primary_domain,
+                    label=_as_text(body.get("label")),
+                    target_path=_as_text(body.get("target_path")) or "/",
+                    source=_as_text(body.get("source")),
+                    medium=_as_text(body.get("medium")) or "link",
+                    notes=_as_text(body.get("notes")),
+                )
+            except ValueError as exc:
+                return jsonify({"ok": False, "error": "invalid_campaign", "detail": str(exc)}), 400
+            row["tracked_url"] = _campaign_tracked_url(primary_domain, row)
+            return jsonify({"ok": True, "campaign": row}), 200
+
+        # GET — list + attribute. Counts are tallied over the leaflets in a
+        # bounded recent window so the list reflects real usage without a full
+        # historical scan.
+        store = AnalyticsLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        periods = store.available_periods(entity)[-6:]
+        token_sessions: dict[str, int] = {}
+        token_visitors: dict[str, set[str]] = {}
+        for leaflet in store.read_range(entity, periods):
+            for v in leaflet.get("visitors") or []:
+                cookie = v.get("visitor_cookie_id_hash") or ""
+                for s in v.get("sessions") or []:
+                    tok = ((s.get("routed_from") or {}).get("campaign_token")) or ""
+                    if not tok:
+                        continue
+                    token_sessions[tok] = token_sessions.get(tok, 0) + 1
+                    token_visitors.setdefault(tok, set()).add(cookie)
+        campaigns = []
+        for c in cstore.list_campaigns(entity):
+            tok = c.get("token") or ""
+            campaigns.append({
+                **c,
+                "tracked_url": _campaign_tracked_url(primary_domain, c),
+                "attributed_sessions": token_sessions.get(tok, 0),
+                "attributed_visitors": len(token_visitors.get(tok, set())),
+            })
+        return jsonify({
+            "ok": True,
+            "grantee": {"msn_id": requested_msn, "domains": domains},
+            "primary_domain": primary_domain,
+            "campaigns": campaigns,
+        }), 200
 
     @app.get("/__fnd/newsletter/contacts")
     def fnd_newsletter_contacts() -> tuple[Any, int]:

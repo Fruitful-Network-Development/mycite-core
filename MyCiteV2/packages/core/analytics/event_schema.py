@@ -43,6 +43,28 @@ KNOWN_EVENT_TYPES = frozenset(
     }
 )
 
+# Standardized interaction *action* vocabulary. event_type stays coarse
+# (click / form_submit / …); ``action`` names the semantic interaction so the
+# same token means the same thing across every site regardless of how a button
+# or link is styled. The collector (analytics.js) auto-detects most of these
+# (mailto:→email_click, tel:→phone_click, file ext→download_file, outbound
+# link→outbound_click, newsletter vs contact form by id) and honors an explicit
+# ``data-fnd-action="…"`` attribute for the rest. An unknown value is dropped to
+# "" at write time so the field is always trustworthy.
+STANDARD_ACTIONS = frozenset(
+    {
+        "contact_form_submit",
+        "email_click",
+        "phone_click",
+        "booking_click",
+        "checkout_start",
+        "checkout_complete",
+        "download_file",
+        "outbound_click",
+        "newsletter_signup",
+    }
+)
+
 # The smallest fact-set that makes an event row meaningful. Everything
 # else is optional and falls back to empty strings / zero / None.
 REQUIRED_EVENT_FIELDS = ("event_type", "occurred_at_utc", "session_id", "page_path")
@@ -257,6 +279,15 @@ class RawEvent:
     os_name: str = ""
     quality_flags: tuple[str, ...] = ()
 
+    # Standardized interaction action (one of STANDARD_ACTIONS, or "").
+    action: str = ""
+
+    # Campaign attribution: the ?fnd_c=<token> a pre-tracked link / QR carries.
+    # Rides on the session's routed_from so every visit through that link is
+    # attributed to the campaign (the visitor cookie still distinguishes people
+    # who scanned the same QR). Resolved token→label at render time.
+    campaign_token: str = ""
+
     @classmethod
     def from_request(
         cls,
@@ -291,6 +322,11 @@ class RawEvent:
         from .bot_detection import classify_user_agent
 
         is_bot, bot_class, bot_evidence = classify_user_agent(user_agent)
+
+        action = _as_text(body.get("action"))
+        if action not in STANDARD_ACTIONS:
+            action = ""
+        campaign_token = _bounded(_as_text(body.get("campaign_token")), limit=64)
 
         visitor_cookie_id_hash = salted_hash(visitor_cookie, salt=salt)
         quality_flags = compute_quality_flags(
@@ -355,6 +391,8 @@ class RawEvent:
             page_url=_bounded(_as_text(body.get("page_url"))),
             os_name=_bounded(_as_text(body.get("os_name"))),
             quality_flags=quality_flags,
+            action=action,
+            campaign_token=campaign_token,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -404,6 +442,8 @@ class RawEvent:
             "page_url": self.page_url,
             "os_name": self.os_name,
             "quality_flags": list(self.quality_flags),
+            "action": self.action,
+            "campaign_token": self.campaign_token,
         }
 
 
@@ -415,6 +455,7 @@ __all__ = [
     "MAX_PROPERTIES_BYTES",
     "MAX_TEXT_FIELD_BYTES",
     "REQUIRED_EVENT_FIELDS",
+    "STANDARD_ACTIONS",
     "RawEvent",
     "coarse_ip_prefix",
     "compute_quality_flags",

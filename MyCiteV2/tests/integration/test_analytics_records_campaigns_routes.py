@@ -1,0 +1,134 @@
+"""Records + Campaigns analytics routes, and summary widget aggregates.
+
+All three are grantee-scoped and read/write the monthly leaflet + campaign
+registry under the caller's own entity.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+FLASK_AVAILABLE = importlib.util.find_spec("flask") is not None
+if FLASK_AVAILABLE:
+    from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
+    from MyCiteV2.instances._shared.runtime.analytics_ingest import ingest_batch
+    from MyCiteV2.packages.adapters.filesystem import (
+        AnalyticsLeafletStore,
+        entity_for_domain,
+    )
+    from MyCiteV2.packages.core.grantee import GRANTEE_PROFILE_SCHEMA
+
+FND = "3-2-3-17-77-1-6-4-1-4"
+DOMAIN = "fnd.example.test"
+PERIOD = "2026-06"
+
+
+def _raw(occurred, **kw):
+    base = {
+        "event_id": "evt-" + occurred + kw.get("session_id", ""),
+        "received_at_utc": occurred,
+        "visitor_cookie_id_hash": "cookieA",
+        "session_id": "s1",
+        "event_type": "page_view",
+        "occurred_at_utc": occurred,
+        "page_path": "/",
+        "referrer_domain": "",
+        "is_bot": False,
+        "bot_evidence": [],
+    }
+    base.update(kw)
+    return base
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class AnalyticsRecordsCampaignsTests(unittest.TestCase):
+    def _client(self):
+        tmp = Path(tempfile.mkdtemp(prefix="analytics_routes_"))
+        for sub in ("public", "private", "data", "webapps"):
+            (tmp / sub).mkdir()
+        fnd_csm = tmp / "private" / "utilities" / "tools" / "fnd-csm"
+        fnd_csm.mkdir(parents=True, exist_ok=True)
+        (fnd_csm / f"grantee.fnd.{FND}.json").write_text(json.dumps({
+            "schema": GRANTEE_PROFILE_SCHEMA, "msn_id": FND, "label": "FND",
+            "short_name": "FND", "domains": [DOMAIN], "users": [],
+        }), encoding="utf-8")
+        entity = entity_for_domain(DOMAIN)
+        store = AnalyticsLeafletStore(private_dir=tmp / "private", webapps_root=tmp / "webapps")
+        ingest_batch(store, entity, DOMAIN, PERIOD, [
+            _raw("2026-06-01T09:00:00+00:00", session_id="s1", page_path="/",
+                 referrer_domain="google.com"),
+            _raw("2026-06-01T09:01:00+00:00", session_id="s1", page_path="/pricing",
+                 event_id="e2"),
+            _raw("2026-06-02T09:00:00+00:00", session_id="sb", visitor_cookie_id_hash="bot",
+                 is_bot=True, bot_class="scraper", event_id="e3"),
+        ])
+        config = V2PortalHostConfig(
+            portal_instance_id="fnd", public_dir=tmp / "public", private_dir=tmp / "private",
+            data_dir=tmp / "data", portal_domain="example.test", webapps_root=tmp / "webapps",
+        )
+        return create_app(config).test_client()
+
+    def test_records_lists_periods_and_returns_leaflet(self):
+        resp = self._client().get(
+            "/__fnd/analytics/records", headers={"X-Auth-Request-Grantee": FND}
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertIn(PERIOD, body["periods"])
+        self.assertEqual(body["period"], PERIOD)
+        self.assertGreaterEqual(len(body["leaflet"]["visitors"]), 1)
+
+    def test_summary_carries_widgets(self):
+        resp = self._client().get(
+            "/__fnd/analytics/summary?from=2026-06-01&to=2026-06-30",
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        self.assertIn("widgets", body)
+        w = body["widgets"]
+        self.assertIn("human_vs_bot", w)
+        self.assertIn("referrers_by_sessions", w)
+        hv = {row["key"]: row["count"] for row in w["human_vs_bot"]}
+        self.assertEqual(hv["bot"], 1)
+        self.assertEqual(hv["human"], 2)
+
+    def test_campaign_create_then_list(self):
+        client = self._client()
+        resp = client.post(
+            "/__fnd/analytics/campaigns",
+            json={"label": "Summer QR", "target_path": "/campaign/summer",
+                  "source": "instagram", "medium": "qr"},
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        row = resp.get_json()["campaign"]
+        self.assertTrue(row["token"])
+        self.assertIn(f"fnd_c={row['token']}", row["tracked_url"])
+        self.assertIn(DOMAIN, row["tracked_url"])
+
+        listed = client.get(
+            "/__fnd/analytics/campaigns", headers={"X-Auth-Request-Grantee": FND}
+        ).get_json()
+        tokens = {c["token"] for c in listed["campaigns"]}
+        self.assertIn(row["token"], tokens)
+
+    def test_cross_grantee_rejected(self):
+        resp = self._client().get(
+            "/__fnd/analytics/records?grantee=3-2-3-17-77-3-6-1-1-2",
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+
+if __name__ == "__main__":
+    unittest.main()

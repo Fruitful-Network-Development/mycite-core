@@ -1,8 +1,11 @@
 """ext_analytics — page-view + event aggregates + derived insights.
 
-Phase 18c rewrites the renderer so insights derive on demand from
-the canonical raw NDJSON log (Phase 18a) via the pure functions in
-``MyCiteV2.packages.core.analytics.derivations``. The operator sees:
+Insights derive on demand from the canonical monthly analytics *leaflet*
+(``<YYYY-MM>-00.record-analytics.<entity>-website.<month>_analytics.yaml`` under
+``clients/_shared/site-core/analytics``) via the pure functions in
+``MyCiteV2.packages.core.analytics.derivations``. The leaflet replaced the raw
+NDJSON log — it is the single store the dashboard reads too, so the operator
+extension and the grantee dashboard never diverge. The operator sees:
 
   * Summary counts (humans-only + bots-only)
   * Visitor count + repeat-visitor count
@@ -11,11 +14,8 @@ the canonical raw NDJSON log (Phase 18a) via the pure functions in
   * Top entry / exit pages
   * Common page-path sequences
 
-The read is bounded to the current + previous month's NDJSON files
-to keep per-request latency tight. No MOS-side persistence exists
-for analytics any more (the MosDatumAnalyticsSummaryAdapter was
-retired 2026-05; see docs/contracts/analytics_event_schema.md).
-Refresh just bumps the in-memory summary cache generation token.
+The read is bounded to the current + previous month's leaflet to keep
+per-request latency tight.
 """
 
 from __future__ import annotations
@@ -57,20 +57,23 @@ def _refresh_action(domain: str) -> dict[str, Any]:
 
 def _build_analytics_extension_payload(
     domain: str,
-    analytics_root: str | Path | None = None,
-    authority_db_file: str | Path | None = None,
-    portal_instance_id: str | None = None,
-    webapps_root: str | Path | None = None,  # legacy fallback only
+    private_dir: str | Path | None = None,
+    webapps_root: str | Path | None = None,
 ) -> dict[str, Any]:
-    from MyCiteV2.packages.adapters.filesystem import AnalyticsEventPathResolver
+    from MyCiteV2.packages.adapters.filesystem import (
+        AnalyticsLeafletStore,
+        entity_for_domain,
+    )
+    from MyCiteV2.packages.core.analytics import derivations
+    from MyCiteV2.packages.core.analytics import leaflet_model as lm
 
     data_source: dict[str, str] = {
         "label": "Data source",
-        "summary": "Raw events read from the canonical NDJSON log; insights derived on demand.",
+        "summary": "Monthly analytics leaflet (site-core); insights derived on demand.",
         "events_dir": "",
         "kind": "",
     }
-    if not domain:
+    if not domain or private_dir is None:
         return {
             "domain": domain,
             "summary": {},
@@ -80,25 +83,14 @@ def _build_analytics_extension_payload(
             "notice": "No domain selected.",
         }
 
-    if analytics_root is not None:
-        resolver = AnalyticsEventPathResolver(analytics_root=analytics_root)
-    elif webapps_root is not None:
-        resolver = AnalyticsEventPathResolver(webapps_root=webapps_root)
-    else:
-        resolver = AnalyticsEventPathResolver()
-    data_source["events_dir"] = str(resolver.analytics_root)
+    store = AnalyticsLeafletStore(private_dir=private_dir, webapps_root=webapps_root)
+    entity = entity_for_domain(domain)
+    data_source["events_dir"] = str(store.analytics_dir)
 
-    # Phase 18c: on-demand derivation from the raw NDJSON. Bounded
-    # to the last 2 month files so the read stays cheap (<200ms for
-    # any realistic event volume).
-    from MyCiteV2.packages.core.analytics import derivations
-
-    year_months = _current_year_months(n=2)
-    events = list(
-        derivations.read_events(
-            domain=domain, year_months=year_months, resolver=resolver
-        )
-    )
+    # Bounded to the last 2 monthly leaflets so the read stays cheap.
+    events: list[dict[str, Any]] = []
+    for leaflet in store.read_range(entity, _current_year_months(n=2)):
+        events.extend(lm.flatten_events(leaflet))
     if not events:
         data_source["kind"] = "pending"
         return {
@@ -114,7 +106,7 @@ def _build_analytics_extension_payload(
             "refresh_action": _refresh_action(domain),
         }
 
-    data_source["kind"] = "raw_events"
+    data_source["kind"] = "leaflet"
     data_source["computed_at"] = datetime.now(UTC).isoformat()
     data_source["event_count"] = str(len(events))
 
@@ -226,11 +218,6 @@ def _build_analytics_extension_payload(
         ],
     }
 
-    # Suppress the unused authority_db / instance_id args for now —
-    # the on-demand derivation path doesn't need MOS data. The
-    # caller's existing context still passes them through.
-    del authority_db_file, portal_instance_id
-
     return {
         "domain": domain,
         "summary": dict(summary_counts),
@@ -263,7 +250,7 @@ def _build_analytics_extension_payload(
         "origin_type_distribution": origin_distribution,
         "bot_separation": bot_separation,
         "debugging_triage_buckets": debugging_triage_buckets,
-        "source": "raw_events",
+        "source": "leaflet",
         "data_source": data_source,
         "refresh_action": _refresh_action(domain),
     }
@@ -278,16 +265,9 @@ def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
             extension_label="Analytics",
             summarize=lambda g: f"{len(g.get('domains') or [])} domain(s)",
         )
-    # ctx may supply analytics_root directly, or a private_dir from which
-    # we derive it, or the legacy webapps_root as a last resort.
-    analytics_root = ctx.get("analytics_root")
-    if analytics_root is None and ctx.get("private_dir") is not None:
-        analytics_root = Path(ctx["private_dir"]) / "utilities" / "tools" / "analytics"
     return _build_analytics_extension_payload(
         domain=_as_text(ctx.get("domain")),
-        analytics_root=analytics_root,
-        authority_db_file=ctx.get("authority_db_file"),
-        portal_instance_id=ctx.get("portal_instance_id"),
+        private_dir=ctx.get("private_dir"),
         webapps_root=ctx.get("webapps_root"),
     )
 

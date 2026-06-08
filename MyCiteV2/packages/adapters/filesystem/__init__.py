@@ -1,9 +1,18 @@
 """Filesystem-backed adapter implementations for the phase-06 MVP slice."""
 
 from .analytics_event_paths import AnalyticsEventPathResolution, AnalyticsEventPathResolver
+from .analytics_leaflet import (
+    ANALYTICS_RECORD_SCHEMA,
+    AnalyticsLeafletStore,
+    period_of,
+)
 from .audit_log import FilesystemAuditLogAdapter
 from .aws_narrow_write import FilesystemAwsNarrowWriteAdapter
 from .aws_read_only_status import FilesystemAwsReadOnlyStatusAdapter
+from .campaign_leaflet import (
+    CAMPAIGN_RECORD_SCHEMA,
+    CampaignLeafletStore,
+)
 from .contact_leaflet import (
     CONTACT_RECORD_SCHEMA,
     ContactLeafletStore,
@@ -15,11 +24,16 @@ from .network_root_read_model import FilesystemNetworkRootReadModelAdapter
 from .newsletter_state import FilesystemNewsletterStateAdapter
 
 __all__ = [
+    "ANALYTICS_RECORD_SCHEMA",
     "AnalyticsEventPathResolution",
     "AnalyticsEventPathResolver",
+    "AnalyticsLeafletStore",
+    "CAMPAIGN_RECORD_SCHEMA",
+    "CampaignLeafletStore",
     "CONTACT_RECORD_SCHEMA",
     "ContactLeafletStore",
     "entity_for_domain",
+    "period_of",
     "FilesystemAuditLogAdapter",
     "FilesystemNewsletterStateAdapter",
     "FilesystemAwsNarrowWriteAdapter",
