@@ -8,11 +8,12 @@ contracts — and nothing else. In particular it must never import from
 
 History: the datum-address / hyphae / MSS-semantics engine used to live at
 ``adapters.sql.datum_semantics`` (``core/datum_ops`` imported it from there),
-and ``core/analytics/derivations`` imported a filesystem adapter directly —
+and ``core/analytics/derivations`` once imported a filesystem adapter directly —
 both inverting the dependency direction. Those are now fixed (the engine lives
-at ``core.datum_semantics``; analytics resolves through the
-``ports.analytics_events`` protocol). This guard now covers **all** of ``core``
-so no future commit can quietly re-introduce an inversion in any core package.
+at ``core.datum_semantics``; analytics derivations are pure transforms over a
+flat event list with no adapter/port dependency). This guard now covers **all**
+of ``core`` so no future commit can quietly re-introduce an inversion in any
+core package.
 
 It does NOT forbid ``ports``: core legitimately depends on the ``ports`` value
 types / protocols. (The stricter per-package guards for the *pure* packages

@@ -34,23 +34,6 @@ if FLASK_AVAILABLE:
     from MyCiteV2.instances._shared.portal_host.app import V2PortalHostConfig, create_app
 
 
-def _seed_events(private_dir: Path, domain: str, events: list[dict]) -> None:
-    """Seed at canonical analytics_root layout:
-    `<private>/utilities/tools/analytics/analytics.<domain>.events.<YYYY-MM>.ndjson`.
-    """
-    events_dir = private_dir / "utilities" / "tools" / "analytics"
-    events_dir.mkdir(parents=True, exist_ok=True)
-    by_month: dict[str, list[dict]] = {}
-    for ev in events:
-        month = (ev.get("occurred_at_utc") or "")[:7]
-        by_month.setdefault(month, []).append(ev)
-    for month, rows in by_month.items():
-        path = events_dir / f"analytics.{domain}.events.{month}.ndjson"
-        with path.open("a", encoding="utf-8") as fh:
-            for row in rows:
-                fh.write(json.dumps(row) + "\n")
-
-
 def _build_minimal_mos_db(path: Path) -> None:
     """Create a stand-in mos_authority.sqlite3 with the schema columns
     the route guard checks. Tests assert this DB is unchanged after a
@@ -104,20 +87,6 @@ class AnalyticsRefreshRouteTests(unittest.TestCase):
         _build_minimal_mos_db(self.authority_db)
 
         self.domain = "example.test"
-        _seed_events(
-            self.private_dir,
-            self.domain,
-            [
-                {
-                    "event_type": "page_view",
-                    "occurred_at_utc": "2026-05-22T12:00:00Z",
-                    "session_id": "sid-1",
-                    "page_path": "/",
-                    "visitor_cookie_id_hash": "hashA",
-                    "is_bot": False,
-                },
-            ],
-        )
 
         cfg = V2PortalHostConfig(
             portal_instance_id="fnd",

@@ -1,24 +1,17 @@
 """Read-only operations over the raw analytics event log.
 
-Every function in this module is a *pure derivation*: it reads
-events (already-persisted RawEvent dicts) and returns a
-JSON-serializable summary. No I/O beyond reading NDJSON files, no
-mutation, no caching at the function level (the caller decides
-when to memoize).
-
-This file ships the operations 18a depends on. 18c extends with
-the richer insight set (page-attention ranks, referrer ranks,
-path-sequence enumeration, conversion funnels, etc.).
+Every function in this module is a *pure derivation*: it takes a flat list of
+event dicts (projected from the monthly analytics leaflet via
+``leaflet_model.flatten_events``) and returns a JSON-serializable summary. No
+I/O, no mutation, no caching at the function level (the caller decides when to
+memoize).
 """
 
 from __future__ import annotations
 
-import json
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable
 from typing import Any
-
-from MyCiteV2.packages.ports.analytics_events import AnalyticsEventPathResolver
 
 # Default sessionization gap: a visitor is in the same session as
 # long as consecutive events are within this many ms.
@@ -38,49 +31,6 @@ def _year_months_between(start: str, end: str) -> list[str]:
             m = 1
             y += 1
     return out
-
-
-def read_events(
-    *,
-    domain: str,
-    year_months: Iterable[str],
-    resolver: AnalyticsEventPathResolver,
-) -> Iterator[dict[str, Any]]:
-    """Yield events from one or more NDJSON files for a domain.
-
-    Skips lines that fail to parse instead of raising — a single
-    bad line shouldn't kill the whole derivation pipeline. Caller
-    enumerates the year_months explicitly so the read scope is
-    bounded.
-
-    ``resolver`` is injected (it implements the
-    :class:`MyCiteV2.packages.ports.analytics_events.AnalyticsEventPathResolver`
-    protocol). Constructing the concrete filesystem resolver — and choosing
-    canonical vs legacy roots — is the caller's (adapter/instance) job; core
-    stays free of any filesystem-adapter dependency.
-    """
-    for year_month in year_months:
-        try:
-            resolution = resolver.resolve_events_file(
-                domain=domain, year_month=year_month
-            )
-        except ValueError:
-            continue
-        path = resolution.events_file
-        if not path.exists() or not path.is_file():
-            continue
-        try:
-            with path.open("r", encoding="utf-8") as handle:
-                for line in handle:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-        except OSError:
-            continue
 
 
 def filter_bots(
@@ -956,7 +906,6 @@ __all__ = [
     "high_intent_sessions",
     "rank_pages_by_attention",
     "rank_referrers",
-    "read_events",
     "reconstruct_visitor_timeline",
     "sessionize",
     "top_entry_pages",

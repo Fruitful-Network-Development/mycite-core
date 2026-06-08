@@ -1,6 +1,5 @@
 """Filesystem-backed adapter implementations for the phase-06 MVP slice."""
 
-from .analytics_event_paths import AnalyticsEventPathResolution, AnalyticsEventPathResolver
 from .analytics_leaflet import (
     ANALYTICS_RECORD_SCHEMA,
     AnalyticsLeafletStore,
@@ -25,8 +24,6 @@ from .newsletter_state import FilesystemNewsletterStateAdapter
 
 __all__ = [
     "ANALYTICS_RECORD_SCHEMA",
-    "AnalyticsEventPathResolution",
-    "AnalyticsEventPathResolver",
     "AnalyticsLeafletStore",
     "CAMPAIGN_RECORD_SCHEMA",
     "CampaignLeafletStore",
