@@ -479,6 +479,192 @@ class NewsletterService:
             "status": _as_text(status).lower(),
         }
 
+    def send_composed_newsletter(
+        self,
+        *,
+        domain: str,
+        subject: str,
+        body_text: str,
+        dispatcher_callback_url: str,
+        inbound_callback_url: str,
+        requested_by: str = "dashboard_compose",
+        ses_sender: Any = None,
+    ) -> dict[str, Any]:
+        """Dispatch a dashboard-composed newsletter to every subscribed contact.
+
+        Mirrors :meth:`process_inbound_capture`'s enqueue loop but takes the
+        subject + body from the composer (a newsletter leaflet) instead of an
+        inbound email, and skips the inbound signature / dup checks — the caller
+        is a grantee-scoped dashboard route. Prefers the per-grantee SQS→Lambda
+        dispatcher; when no dispatch queue is provisioned it falls back to
+        ``ses_sender`` — a callable the route supplies that sends one message
+        synchronously via SES from ``news@<domain>`` and returns its message id
+        (raising on failure). Raises ``ValueError`` when neither path exists.
+
+        Lambda path: each recipient is enqueued (status ``queued``); the
+        dispatcher posts terminal status back via ``apply_dispatch_result``.
+        SES path: each recipient is sent now (terminal status immediately), and
+        the contact's send tally is bumped inline since there is no callback.
+        """
+        domain_token = self._require_known_domain(domain=domain)
+        effective_subject = _as_text(subject)
+        body_text = _as_text(body_text)
+        if not effective_subject:
+            raise ValueError("newsletter subject is required")
+        if not body_text:
+            raise ValueError("newsletter body is required")
+
+        profile, contact_log = self._profile_from_dispatcher_urls(
+            domain=domain_token,
+            dispatcher_callback_url=dispatcher_callback_url,
+            inbound_callback_url=inbound_callback_url,
+        )
+        selected_author = self._selected_author_for_domain(domain=domain_token, profile=profile)
+        list_address = _optional_email(profile.get("list_address")) or f"news@{domain_token}"
+        sender_address = _optional_email(profile.get("sender_address")) or list_address
+        reply_to_address = (
+            _optional_email(
+                profile.get("selected_author_address") or selected_author.get("send_as_email")
+            )
+            or list_address
+        )
+        region = _as_text(profile.get("aws_region")) or "us-east-1"
+
+        queue_url = _as_text(profile.get("dispatch_queue_url"))
+        transport = "lambda_queue" if queue_url else ("ses_direct" if ses_sender else "")
+        if not transport:
+            raise ValueError(
+                "newsletter dispatch queue is not configured and no SES fallback is available"
+            )
+
+        unsubscribe_secret = self._ensure_secret_value(
+            secret_name=self._unsubscribe_secret_name, secret_kind="signing_secret",
+        )
+        callback_secret = self._ensure_secret_value(
+            secret_name=self._dispatch_callback_secret_name, secret_kind="dispatch_secret",
+        )
+        contact_log = _normalize_contact_log(contact_log, domain=domain_token)
+        subscribers = [
+            dict(item)
+            for item in list(contact_log.get("contacts") or [])
+            if isinstance(item, dict)
+            and bool(item.get("subscribed"))
+            and _optional_email(item.get("email"))
+        ]
+        contacts_by_email = {
+            _as_text(c.get("email")).lower(): dict(c)
+            for c in list(contact_log.get("contacts") or [])
+            if isinstance(c, dict) and _as_text(c.get("email"))
+        }
+
+        dispatch_id = f"dispatch-{secrets.token_hex(16)}"
+        now_iso = utc_now_iso()
+        results: list[dict[str, Any]] = []
+        for recipient_row in subscribers:
+            email = _optional_email(recipient_row.get("email"))
+            if not email:
+                continue
+            unsubscribe_url = (
+                f"https://{domain_token}/__fnd/newsletter/unsubscribe?email={email}&token="
+                f"{_render_unsubscribe_token(unsubscribe_secret, domain=domain_token, email=email)}"
+            )
+            result_row = {"email": email, "status": "queued", "unsubscribe_url": unsubscribe_url}
+            if transport == "lambda_queue":
+                message_body = {
+                    "domain": domain_token,
+                    "dispatch_id": dispatch_id,
+                    "recipient_email": email,
+                    "sender_address": sender_address,
+                    "reply_to_address": reply_to_address,
+                    "author_address": reply_to_address,
+                    "author_profile_id": _as_text(selected_author.get("profile_id")),
+                    "list_address": list_address,
+                    "subject": effective_subject,
+                    "body_text": body_text,
+                    "unsubscribe_url": unsubscribe_url,
+                    "callback_url": dispatcher_callback_url,
+                    "callback_token": callback_secret,
+                    "aws_region": region,
+                    "source_kind": "dashboard_compose",
+                }
+                try:
+                    result_row["queue_message_id"] = self._cloud_port.queue_dispatch_message(
+                        queue_url=queue_url, payload=message_body, region=region,
+                    )
+                except Exception as exc:
+                    result_row["status"] = "failed"
+                    result_row["error"] = _as_text(exc)
+            else:  # ses_direct — synchronous, terminal status now (no callback).
+                try:
+                    message_id = _as_text(
+                        ses_sender(
+                            to=email,
+                            subject=effective_subject,
+                            body_text=body_text,
+                            reply_to=reply_to_address,
+                            unsubscribe_url=unsubscribe_url,
+                        )
+                    )
+                    result_row["status"] = "sent"
+                    if message_id:
+                        result_row["message_id"] = message_id
+                    current = contacts_by_email.get(email.lower())
+                    if current is not None:
+                        current["last_newsletter_sent_at"] = now_iso
+                        current["send_count"] = int(current.get("send_count") or 0) + 1
+                        current["updated_at"] = now_iso
+                except Exception as exc:
+                    result_row["status"] = "failed"
+                    result_row["error"] = _as_text(exc)
+            results.append(result_row)
+
+        has_queued = any(_as_text(r.get("status")) == "queued" for r in results)
+        has_failed = any(_as_text(r.get("status")) == "failed" for r in results)
+        dispatch_row = {
+            "dispatch_id": dispatch_id,
+            "requested_at": now_iso,
+            "completed_at": "" if has_queued else now_iso,
+            "requested_by": requested_by,
+            "domain": domain_token,
+            "author_profile_id": _as_text(selected_author.get("profile_id")),
+            "author_address": reply_to_address,
+            "sender_profile_id": _as_text(selected_author.get("profile_id")),
+            "sender_address": sender_address,
+            "list_address": list_address,
+            "reply_to_address": reply_to_address,
+            "subject": effective_subject,
+            "body_text": body_text,
+            "target_count": len(subscribers),
+            "queued_count": sum(1 for r in results if _as_text(r.get("status")) == "queued"),
+            "sent_count": sum(1 for r in results if _as_text(r.get("status")) == "sent"),
+            "failed_count": sum(1 for r in results if _as_text(r.get("status")) == "failed"),
+            "delivery_mode": _DELIVERY_MODE,
+            "aws_region": region,
+            "source_kind": "dashboard_compose",
+            "transport": transport,
+            "status": (
+                "queued" if has_queued
+                else "completed" if not has_failed
+                else "completed_with_errors"
+            ),
+            "results": results[-_MAX_DISPATCH_RESULT_HISTORY:],
+        }
+        contact_log["contacts"] = [contacts_by_email[key] for key in sorted(contacts_by_email)]
+        contact_log["dispatches"] = [
+            *list(contact_log.get("dispatches") or [])[-(_MAX_DISPATCH_HISTORY - 1):],
+            dispatch_row,
+        ]
+        self._state_port.save_contact_log(domain=domain_token, payload=contact_log)
+        return {
+            "ok": True,
+            "transport": transport,
+            "dispatch": dispatch_row,
+            "target_count": dispatch_row["target_count"],
+            "queued_count": dispatch_row["queued_count"],
+            "sent_count": dispatch_row["sent_count"],
+            "failed_count": dispatch_row["failed_count"],
+        }
+
     def _profile_from_dispatcher_urls(
         self,
         *,

@@ -4508,14 +4508,16 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         sep = "&" if "?" in target else "?"
         return f"https://{domain}{target}{sep}fnd_c={token}"
 
-    def _prepare_records_leaflet(leaflet: dict[str, Any]) -> None:
-        """In-place, before returning a month leaflet to the grantee dashboard:
-        resolve each visitor's referral (the sharer's ``referred_by`` share id →
+    def _prepare_records_visitors(visitors: list[dict[str, Any]]) -> None:
+        """Resolve referrals + strip PII over a visitor list — shared by the
+        single-month and merged cross-month record views.
+
+        Resolve each visitor's referral (the sharer's ``referred_by`` share id →
         the referring visitor's record id, or ``"external"`` if the sharer isn't
-        in this leaflet) into ``referred_by_visitor``, then STRIP the per-visitor
+        in this set) into ``referred_by_visitor``, then STRIP the per-visitor
         fields the grantee shouldn't receive — coarse /24 ``ip_prefixes``, the
-        GeoIP enrichment hooks, and the raw share ids."""
-        visitors = leaflet.get("visitors") or []
+        GeoIP enrichment hooks, and the raw share ids. Mutates in place; the
+        share id must still be present when this runs (strip happens last)."""
         by_share: dict[str, str] = {}
         for v in visitors:
             sid = (v.get("visitor_context") or {}).get("share_id")
@@ -4534,6 +4536,72 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 ctx.pop(k, None)
             for s in v.get("sessions") or []:
                 (s.get("routed_from") or {}).pop("referred_by", None)
+
+    def _prepare_records_leaflet(leaflet: dict[str, Any]) -> None:
+        """In-place referral-resolution + PII strip for a single month leaflet
+        before returning it to the grantee dashboard."""
+        _prepare_records_visitors(leaflet.get("visitors") or [])
+
+    # A wide range loads one leaflet per month; bound the fan-out so a pathological
+    # range can't read an unbounded number of files. 24 months covers any real view.
+    _RECORDS_RANGE_MAX_MONTHS = 24
+
+    def _merge_records_range(
+        leaflets: list[dict[str, Any]],
+        *,
+        entity: str,
+        domains: list[str],
+        period_from: str,
+        period_to: str,
+    ) -> dict[str, Any]:
+        """Collapse several monthly leaflets into a single visitor list keyed by
+        cookie hash — a visitor present in multiple months becomes ONE row whose
+        first/last-seen span the months and whose sessions concatenate. Leaflets
+        must arrive in ascending month order so the earliest occurrence seeds the
+        stable identity (share id, first-origin). Record ids are renumbered over
+        the merged set, then referrals are resolved + PII stripped over it."""
+        merged: dict[str, dict[str, Any]] = {}
+        order: list[str] = []
+        for leaflet in leaflets:
+            for v in leaflet.get("visitors") or []:
+                cookie = _as_text(v.get("visitor_cookie_id_hash")) or f"_anon_{len(order)}"
+                acc = merged.get(cookie)
+                if acc is None:
+                    nv = dict(v)
+                    nv["sessions"] = list(v.get("sessions") or [])
+                    nv["visitor_context"] = dict(v.get("visitor_context") or {})
+                    merged[cookie] = nv
+                    order.append(cookie)
+                    continue
+                fs = _as_text(v.get("first_seen_at"))
+                if fs and (not _as_text(acc.get("first_seen_at")) or fs < acc["first_seen_at"]):
+                    acc["first_seen_at"] = fs
+                ls = _as_text(v.get("last_seen_at"))
+                if ls > _as_text(acc.get("last_seen_at")):
+                    acc["last_seen_at"] = ls
+                acc["returning_from_prior_month"] = bool(
+                    acc.get("returning_from_prior_month")
+                ) or bool(v.get("returning_from_prior_month"))
+                acc["sessions"] = (acc.get("sessions") or []) + list(v.get("sessions") or [])
+                ctx_acc = acc.get("visitor_context") or {}
+                for k, val in (v.get("visitor_context") or {}).items():
+                    if val and not ctx_acc.get(k):  # earliest non-empty wins
+                        ctx_acc[k] = val
+                acc["visitor_context"] = ctx_acc
+        visitors = [merged[c] for c in order]
+        visitors.sort(key=lambda v: _as_text(v.get("first_seen_at")))
+        for i, v in enumerate(visitors, start=1):
+            v["visitor_record_id"] = f"visitor_{i:04d}"
+        _prepare_records_visitors(visitors)
+        return {
+            "schema": "mycite.site_core.analytics_record.v1",
+            "kind": "record-analytics",
+            "entity": entity,
+            "domain": domains[0] if domains else "",
+            "period_from": period_from,
+            "period_to": period_to,
+            "visitors": visitors,
+        }
 
     @app.post("/__fnd/analytics/event")
     def fnd_analytics_event() -> tuple[Any, int]:
@@ -5784,11 +5852,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/__fnd/analytics/records")
     def fnd_analytics_records() -> tuple[Any, int]:
-        """Per-grantee monthly leaflet records for the Records sub-tab.
+        """Per-grantee leaflet records for the Records sub-tab.
 
-        Without ``?period=`` → the list of available ``YYYY-MM`` periods plus
-        the newest month's leaflet. With ``?period=YYYY-MM`` → that month's
-        leaflet (visitors → sessions → events) for the per-month table view.
+        Without args → available ``YYYY-MM`` periods + the newest month's leaflet.
+        With ``?period=YYYY-MM`` → that single month's leaflet.
+        With ``?from=&to=`` → every month overlapping the range, merged into one
+        de-duplicated visitor list (a visitor seen across months collapses to one
+        row). All modes return visitors → sessions → events for the table + the
+        per-visitor drill-down.
         """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
@@ -5813,6 +5884,33 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         periods = store.available_periods(entity)
         period = _as_text(request.args.get("period"))
+        from_arg = _as_text(request.args.get("from"))
+        to_arg = _as_text(request.args.get("to"))
+
+        # Cross-month range mode: ?from=&to= (and no explicit ?period=) merges
+        # every month overlapping the range into one de-duplicated visitor list.
+        if (from_arg or to_arg) and not period:
+            wanted = store.periods_in_range(entity, from_arg, to_arg)
+            truncated = False
+            if len(wanted) > _RECORDS_RANGE_MAX_MONTHS:
+                wanted = wanted[-_RECORDS_RANGE_MAX_MONTHS:]
+                truncated = True
+            leaflet = _merge_records_range(
+                store.read_range(entity, wanted),
+                entity=entity, domains=domains,
+                period_from=from_arg, period_to=to_arg,
+            )
+            return jsonify({
+                "ok": True,
+                "grantee": {"msn_id": requested_msn, "domains": domains},
+                "periods": periods,
+                "range": {"from": from_arg, "to": to_arg},
+                "periods_loaded": wanted,
+                "periods_truncated": truncated,
+                "leaflet": leaflet,
+            }), 200
+
+        # Single-month mode (back-compat): ?period=YYYY-MM, else newest month.
         if not period and periods:
             period = periods[-1]
         leaflet = store.load_month(entity, period) if period else None
@@ -5824,6 +5922,178 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "periods": periods,
             "period": period,
             "leaflet": leaflet,
+        }), 200
+
+    # --- Newsletter composer (grantee-scoped; rides the /dashboard/api/ proxy) ---
+    # The Email → Newsletter subtab writes newsletter leaflets (drafts) and sends
+    # them. Newsletters are leaflets under site-core/newsletter/ (one per message);
+    # the contacts roster supplies the audience. Send reuses the SQS→Lambda
+    # dispatcher, falling back to direct SES from news@<domain> where no queue is
+    # provisioned. Mirrors the /__fnd/design/{content,save} grantee-scoped pattern.
+
+    def _newsletter_leaflet_store():
+        from MyCiteV2.packages.adapters.filesystem.newsletter_leaflet import (
+            NewsletterLeafletStore,
+        )
+
+        return NewsletterLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=host_config.webapps_root,
+        )
+
+    def _grantee_newsletter_scope() -> tuple[str, str, tuple[Any, int] | None]:
+        """(entity, primary_domain, err) for the calling grantee."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+        from MyCiteV2.packages.adapters.filesystem import entity_for_domain
+
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return "", "", err
+        domains = domains_for_grantee(requested_msn, fnd_csm_root=_configured_fnd_csm_root())
+        domain = domains[0] if domains else ""
+        if not domain:
+            return "", "", (jsonify({"ok": False, "error": "no_domain"}), 404)
+        return entity_for_domain(domain), domain, None
+
+    @app.get("/__fnd/newsletter/grantee/list")
+    def fnd_newsletter_grantee_list() -> tuple[Any, int]:
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        entity, domain, err = _grantee_newsletter_scope()
+        if err:
+            return err
+        newsletters = _newsletter_leaflet_store().list_newsletters(entity)
+        return jsonify({"ok": True, "domain": domain, "newsletters": newsletters}), 200
+
+    @app.post("/__fnd/newsletter/grantee/save")
+    def fnd_newsletter_grantee_save() -> tuple[Any, int]:
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        entity, domain, err = _grantee_newsletter_scope()
+        if err:
+            return err
+        from MyCiteV2.packages.adapters.filesystem.newsletter_leaflet import _slugify
+
+        payload = _json_payload()
+        subject = _as_text(payload.get("subject"))
+        slug = _slugify(payload.get("slug")) or _slugify(subject)
+        if not slug:
+            return jsonify({"ok": False, "error": "missing_subject"}), 400
+        store = _newsletter_leaflet_store()
+        existing = store.load(entity, slug)
+        if _as_text(existing.get("status")) == "sent":
+            return jsonify({"ok": False, "error": "already_sent"}), 409
+        now = _utc_now_iso()
+        row = {
+            "slug": slug,
+            "subject": subject,
+            "body_text": _as_text(payload.get("body_text")),
+            "status": "draft",
+            "audience": "subscribed",
+            "domain": domain,
+            "created_at": _as_text(existing.get("created_at")) or now,
+            "updated_at": now,
+            "sent_at": _as_text(existing.get("sent_at")),
+            "dispatch_id": _as_text(existing.get("dispatch_id")),
+            "target_count": int(existing.get("target_count") or 0),
+            "sent_count": int(existing.get("sent_count") or 0),
+        }
+        saved = store.save(entity, row)
+        return jsonify({"ok": True, "newsletter": saved}), 200
+
+    @app.post("/__fnd/newsletter/grantee/send")
+    def fnd_newsletter_grantee_send() -> tuple[Any, int]:
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        entity, domain, err = _grantee_newsletter_scope()
+        if err:
+            return err
+        from MyCiteV2.packages.adapters.filesystem.newsletter_leaflet import _slugify
+
+        payload = _json_payload()
+        slug = _slugify(payload.get("slug"))
+        store = _newsletter_leaflet_store()
+        newsletter = store.load(entity, slug) if slug else {}
+        if not newsletter:
+            return jsonify({"ok": False, "error": "newsletter_not_found"}), 404
+
+        known = _newsletter_known_domains(host_config.private_dir)
+        if domain not in known:
+            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+
+        from MyCiteV2.packages.adapters.event_transport import NewsletterCloudAdapter
+        from MyCiteV2.packages.modules.cross_domain.newsletter import NewsletterService
+
+        state = _newsletter_state_adapter(host_config)
+        tenant_id = _as_text(host_config.portal_instance_id) or "fnd"
+        service = NewsletterService(state, NewsletterCloudAdapter(), tenant_id=tenant_id)
+        callback_base = f"https://{domain}/__fnd/newsletter"
+
+        # SES fallback: send from news@<domain> using the grantee's verified SES
+        # identity. Only available when an aws_ses identity is configured.
+        grantee = _load_grantee_for_domain(host_config.private_dir, domain)
+        aws_cfg = dict((grantee or {}).get("aws_ses") or {}) if isinstance(grantee, dict) else {}
+        ses_sender = None
+        if _as_text(aws_cfg.get("identity")) or _as_text(aws_cfg.get("from_address")):
+            ses_profile = {**aws_cfg, "from_address": f"news@{domain}"}
+
+            def ses_sender(*, to, subject, body_text, reply_to, unsubscribe_url):
+                result = _aws_peripheral.send_email(
+                    aws_ses_profile=ses_profile,
+                    to=[to],
+                    subject=subject,
+                    body_text=f"{body_text}\n\nUnsubscribe: {unsubscribe_url}\n",
+                    reply_to=[reply_to] if reply_to else None,
+                    extra_headers={
+                        "List-Id": f"<newsletter.{domain}>",
+                        "List-Unsubscribe": f"<{unsubscribe_url}>",
+                        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+                        "Auto-Submitted": "auto-generated",
+                        "X-FND-Stream": "newsletter",
+                        "X-FND-Source-Domain": domain,
+                    },
+                )
+                return _as_text(getattr(result, "message_id", ""))
+
+        try:
+            result = service.send_composed_newsletter(
+                domain=domain,
+                subject=_as_text(newsletter.get("subject")),
+                body_text=_as_text(newsletter.get("body_text")),
+                dispatcher_callback_url=f"{callback_base}/dispatch-result",
+                inbound_callback_url=f"{callback_base}/inbound-capture",
+                ses_sender=ses_sender,
+            )
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        except LookupError as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 404
+        except Exception as exc:
+            _log.error("newsletter_compose_send_failed",
+                       extra={"domain": domain, "err": str(exc)})
+            return jsonify({"ok": False, "error": "send_failed"}), 500
+
+        dispatch = result.get("dispatch") or {}
+        newsletter["status"] = "sent"
+        newsletter["sent_at"] = _as_text(dispatch.get("requested_at")) or _utc_now_iso()
+        newsletter["dispatch_id"] = _as_text(dispatch.get("dispatch_id"))
+        newsletter["target_count"] = int(dispatch.get("target_count") or 0)
+        # Lambda path reports queued (sent async); count queued+sent as handed off.
+        newsletter["sent_count"] = int(dispatch.get("sent_count") or 0) + int(
+            dispatch.get("queued_count") or 0
+        )
+        newsletter["updated_at"] = _utc_now_iso()
+        store.save(entity, newsletter)
+        return jsonify({
+            "ok": True,
+            "transport": result.get("transport"),
+            "target_count": result.get("target_count", 0),
+            "queued_count": result.get("queued_count", 0),
+            "sent_count": result.get("sent_count", 0),
+            "failed_count": result.get("failed_count", 0),
+            "newsletter": newsletter,
         }), 200
 
     @app.get("/__fnd/design/content")

@@ -176,6 +176,20 @@ class AnalyticsLeafletStore:
                     out.append(period[:7])
         return sorted(set(out))
 
+    def periods_in_range(self, entity: str, from_iso: str, to_iso: str) -> list[str]:
+        """Available ``YYYY-MM`` periods whose month overlaps the inclusive
+        ``[from, to]`` range. Month granularity: a leaflet is one month, so any
+        range that touches any day of a month includes that whole month. Empty
+        bound → open on that side. Returned ascending."""
+        periods = self.available_periods(entity)
+        if not periods:
+            return []
+        lo = period_of(from_iso)
+        hi = period_of(to_iso)
+        if lo and hi and lo > hi:
+            lo, hi = hi, lo
+        return [p for p in periods if (not lo or p >= lo) and (not hi or p <= hi)]
+
     # -- low-level yaml --------------------------------------------------------
 
     def _read_yaml(self, path: Path) -> dict[str, Any]:

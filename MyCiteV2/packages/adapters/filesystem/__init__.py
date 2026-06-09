@@ -20,6 +20,10 @@ from .contact_leaflet import (
 from .live_aws_profile import FilesystemLiveAwsProfileAdapter, is_live_aws_profile_file
 from .live_system_datum_store import FilesystemSystemDatumStoreAdapter
 from .network_root_read_model import FilesystemNetworkRootReadModelAdapter
+from .newsletter_leaflet import (
+    NEWSLETTER_SCHEMA,
+    NewsletterLeafletStore,
+)
 from .newsletter_state import FilesystemNewsletterStateAdapter
 
 __all__ = [
@@ -31,6 +35,8 @@ __all__ = [
     "ContactLeafletStore",
     "entity_for_domain",
     "period_of",
+    "NEWSLETTER_SCHEMA",
+    "NewsletterLeafletStore",
     "FilesystemAuditLogAdapter",
     "FilesystemNewsletterStateAdapter",
     "FilesystemAwsNarrowWriteAdapter",
