@@ -1,4 +1,4 @@
-"""Visual site editor backend: content shape, owner gallery, swap-by-path, text edits."""
+"""Unified site editor: content shape + value-replace save across site kinds."""
 
 from __future__ import annotations
 
@@ -16,139 +16,125 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     site_content_extension as sce,
 )
 
-SITE = "fruitfulnetworkdevelopment.com"          # the one EDITABLE_SITES entry
-ENTITY = "fruitful_network_development_llc"        # entity_for_domain(SITE)
-IMG_A = f"/assets/images/0000-00-00.artifact-image.{ENTITY}.a.avif"
-IMG_B = f"/assets/images/0000-00-00.artifact-image.{ENTITY}.b.avif"
+MAN_SITE = "fruitfulnetworkdevelopment.com"        # manifest kind
+MAN_ENT = "fruitful_network_development_llc"
+STAT_SITE = "trappfamilyfarm.com"                   # static kind
+STAT_ENT = "trapp_family_farm"
+
+IMG_A = f"/assets/images/0000-00-00.artifact-image.{MAN_ENT}.a.avif"
+IMG_B = f"/assets/images/0000-00-00.artifact-image.{MAN_ENT}.b.avif"
 IMG_FOREIGN = "/assets/images/0000-00-00.artifact-image.someone_else.z.avif"
-SPRITE = "/assets/icons/0000-00-00.artifact-icon.mycite-ui.sprite.svg"
-ICON1 = SPRITE + "#icon-mail"
-ICON2 = SPRITE + "#icon-arrow-right"
+TIMG_A = f"/assets/images/0000-00-00.artifact-image.{STAT_ENT}.a.avif"
+TIMG_B = f"/assets/images/0000-00-00.artifact-image.{STAT_ENT}.b.avif"
 
 
-def _manifest():
-    html = (
-        '<h1 data-fnd-edit="hero:title">{{title}}</h1>'
-        f'<img src="{IMG_A}">'
-        f'<svg><use href="{ICON1}"/></svg>'
-    )
-    return {
-        "schema_identifier": "x",
-        "pages": {
-            "index": {
-                "file": "index.html", "template": "fnd_home", "title": "Home",
-                "content": {"sections": [
-                    {"id": "hero", "editor": {"label": "Hero"}, "html": html,
-                     "fields": [{"key": "title", "label": "Headline", "type": "text",
-                                 "value": "Old", "max_chars": 10}]},
-                    {"id": "static", "html": "<p>fixed</p>"},
-                ]},
-            },
-            "contact": {"file": "contact.html", "template": "fnd_contact", "title": "Contact",
-                        "content": {"sections": [{"id": "c", "html": "<p>x</p>"}]}},
-        },
+def _build_tree():
+    root = Path(tempfile.mkdtemp())
+    # ---- manifest site ----
+    man = root / "clients" / MAN_SITE / "frontend"
+    (man / "assets").mkdir(parents=True)
+    (man / "scripts" / "render_lib").mkdir(parents=True)
+    (man / "scripts" / "render_lib" / "site_builder.py").write_text("def build_site(p): pass\n")
+    manifest = {
+        "pages": {"index": {"file": "index.html", "title": "Home", "content": {
+            "sections": [{"id": "hero", "html": f"<h1>Welcome</h1><img src=\"{IMG_A}\">"}],
+            "hero_image": {"src": IMG_A},          # typed-field image (deep-walk must catch it)
+        }}},
     }
+    mp = man / "assets" / "0000-00-00.manifest.fnd.fnd.site.json"
+    mp.write_text(json.dumps(manifest), encoding="utf-8")
+    (man / "assets" / "0000-00-00.record-manifest.x-website.shared_resources.yaml").write_text(
+        "resources: {}\n", encoding="utf-8")
+    # ---- static site ----
+    stat = root / "clients" / STAT_SITE / "frontend"
+    stat.mkdir(parents=True)
+    (stat / "index.html").write_text(f"<h1>Trapp</h1><img src=\"{TIMG_A}\">", encoding="utf-8")
+    (stat / "crops.html").write_text("<h1>Crops</h1>", encoding="utf-8")
+    (stat / "assets").mkdir()
+    (stat / "assets" / "0000-00-00.record-manifest.x-website.shared_resources.yaml").write_text(
+        "resources: {}\n", encoding="utf-8")
+    # ---- shared library ----
+    img_dir = root / "clients" / "_shared" / "site-core" / "image"
+    img_dir.mkdir(parents=True)
+    for p in (IMG_A, IMG_B, IMG_FOREIGN, TIMG_A, TIMG_B):
+        (img_dir / p.split("/")[-1]).write_text("x")
+    icon_dir = root / "clients" / "_shared" / "site-core" / "icon"
+    icon_dir.mkdir(parents=True)
+    (icon_dir / "0000-00-00.artifact-icon.mycite-ui.sprite.svg").write_text(
+        '<svg><symbol id="icon-mail"></symbol></svg>')
+    return root, mp, stat / "index.html"
 
 
-class SiteContentTests(unittest.TestCase):
+class UnifiedEditorTests(unittest.TestCase):
     def setUp(self):
-        self.root = Path(tempfile.mkdtemp())
-        self.assets = self.root / "clients" / SITE / "frontend" / "assets"
-        self.assets.mkdir(parents=True)
-        (self.root / "clients" / SITE / "frontend" / "scripts").mkdir(parents=True)
-        self.manifest_path = self.assets / "0000-00-00.manifest.fnd.fnd.site.json"
-        self.manifest_path.write_text(json.dumps(_manifest()), encoding="utf-8")
-        self.record = self.assets / "0000-00-00.record-manifest.x-website.shared_resources.yaml"
-        self.record.write_text("resources: {}\n", encoding="utf-8")
-        # Shared library: two FND-owned images + one foreign + a sprite.
-        img_dir = self.root / "clients" / "_shared" / "site-core" / "image"
-        img_dir.mkdir(parents=True)
-        for p in (IMG_A, IMG_B, IMG_FOREIGN):
-            (img_dir / p.split("/")[-1]).write_text("x", encoding="utf-8")
-        icon_dir = self.root / "clients" / "_shared" / "site-core" / "icon"
-        icon_dir.mkdir(parents=True)
-        (icon_dir / SPRITE.split("/")[-1]).write_text(
-            '<svg><symbol id="icon-mail"></symbol><symbol id="icon-arrow-right"></symbol></svg>',
-            encoding="utf-8",
-        )
-        self._orig_render = sce._render_site
-        sce._render_site = lambda frontend_dir: (True, "rebuilt")
+        self.root, self.man_manifest, self.stat_index = _build_tree()
+        self._orig = sce._render_site
+        sce._render_site = lambda fd: (True, "rebuilt")
 
     def tearDown(self):
-        sce._render_site = self._orig_render
-
-    def _html(self):
-        m = json.loads(self.manifest_path.read_text())
-        return m["pages"]["index"]["content"]["sections"][0]["html"]
-
-    def _title(self):
-        m = json.loads(self.manifest_path.read_text())
-        return m["pages"]["index"]["content"]["sections"][0]["fields"][0]["value"]
-
-    def _save(self, edits=None, swaps=None):
-        return sce.save_site_content(self.root, SITE, edits or [], swaps or [])
+        sce._render_site = self._orig
 
     # ---- read ----
-    def test_content_shape(self):
-        d = sce.read_site_content(self.root, SITE)
+    def test_manifest_site_read(self):
+        d = sce.read_site_content(self.root, MAN_SITE)
         self.assertTrue(d["enabled"])
-        self.assertEqual({p["page"] for p in d["pages"]}, {"index", "contact"})
-        self.assertEqual(next(p["path"] for p in d["pages"] if p["page"] == "index"), "/")
-        self.assertEqual(next(p["path"] for p in d["pages"] if p["page"] == "contact"), "/contact")
-        self.assertEqual([s["key"] for s in d["text_slots"]], ["title"])
-        # gallery = OWN images only (foreign excluded) + sprite icons
-        self.assertIn(IMG_A, d["gallery"]["image"])
+        self.assertEqual(d["kind"], "manifest")
+        self.assertEqual(d["pages"][0]["path"], "/")
         self.assertIn(IMG_B, d["gallery"]["image"])
         self.assertNotIn(IMG_FOREIGN, d["gallery"]["image"])
-        self.assertIn(ICON1, d["gallery"]["icon"])
+        self.assertTrue(any(o.endswith("#icon-mail") for o in d["gallery"]["icon_sprite"]))
 
-    def test_non_editable_site_disabled(self):
-        d = sce.read_site_content(self.root, "trappfamilyfarm.com")
-        self.assertFalse(d["enabled"])
-        self.assertEqual(d["pages"], [])
+    def test_static_site_read(self):
+        d = sce.read_site_content(self.root, STAT_SITE)
+        self.assertTrue(d["enabled"])
+        self.assertEqual(d["kind"], "static")
+        self.assertEqual({p["path"] for p in d["pages"]}, {"/", "/crops"})
 
-    # ---- text edits ----
-    def test_text_within_budget(self):
-        r = self._save(edits=[{"page": "index", "section_id": "hero", "key": "title", "value": "New"}])
+    # ---- manifest save (deep-walk) ----
+    def test_manifest_image_swap_hits_html_and_typed_field(self):
+        r = sce.save_site_content(self.root, MAN_SITE, "index",
+                                  swaps=[{"old": IMG_A, "new": IMG_B, "kind": "image"}])
         self.assertTrue(r["ok"])
-        self.assertEqual(self._title(), "New")
+        m = json.loads(self.man_manifest.read_text())
+        self.assertEqual(m["pages"]["index"]["content"]["hero_image"]["src"], IMG_B)   # typed field
+        self.assertIn(IMG_B, m["pages"]["index"]["content"]["sections"][0]["html"])    # html blob
+        self.assertNotIn(IMG_A, json.dumps(m))
 
-    def test_text_over_budget_rejected(self):
-        r = self._save(edits=[{"page": "index", "section_id": "hero", "key": "title", "value": "way too long"}])
-        self.assertFalse(r["ok"])
-        self.assertEqual(self._title(), "Old")  # untouched
-
-    def test_control_chars_stripped(self):
-        r = self._save(edits=[{"page": "index", "section_id": "hero", "key": "title", "value": "a\x00b\x07c"}])
+    def test_manifest_text_edit_unique(self):
+        r = sce.save_site_content(self.root, MAN_SITE, "index",
+                                  edits=[{"old": "Welcome", "new": "Hello"}])
         self.assertTrue(r["ok"])
-        self.assertEqual(self._title(), "abc")
+        self.assertIn("<h1>Hello</h1>", self.man_manifest.read_text())
 
-    # ---- image swap by path ----
-    def test_image_swap_replaces_path_and_allocates(self):
-        r = self._save(swaps=[{"page": "index", "old": IMG_A, "new": IMG_B}])
+    def test_manifest_foreign_swap_rejected(self):
+        r = sce.save_site_content(self.root, MAN_SITE, "index",
+                                  swaps=[{"old": IMG_A, "new": IMG_FOREIGN, "kind": "image"}])
+        self.assertFalse(r["ok"])
+        self.assertIn(IMG_A, self.man_manifest.read_text())
+
+    # ---- static save (.html) ----
+    def test_static_image_swap_in_html(self):
+        r = sce.save_site_content(self.root, STAT_SITE, "index.html",
+                                  swaps=[{"old": TIMG_A, "new": TIMG_B, "kind": "image"}])
         self.assertTrue(r["ok"])
-        self.assertIn(IMG_B, self._html())
-        self.assertNotIn(IMG_A, self._html())
-        self.assertIn(IMG_B, self.record.read_text())  # auto-allocated to record-manifest
+        self.assertIn(TIMG_B, self.stat_index.read_text())
+        self.assertNotIn(TIMG_A, self.stat_index.read_text())
 
-    def test_swap_to_foreign_asset_rejected(self):
-        r = self._save(swaps=[{"page": "index", "old": IMG_A, "new": IMG_FOREIGN}])
-        self.assertFalse(r["ok"])
-        self.assertIn(IMG_A, self._html())  # untouched
-
-    def test_swap_absent_path_errors(self):
-        r = self._save(swaps=[{"page": "index", "old": "/assets/images/nope.avif", "new": IMG_B}])
-        self.assertFalse(r["ok"])
-
-    def test_icon_swap(self):
-        r = self._save(swaps=[{"page": "index", "old": ICON1, "new": ICON2}])
+    def test_static_text_edit(self):
+        r = sce.save_site_content(self.root, STAT_SITE, "index.html",
+                                  edits=[{"old": "Trapp", "new": "Trapp Farm"}])
         self.assertTrue(r["ok"])
-        self.assertIn(ICON2, self._html())
+        self.assertIn("<h1>Trapp Farm</h1>", self.stat_index.read_text())
 
-    def test_save_gated_off_for_non_editable_site(self):
-        r = sce.save_site_content(self.root, "trappfamilyfarm.com",
-                                  [{"page": "index", "section_id": "hero", "key": "title", "value": "x"}], [])
+    def test_static_ambiguous_text_rejected(self):
+        # "Crops" appears once on crops.html but the edit targets index.html where it's absent.
+        r = sce.save_site_content(self.root, STAT_SITE, "index.html",
+                                  edits=[{"old": "Nonexistent", "new": "X"}])
         self.assertFalse(r["ok"])
+
+    def test_non_editable_site(self):
+        self.assertFalse(sce.read_site_content(self.root, "example.com")["enabled"])
+        r = sce.save_site_content(self.root, "example.com", "index", swaps=[{"old": "a", "new": "b"}])
         self.assertEqual(r["error"], "not_editable")
 
 

@@ -5876,7 +5876,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         edits = payload.get("edits")
         swaps = payload.get("swaps")
         result = site_content_extension.save_site_content(
-            host_config.webapps_root, site,
+            host_config.webapps_root, site, _as_text(payload.get("page")),
             edits if isinstance(edits, list) else [],
             swaps if isinstance(swaps, list) else [],
         )
