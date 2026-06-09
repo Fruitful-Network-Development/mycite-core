@@ -1,18 +1,25 @@
-"""Grantee-facing site editor — visual in-place editing of the existing manifest.
+"""Grantee site editor — one unified mechanism across every site type.
 
 The dashboard "Design" tab renders the grantee's real page in an iframe and lets
-them (1) **swap any image/icon** on the page — every `/assets/...` reference is
-replaceable from a gallery of the site's OWN images + the shared icon set — and
-(2) edit the curated **typed text slots** in place, with per-box character budgets.
+them **swap any image/icon** (from a gallery of their own assets + shared icons)
+and **edit any simple text** in place. Every edit is a ``{old, new}`` value pair;
+the backend replaces ``old → new`` in the page's SOURCE, picked per site kind:
 
-There is no separate content store: a swap rewrites the asset path in the page's
-manifest section html, a text edit patches a slot's value, then the site's
-deterministic ``build_site`` re-renders so the change reaches live HTML. Reuses
-``resources_extension`` (atomic write, manifest allocation) rather than reinventing.
+* **manifest** sites (FND, CVCC) — deep-walk the site manifest JSON, replace the
+  matching string value(s), then ``build_site`` re-renders. Catches FND's raw-HTML
+  sections AND CVCC's typed fields uniformly.
+* **static** sites (TFF, BPW) — replace directly in the page's ``.html`` file; no
+  rebuild (nginx serves the tree).
+
+There are no slots/markers: text and images are discovered in the iframe. Text edits
+are guarded (exactly-one-occurrence, encoding-tolerant) so an ambiguous edit is
+rejected, never mis-applied. Reuses ``resources_extension`` for atomic writes +
+record-manifest allocation.
 """
 
 from __future__ import annotations
 
+import html as _html
 import json
 import os
 import re
@@ -23,13 +30,18 @@ from typing import Any
 
 from . import resources_extension as rx
 
-# Sites whose manifest carries typed slots + are wired live. Others get
-# {enabled: false} so the shared dashboard tab degrades gracefully.
-EDITABLE_SITES: frozenset[str] = frozenset({"fruitfulnetworkdevelopment.com"})
+EDITABLE_SITES: frozenset[str] = frozenset({
+    "fruitfulnetworkdevelopment.com",
+    "cuyahogavalleycountrysideconservancy.org",
+    "trappfamilyfarm.com",
+    "brockspressurewashing.com",
+})
 
-_TEXT_TYPES = frozenset({"text", "textarea"})
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _SYMBOL_RE = re.compile(r'<symbol[^>]*\bid="([A-Za-z0-9_-]+)"')
+_MAX_TEXT = 2000
+_STATIC_SKIP = ("dashboard.html",)
+_STATIC_SKIP_DIRS = ("css", "scripts", "data", "assets")
 
 
 def site_content_enabled(site: str) -> bool:
@@ -43,40 +55,82 @@ def _frontend_dir(webapps_root: str | Path | None, site: str) -> Path | None:
     return d if d.is_dir() else None
 
 
-def _site_manifest_path(webapps_root: str | Path | None, site: str) -> Path | None:
-    fd = _frontend_dir(webapps_root, site)
-    if fd is None:
-        return None
-    matches = sorted((fd / "assets").glob("*.manifest.*.site.json"))
-    return matches[0] if matches else None
-
-
 def _entity(site: str) -> str:
     from MyCiteV2.packages.adapters.filesystem import entity_for_domain
     return rx._as_text(entity_for_domain(os.path.basename(rx._as_text(site))))
 
 
-def _clean_text(value: Any) -> str:
-    return _CONTROL_RE.sub("", "" if value is None else str(value))
+def _site_manifest_path(webapps_root: str | Path | None, site: str) -> Path | None:
+    fd = _frontend_dir(webapps_root, site)
+    if fd is None:
+        return None
+    for p in sorted((fd / "assets").glob("*.json")):
+        n = p.name.lower()
+        if "manifest" in n and "site" in n:
+            return p
+    return None
 
 
-def _owner_images(webapps_root: str | Path | None, site: str) -> list[str]:
-    """The site's OWN images from the shared library, matched by entity owner-slug
-    in the filename — so a grantee's gallery never shows other clients' photos."""
+def _site_kind(webapps_root: str | Path | None, site: str) -> str:
+    fd = _frontend_dir(webapps_root, site)
+    if fd is None:
+        return "static"
+    if (fd / "scripts" / "render_lib" / "site_builder.py").is_file() and _site_manifest_path(webapps_root, site):
+        return "manifest"
+    return "static"
+
+
+def _page_path_from_file(rel: str) -> str:
+    rel = rel.replace("\\", "/")
+    if rel in ("index.html", "/index.html"):
+        return "/"
+    stem = rel[:-5] if rel.endswith(".html") else rel
+    return "/" + stem.lstrip("/")
+
+
+def _pages(webapps_root: str | Path | None, site: str, kind: str) -> list[dict[str, Any]]:
+    fd = _frontend_dir(webapps_root, site)
+    if fd is None:
+        return []
+    if kind == "manifest":
+        mp = _site_manifest_path(webapps_root, site)
+        manifest = json.loads(mp.read_text(encoding="utf-8")) if mp else {}
+        out = []
+        for pk, page in (manifest.get("pages") or {}).items():
+            if isinstance(page, dict) and page.get("file"):
+                out.append({"page": pk, "path": _page_path_from_file(rx._as_text(page.get("file"))),
+                            "label": rx._as_text(page.get("title")) or pk})
+        return out
+    # static: every page-level .html minus tooling/asset dirs
+    out = []
+    for p in sorted(fd.rglob("*.html")):
+        rel = p.relative_to(fd).as_posix()
+        if rel in _STATIC_SKIP or rel.split("/")[0] in _STATIC_SKIP_DIRS:
+            continue
+        out.append({"page": rel, "path": _page_path_from_file(rel),
+                    "label": rel[:-5].replace("/", " · ").replace("-", " ").title()})
+    return out
+
+
+def _owner_files(webapps_root: str | Path | None, site: str, subdir: str, *, exclude_sprite=False) -> list[str]:
     core = rx._site_core_root(webapps_root)
     entity = _entity(site)
     if core is None or not entity:
         return []
     token = "." + entity
+    url = "/assets/icons/" if subdir == "icon" else "/assets/" + subdir + "s/"
     out = []
-    for p in sorted((core / "image").glob("*")):
-        if p.is_file() and not p.name.startswith(".") and ".example." not in p.name and token in p.name:
-            out.append("/assets/images/" + p.name)
+    for p in sorted((core / subdir).glob("*")):
+        if not p.is_file() or p.name.startswith(".") or ".example." in p.name:
+            continue
+        if exclude_sprite and "sprite" in p.name:
+            continue
+        if token in p.name:
+            out.append(url + p.name)
     return out
 
 
-def _icon_options(webapps_root: str | Path | None) -> list[str]:
-    """Every ``<symbol id>`` in each shared sprite as a ``/assets/icons/<sprite>.svg#<id>`` href."""
+def _icon_sprites(webapps_root: str | Path | None) -> list[str]:
     core = rx._site_core_root(webapps_root)
     if core is None:
         return []
@@ -92,84 +146,64 @@ def _icon_options(webapps_root: str | Path | None) -> list[str]:
 
 
 def _gallery(webapps_root: str | Path | None, site: str) -> dict[str, list[str]]:
-    return {"image": _owner_images(webapps_root, site), "icon": _icon_options(webapps_root)}
-
-
-def _page_path(page: dict[str, Any]) -> str:
-    f = rx._as_text(page.get("file"))
-    if not f or f == "index.html":
-        return "/"
-    return "/" + (f[:-5] if f.endswith(".html") else f)
-
-
-def _editable_sections(manifest: dict[str, Any]) -> list[tuple[str, dict, dict]]:
-    """(page_key, section, field-by-key) for every section carrying text-slot fields."""
-    found: list[tuple[str, dict, dict]] = []
-    pages = manifest.get("pages")
-    if not isinstance(pages, dict):
-        return found
-    for page_key, page in pages.items():
-        if not isinstance(page, dict):
-            continue
-        content = page.get("content")
-        sections = content.get("sections") if isinstance(content, dict) else None
-        if not isinstance(sections, list):
-            continue
-        for section in sections:
-            if isinstance(section, dict) and isinstance(section.get("fields"), list) and section["fields"]:
-                by_key = {f.get("key"): f for f in section["fields"] if isinstance(f, dict) and f.get("key")}
-                found.append((page_key, section, by_key))
-    return found
+    return {
+        "image": _owner_files(webapps_root, site, "image"),
+        "icon_file": _owner_files(webapps_root, site, "icon", exclude_sprite=True),
+        "icon_sprite": _icon_sprites(webapps_root),
+    }
 
 
 def read_site_content(webapps_root: str | Path | None, site: str) -> dict[str, Any]:
-    """Browsable pages + editable text slots + the swap gallery for a site's Design
-    tab. ``enabled`` is false (empty body) for sites not yet wired."""
     site = os.path.basename(rx._as_text(site))
-    blank = {"enabled": False, "site": site, "pages": [], "text_slots": [],
-             "gallery": {"image": [], "icon": []}}
+    blank = {"enabled": False, "site": site, "kind": "", "pages": [],
+             "gallery": {"image": [], "icon_file": [], "icon_sprite": []}}
     if not site_content_enabled(site):
         return blank
-    manifest_path = _site_manifest_path(webapps_root, site)
-    if manifest_path is None:
+    kind = _site_kind(webapps_root, site)
+    pages = _pages(webapps_root, site, kind)
+    if not pages:
         return blank
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return {"enabled": True, "site": site, "kind": kind, "pages": pages,
+            "gallery": _gallery(webapps_root, site)}
 
-    pages_out: list[dict[str, Any]] = []
-    for pk, page in (manifest.get("pages") or {}).items():
-        if not isinstance(page, dict):
-            continue
-        content = page.get("content")
-        if isinstance(content, dict) and isinstance(content.get("sections"), list):
-            pages_out.append({"page": pk, "path": _page_path(page),
-                              "label": rx._as_text(page.get("title")) or pk})
 
-    text_slots: list[dict[str, Any]] = []
-    for page_key, section, _by in _editable_sections(manifest):
-        for f in section["fields"]:
-            if isinstance(f, dict) and rx._as_text(f.get("type")) in _TEXT_TYPES and f.get("key"):
-                text_slots.append({
-                    "page": page_key,
-                    "section_id": rx._as_text(section.get("id")),
-                    "key": rx._as_text(f.get("key")),
-                    "label": rx._as_text(f.get("label")) or rx._as_text(f.get("key")),
-                    "value": rx._as_text(f.get("value")),
-                    "max_chars": f.get("max_chars") if isinstance(f.get("max_chars"), int) else None,
-                })
-    return {"enabled": True, "site": site, "pages": pages_out,
-            "text_slots": text_slots, "gallery": _gallery(webapps_root, site)}
+# --------------------------------------------------------------------------- #
+# value-replace primitives
+# --------------------------------------------------------------------------- #
+def _deep_count(obj: Any, needle: str) -> int:
+    if isinstance(obj, str):
+        return obj.count(needle)
+    if isinstance(obj, dict):
+        return sum(_deep_count(v, needle) for v in obj.values())
+    if isinstance(obj, list):
+        return sum(_deep_count(v, needle) for v in obj)
+    return 0
+
+
+def _deep_replace(obj: Any, old: str, new: str) -> Any:
+    if isinstance(obj, str):
+        return obj.replace(old, new)
+    if isinstance(obj, dict):
+        return {k: _deep_replace(v, old, new) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_replace(v, old, new) for v in obj]
+    return obj
+
+
+def _text_pairs(old: str, new: str) -> list[tuple[str, str]]:
+    """(match, replacement) candidates: the raw value and its HTML-escaped form, so
+    a text edit lands whether the source stores decoded (typed fields) or escaped
+    (html blobs / static .html) copy."""
+    pairs = [(old, new)]
+    esc_old = _html.escape(old, quote=False)
+    if esc_old != old:
+        pairs.append((esc_old, _html.escape(new, quote=False)))
+    return pairs
 
 
 def _render_site(frontend_dir: Path) -> tuple[bool, str]:
-    """Regenerate the site's HTML by calling ``build_site`` in an ISOLATED subprocess.
-
-    We invoke build_site directly (not the site's ``render_manifest.py`` wrapper)
-    because (1) each site ships its own ``render_lib`` package, which must not be
-    imported into the long-lived multi-site portal process, and (2) the wrapper's
-    unrelated post-render lints (e.g. a stray demo page failing the URL convention)
-    would mislabel a good save as failed. A slot/asset edit can't introduce the
-    URL/DR violations those lints guard.
-    """
+    """Regenerate a manifest site's HTML via build_site in an ISOLATED subprocess
+    (each site ships its own render_lib; don't import it into the portal process)."""
     scripts = frontend_dir / "scripts"
     if not (scripts / "render_lib" / "site_builder.py").is_file():
         return False, f"no render_lib at {scripts}"
@@ -180,117 +214,148 @@ def _render_site(frontend_dir: Path) -> tuple[bool, str]:
         "build_site(Path('.').resolve())"
     )
     try:
-        completed = subprocess.run(
-            [sys.executable, "-c", code],
-            check=False, capture_output=True, timeout=300, cwd=str(frontend_dir),
-        )
+        done = subprocess.run([sys.executable, "-c", code], check=False,
+                              capture_output=True, timeout=300, cwd=str(frontend_dir))
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"render failed to launch: {exc}"
-    if completed.returncode != 0:
-        detail = completed.stderr.decode("utf-8", "replace").strip()
-        return False, f"render exited {completed.returncode}: {detail[:400]}"
+    if done.returncode != 0:
+        return False, f"render exited {done.returncode}: {done.stderr.decode('utf-8','replace').strip()[:400]}"
     return True, "rebuilt"
+
+
+def _swap_kind(new: str) -> str:
+    if "#" in new:
+        return "icon_sprite"
+    if "/assets/icons/" in new:
+        return "icon_file"
+    return "image"
 
 
 def save_site_content(
     webapps_root: str | Path | None,
     site: str,
+    page: str,
     edits: list[dict[str, Any]] | None = None,
     swaps: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Apply text-slot edits + image/icon swaps to the manifest, then re-render.
+    """Apply text edits + image/icon swaps to a page, then (manifest sites) re-render.
 
-    ``edits`` = ``[{page, section_id, key, value}]`` (typed text slots, validated
-    against the field's own max_chars). ``swaps`` = ``[{page, old, new}]`` — replace
-    the asset path ``old`` with ``new`` (validated ∈ the site's gallery) everywhere
-    it appears in that page's section html. All-or-nothing: any error → no write.
+    ``edits`` = ``[{old, new}]`` text; ``swaps`` = ``[{old, new, kind}]`` assets.
+    All-or-nothing: any error → nothing is written.
     """
     site = os.path.basename(rx._as_text(site))
     if not site_content_enabled(site):
         return {"ok": False, "error": "not_editable"}
-    manifest_path = _site_manifest_path(webapps_root, site)
-    frontend_dir = _frontend_dir(webapps_root, site)
-    if manifest_path is None or frontend_dir is None:
-        return {"ok": False, "error": "no_manifest"}
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    fd = _frontend_dir(webapps_root, site)
+    if fd is None:
+        return {"ok": False, "error": "no_site"}
+    kind = _site_kind(webapps_root, site)
     gallery = _gallery(webapps_root, site)
+    edits = edits if isinstance(edits, list) else []
+    swaps = swaps if isinstance(swaps, list) else []
     errors: list[str] = []
-    applied = 0
-
-    # --- typed text-slot edits ---
-    index: dict[tuple[str, str], dict] = {}
-    for page_key, section, by_key in _editable_sections(manifest):
-        index[(page_key, rx._as_text(section.get("id")))] = by_key
-    for edit in edits if isinstance(edits, list) else []:
-        if not isinstance(edit, dict):
-            continue
-        page = rx._as_text(edit.get("page"))
-        sid = rx._as_text(edit.get("section_id"))
-        key = rx._as_text(edit.get("key"))
-        by_key = index.get((page, sid))
-        field = by_key.get(key) if by_key else None
-        if field is None or rx._as_text(field.get("type")) not in _TEXT_TYPES:
-            errors.append(f"{page}/{sid}/{key}: not an editable text field")
-            continue
-        value = _clean_text(edit.get("value"))
-        mc = field.get("max_chars")
-        if isinstance(mc, int) and len(value) > mc:
-            errors.append(f"{page}/{sid}/{key}: exceeds {mc} characters")
-            continue
-        field["value"] = value
-        applied += 1
-
-    # --- asset swaps (any image/icon on the page, by path) ---
-    pages = manifest.get("pages") if isinstance(manifest.get("pages"), dict) else {}
     new_images: list[str] = []
-    for swap in swaps if isinstance(swaps, list) else []:
-        if not isinstance(swap, dict):
-            continue
-        page = rx._as_text(swap.get("page"))
-        old = rx._as_text(swap.get("old"))
-        new = rx._as_text(swap.get("new"))
-        kind = "icon" if ("#" in new or "/assets/icons/" in new) else "image"
-        if not new or new not in gallery.get(kind, []):
-            errors.append(f"{page}: '{new}' is not in your {kind} gallery")
-            continue
-        page_obj = pages.get(page)
-        content = page_obj.get("content") if isinstance(page_obj, dict) else None
-        sections = content.get("sections") if isinstance(content, dict) else None
-        if not isinstance(sections, list):
-            errors.append(f"{page}: not an editable page")
-            continue
-        count = 0
-        for s in sections:
-            if isinstance(s, dict) and isinstance(s.get("html"), str) and old and old in s["html"]:
-                count += s["html"].count(old)
-                s["html"] = s["html"].replace(old, new)
-        if count == 0:
-            errors.append(f"{page}: '{old}' not found on the page")
-            continue
-        applied += 1
-        if kind == "image":
-            new_images.append(new)
 
+    if kind == "manifest":
+        mp = _site_manifest_path(webapps_root, site)
+        if mp is None:
+            return {"ok": False, "error": "no_manifest"}
+        manifest = json.loads(mp.read_text(encoding="utf-8"))
+        data_files = {p: json.loads(p.read_text(encoding="utf-8")) for p in (fd / "data").glob("*.json")} \
+            if (fd / "data").is_dir() else {}
+
+        def count(needle):
+            return _deep_count(manifest, needle) + sum(_deep_count(d, needle) for d in data_files.values())
+
+        applied = 0
+        for sw in swaps:
+            old, new = rx._as_text(sw.get("old")), rx._as_text(sw.get("new"))
+            gk = rx._as_text(sw.get("kind")) or _swap_kind(new)
+            if not new or new not in gallery.get(gk, []):
+                errors.append(f"'{new}' is not in your {gk} gallery")
+                continue
+            if count(old) == 0:
+                errors.append("image not found on the page")
+                continue
+            manifest = _deep_replace(manifest, old, new)
+            data_files = {p: _deep_replace(d, old, new) for p, d in data_files.items()}
+            if gk == "image":
+                new_images.append(new)
+            applied += 1
+        for ed in edits:
+            old, new = _CONTROL_RE.sub("", rx._as_text(ed.get("old"))), _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
+            if not old or len(new) > _MAX_TEXT:
+                errors.append("invalid text edit")
+                continue
+            done = False
+            for m, r in _text_pairs(old, new):
+                if count(m) == 1:
+                    manifest = _deep_replace(manifest, m, r)
+                    data_files = {p: _deep_replace(d, m, r) for p, d in data_files.items()}
+                    done = True
+                    applied += 1
+                    break
+            if not done:
+                errors.append(f"couldn't place text edit safely: {old[:40]!r}")
+        if errors:
+            return {"ok": False, "errors": errors, "applied": 0}
+        if applied == 0:
+            return {"ok": True, "applied": 0, "rebuilt": False}
+        rx._atomic_write_text(mp, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
+        for p, d in data_files.items():
+            rx._atomic_write_text(p, json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+        _allocate_images(webapps_root, site, new_images)
+        ok, note = _render_site(fd)
+        return {"ok": ok, "applied": applied, "rebuilt": ok, "detail": note}
+
+    # ---- static site: edit the page's .html directly ----
+    rel = os.path.basename(rx._as_text(page)) if "/" not in rx._as_text(page) else rx._as_text(page)
+    rel = rel.lstrip("/")
+    html_path = (fd / rel).resolve()
+    if fd.resolve() not in html_path.parents or not html_path.is_file():
+        return {"ok": False, "error": "no_page"}
+    text = html_path.read_text(encoding="utf-8")
+    applied = 0
+    for sw in swaps:
+        old, new = rx._as_text(sw.get("old")), rx._as_text(sw.get("new"))
+        gk = rx._as_text(sw.get("kind")) or _swap_kind(new)
+        if not new or new not in gallery.get(gk, []):
+            errors.append(f"'{new}' is not in your {gk} gallery")
+            continue
+        if old not in text:
+            errors.append("image not found on the page")
+            continue
+        text = text.replace(old, new)
+        if gk == "image":
+            new_images.append(new)
+        applied += 1
+    for ed in edits:
+        old, new = _CONTROL_RE.sub("", rx._as_text(ed.get("old"))), _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
+        if not old or len(new) > _MAX_TEXT:
+            errors.append("invalid text edit")
+            continue
+        done = False
+        for m, r in _text_pairs(old, new):
+            if text.count(m) == 1:
+                text = text.replace(m, r)
+                done = True
+                applied += 1
+                break
+        if not done:
+            errors.append(f"couldn't place text edit safely: {old[:40]!r}")
     if errors:
         return {"ok": False, "errors": errors, "applied": 0}
     if applied == 0:
         return {"ok": True, "applied": 0, "rebuilt": False}
+    rx._atomic_write_text(html_path, text)
+    _allocate_images(webapps_root, site, new_images)
+    return {"ok": True, "applied": applied, "rebuilt": False}
 
-    text = json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
-    try:
-        rx._atomic_write_text(manifest_path, text)
-    except OSError as exc:
-        return {"ok": False, "error": "write_failed", "detail": str(exc)}
 
-    # Declare any newly-introduced image in the site record-manifest so the deploy
-    # asset-lint stays green (no-op if already present).
+def _allocate_images(webapps_root: str | Path | None, site: str, paths: list[str]) -> None:
+    """Declare newly-used images in the site record-manifest (deploy-lint safe)."""
     entity = _entity(site)
-    for img in dict.fromkeys(new_images):
+    for img in dict.fromkeys(paths):
         asset_id = img.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-        rx.add_asset_to_manifest(
-            webapps_root, site=site, kind="image",
-            asset_id=asset_id, asset_path=img, entity_scope=entity,
-        )
-
-    rebuilt, note = _render_site(frontend_dir)
-    return {"ok": rebuilt, "applied": applied, "rebuilt": rebuilt, "detail": note}
+        rx.add_asset_to_manifest(webapps_root, site=site, kind="image",
+                                 asset_id=asset_id, asset_path=img, entity_scope=entity)
