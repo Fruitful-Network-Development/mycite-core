@@ -114,6 +114,20 @@ class CampaignLeafletStoreTests(unittest.TestCase):
         row = self.store.add_campaign(ENTITY, DOMAIN, label="x", medium="bogus")
         self.assertEqual(row["medium"], "link")
 
+    def test_target_path_normalized_against_offsite(self):
+        # protocol-relative //evil.com, traversal, and query are sanitized to a
+        # safe same-site path (no off-site redirect from a tracked link/QR).
+        cases = {
+            "//evil.com/phish": "/evil.com/phish",
+            "/../../etc/passwd": "/etc/passwd",
+            "/summer?x=1#frag": "/summer",
+            "": "/",
+            "page": "/page",
+        }
+        for raw, expect in cases.items():
+            row = self.store.add_campaign(ENTITY, DOMAIN, label="c", target_path=raw)
+            self.assertEqual(row["target_path"], expect, f"{raw!r} -> {row['target_path']!r}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -76,6 +76,17 @@ Fields are stamped at one of two layers:
 | `language` | str | `navigator.language`. |
 | `do_not_track` | bool | True if `navigator.doNotTrack === "1"`. |
 | `properties` | dict | Free-form, bounded to `MAX_PROPERTIES_BYTES` serialised. |
+| `action` | str | Standardized interaction token (one of `STANDARD_ACTIONS`: `contact_form_submit` / `email_click` / `phone_click` / `booking_click` / `checkout_start` / `checkout_complete` / `download_file` / `outbound_click` / `newsletter_signup`), or `""`. Unknown values are dropped at write time. |
+| `campaign_token` | str | The `?fnd_c=<token>` a pre-tracked link / QR carried (bounded 64). Stamped onto the session's `routed_from.campaign_token`; resolved token→label at render. |
+| `share_id` | str | This visitor's own JS-readable `fnd_sid` (bounded 64). Lets `referred_by` on another visitor's session resolve back to this visitor (A→B link-share chain). |
+| `referred_by` | str | The `?fnd_ref=<sharer fnd_sid>` the inbound link carried (bounded 64) — i.e. the share id of the visitor who shared the link. Stamped onto `routed_from.referred_by`. |
+
+> Storage note: events now persist into the monthly site-core **leaflet**
+> (`visitors → sessions → events`), not the per-domain NDJSON log (retired
+> 2026-06-08). `campaign_token` / `referred_by` land on the session's
+> `routed_from`; `share_id` on the visitor's `visitor_context`. The grantee
+> Records API strips `ip_prefixes` / network / region / raw share ids and
+> resolves `referred_by` to a `referred_by_visitor` record id.
 
 ## Quality flags
 

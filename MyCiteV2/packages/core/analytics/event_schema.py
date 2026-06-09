@@ -288,6 +288,13 @@ class RawEvent:
     # who scanned the same QR). Resolved token→label at render time.
     campaign_token: str = ""
 
+    # Per-visitor referral chain (A→B link sharing). ``share_id`` is the
+    # visitor's own JS-readable fnd_sid; ``referred_by`` is the fnd_ref the
+    # inbound link carried (the SHARER's share_id). Lets the dashboard trace
+    # "B's visit came via A" even though A and B have different visitor cookies.
+    share_id: str = ""
+    referred_by: str = ""
+
     @classmethod
     def from_request(
         cls,
@@ -327,6 +334,8 @@ class RawEvent:
         if action not in STANDARD_ACTIONS:
             action = ""
         campaign_token = _bounded(_as_text(body.get("campaign_token")), limit=64)
+        share_id = _bounded(_as_text(body.get("share_id")), limit=64)
+        referred_by = _bounded(_as_text(body.get("referred_by")), limit=64)
 
         visitor_cookie_id_hash = salted_hash(visitor_cookie, salt=salt)
         quality_flags = compute_quality_flags(
@@ -393,6 +402,8 @@ class RawEvent:
             quality_flags=quality_flags,
             action=action,
             campaign_token=campaign_token,
+            share_id=share_id,
+            referred_by=referred_by,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -444,6 +455,8 @@ class RawEvent:
             "quality_flags": list(self.quality_flags),
             "action": self.action,
             "campaign_token": self.campaign_token,
+            "share_id": self.share_id,
+            "referred_by": self.referred_by,
         }
 
 

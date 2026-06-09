@@ -440,13 +440,12 @@ def find_common_paths(
 def high_intent_sessions(
     sessions: Iterable[dict[str, Any]],
     *,
-    intent_pages: tuple[str, ...] = ("/pricing", "/contact", "/donate", "/subscribe"),
     min_active_ms: int = 60_000,
 ) -> list[dict[str, Any]]:
     """Sessions that visited an intent page AND spent meaningful
-    active time. Used as the operator's "real buyers" filter.
+    active time. Used as the operator's "real buyers" filter. Intent pages
+    are matched on a path SEGMENT boundary (see ``path_touches_intent``).
     """
-    intent_set = {p.lower() for p in intent_pages}
     out: list[dict[str, Any]] = []
     for session in sessions:
         if session.get("is_bot"):
@@ -454,12 +453,9 @@ def high_intent_sessions(
         if session.get("active_time_ms", 0) < min_active_ms:
             continue
         # Cheap heuristic: entry or exit page is an intent page.
-        # The full session would need to be re-queried for an
-        # exact-match check; this approximation is good enough for
-        # the operator-facing high_intent_count metric.
-        entry = (session.get("entry_page") or "").lower()
-        exit_p = (session.get("exit_page") or "").lower()
-        if any(p in entry for p in intent_set) or any(p in exit_p for p in intent_set):
+        if path_touches_intent(session.get("entry_page")) or path_touches_intent(
+            session.get("exit_page")
+        ):
             out.append(session)
     return out
 
@@ -499,19 +495,37 @@ def detect_vpn_geo_jumps(
 # remaining vision retrieval operations.
 # ---------------------------------------------------------------------
 
-DEFAULT_CONVERSION_EVENT_TYPES: tuple[str, ...] = (
-    "form_submit",
-    "outbound_click",
-    "download",
+# --- Single source of intent / conversion / action truth ----------------------
+# Both this module (the dashboard widgets) and leaflet_model (the per-session
+# summary) classify intent + conversions; they MUST agree or abandoned_intent /
+# converted disagree between the two. So the canonical sets live here (the lower
+# module — leaflet_model imports from derivations, never the reverse) and
+# leaflet_model re-imports them. DEFAULT_* are kept as aliases for the existing
+# function-default signatures.
+INTENT_PATH_NEEDLES: tuple[str, ...] = (
+    "/pricing", "/contact", "/donate", "/subscribe", "/book", "/quote",
 )
+CONVERSION_EVENT_TYPES: frozenset[str] = frozenset(
+    {"form_submit", "outbound_click", "download"}
+)
+CONVERSION_ACTIONS: frozenset[str] = frozenset(
+    {"contact_form_submit", "newsletter_signup", "booking_click", "checkout_complete"}
+)
+HIGH_INTENT_ACTIONS: frozenset[str] = frozenset(
+    {"phone_click", "email_click", "checkout_start", "booking_click"}
+) | CONVERSION_ACTIONS
 
-DEFAULT_INTENT_PATHS: tuple[str, ...] = (
-    "/pricing",
-    "/contact",
-    "/donate",
-    "/subscribe",
-    "/book",
-)
+DEFAULT_CONVERSION_EVENT_TYPES: tuple[str, ...] = tuple(sorted(CONVERSION_EVENT_TYPES))
+DEFAULT_INTENT_PATHS: tuple[str, ...] = INTENT_PATH_NEEDLES
+
+
+def path_touches_intent(path: str) -> bool:
+    """True if ``path`` IS an intent page or a child of one — matched on a path
+    SEGMENT boundary, not a bare substring, so ``/contact-list`` /
+    ``/pricing-calculator`` do NOT falsely count. Shared by the widgets here and
+    leaflet_model's session_summary so both classify intent identically."""
+    p = (path or "").lower()
+    return any(p == n or p.startswith(n + "/") for n in INTENT_PATH_NEEDLES)
 
 DEFAULT_INTEREST_CATEGORIES: dict[str, tuple[str, ...]] = {
     "services": ("/services", "/work", "/what-we-do"),
@@ -710,7 +724,12 @@ def abandoned_intent_sessions(
             continue
         entry = (session.get("entry_page") or "").lower()
         exit_p = (session.get("exit_page") or "").lower()
-        visited_intent = [n for n in needles if n in entry or n in exit_p]
+        # SEGMENT-boundary match (not substring) so /contact-list ≠ /contact.
+        visited_intent = [
+            n for n in needles
+            if entry == n or entry.startswith(n + "/")
+            or exit_p == n or exit_p.startswith(n + "/")
+        ]
         if not visited_intent:
             continue
         event_types = set(session.get("event_types") or [])
@@ -890,10 +909,14 @@ def traffic_origin_classification(
 
 
 __all__ = [
+    "CONVERSION_ACTIONS",
+    "CONVERSION_EVENT_TYPES",
     "DEFAULT_CONVERSION_EVENT_TYPES",
     "DEFAULT_INACTIVITY_GAP_MS",
     "DEFAULT_INTENT_PATHS",
     "DEFAULT_INTEREST_CATEGORIES",
+    "HIGH_INTENT_ACTIONS",
+    "INTENT_PATH_NEEDLES",
     "abandoned_intent_sessions",
     "classify_origin",
     "conversion_assisting_pages",
@@ -904,6 +927,7 @@ __all__ = [
     "filter_bots",
     "find_common_paths",
     "high_intent_sessions",
+    "path_touches_intent",
     "rank_pages_by_attention",
     "rank_referrers",
     "reconstruct_visitor_timeline",

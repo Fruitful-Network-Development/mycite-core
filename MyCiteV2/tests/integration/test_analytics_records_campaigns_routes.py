@@ -129,6 +129,42 @@ class AnalyticsRecordsCampaignsTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 403)
 
+    def test_records_resolves_referral_and_trims_sensitive_fields(self):
+        tmp = Path(tempfile.mkdtemp(prefix="analytics_referral_"))
+        for sub in ("public", "private", "data", "webapps"):
+            (tmp / sub).mkdir()
+        fnd_csm = tmp / "private" / "utilities" / "tools" / "fnd-csm"
+        fnd_csm.mkdir(parents=True, exist_ok=True)
+        (fnd_csm / f"grantee.fnd.{FND}.json").write_text(json.dumps({
+            "schema": GRANTEE_PROFILE_SCHEMA, "msn_id": FND, "label": "FND",
+            "short_name": "FND", "domains": [DOMAIN], "users": [],
+        }), encoding="utf-8")
+        entity = entity_for_domain(DOMAIN)
+        store = AnalyticsLeafletStore(private_dir=tmp / "private", webapps_root=tmp / "webapps")
+        ingest_batch(store, entity, DOMAIN, PERIOD, [
+            _raw("2026-06-01T09:00:00+00:00", session_id="sa", visitor_cookie_id_hash="A",
+                 share_id="sid_A", ip_prefix="1.2.3.0/24"),
+            _raw("2026-06-01T10:00:00+00:00", session_id="sb", visitor_cookie_id_hash="B",
+                 share_id="sid_B", referred_by="sid_A", event_id="e2"),
+        ])
+        config = V2PortalHostConfig(
+            portal_instance_id="fnd", public_dir=tmp / "public", private_dir=tmp / "private",
+            data_dir=tmp / "data", portal_domain="example.test", webapps_root=tmp / "webapps",
+        )
+        body = create_app(config).test_client().get(
+            f"/__fnd/analytics/records?period={PERIOD}", headers={"X-Auth-Request-Grantee": FND}
+        ).get_json()
+        by_cookie = {v["visitor_cookie_id_hash"]: v for v in body["leaflet"]["visitors"]}
+        # B's visit is recognized as referred by A (A is B's "origin router").
+        self.assertEqual(by_cookie["B"]["referred_by_visitor"], by_cookie["A"]["visitor_record_id"])
+        self.assertEqual(by_cookie["A"]["referred_by_visitor"], "")
+        # coarse IP / geo / raw share ids are NOT exposed to the grantee.
+        for v in body["leaflet"]["visitors"]:
+            ctx = v["visitor_context"]
+            self.assertNotIn("ip_prefixes", ctx)
+            self.assertNotIn("share_id", ctx)
+            self.assertNotIn("network", ctx)
+
 
 if __name__ == "__main__":
     unittest.main()

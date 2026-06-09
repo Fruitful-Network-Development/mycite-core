@@ -13,22 +13,10 @@ filesystem adapters.
 
 from __future__ import annotations
 
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 from MyCiteV2.packages.core.analytics import derivations
-
-
-def visitor_tokens_in_order(humans: list[dict[str, Any]]) -> list[str]:
-    """Distinct human visitor cookies in first-seen order."""
-    tokens: list[str] = []
-    seen: set[str] = set()
-    for event in humans:
-        token = event.get("visitor_cookie_id_hash") or ""
-        if token and token not in seen:
-            seen.add(token)
-            tokens.append(token)
-    return tokens
 
 
 def derive_insights(events: list[dict[str, Any]]) -> dict[str, Any]:
@@ -41,15 +29,30 @@ def derive_insights(events: list[dict[str, Any]]) -> dict[str, Any]:
     """
     humans, bots = derivations.filter_bots(events)
     sessions = derivations.sessionize(humans)
-    tokens = visitor_tokens_in_order(humans)
 
-    visitor_summaries = [derivations.visitor_summary(humans, t) for t in tokens]
+    # Group humans by cookie ONCE, in first-seen order, so each per-visitor pass
+    # below operates on that visitor's own (small) event list rather than
+    # re-filtering the whole `humans` list — turns the old O(visitors × events)
+    # rescans into a single O(events) grouping pass.
+    by_cookie: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    tokens: list[str] = []
+    seen: set[str] = set()
+    for e in humans:
+        t = e.get("visitor_cookie_id_hash") or ""
+        if not t:
+            continue
+        if t not in seen:
+            seen.add(t)
+            tokens.append(t)
+        by_cookie[t].append(e)
+
+    visitor_summaries = [derivations.visitor_summary(by_cookie[t], t) for t in tokens]
     visitor_summaries.sort(key=lambda v: v.get("total_active_time_ms") or 0, reverse=True)
 
     interest_counts: Counter = Counter()
     interest_total_views = 0
     for token in tokens:
-        prof = derivations.visitor_interest_profile(humans, token)
+        prof = derivations.visitor_interest_profile(by_cookie[token], token)
         for cat, info in (prof.get("categories") or {}).items():
             interest_counts[cat] += info.get("hits", 0)
         interest_total_views += prof.get("total_page_views", 0)
@@ -104,4 +107,4 @@ def derive_insights(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-__all__ = ["derive_insights", "visitor_tokens_in_order"]
+__all__ = ["derive_insights"]
