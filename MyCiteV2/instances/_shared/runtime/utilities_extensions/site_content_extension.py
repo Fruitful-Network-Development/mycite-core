@@ -190,15 +190,52 @@ def _deep_replace(obj: Any, old: str, new: str) -> Any:
     return obj
 
 
-def _text_pairs(old: str, new: str) -> list[tuple[str, str]]:
-    """(match, replacement) candidates: the raw value and its HTML-escaped form, so
-    a text edit lands whether the source stores decoded (typed fields) or escaped
-    (html blobs / static .html) copy."""
-    pairs = [(old, new)]
-    esc_old = _html.escape(old, quote=False)
-    if esc_old != old:
-        pairs.append((esc_old, _html.escape(new, quote=False)))
-    return pairs
+def _deep_count_equal(obj: Any, needle: str) -> int:
+    if isinstance(obj, str):
+        return 1 if obj == needle else 0
+    if isinstance(obj, dict):
+        return sum(_deep_count_equal(v, needle) for v in obj.values())
+    if isinstance(obj, list):
+        return sum(_deep_count_equal(v, needle) for v in obj)
+    return 0
+
+
+def _deep_replace_equal(obj: Any, old: str, new: str) -> Any:
+    if isinstance(obj, str):
+        return new if obj == old else obj
+    if isinstance(obj, dict):
+        return {k: _deep_replace_equal(v, old, new) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_deep_replace_equal(v, old, new) for v in obj]
+    return obj
+
+
+def _dedupe(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    out, seen = [], set()
+    for m, r in pairs:
+        if m and m not in seen:
+            seen.add(m)
+            out.append((m, r))
+    return out
+
+
+def _apply_text_edit(container: Any, old: str, new: str) -> tuple[Any, bool]:
+    """Place a text edit precisely, trying in order: (1) an exact field VALUE
+    (typed fields — replace every equal value, so visible + meta stay consistent);
+    (2) the element-content form ``>old<`` (targets the rendered element, not
+    attributes/title/JSON-LD, and is word-boundary safe); (3) a unique plain
+    substring. Returns (container, applied)."""
+    esc = lambda s: _html.escape(s, quote=False)  # noqa: E731
+    for m, r in _dedupe([(old, new), (esc(old), esc(new))]):
+        if _deep_count_equal(container, m) > 0:
+            return _deep_replace_equal(container, m, r), True
+    for m, r in _dedupe([(f">{old}<", f">{new}<"), (f">{esc(old)}<", f">{esc(new)}<")]):
+        if _deep_count(container, m) > 0:
+            return _deep_replace(container, m, r), True
+    for m, r in _dedupe([(old, new), (esc(old), esc(new))]):
+        if _deep_count(container, m) == 1:
+            return _deep_replace(container, m, r), True
+    return container, False
 
 
 def _render_site(frontend_dir: Path) -> tuple[bool, str]:
@@ -241,7 +278,9 @@ def save_site_content(
     """Apply text edits + image/icon swaps to a page, then (manifest sites) re-render.
 
     ``edits`` = ``[{old, new}]`` text; ``swaps`` = ``[{old, new, kind}]`` assets.
-    All-or-nothing: any error → nothing is written.
+    Both are value-replacements against the page SOURCE (a ``container`` — the
+    manifest + data/*.json for manifest sites, or the .html string for static
+    sites). All-or-nothing: any error → nothing is written.
     """
     site = os.path.basename(rx._as_text(site))
     if not site_content_enabled(site):
@@ -256,65 +295,24 @@ def save_site_content(
     errors: list[str] = []
     new_images: list[str] = []
 
+    # Build a single replaceable container for either site kind.
+    mp = html_path = None
+    orig_data: dict[str, Any] = {}
     if kind == "manifest":
         mp = _site_manifest_path(webapps_root, site)
         if mp is None:
             return {"ok": False, "error": "no_manifest"}
-        manifest = json.loads(mp.read_text(encoding="utf-8"))
-        data_files = {p: json.loads(p.read_text(encoding="utf-8")) for p in (fd / "data").glob("*.json")} \
-            if (fd / "data").is_dir() else {}
+        orig_data = {str(p): json.loads(p.read_text(encoding="utf-8"))
+                     for p in (fd / "data").glob("*.json")} if (fd / "data").is_dir() else {}
+        container: Any = {"manifest": json.loads(mp.read_text(encoding="utf-8")),
+                          "data": {k: json.loads(json.dumps(v)) for k, v in orig_data.items()}}
+    else:
+        rel = rx._as_text(page).lstrip("/") or "index.html"
+        html_path = (fd / rel).resolve()
+        if fd.resolve() not in html_path.parents or not html_path.is_file():
+            return {"ok": False, "error": "no_page"}
+        container = {"html": html_path.read_text(encoding="utf-8")}
 
-        def count(needle):
-            return _deep_count(manifest, needle) + sum(_deep_count(d, needle) for d in data_files.values())
-
-        applied = 0
-        for sw in swaps:
-            old, new = rx._as_text(sw.get("old")), rx._as_text(sw.get("new"))
-            gk = rx._as_text(sw.get("kind")) or _swap_kind(new)
-            if not new or new not in gallery.get(gk, []):
-                errors.append(f"'{new}' is not in your {gk} gallery")
-                continue
-            if count(old) == 0:
-                errors.append("image not found on the page")
-                continue
-            manifest = _deep_replace(manifest, old, new)
-            data_files = {p: _deep_replace(d, old, new) for p, d in data_files.items()}
-            if gk == "image":
-                new_images.append(new)
-            applied += 1
-        for ed in edits:
-            old, new = _CONTROL_RE.sub("", rx._as_text(ed.get("old"))), _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
-            if not old or len(new) > _MAX_TEXT:
-                errors.append("invalid text edit")
-                continue
-            done = False
-            for m, r in _text_pairs(old, new):
-                if count(m) == 1:
-                    manifest = _deep_replace(manifest, m, r)
-                    data_files = {p: _deep_replace(d, m, r) for p, d in data_files.items()}
-                    done = True
-                    applied += 1
-                    break
-            if not done:
-                errors.append(f"couldn't place text edit safely: {old[:40]!r}")
-        if errors:
-            return {"ok": False, "errors": errors, "applied": 0}
-        if applied == 0:
-            return {"ok": True, "applied": 0, "rebuilt": False}
-        rx._atomic_write_text(mp, json.dumps(manifest, indent=2, ensure_ascii=False) + "\n")
-        for p, d in data_files.items():
-            rx._atomic_write_text(p, json.dumps(d, indent=2, ensure_ascii=False) + "\n")
-        _allocate_images(webapps_root, site, new_images)
-        ok, note = _render_site(fd)
-        return {"ok": ok, "applied": applied, "rebuilt": ok, "detail": note}
-
-    # ---- static site: edit the page's .html directly ----
-    rel = os.path.basename(rx._as_text(page)) if "/" not in rx._as_text(page) else rx._as_text(page)
-    rel = rel.lstrip("/")
-    html_path = (fd / rel).resolve()
-    if fd.resolve() not in html_path.parents or not html_path.is_file():
-        return {"ok": False, "error": "no_page"}
-    text = html_path.read_text(encoding="utf-8")
     applied = 0
     for sw in swaps:
         old, new = rx._as_text(sw.get("old")), rx._as_text(sw.get("new"))
@@ -322,32 +320,40 @@ def save_site_content(
         if not new or new not in gallery.get(gk, []):
             errors.append(f"'{new}' is not in your {gk} gallery")
             continue
-        if old not in text:
+        if _deep_count(container, old) == 0:
             errors.append("image not found on the page")
             continue
-        text = text.replace(old, new)
+        container = _deep_replace(container, old, new)
         if gk == "image":
             new_images.append(new)
         applied += 1
     for ed in edits:
-        old, new = _CONTROL_RE.sub("", rx._as_text(ed.get("old"))), _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
+        old = _CONTROL_RE.sub("", rx._as_text(ed.get("old")))
+        new = _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
         if not old or len(new) > _MAX_TEXT:
             errors.append("invalid text edit")
             continue
-        done = False
-        for m, r in _text_pairs(old, new):
-            if text.count(m) == 1:
-                text = text.replace(m, r)
-                done = True
-                applied += 1
-                break
-        if not done:
+        container, done = _apply_text_edit(container, old, new)
+        if done:
+            applied += 1
+        else:
             errors.append(f"couldn't place text edit safely: {old[:40]!r}")
+
     if errors:
         return {"ok": False, "errors": errors, "applied": 0}
     if applied == 0:
         return {"ok": True, "applied": 0, "rebuilt": False}
-    rx._atomic_write_text(html_path, text)
+
+    if kind == "manifest":
+        rx._atomic_write_text(mp, json.dumps(container["manifest"], indent=2, ensure_ascii=False) + "\n")
+        for k, d in container["data"].items():
+            if d != orig_data.get(k):
+                rx._atomic_write_text(Path(k), json.dumps(d, indent=2, ensure_ascii=False) + "\n")
+        _allocate_images(webapps_root, site, new_images)
+        ok, note = _render_site(fd)
+        return {"ok": ok, "applied": applied, "rebuilt": ok, "detail": note}
+
+    rx._atomic_write_text(html_path, container["html"])
     _allocate_images(webapps_root, site, new_images)
     return {"ok": True, "applied": applied, "rebuilt": False}
 
