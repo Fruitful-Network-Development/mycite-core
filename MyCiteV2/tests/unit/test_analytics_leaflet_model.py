@@ -151,6 +151,49 @@ class LeafletModelTests(unittest.TestCase):
         self.assertEqual(flat[0]["visitor_cookie_id_hash"], "cookieA")
         self.assertIn("occurred_at_utc", flat[0])
 
+    def test_referral_fields_flow_through(self):
+        # B arrives via A's shared link: ?fnd_ref=A. B's own share id is recorded;
+        # B's session is attributed to A via routed_from.referred_by.
+        m = _month()
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", visitor_cookie_id_hash="B",
+                               share_id="sid_B", referred_by="sid_A"))
+        v = m["visitors"][0]
+        self.assertEqual(v["visitor_context"]["share_id"], "sid_B")
+        self.assertEqual(v["sessions"][0]["routed_from"]["referred_by"], "sid_A")
+        flat = lm.flatten_events(m)
+        self.assertEqual(flat[0]["referred_by"], "sid_A")
+        self.assertEqual(flat[0]["share_id"], "sid_B")
+
+    def test_intent_match_is_segment_bounded(self):
+        # /contact-list must NOT count as the /contact intent page (substring trap).
+        m = _month()
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", page_path="/contact-list",
+                               active_time_ms=70000))
+        self.assertFalse(m["visitors"][0]["sessions"][0]["session_summary"]["abandoned_intent"])
+        # /contact itself DOES count.
+        m2 = _month()
+        lm.merge_event(m2, _raw("2026-06-01T09:00:00+00:00", page_path="/contact",
+                                active_time_ms=70000))
+        self.assertTrue(m2["visitors"][0]["sessions"][0]["session_summary"]["abandoned_intent"])
+
+    def test_stored_event_dedup(self):
+        # A duplicate stored event (same event_id, or same occurred_at+type+path)
+        # is not double-appended (retry / cross-worker double-POST).
+        m = _month()
+        e = _raw("2026-06-01T09:00:00+00:00", event_type="form_submit",
+                 action="contact_form_submit", event_id="evt-dup")
+        lm.merge_event(m, e)
+        lm.merge_event(m, dict(e))  # exact replay
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", event_type="form_submit",
+                               action="contact_form_submit", event_id="other-id"))  # same occ+type+path
+        events = m["visitors"][0]["sessions"][0]["events"]
+        self.assertEqual(len(events), 1)
+
+    def test_missing_cookie_dropped(self):
+        m = _month()
+        lm.merge_event(m, _raw("2026-06-01T09:00:00+00:00", visitor_cookie_id_hash=""))
+        self.assertEqual(len(m["visitors"]), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

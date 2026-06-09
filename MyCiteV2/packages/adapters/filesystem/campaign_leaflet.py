@@ -55,6 +55,23 @@ def _mint_token(existing: set[str]) -> str:
     return "".join(secrets.choice(_TOKEN_ALPHABET) for _ in range(_TOKEN_LEN + 3))
 
 
+def _normalize_target_path(raw: object) -> str:
+    """A campaign target is a SAME-SITE path. Strip any ?query / #fragment (the
+    tracked URL appends ?fnd_c itself), reject protocol-relative ``//host`` and
+    ``..`` traversal, and return a single-leading-slash path (default ``/``).
+    Defeats turning a tracked link into an off-site / phishing redirect."""
+    t = _txt(raw)
+    for sep in ("?", "#"):
+        if sep in t:
+            t = t.split(sep, 1)[0]
+    t = t.strip()
+    if not t or t == "/":
+        return "/"
+    # collapse leading slashes (defeats //host) + drop traversal/empty segments
+    parts = [p for p in t.split("/") if p not in ("", "..", ".")]
+    return "/" + "/".join(parts) if parts else "/"
+
+
 class CampaignLeafletStore:
     def __init__(
         self,
@@ -115,9 +132,7 @@ class CampaignLeafletStore:
         medium = _txt(medium).lower()
         if medium not in _VALID_MEDIUMS:
             medium = "link"
-        target = _txt(target_path) or "/"
-        if not target.startswith("/"):
-            target = "/" + target
+        target = _normalize_target_path(target_path)
         campaigns = self.list_campaigns(entity)
         token = _mint_token({_txt(c.get("token")) for c in campaigns})
         row = {

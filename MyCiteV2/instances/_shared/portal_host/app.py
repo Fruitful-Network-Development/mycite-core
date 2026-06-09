@@ -4496,15 +4496,44 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """Public tracked URL for a campaign: the target page on the grantee's
         primary domain with the ``?fnd_c=<token>`` attribution param appended.
         analytics.js reads ``fnd_c`` and stamps it onto the session."""
+        from urllib.parse import quote
+
         domain = _as_text(domain)
         target = _as_text(campaign.get("target_path")) or "/"
         if not target.startswith("/"):
             target = "/" + target
-        token = _as_text(campaign.get("token"))
+        token = quote(_as_text(campaign.get("token")), safe="")
         if not domain:
             return f"{target}?fnd_c={token}"
         sep = "&" if "?" in target else "?"
         return f"https://{domain}{target}{sep}fnd_c={token}"
+
+    def _prepare_records_leaflet(leaflet: dict[str, Any]) -> None:
+        """In-place, before returning a month leaflet to the grantee dashboard:
+        resolve each visitor's referral (the sharer's ``referred_by`` share id →
+        the referring visitor's record id, or ``"external"`` if the sharer isn't
+        in this leaflet) into ``referred_by_visitor``, then STRIP the per-visitor
+        fields the grantee shouldn't receive — coarse /24 ``ip_prefixes``, the
+        GeoIP enrichment hooks, and the raw share ids."""
+        visitors = leaflet.get("visitors") or []
+        by_share: dict[str, str] = {}
+        for v in visitors:
+            sid = (v.get("visitor_context") or {}).get("share_id")
+            if sid:
+                by_share[sid] = v.get("visitor_record_id") or ""
+        for v in visitors:
+            ctx = v.get("visitor_context") or {}
+            referred = ""
+            for s in v.get("sessions") or []:
+                rb = (s.get("routed_from") or {}).get("referred_by")
+                if rb:
+                    referred = by_share.get(rb, "external")
+                    break
+            v["referred_by_visitor"] = referred
+            for k in ("ip_prefixes", "network", "region", "share_id"):
+                ctx.pop(k, None)
+            for s in v.get("sessions") or []:
+                (s.get("routed_from") or {}).pop("referred_by", None)
 
     @app.post("/__fnd/analytics/event")
     def fnd_analytics_event() -> tuple[Any, int]:
@@ -4541,7 +4570,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except Exception:
             return jsonify({"ok": False, "error": "schema_error"}), 500
 
-        if _analytics_dedup_hit(
+        # The 250ms dedup is for accidental retries of a discrete interaction
+        # (a double-fired click/page_view). heartbeat + scroll are NOT discrete —
+        # they carry the latest cumulative active-time / scroll-depth and the
+        # leaflet folds them with max(), so deduping a 2nd heartbeat in-window
+        # would DROP a higher scroll/active reading. Never dedup those.
+        if event.event_type not in ("heartbeat", "scroll") and _analytics_dedup_hit(
             event.visitor_cookie_id_hash, event.page_path, event.event_type
         ):
             response = make_response(jsonify({"ok": True, "deduped": True}), 200)
@@ -5782,6 +5816,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if not period and periods:
             period = periods[-1]
         leaflet = store.load_month(entity, period) if period else None
+        if leaflet and leaflet.get("visitors"):
+            _prepare_records_leaflet(leaflet)
         return jsonify({
             "ok": True,
             "grantee": {"msn_id": requested_msn, "domains": domains},
@@ -5839,14 +5875,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             row["tracked_url"] = _campaign_tracked_url(primary_domain, row)
             return jsonify({"ok": True, "campaign": row}), 200
 
-        # GET — list + attribute. Counts are tallied over the leaflets in a
-        # bounded recent window so the list reflects real usage without a full
-        # historical scan.
+        # GET — list + attribute. Tally over ALL of the entity's leaflets (a
+        # legacy QR/flyer can draw traffic months after it was minted, so a fixed
+        # recent window would under-count it), and ONLY for tokens that belong to
+        # THIS entity's own campaign registry — a stray fnd_c copied from another
+        # site's link never inflates an unrelated grantee's numbers.
         store = AnalyticsLeafletStore(
             private_dir=host_config.private_dir,
             webapps_root=_analytics_webapps_root(),
         )
-        periods = store.available_periods(entity)[-6:]
+        own_tokens = {c.get("token") for c in cstore.list_campaigns(entity) if c.get("token")}
+        periods = store.available_periods(entity)
         token_sessions: dict[str, int] = {}
         token_visitors: dict[str, set[str]] = {}
         for leaflet in store.read_range(entity, periods):
@@ -5854,7 +5893,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 cookie = v.get("visitor_cookie_id_hash") or ""
                 for s in v.get("sessions") or []:
                     tok = ((s.get("routed_from") or {}).get("campaign_token")) or ""
-                    if not tok:
+                    if not tok or tok not in own_tokens:
                         continue
                     token_sessions[tok] = token_sessions.get(tok, 0) + 1
                     token_visitors.setdefault(tok, set()).add(cookie)

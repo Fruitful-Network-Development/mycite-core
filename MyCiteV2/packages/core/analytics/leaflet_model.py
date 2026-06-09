@@ -39,11 +39,25 @@ Design notes that matter:
 
 from __future__ import annotations
 
+import logging
 from itertools import pairwise
 from typing import Any
 
-from .derivations import classify_origin
+from .derivations import (
+    CONVERSION_ACTIONS,
+    CONVERSION_EVENT_TYPES,
+    HIGH_INTENT_ACTIONS,
+    classify_origin,
+    path_touches_intent,
+)
 from .event_schema import _iso_to_epoch_ms
+
+# The intent/conversion/action sets + path_touches_intent are the SINGLE SOURCE
+# in derivations (the lower module) and reused here so the session_summary and
+# the dashboard widgets classify intent/conversions identically. Imported, not
+# redefined.
+
+_log = logging.getLogger("mycite.portal_host")
 
 ANALYTICS_RECORD_SCHEMA = "mycite.site_core.analytics_record.v1"
 ANALYTICS_RECORD_KIND = "record-analytics"
@@ -54,22 +68,6 @@ STORED_EVENT_TYPES = frozenset(
     {"page_view", "click", "form_submit", "outbound_click", "download", "error", "ops_probe"}
 )
 FOLD_EVENT_TYPES = frozenset({"heartbeat", "scroll"})
-
-# Standardized interaction actions (mirrors event_schema.STANDARD_ACTIONS).
-# Conversions = an action that completes intent; high-intent = strong signal a
-# visitor is a real prospect even without a completion.
-CONVERSION_ACTIONS = frozenset(
-    {"contact_form_submit", "newsletter_signup", "booking_click", "checkout_complete"}
-)
-HIGH_INTENT_ACTIONS = frozenset(
-    {"phone_click", "email_click", "checkout_start", "booking_click"}
-) | CONVERSION_ACTIONS
-
-# event_types that count as a conversion even with no standardized action
-# (a bare <form> submit, an outbound click, a file download).
-CONVERSION_EVENT_TYPES = frozenset({"form_submit", "outbound_click", "download"})
-
-INTENT_PATH_NEEDLES = ("/pricing", "/contact", "/donate", "/subscribe", "/book", "/quote")
 
 # rapid_navigation evidence: ≥ this many page_views whose median inter-view gap
 # is under the threshold looks automated.
@@ -133,7 +131,17 @@ def merge_event(month: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
     event_type = _txt(raw.get("event_type"))
     cookie = _txt(raw.get("visitor_cookie_id_hash"))
     occurred = _txt(raw.get("occurred_at_utc") or raw.get("occurred_at"))
-    if not event_type or not cookie:
+    if not cookie:
+        # A server-minted visitor hash should always be present; an empty one
+        # means the cookie/salt pipeline is broken. Surface it rather than
+        # silently dropping traffic (the failure mode would be invisible).
+        if event_type:
+            _log.warning(
+                "analytics_event_dropped_no_cookie_hash event_type=%s page=%s",
+                event_type, _txt(raw.get("page_path")),
+            )
+        return month
+    if not event_type:
         return month
     if event_type not in STORED_EVENT_TYPES and event_type not in FOLD_EVENT_TYPES:
         return month
@@ -146,6 +154,23 @@ def merge_event(month: dict[str, Any], raw: dict[str, Any]) -> dict[str, Any]:
     if event_type in FOLD_EVENT_TYPES:
         _fold_into_page_view(session, raw)
     else:
+        # Idempotency guard: skip a stored event already merged into this
+        # session — exact event_id, or a client retry carrying the same
+        # occurred_at + type + path — so a >250ms retry or a cross-worker
+        # double-POST can't double-count a page_view / form_submit.
+        event_id = _txt(raw.get("event_id"))
+        page_path = _txt(raw.get("page_path"))
+        already = any(
+            (event_id and e.get("event_id") == event_id)
+            or (
+                e.get("occurred_at") == occurred
+                and e.get("event_type") == event_type
+                and e.get("page_path") == page_path
+            )
+            for e in session["events"]
+        )
+        if already:
+            return month
         session["events"].append(_stored_event(raw, event_type, occurred))
 
     _recompute_session_summary(session)
@@ -175,6 +200,7 @@ def _find_or_create_visitor(month: dict[str, Any], cookie: str, occurred: str) -
             "bot_assessment": {"is_bot": False, "bot_class": "", "bot_evidence": []},
             "flags": [],
             "ip_prefixes": [],
+            "share_id": "",   # this visitor's JS-readable fnd_sid (for A→B referral chains)
             "network": None,  # enrichment hook (no GeoIP this pass)
             "region": None,   # enrichment hook
         },
@@ -211,6 +237,9 @@ def _touch_visitor_context(visitor: dict[str, Any], raw: dict[str, Any], occurre
     prefix = _txt(raw.get("ip_prefix"))
     if prefix and prefix not in ctx["ip_prefixes"]:
         ctx["ip_prefixes"].append(prefix)
+    # this visitor's own share id (set once) — maps referred_by back to them.
+    if not ctx.get("share_id"):
+        ctx["share_id"] = _txt(raw.get("share_id"))
     visitor["first_seen_at"] = _min_iso(visitor.get("first_seen_at"), occurred)
 
 
@@ -232,7 +261,7 @@ def _find_or_create_session(visitor: dict[str, Any], raw: dict[str, Any], occurr
             "utm_medium": _txt(raw.get("utm_medium")),
             "utm_campaign": _txt(raw.get("utm_campaign")),
             "campaign_token": _txt(raw.get("campaign_token")),
-            "campaign_label": _txt(raw.get("campaign_label")),
+            "referred_by": _txt(raw.get("referred_by")),  # sharer's fnd_sid (A→B chain)
         },
         "session_summary": {},
         "events": [],
@@ -310,10 +339,7 @@ def _recompute_session_summary(session: dict[str, Any]) -> None:
         e["event_type"] in CONVERSION_EVENT_TYPES or _txt(e.get("action")) in CONVERSION_ACTIONS
         for e in events
     )
-    touched_intent = any(
-        any(n in (_txt(e.get("page_path")).lower()) for n in INTENT_PATH_NEEDLES)
-        for e in events
-    )
+    touched_intent = any(path_touches_intent(e.get("page_path")) for e in events)
     high_intent = bool(
         (touched_intent and active >= HIGH_INTENT_MIN_ACTIVE_MS)
         or any(_txt(e.get("action")) in HIGH_INTENT_ACTIONS for e in events)
@@ -407,9 +433,11 @@ def flatten_events(month: dict[str, Any]) -> list[dict[str, Any]]:
         prefixes = ctx.get("ip_prefixes") or []
         prefix = prefixes[0] if prefixes else ""
         device = ctx.get("primary_device_type") or ""
+        share_id = ctx.get("share_id") or ""
         for s in v.get("sessions", []):
             routed = s.get("routed_from") or {}
             sid = s.get("session_id") or ""
+            referred_by = routed.get("referred_by") or ""
             for e in s.get("events", []):
                 out.append(
                     {
@@ -419,6 +447,8 @@ def flatten_events(month: dict[str, Any]) -> list[dict[str, Any]]:
                         "bot_class": bot_class,
                         "ip_prefix": prefix,
                         "device_type": device,
+                        "share_id": share_id,
+                        "referred_by": referred_by,
                         "event_type": e.get("event_type") or "",
                         "action": e.get("action") or "",
                         "occurred_at_utc": e.get("occurred_at") or "",

@@ -192,6 +192,27 @@ class AnalyticsEventRouteTests(unittest.TestCase):
         events = month["visitors"][0]["sessions"][0]["events"]
         self.assertEqual(len(events), 1)
 
+    def test_heartbeats_not_deduped(self) -> None:
+        # Two heartbeats on the same page within the 250ms window must BOTH be
+        # ingested (they carry cumulative scroll/active) — the dedup is only for
+        # discrete interactions. The leaflet max-folds → the higher scroll wins.
+        client, tmp = _build_client()
+        base = "http://fruitfulnetworkdevelopment.com"
+
+        def post(body):
+            client.post("/__fnd/analytics/event", data=json.dumps(body),
+                        content_type="application/json", base_url=base)
+
+        post(dict(_minimal_event(), event_type="page_view", page_path="/"))
+        post(dict(_minimal_event(), event_type="heartbeat", page_path="/",
+                  active_time_ms=15000, scroll_depth_percent=30))
+        post(dict(_minimal_event(), event_type="heartbeat", page_path="/",
+                  active_time_ms=30000, scroll_depth_percent=80))
+        month = _flush_and_load(tmp)
+        ev = month["visitors"][0]["sessions"][0]["events"][0]
+        self.assertEqual(ev["scroll_depth_percent"], 80)  # 2nd heartbeat NOT dropped
+        self.assertEqual(ev["active_time_ms"], 30000)
+
     def test_analytics_js_route_serves_javascript(self) -> None:
         client, _ = _build_client()
         resp = client.get(
