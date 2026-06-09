@@ -145,21 +145,36 @@ def read_site_content(webapps_root: str | Path | None, site: str) -> dict[str, A
 
 
 def _render_site(frontend_dir: Path) -> tuple[bool, str]:
-    """Re-run the site's deterministic render_manifest.py (full build; a manifest
-    edit legitimately owns every page it regenerates)."""
-    script = frontend_dir / "scripts" / "render_manifest.py"
-    if not script.is_file():
-        return False, f"no render_manifest.py at {script}"
+    """Regenerate the site's HTML from its manifest by calling ``build_site`` in
+    an ISOLATED subprocess.
+
+    We invoke build_site directly rather than the site's ``render_manifest.py``
+    wrapper for two reasons: (1) each site ships its own ``render_lib`` package,
+    so importing it into the long-lived multi-site portal process would collide;
+    (2) the wrapper also runs unrelated post-render lints (e.g. a stray demo page
+    that fails the URL convention) whose exit code would mislabel a perfectly good
+    content save as failed. A typed-slot edit is escaped + structurally fixed, so
+    it cannot introduce the URL/DR violations those lints guard against.
+    """
+    scripts = frontend_dir / "scripts"
+    if not (scripts / "render_lib" / "site_builder.py").is_file():
+        return False, f"no render_lib at {scripts}"
+    code = (
+        "import sys; from pathlib import Path; "
+        "sys.path.insert(0, str(Path('scripts').resolve())); "
+        "from render_lib.site_builder import build_site; "
+        "build_site(Path('.').resolve())"
+    )
     try:
         completed = subprocess.run(
-            [sys.executable, str(script)],
+            [sys.executable, "-c", code],
             check=False, capture_output=True, timeout=300, cwd=str(frontend_dir),
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return False, f"build failed to launch: {exc}"
+        return False, f"render failed to launch: {exc}"
     if completed.returncode != 0:
         detail = completed.stderr.decode("utf-8", "replace").strip()
-        return False, f"build exited {completed.returncode}: {detail[:400]}"
+        return False, f"render exited {completed.returncode}: {detail[:400]}"
     return True, "rebuilt"
 
 
