@@ -5826,6 +5826,59 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "leaflet": leaflet,
         }), 200
 
+    @app.get("/__fnd/design/content")
+    def fnd_design_content() -> tuple[Any, int]:
+        """Editable page sections + asset pickers for the grantee's OWN site
+        (dashboard Design tab). Grantee-scoped via _resolve_grantee_scope; returns
+        {enabled: false} for any site not yet wired so the shared tab degrades."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            site_content_extension,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        site = domains[0] if domains else ""
+        data = site_content_extension.read_site_content(host_config.webapps_root, site)
+        return jsonify(
+            {"ok": True, "grantee": {"msn_id": requested_msn, "domains": domains}, **data}
+        ), 200
+
+    @app.post("/__fnd/design/save")
+    def fnd_design_save() -> tuple[Any, int]:
+        """Apply typed-slot edits to the grantee's own site manifest and re-render.
+        Server-validates each value (type + max_chars + asset allow-list); a
+        grantee can only ever touch its own site (scope guard) and the editor is
+        FND-gated this round."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            site_content_extension,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        site = domains[0] if domains else ""
+        if not site_content_extension.site_content_enabled(site):
+            return jsonify({"ok": False, "error": "not_editable"}), 403
+        payload = _json_payload()
+        edits = payload.get("edits")
+        result = site_content_extension.save_site_content(
+            host_config.webapps_root, site, edits if isinstance(edits, list) else []
+        )
+        return jsonify(result), (200 if result.get("ok") else 400)
+
     @app.route("/__fnd/analytics/campaigns", methods=["GET", "POST"])
     def fnd_analytics_campaigns() -> tuple[Any, int]:
         """Pre-tracked link + QR campaigns for the Campaigns sub-tab.
