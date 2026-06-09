@@ -5874,8 +5874,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "not_editable"}), 403
         payload = _json_payload()
         edits = payload.get("edits")
+        swaps = payload.get("swaps")
         result = site_content_extension.save_site_content(
-            host_config.webapps_root, site, edits if isinstance(edits, list) else []
+            host_config.webapps_root, site,
+            edits if isinstance(edits, list) else [],
+            swaps if isinstance(swaps, list) else [],
         )
         return jsonify(result), (200 if result.get("ok") else 400)
 
