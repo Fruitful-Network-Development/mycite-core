@@ -947,9 +947,9 @@ def _surface_payload_for_extensions(
         "mode": mode,
         "title": "Extensions",
         "subtitle": (
-            "Browse every extension across all grantees (Overall), or pick a "
-            "grantee above to manage it individually. Switch the extension tab "
-            "below to navigate."
+            "Each extension opens on its Overall view across all grantees; use "
+            "its Per-grantee subtab to manage one grantee. Switch extensions with "
+            "the tab strip below."
         ),
     }
     operational = [
@@ -973,6 +973,7 @@ def _surface_payload_for_extensions(
             active_tool_id,
             selected_grantee_msn=selected_grantee_msn,
             utilities_mode=mode,
+            extension_subtab=_as_text(extension_subtab),
         )
         active_entries = [
             ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
@@ -985,7 +986,10 @@ def _surface_payload_for_extensions(
             # global mode. Resources returns its own prompt — don't clobber it.
             if active_subtab == "per_grantee" and not selected_grantee_msn:
                 cur = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
-                if not cur.get("per_grantee_prompt"):
+                # Keep a degraded/timeout payload (its ``notice`` is the only signal
+                # that the extension's data source is down) — never mask it with the
+                # generic prompt. Resources returns its own prompt — don't clobber.
+                if not cur.get("per_grantee_prompt") and not cur.get("degraded"):
                     entry["payload"] = {
                         "per_grantee_prompt": (
                             f"Select a grantee to manage "
@@ -1017,6 +1021,22 @@ def _surface_payload_for_extensions(
                     ]
                     entry_payload["grantee_picker"] = picker
         payload["extensions"] = active_entries
+    else:
+        # No operational extensions enabled → emit an empty-state section so the
+        # workbench content-probe still recognizes the surface (the retired
+        # grantee_selector used to be that signal) and renders this message
+        # instead of blanking to "This tool does not provide a workbench view."
+        payload["sections"] = [
+            {
+                "title": "Extensions",
+                "rows": [
+                    {
+                        "label": "status",
+                        "detail": "No operational extensions are enabled for this portal.",
+                    }
+                ],
+            }
+        ]
     return payload
 
 
@@ -1245,12 +1265,13 @@ def _build_extension_subtab_selector(
     *,
     selected_grantee_msn: str,
     utilities_mode: str = "grantee",
+    extension_subtab: str = "",
 ) -> dict[str, Any]:
-    """Build the per-extension tab strip rendered below the grantee
-    selector on /portal/utilities/extensions. Each tab's
-    ``select_action`` posts to /portal/api/v2/shell preserving the
-    current grantee AND the current overall-vs-per-grantee ``utilities_mode``
-    — switching tabs must not reset the grantee axis or the mode.
+    """Build the per-extension tab strip (Email/Analytics/.../Resources). Each
+    tab's ``select_action`` posts to /portal/api/v2/shell preserving the current
+    grantee, the overall-vs-per-grantee ``utilities_mode``, AND the active inner
+    ``extension_subtab`` — so switching the extension keeps the inner subtab
+    (Overall/Per-grantee) highlight in sync with the rendered content.
     """
     by_tool_id = {
         _as_text(ext.get("tool_id")): ext for ext in (extensions or []) if isinstance(ext, dict)
@@ -1275,6 +1296,11 @@ def _build_extension_subtab_selector(
                             "selected_grantee_msn": selected_grantee_msn,
                             "selected_extension_tool_id": tool_id,
                             "utilities_mode": utilities_mode,
+                            # Preserve the active inner subtab so switching the
+                            # extension keeps the Overall/Per-grantee highlight in
+                            # sync with the rendered content (the target extension
+                            # resolves it to its own default if it has no match).
+                            "extension_subtab": extension_subtab,
                         },
                     },
                 },

@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
+    _build_extension_subtab_selector,
     _build_inner_subtab_selector,
     _resolve_inner_subtab,
     _surface_payload_for_extensions,
@@ -127,6 +128,46 @@ class SurfaceAttachesInnerSelector(unittest.TestCase):
         # the picker is hosted in-card, WITHOUT the synthetic "All — Overall" entry
         self.assertIn("grantee_picker", ep)
         self.assertTrue(all(not g.get("is_overall") for g in ep["grantee_picker"]["grantees"]))
+
+    def test_per_grantee_no_grantee_keeps_degraded_payload(self) -> None:
+        # A timed-out/errored extension payload (degraded) must NOT be masked by the
+        # generic prompt on the Per-grantee subtab — its `notice` is the only signal.
+        extensions = [self._ext("ext_paypal", {"degraded": True, "notice": "PayPal did not respond within 5s"})]
+        payload = _surface_payload_for_extensions(
+            extensions=extensions, grantee_selector=None,
+            selected_extension_tool_id="ext_paypal",
+            extension_subtab="per_grantee", mode="global",
+        )
+        ep = payload["extensions"][0]["payload"]
+        self.assertTrue(ep.get("degraded"))
+        self.assertIn("did not respond", ep.get("notice", ""))
+        self.assertNotIn("per_grantee_prompt", ep)
+
+    def test_zero_operational_extensions_emits_empty_state_not_blank(self) -> None:
+        # No operational extensions → emit a sections empty-state so the workbench
+        # content probe still recognizes the surface (instead of a blank page).
+        payload = _surface_payload_for_extensions(
+            extensions=[], grantee_selector=None,
+            selected_extension_tool_id="", mode="global",
+        )
+        self.assertNotIn("extensions", payload)
+        self.assertTrue(payload.get("sections"))
+
+    def test_between_extension_tab_preserves_active_subtab(self) -> None:
+        # Switching the active extension must carry extension_subtab so the inner
+        # Overall/Per-grantee highlight stays in sync with the content.
+        sel = _build_extension_subtab_selector(
+            [self._ext("ext_aws_email"), self._ext("ext_analytics")],
+            "ext_aws_email",
+            selected_grantee_msn="acme",
+            utilities_mode="grantee",
+            extension_subtab="per_grantee",
+        )
+        for tab in sel["tabs"]:
+            self.assertEqual(
+                tab["select_action"]["payload"]["surface_query"]["extension_subtab"],
+                "per_grantee",
+            )
 
 
 class TypeBrowserJsInvariants(unittest.TestCase):

@@ -260,6 +260,11 @@
     Array.prototype.forEach.call(
       target.querySelectorAll(".v2-granteeSelector__option"),
       function (node) {
+        // Idempotency guard (like bindInnerSubtabs/bindResourcesApp): the in-card
+        // picker means this can be invoked more than once per render; never
+        // double-bind a click handler.
+        if (node.dataset.granteeBound === "1") return;
+        node.dataset.granteeBound = "1";
         node.addEventListener("click", function () {
           var index = Number(node.getAttribute("data-grantee-index"));
           if (Number.isNaN(index) || index < 0 || index >= grantees.length) return;

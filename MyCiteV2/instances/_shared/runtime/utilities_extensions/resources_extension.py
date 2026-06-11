@@ -2442,8 +2442,7 @@ def _resources_per_grantee_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "resources_app": True,
         "resources_subtab": "per_grantee",
         "per_grantee_prompt": (
-            "Pick a grantee from the selector above to manage the leaflets "
-            "allocated to its site."
+            "Select a grantee to manage the leaflets allocated to its site."
         ),
     }
 

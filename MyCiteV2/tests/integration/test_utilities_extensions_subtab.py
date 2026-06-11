@@ -160,18 +160,23 @@ class ExtensionSubtabSelectorTests(unittest.TestCase):
                 UTILITIES_EXTENSIONS_SURFACE_ID,
             )
 
-    def test_grantee_select_action_preserves_active_extension_tab(self) -> None:
-        # User on ext_paypal tab, click a grantee → select_action keeps paypal.
+    def test_grantee_picker_select_action_preserves_active_extension(self) -> None:
+        # On the Per-grantee subtab the in-card grantee picker's select_actions keep
+        # the active extension + subtab (the surface-level selector was retired).
         payload = _surface_payload(
-            selected_grantee_msn="alpha", selected_extension_tool_id="ext_paypal"
+            selected_grantee_msn="alpha",
+            selected_extension_tool_id="ext_paypal",
+            extension_subtab="per_grantee",
         )
-        grantee_selector = payload.get("grantee_selector") or {}
-        for grantee in grantee_selector.get("grantees") or []:
-            action_payload = grantee["select_action"]["payload"]
-            self.assertEqual(
-                action_payload["surface_query"]["selected_extension_tool_id"],
-                "ext_paypal",
-            )
+        active = payload.get("extensions") or []
+        self.assertTrue(active)
+        picker = (active[0].get("payload") or {}).get("grantee_picker") or {}
+        grantees = picker.get("grantees") or []
+        self.assertTrue(grantees, "in-card grantee picker should list grantees")
+        for grantee in grantees:
+            sq = grantee["select_action"]["payload"]["surface_query"]
+            self.assertEqual(sq["selected_extension_tool_id"], "ext_paypal")
+            self.assertEqual(sq.get("extension_subtab"), "per_grantee")
 
     def test_grantee_profile_extension_never_in_tab_list(self) -> None:
         payload = _surface_payload()
