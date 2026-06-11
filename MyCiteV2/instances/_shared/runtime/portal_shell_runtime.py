@@ -913,6 +913,7 @@ def _surface_payload_for_extensions(
     grantee_selector: dict[str, Any] | None = None,
     *,
     selected_extension_tool_id: str = "",
+    extension_subtab: str = "",
     mode: str = "grantee",
 ) -> dict[str, Any]:
     """Operational utilities-tab extensions only (Email, Analytics,
@@ -962,9 +963,24 @@ def _surface_payload_for_extensions(
             selected_grantee_msn=selected_grantee_msn,
             utilities_mode=mode,
         )
-        payload["extensions"] = [
+        active_entries = [
             ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
         ]
+        # Attach the per-extension INNER subtab strip into the active card's
+        # payload (so the JS card renderer sees it). The extension renderer
+        # already produced the active subtab's content from ctx["extension_subtab"];
+        # both sides resolve the same default (the first declared subtab).
+        if active_entries and active_tool_id in _EXTENSION_SUBTABS:
+            active_subtab = _resolve_inner_subtab(active_tool_id, _as_text(extension_subtab))
+            entry_payload = active_entries[0].get("payload")
+            if isinstance(entry_payload, dict):
+                entry_payload["inner_subtab_selector"] = _build_inner_subtab_selector(
+                    active_tool_id,
+                    active_subtab,
+                    selected_grantee_msn=selected_grantee_msn,
+                    utilities_mode=mode,
+                )
+        payload["extensions"] = active_entries
     return payload
 
 
@@ -1234,6 +1250,67 @@ def _build_extension_subtab_selector(
         "tabs": tabs,
         "empty_message": "No operational extensions are enabled for this grantee.",
     }
+
+
+# Per-extension INNER subtabs (Phase: resource type browser). The active subtab
+# rides surface_query["extension_subtab"]; an extension absent from this map
+# renders with no inner strip (unchanged). The reusable convention: an extension
+# declares ordered subtabs here, the shell builds the strip, and the extension
+# renderer produces only the active subtab's CONTENT (branching on
+# ctx["extension_subtab"], defaulting to the first id).
+_EXTENSION_SUBTABS: dict[str, tuple[dict[str, str], ...]] = {
+    "ext_resources": (
+        {"id": "manifest", "label": "Manifest"},
+        {"id": "browse", "label": "Browse"},
+        {"id": "per_grantee", "label": "Per-grantee"},
+    ),
+}
+
+
+def _resolve_inner_subtab(tool_id: str, requested: str) -> str:
+    """The active inner subtab id: the request when it names a declared subtab,
+    else the first declared subtab, else "" (no subtabs)."""
+    subtabs = _EXTENSION_SUBTABS.get(tool_id) or ()
+    if any(sub["id"] == requested for sub in subtabs):
+        return requested
+    return subtabs[0]["id"] if subtabs else ""
+
+
+def _build_inner_subtab_selector(
+    tool_id: str,
+    active_subtab: str,
+    *,
+    selected_grantee_msn: str,
+    utilities_mode: str,
+) -> dict[str, Any]:
+    """Inner subtab strip for one extension card. Mirrors
+    ``_build_extension_subtab_selector`` but emits ``extension_subtab`` per tab
+    and keeps the active extension + grantee + mode pinned. Switching subtabs
+    drops the Browse drill-down (browse_type/view/instance omitted → reset)."""
+    tabs: list[dict[str, Any]] = []
+    for sub in _EXTENSION_SUBTABS.get(tool_id) or ():
+        sub_id = sub["id"]
+        tabs.append(
+            {
+                "id": sub_id,
+                "label": sub.get("label") or sub_id,
+                "active": sub_id == active_subtab,
+                "select_action": {
+                    "route": "/portal/api/v2/shell",
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "payload": {
+                        "requested_surface_id": UTILITIES_EXTENSIONS_SURFACE_ID,
+                        "surface_query": {
+                            "selected_grantee_msn": selected_grantee_msn,
+                            "selected_extension_tool_id": tool_id,
+                            "utilities_mode": utilities_mode,
+                            "extension_subtab": sub_id,
+                        },
+                    },
+                },
+            }
+        )
+    return {"label": "View", "selected_subtab": active_subtab, "tabs": tabs}
 
 
 def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True) -> dict[str, Any]:
@@ -1591,6 +1668,7 @@ def _bundle_for_surface(
                 selected_extension_tool_id=_as_text(
                     (surface_query or {}).get("selected_extension_tool_id")
                 ),
+                extension_subtab=_as_text((surface_query or {}).get("extension_subtab")),
                 mode=_as_text(ctx_bundle.get("mode")) or "grantee",
             )
         elif selection_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:

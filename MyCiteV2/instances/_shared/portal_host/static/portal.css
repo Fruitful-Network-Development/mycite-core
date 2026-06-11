@@ -9637,6 +9637,227 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-extensionTabs__optionLabel {
   font-weight: 600;
 }
+
+/* ---- Resources type browser: inner subtabs, manifest tree, browse ---- */
+.v2-innerSubtabs {
+  margin: 8px 0 4px;
+}
+.v2-innerSubtabs__options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.v2-innerSubtabs__option {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 13px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 999px;
+  background: var(--ide-panel-bg, #fff);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 120ms, border-color 120ms, color 120ms;
+}
+.v2-innerSubtabs__option:hover {
+  background: #eef1f5;
+}
+.v2-innerSubtabs__option.is-active {
+  background: var(--ide-accent, #1f883d);
+  color: #fff;
+  border-color: var(--ide-accent, #1f883d);
+}
+.v2-typeIcon {
+  width: 1.15em;
+  height: 1.15em;
+  flex: 0 0 auto;
+  object-fit: contain;
+  fill: currentColor;
+  color: var(--ide-accent, #1f883d);
+}
+.v2-typeIcon--none {
+  display: inline-block;
+  border-radius: 3px;
+  background: var(--ide-border, #d8dee4);
+  opacity: 0.5;
+}
+/* Manifest tree */
+.v2-typeTree {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.v2-typeNode__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+}
+.v2-typeNode__children {
+  margin-left: 18px;
+  border-left: 1px solid var(--ide-border, #d8dee4);
+  padding-left: 8px;
+}
+.v2-typeNode__label {
+  font-weight: 600;
+}
+.v2-typeNode__slug {
+  font-size: 11px;
+  color: #57606a;
+  opacity: 0.85;
+}
+.v2-typeNode__count {
+  margin-left: auto;
+  min-width: 1.6em;
+  text-align: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ide-border, #eaeef2);
+  font-variant-numeric: tabular-nums;
+}
+.v2-typeNode__editIcon,
+.v2-browseBox__open {
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.v2-typeNode__editIcon:hover,
+.v2-browseBox__open:hover {
+  background: #eef1f5;
+}
+.v2-typeNode__picker {
+  margin: 4px 0 8px 26px;
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+}
+/* Browse grid + boxes */
+.v2-browseGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.v2-browseBox {
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 8px;
+  background: var(--ide-panel-bg, #fff);
+  padding: 6px 8px;
+}
+.v2-browseBox__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.v2-browseBox__label {
+  font-weight: 600;
+}
+.v2-browseBox__count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: #57606a;
+}
+.v2-browseBox__children {
+  margin-top: 6px;
+  display: grid;
+  gap: 6px;
+}
+.v2-browseBox--branch > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.v2-browseBox--branch > summary::-webkit-details-marker {
+  display: none;
+}
+/* Directory + instance */
+.v2-leafletDir__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 6px 0;
+}
+.v2-leafletDir__bar h4 {
+  margin: 0;
+}
+.v2-leafletDir__back {
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.v2-leafletDir__back:hover {
+  background: #eef1f5;
+}
+.v2-browseFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+.v2-browseFilter {
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 999px;
+  padding: 3px 11px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.v2-browseFilter.is-active {
+  background: var(--ide-accent, #1f883d);
+  color: #fff;
+  border-color: var(--ide-accent, #1f883d);
+}
+.v2-leafletDir__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+}
+.v2-leafletDir__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+.v2-leafletDir__item:hover {
+  background: #eef1f5;
+}
+.v2-leafletDir__name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.v2-leafletDir__type {
+  margin-left: auto;
+  font-size: 10px;
+  color: #57606a;
+}
+.v2-genericLeaflet__fields {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.v2-genericLeaflet__raw {
+  max-height: 320px;
+  overflow: auto;
+  background: #f6f8fa;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+}
 /* Phase 16a — inline contact-row edit. The edit row sits below the
    contact row and expands a tiny form in place. The form is hidden
    until the operator clicks Edit. */

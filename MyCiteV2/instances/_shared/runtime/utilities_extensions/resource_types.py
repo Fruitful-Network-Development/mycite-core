@@ -26,15 +26,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 from ._shared import _as_text
 from .resources_extension import (
     _asset_descriptor,
+    _atomic_write_text,
     _load_yaml_mapping,
     _profile_entity_flavor,
     _profile_slug,
     _scalar_str,
     _site_core_root,
     asset_url_prefix_for,
+    build_grouped_gallery,
 )
 
 # Master manifest location relative to the site-core root.
@@ -77,6 +81,34 @@ def load_manifest_default_style(webapps_root: str | Path | None) -> dict[str, An
     return style if isinstance(style, dict) else {}
 
 
+# Operator icon reassignments live in a SIDE-CAR (a flat {full_slug: icon_ref}
+# map), NOT in the comment-rich SSOT manifest: editing that file in place without
+# a round-trip YAML lib (ruamel is intentionally not a dependency — see
+# save_profile) would strip its documentation and break build_farm_network.py's
+# reads of the same file. The loader merges overrides over the manifest's
+# icon_ref; the network map keeps reading the base manifest. Reversible — clear
+# an override to fall back to the manifest's value.
+_ICON_OVERRIDES_REL = ("schema", "type_icon_overrides.mycite.yaml")
+
+
+def _icon_overrides_path(webapps_root: str | Path | None) -> Path | None:
+    root = _site_core_root(webapps_root)
+    return root.joinpath(*_ICON_OVERRIDES_REL) if root is not None else None
+
+
+def load_icon_overrides(webapps_root: str | Path | None) -> dict[str, str]:
+    """``{full_slug: icon_ref}`` operator overrides, ``{}`` when absent."""
+    path = _icon_overrides_path(webapps_root)
+    if path is None or not path.is_file():
+        return {}
+    data = _load_yaml_mapping(path)
+    return {
+        _as_text(k): _as_text(v)
+        for k, v in data.items()
+        if _as_text(k) and isinstance(v, (str, int, float))
+    }
+
+
 def flatten_type_tree(webapps_root: str | Path | None) -> list[dict[str, Any]]:
     """Depth-first flatten of the ``type_tree`` into one row per TYPE node.
 
@@ -85,6 +117,7 @@ def flatten_type_tree(webapps_root: str | Path | None) -> list[dict[str, Any]]:
     Returns ``[]`` on a missing/broken manifest.
     """
     rows: list[dict[str, Any]] = []
+    overrides = load_icon_overrides(webapps_root)
 
     def walk(mapping: Any, segments: list[str]) -> None:
         if not isinstance(mapping, dict):
@@ -94,15 +127,17 @@ def flatten_type_tree(webapps_root: str | Path | None) -> list[dict[str, Any]]:
                 continue
             seg_s = _as_text(seg)
             path = [*segments, seg_s]
+            full_slug = "-".join(path)
             children = node.get("children")
             child_keys = [_as_text(k) for k in children] if isinstance(children, dict) else []
+            icon_ref = overrides[full_slug] if full_slug in overrides else node.get("icon_ref")
             rows.append(
                 {
-                    "full_slug": "-".join(path),
+                    "full_slug": full_slug,
                     "segments": list(path),
                     "label": _as_text(node.get("label")) or seg_s,
                     "icon": _as_text(node.get("icon")),
-                    "icon_ref": _as_text(node.get("icon_ref")),
+                    "icon_ref": _as_text(icon_ref),
                     "color": _as_text(node.get("color")),
                     "depth": len(path) - 1,
                     "parent_slug": "-".join(path[:-1]),
@@ -330,9 +365,13 @@ def resolve_instance_viewer(full_type: str) -> dict[str, Any]:
     return dict(best) if best is not None else dict(_GENERIC_VIEWER)
 
 
-def _resolve_site_core_asset(webapps_root: str | Path | None, asset_path: str) -> Path | None:
+def _resolve_site_core_asset(
+    webapps_root: str | Path | None, asset_path: str, *, include_pii: bool = False
+) -> Path | None:
     """Resolve an emitted ``asset_path`` back to a site-core file by BASENAME
-    (basename-only join prevents path traversal)."""
+    (basename-only join prevents path traversal). PII dirs are searched only when
+    ``include_pii`` (grantee scope), so a crafted OVERALL request can't read
+    event/custom/contacts leaflet contents."""
     root = _site_core_root(webapps_root)
     if root is None:
         return None
@@ -340,6 +379,8 @@ def _resolve_site_core_asset(webapps_root: str | Path | None, asset_path: str) -
     if not fname or "/" in fname or fname.startswith("."):
         return None
     for gallery in _TYPE_SCAN_GALLERIES:
+        if gallery in _PII_GALLERIES and not include_pii:
+            continue
         cand = root / gallery / fname
         if cand.is_file():
             return cand
@@ -347,12 +388,16 @@ def _resolve_site_core_asset(webapps_root: str | Path | None, asset_path: str) -
 
 
 def structured_leaflet_view(
-    webapps_root: str | Path | None, full_type: str, asset_path: str
+    webapps_root: str | Path | None,
+    full_type: str,
+    asset_path: str,
+    *,
+    include_pii: bool = False,
 ) -> dict[str, Any] | None:
     """Generic read-only view of any leaflet: every top-level field flattened
     (reusing ``_scalar_str``) + the raw YAML. ``None`` when the file is missing.
     """
-    path = _resolve_site_core_asset(webapps_root, asset_path)
+    path = _resolve_site_core_asset(webapps_root, asset_path, include_pii=include_pii)
     if path is None:
         return None
     data = _load_yaml_mapping(path)
@@ -378,10 +423,65 @@ def structured_leaflet_view(
     }
 
 
+# --------------------------------------------------------------------------- #
+# editable manifest — per-type icon reassignment (override side-car; SSOT-safe)
+# --------------------------------------------------------------------------- #
+def list_icon_options(webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """Available icon assets for the per-type icon picker, as
+    ``[{icon_ref, label, image_url}]`` (``icon_ref`` is the filename WITHOUT
+    extension — the form the schema stores)."""
+    gallery = build_grouped_gallery(webapps_root, "icon", compute_referenced=False)
+    options: list[dict[str, Any]] = []
+    for group in gallery.get("groups", []):
+        for member in group.get("members", []):
+            fname = _as_text(member.get("filename"))
+            if not fname:
+                continue
+            icon_ref = fname.rsplit(".", 1)[0] if "." in fname else fname
+            options.append(
+                {
+                    "icon_ref": icon_ref,
+                    "label": _as_text(member.get("slug")) or icon_ref,
+                    "image_url": _as_text(member.get("asset_path")) or _as_text(member.get("image_url")),
+                }
+            )
+    options.sort(key=lambda o: o["icon_ref"])
+    return options
+
+
+def set_type_icon_ref(
+    webapps_root: str | Path | None, full_slug: str, icon_ref: str
+) -> dict[str, Any]:
+    """Persist an operator icon reassignment for a registered type node into the
+    overrides side-car (atomic). ``icon_ref`` "" clears the override (falls back
+    to the manifest). Validates the node is registered and the icon asset exists;
+    never edits the SSOT manifest."""
+    full_slug = _as_text(full_slug)
+    icon_ref = _as_text(icon_ref)
+    if full_slug not in registered_full_slugs(webapps_root):
+        return {"ok": False, "error": f"unknown type node: {full_slug or '(empty)'}"}
+    path = _icon_overrides_path(webapps_root)
+    if path is None:
+        return {"ok": False, "error": "site-core root unavailable"}
+    if icon_ref and icon_ref not in {o["icon_ref"] for o in list_icon_options(webapps_root)}:
+        return {"ok": False, "error": f"unknown icon asset: {icon_ref}"}
+    overrides = load_icon_overrides(webapps_root)
+    if icon_ref:
+        overrides[full_slug] = icon_ref
+    else:
+        overrides.pop(full_slug, None)
+    _atomic_write_text(
+        path, yaml.safe_dump(overrides, default_flow_style=False, sort_keys=True, allow_unicode=True)
+    )
+    return {"ok": True, "full_slug": full_slug, "icon_ref": icon_ref, "overrides": len(overrides)}
+
+
 __all__ = [
     "build_type_leaflet_index",
     "flatten_type_tree",
     "leaflets_for_type",
+    "list_icon_options",
+    "load_icon_overrides",
     "load_manifest_default_style",
     "load_type_tree",
     "manifest_schema_path",
@@ -389,6 +489,7 @@ __all__ = [
     "parse_leaflet_type",
     "registered_full_slugs",
     "resolve_instance_viewer",
+    "set_type_icon_ref",
     "structured_leaflet_view",
     "type_leaflet_counts",
     "type_node_full",

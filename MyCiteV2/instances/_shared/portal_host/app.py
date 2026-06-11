@@ -2269,6 +2269,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # An asset in use by a site is a conflict, not a bad request.
         return jsonify(result), 409 if result.get("error") == "referenced" else 400
 
+    # ---- Resources type browser (Manifest subtab edit affordances) ----
+    # The Manifest subtab's per-type icon picker. Browse drill-down itself rides
+    # the shell-reload mechanism (surface_query), so it needs no fetch route.
+    @app.get("/__fnd/resources/icon-options")
+    def fnd_resources_icon_options() -> tuple[Any, int]:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resource_types,
+        )
+
+        options = resource_types.list_icon_options(host_config.webapps_root)
+        return jsonify({"ok": True, "options": options}), 200
+
+    @app.post("/__fnd/resources/manifest/set-icon-ref")
+    def fnd_resources_manifest_set_icon_ref() -> tuple[Any, int]:
+        """Reassign a leaflet TYPE's icon (override side-car; the SSOT manifest is
+        never edited in place — see resource_types.set_type_icon_ref)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resource_types,
+        )
+
+        payload = _json_payload()
+        result = resource_types.set_type_icon_ref(
+            host_config.webapps_root,
+            _as_text(payload.get("full_slug")),
+            _as_text(payload.get("icon_ref")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
+
     # ---- Email health surface -----------------------------------------
     # Operator-facing view of the email stack (forwarder routes + DNS/SES
     # deliverability) so a silent outage like the 11-day forwarder drop is

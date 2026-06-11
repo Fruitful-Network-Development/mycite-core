@@ -2298,23 +2298,151 @@ def _resources_allocation_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Type-browser subtabs (Manifest / Browse / Per-grantee). Reuse resource_types
+# for the type registry + by-type index. Icon sprite/asset URLs are served by
+# the existing /assets/icons/ nginx alias (snippets/shared-assets.conf).
+# resource_types imports helpers FROM this module, so import it LAZILY here to
+# avoid an import cycle.
+# --------------------------------------------------------------------------- #
+_ICON_SPRITE_HREF = "/assets/icons/0000-00-00.artifact-icon.mycite-ui.sprite.svg"
+_ICON_URL_PREFIX = "/assets/icons/"
+
+# Browse drill-down (hierarchy → directory → instance) rides the shell-reload
+# mechanism via surface_query (browse_view/browse_type/browse_instance), so the
+# only fetch endpoints are the icon picker + the icon-edit mutation.
+_RESOURCES_TYPE_ROUTES = {
+    "set_icon_ref_route": "/__fnd/resources/manifest/set-icon-ref",
+    "icon_options_route": "/__fnd/resources/icon-options",
+}
+
+
+def _resources_manifest_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Manifest subtab: the editable leaflet TYPE registry (type_tree) — every
+    type slug with its icon + rolled-up leaflet count."""
+    from . import resource_types as rt
+
+    webapps_root = ctx.get("webapps_root")
+    counts = rt.type_leaflet_counts(webapps_root)
+    nodes = [
+        {**node, "count": counts.get(node["full_slug"], 0)}
+        for node in rt.flatten_type_tree(webapps_root)
+    ]
+    return {
+        "resources_app": True,
+        "resources_subtab": "manifest",
+        "sprite_href": _ICON_SPRITE_HREF,
+        "icon_url_prefix": _ICON_URL_PREFIX,
+        "nodes": nodes,
+        "other_count": counts.get("", 0),
+        "default_style": rt.load_manifest_default_style(webapps_root),
+        **_RESOURCES_TYPE_ROUTES,
+    }
+
+
+def _resources_browse_instance(
+    webapps_root: str | Path | None, full_type: str, asset_path: str, *, include_pii: bool
+) -> dict[str, Any]:
+    """Resolve a chosen leaflet to its viewer payload (profile editor / asset
+    preview / generic structured view), per the type→viewer routing."""
+    from . import resource_types as rt
+
+    viewer = _as_text(rt.resolve_instance_viewer(full_type).get("viewer")) or "generic"
+    fname = _as_text(asset_path).rsplit("/", 1)[-1]
+    if viewer == "profile":
+        slug = _profile_slug(fname)
+        return {"viewer": "profile", "slug": slug, "detail": profile_detail(webapps_root, slug) or {}}
+    if viewer == "asset":
+        for row in rt.leaflets_for_type(webapps_root, full_type, include_pii=include_pii):
+            if _as_text(row.get("filename")) == fname:
+                return {"viewer": "asset", "detail": row}
+        return {"viewer": "asset", "detail": {"filename": fname, "asset_path": asset_path}}
+    # analytics / event / generic → read-only structured view (deep-linking the
+    # full analytics/event editors is a follow-up).
+    detail = rt.structured_leaflet_view(webapps_root, full_type, asset_path, include_pii=include_pii)
+    return {"viewer": "generic", "detail": detail or {"filename": fname}}
+
+
+def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Browse subtab: hierarchy → directory → instance (keyed by browse_view).
+    OVERALL scope excludes PII types; a grantee-scoped browse may include them."""
+    from . import resource_types as rt
+
+    webapps_root = ctx.get("webapps_root")
+    include_pii = _as_text(ctx.get("mode")) == "grantee"
+    view = _as_text(ctx.get("browse_view")) or "hierarchy"
+    browse_type = _as_text(ctx.get("browse_type"))
+    base: dict[str, Any] = {
+        "resources_app": True,
+        "resources_subtab": "browse",
+        "sprite_href": _ICON_SPRITE_HREF,
+        "icon_url_prefix": _ICON_URL_PREFIX,
+        "browse_view": view,
+        **_RESOURCES_TYPE_ROUTES,
+    }
+    nodes_by_slug = {n["full_slug"]: n for n in rt.flatten_type_tree(webapps_root)}
+    if view == "instance" and browse_type:
+        base["browse_type"] = browse_type
+        base["type_label"] = _as_text(nodes_by_slug.get(browse_type, {}).get("label")) or browse_type
+        base["instance"] = _resources_browse_instance(
+            webapps_root, browse_type, _as_text(ctx.get("browse_instance")), include_pii=include_pii
+        )
+        return base
+    if view == "directory" and browse_type:
+        node = nodes_by_slug.get(browse_type, {})
+        base["browse_type"] = browse_type
+        base["type_label"] = _as_text(node.get("label")) or browse_type
+        base["leaflets"] = rt.leaflets_for_type(
+            webapps_root, browse_type, include_subtypes=True, include_pii=include_pii
+        )
+        base["subtypes"] = [
+            nodes_by_slug[c] for c in node.get("child_slugs", []) if c in nodes_by_slug
+        ]
+        return base
+    # hierarchy: every node (count + child links) — JS renders depth-0 boxes and
+    # reveals children on expand.
+    counts = rt.type_leaflet_counts(webapps_root, include_pii=include_pii)
+    base["nodes"] = [{**n, "count": counts.get(n["full_slug"], 0)} for n in nodes_by_slug.values()]
+    return base
+
+
+def _resources_per_grantee_payload(ctx: dict[str, Any]) -> dict[str, Any]:
+    """Per-grantee subtab: the existing allocation view for the grantee chosen in
+    the top selector, or a prompt to pick one."""
+    grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
+    if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
+        payload = _resources_allocation_payload(ctx)
+        payload["resources_subtab"] = "per_grantee"
+        return payload
+    return {
+        "resources_app": True,
+        "resources_subtab": "per_grantee",
+        "per_grantee_prompt": (
+            "Pick a grantee from the selector above to manage the leaflets "
+            "allocated to its site."
+        ),
+    }
+
+
 def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
     """Render the resources extension card payload.
 
-    Two modes (the operator's "overall library vs per-grantee allocation"):
-      * LIBRARY (default) → the shared Resource LIBRARY (search/view/manage all
-        leaflets by type, organized by slug). Reads the shared site-core
-        galleries straight from ``webapps_root`` (not grantee-scoped). This is
-        the default whenever no specific grantee is engaged — including a bare
-        ctx — so it is the back-compatible behavior.
-      * ALLOCATION → only when grantee mode is active AND a grantee is selected:
-        manage which leaflets are "used" in that site's per-type ``*_use.yaml``
-        manifest (``_resources_allocation_payload``, per-grantee phase).
+    The Extensions surface threads an ``extension_subtab`` into ctx → dispatch to
+    the type-browser subtabs (Manifest default / Browse / Per-grantee). Legacy
+    direct callers (tests, non-surface paths) that DON'T thread the key keep the
+    original library/allocation behavior, so nothing regresses.
     """
-    grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
-    if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
-        return _resources_allocation_payload(ctx)
-    return _resources_library_payload(ctx.get("webapps_root"))
+    if "extension_subtab" not in ctx:
+        grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
+        if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
+            return _resources_allocation_payload(ctx)
+        return _resources_library_payload(ctx.get("webapps_root"))
+    subtab = _as_text(ctx.get("extension_subtab")) or "manifest"
+    if subtab == "browse":
+        return _resources_browse_payload(ctx)
+    if subtab == "per_grantee":
+        return _resources_per_grantee_payload(ctx)
+    return _resources_manifest_payload(ctx)
 
 
 __all__ = [

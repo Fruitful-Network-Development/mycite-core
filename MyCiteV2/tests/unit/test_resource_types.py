@@ -183,10 +183,11 @@ class ResourceTypesTest(unittest.TestCase):
         self.assertEqual(rt.resolve_instance_viewer("record-table")["viewer"], "generic")
 
     def test_structured_leaflet_view(self) -> None:
-        view = rt.structured_leaflet_view(
-            self.root, "artifact-custom",
-            "/site-core/custom/2026-04-10.artifact-custom.brocks_pressure_washing-jobs.deck.yaml",
-        )
+        path = "/site-core/custom/2026-04-10.artifact-custom.brocks_pressure_washing-jobs.deck.yaml"
+        # custom is PII → OVERALL (no include_pii) must NOT resolve its contents
+        self.assertIsNone(rt.structured_leaflet_view(self.root, "artifact-custom", path))
+        # grantee scope (include_pii) sees it
+        view = rt.structured_leaflet_view(self.root, "artifact-custom", path, include_pii=True)
         self.assertIsNotNone(view)
         keys = {f["key"] for f in view["fields"]}
         self.assertEqual(keys, {"price", "spec"})
@@ -194,8 +195,31 @@ class ResourceTypesTest(unittest.TestCase):
         self.assertTrue(nested["is_nested"])
         self.assertIn("price: 100", view["raw_yaml"])
         # missing file → None; traversal-proof
-        self.assertIsNone(rt.structured_leaflet_view(self.root, "x", "/site-core/custom/nope.yaml"))
+        self.assertIsNone(
+            rt.structured_leaflet_view(self.root, "x", "/site-core/custom/nope.yaml", include_pii=True)
+        )
         self.assertIsNone(rt.structured_leaflet_view(self.root, "x", "/etc/passwd"))
+
+    # ---- editable manifest (icon override side-car) ---------------------- #
+    def test_icon_override_roundtrip(self) -> None:
+        opts = {o["icon_ref"] for o in rt.list_icon_options(self.root)}
+        self.assertIn("0000-00-00.artifact-icon.mycite.crop", opts)
+        # set an override on a registered node
+        res = rt.set_type_icon_ref(self.root, "artifact-icon", "0000-00-00.artifact-icon.mycite.crop")
+        self.assertTrue(res["ok"])
+        rows = {r["full_slug"]: r for r in rt.flatten_type_tree(self.root)}
+        self.assertEqual(rows["artifact-icon"]["icon_ref"], "0000-00-00.artifact-icon.mycite.crop")
+        # SSOT manifest is untouched (override lives in the side-car)
+        manifest = (self.root / "clients" / "_shared" / "site-core" / "schema"
+                    / "0000-00-00.artifact-manifest.mycite.schema.yaml").read_text()
+        self.assertNotIn("0000-00-00.artifact-icon.mycite.crop", manifest.split("icon:")[0])
+        # validation: unknown node / unknown icon rejected
+        self.assertFalse(rt.set_type_icon_ref(self.root, "widget-foo", "x")["ok"])
+        self.assertFalse(rt.set_type_icon_ref(self.root, "artifact-icon", "no.such.icon")["ok"])
+        # clear → falls back to manifest value
+        self.assertTrue(rt.set_type_icon_ref(self.root, "artifact-icon", "")["ok"])
+        rows = {r["full_slug"]: r for r in rt.flatten_type_tree(self.root)}
+        self.assertEqual(rows["artifact-icon"]["icon_ref"], "")  # manifest 'icon' node has no icon_ref
 
 
 if __name__ == "__main__":

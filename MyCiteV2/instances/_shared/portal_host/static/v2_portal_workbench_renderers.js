@@ -1394,12 +1394,216 @@
     );
   }
 
+  // ---- Type browser: inner subtabs + Manifest / Browse renderers --------
+  function renderInnerSubtabs(selector) {
+    var s = asObject(selector);
+    var tabs = asList(s.tabs);
+    if (!tabs.length) return "";
+    var opts = tabs
+      .map(function (t) {
+        var tab = asObject(t);
+        var action = JSON.stringify(asObject(tab.select_action).payload || {});
+        return (
+          '<button type="button" class="v2-innerSubtabs__option' +
+          (tab.active === true ? " is-active" : "") +
+          '" data-subtab-action="' + escapeHtml(action) +
+          '" aria-pressed="' + (tab.active === true ? "true" : "false") + '">' +
+          escapeHtml(asText(tab.label) || asText(tab.id)) + "</button>"
+        );
+      })
+      .join("");
+    return (
+      '<section class="v2-card v2-innerSubtabs" style="margin-top:0">' +
+      '<div class="v2-innerSubtabs__options" role="tablist">' + opts + "</div></section>"
+    );
+  }
+
+  function renderTypeIcon(node, p) {
+    var n = asObject(node);
+    var prefix = asText(p && p.icon_url_prefix) || "/assets/icons/";
+    var iconRef = asText(n.icon_ref);
+    if (iconRef) {
+      return '<img class="v2-typeIcon" src="' + escapeHtml(prefix + iconRef + ".svg") +
+        '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />';
+    }
+    var sprite = asText(p && p.sprite_href);
+    var icon = asText(n.icon);
+    if (sprite && icon) {
+      return '<svg class="v2-typeIcon" aria-hidden="true"><use href="' +
+        escapeHtml(sprite + "#" + icon) + '"></use></svg>';
+    }
+    return '<span class="v2-typeIcon v2-typeIcon--none"></span>';
+  }
+
+  function indexByParent(nodes) {
+    var byParent = {};
+    asList(nodes).forEach(function (n) {
+      var node = asObject(n);
+      var parent = asText(node.parent_slug);
+      (byParent[parent] = byParent[parent] || []).push(node);
+    });
+    return byParent;
+  }
+
+  function renderResourcesManifest(p) {
+    var byParent = indexByParent(p.nodes);
+    function renderNode(node) {
+      var full = asText(node.full_slug);
+      var kids = byParent[full] || [];
+      var head =
+        '<div class="v2-typeNode__row" data-full-slug="' + escapeHtml(full) + '">' +
+        renderTypeIcon(node, p) +
+        '<span class="v2-typeNode__label">' + escapeHtml(asText(node.label) || full) + "</span>" +
+        '<code class="v2-typeNode__slug">' + escapeHtml(full) + "</code>" +
+        '<span class="v2-typeNode__count">' + escapeHtml(String(node.count || 0)) + "</span>" +
+        '<button type="button" class="v2-typeNode__editIcon" data-edit-icon="' + escapeHtml(full) +
+        '" title="Change icon">edit icon</button></div>';
+      if (!kids.length) return '<div class="v2-typeNode">' + head + "</div>";
+      return '<details class="v2-typeNode v2-typeNode--branch"><summary>' + head + "</summary>" +
+        '<div class="v2-typeNode__children">' + kids.map(renderNode).join("") + "</div></details>";
+    }
+    var roots = byParent[""] || [];
+    var other = Number(p.other_count || 0);
+    var otherRow = other
+      ? '<div class="v2-typeNode"><div class="v2-typeNode__row">' +
+        '<span class="v2-typeIcon v2-typeIcon--none"></span>' +
+        '<span class="v2-typeNode__label">Other (unregistered types)</span>' +
+        '<span class="v2-typeNode__count">' + escapeHtml(String(other)) + "</span></div></div>"
+      : "";
+    return (
+      '<div class="v2-resourcesApp v2-typeManifest" data-set-icon-route="' +
+      escapeHtml(asText(p.set_icon_ref_route)) + '" data-icon-options-route="' +
+      escapeHtml(asText(p.icon_options_route)) + '" data-icon-url-prefix="' +
+      escapeHtml(asText(p.icon_url_prefix)) + '">' +
+      '<p class="v2-extensionCard__intro">The master leaflet TYPE registry — every type and subtype with ' +
+      'its icon and rolled-up leaflet count. Use "edit icon" to reassign a type\'s icon.</p>' +
+      '<div class="v2-typeTree">' + roots.map(renderNode).join("") + otherRow + "</div></div>"
+    );
+  }
+
+  function renderBrowseBox(node, p, byParent) {
+    var full = asText(node.full_slug);
+    var kids = byParent[full] || [];
+    var head =
+      '<div class="v2-browseBox__head">' + renderTypeIcon(node, p) +
+      '<span class="v2-browseBox__label">' + escapeHtml(asText(node.label) || full) + "</span>" +
+      '<span class="v2-browseBox__count">' + escapeHtml(String(node.count || 0)) + "</span>" +
+      '<button type="button" class="v2-browseBox__open" data-open-type="' + escapeHtml(full) +
+      '" title="Open all leaflets of this type">open</button></div>';
+    if (!kids.length) return '<div class="v2-browseBox">' + head + "</div>";
+    return '<details class="v2-browseBox v2-browseBox--branch"><summary>' + head + "</summary>" +
+      '<div class="v2-browseBox__children">' +
+      kids.map(function (k) { return renderBrowseBox(k, p, byParent); }).join("") +
+      "</div></details>";
+  }
+
+  function renderGenericLeaflet(detail) {
+    var d = asObject(detail);
+    var fields = asList(d.fields).map(function (f) {
+      var fld = asObject(f);
+      return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
+        "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
+    }).join("");
+    var raw = asText(d.raw_yaml);
+    return "<h4>" + escapeHtml(asText(d.label) || asText(d.filename)) + "</h4>" +
+      '<div class="v2-genericLeaflet__fields">' + fields + "</div>" +
+      (raw ? '<details class="v2-genericLeaflet__rawWrap"><summary>Raw YAML</summary>' +
+        '<pre class="v2-genericLeaflet__raw">' + escapeHtml(raw) + "</pre></details>" : "");
+  }
+
+  function renderBrowseInstance(p) {
+    var inst = asObject(p.instance);
+    var viewer = asText(inst.viewer);
+    var d = asObject(inst.detail);
+    var body;
+    if (viewer === "profile") {
+      body = renderProfileHead({ title: asText(d.display_name), slug: asText(d.slug), image_url: asText(d.image_url) }) +
+        '<div class="v2-resourcesDetail__meta">' +
+        asList(d.fields).map(function (f) {
+          var fld = asObject(f);
+          return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
+            "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
+        }).join("") + "</div>";
+    } else if (viewer === "asset") {
+      body = renderBinaryDetail(d);
+    } else {
+      body = renderGenericLeaflet(d);
+    }
+    return '<div class="v2-leafletDir__bar"><button type="button" class="v2-leafletDir__back" ' +
+      'data-browse-back="directory">&larr; ' + escapeHtml(asText(p.type_label) || "Directory") + "</button></div>" +
+      '<div class="v2-genericLeaflet">' + body + "</div>";
+  }
+
+  function renderBrowseDirectory(p) {
+    var leaflets = asList(p.leaflets);
+    var subtypes = asList(p.subtypes);
+    var chips = subtypes.length
+      ? '<div class="v2-browseFilters"><button type="button" class="v2-browseFilter is-active" ' +
+        'data-subtype-filter="">All</button>' +
+        subtypes.map(function (s) {
+          var n = asObject(s);
+          return '<button type="button" class="v2-browseFilter" data-subtype-filter="' +
+            escapeHtml(asText(n.full_slug)) + '">' + escapeHtml(asText(n.label)) + "</button>";
+        }).join("") + "</div>"
+      : "";
+    var rows = leaflets.map(function (l) {
+      var r = asObject(l);
+      var thumb = asText(r.image_url)
+        ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' + escapeHtml(asText(r.image_url)) +
+          '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+        : "";
+      return '<button type="button" class="v2-leafletDir__item" data-open-instance="' +
+        escapeHtml(asText(r.asset_path)) + '" data-full-type="' + escapeHtml(asText(r.full_type)) + '">' +
+        thumb + '<span class="v2-leafletDir__name">' + escapeHtml(asText(r.slug) || asText(r.filename)) +
+        "</span><code class=\"v2-leafletDir__type\">" + escapeHtml(asText(r.full_type)) + "</code></button>";
+    }).join("");
+    return '<div class="v2-leafletDir__bar"><button type="button" class="v2-leafletDir__back" ' +
+      'data-browse-back="hierarchy">&larr; Types</button><h4>' +
+      escapeHtml(asText(p.type_label) || asText(p.browse_type)) + '</h4>' +
+      '<span class="v2-browseBox__count">' + escapeHtml(String(leaflets.length)) + "</span></div>" +
+      chips + '<div class="v2-leafletDir__list">' +
+      (rows || '<p class="v2-extensionCard__empty">No leaflets of this type.</p>') + "</div>";
+  }
+
+  function renderResourcesBrowse(p) {
+    var view = asText(p.browse_view) || "hierarchy";
+    var inner;
+    if (view === "instance") {
+      inner = renderBrowseInstance(p);
+    } else if (view === "directory") {
+      inner = renderBrowseDirectory(p);
+    } else {
+      var byParent = indexByParent(p.nodes);
+      var roots = byParent[""] || [];
+      inner =
+        '<p class="v2-extensionCard__intro">Browse leaflets by type. Expand a type to see its subtypes; ' +
+        'use "open" to list every leaflet of that type.</p>' +
+        '<div class="v2-browseGrid">' +
+        roots.map(function (n) { return renderBrowseBox(n, p, byParent); }).join("") + "</div>";
+    }
+    return '<div class="v2-resourcesApp v2-typeBrowse"><div class="v2-leafletDir">' + inner + "</div></div>";
+  }
+
   function renderResourcesApp(payload) {
     var p = asObject(payload);
-    if (asText(p.resources_mode) === "allocation") {
-      return renderResourcesAllocation(p);
+    var subtabs = renderInnerSubtabs(p.inner_subtab_selector);
+    var sub = asText(p.resources_subtab);
+    var body;
+    if (sub === "manifest") {
+      body = renderResourcesManifest(p);
+    } else if (sub === "browse") {
+      body = renderResourcesBrowse(p);
+    } else if (sub === "per_grantee") {
+      body = asText(p.per_grantee_prompt)
+        ? '<div class="v2-resourcesApp"><p class="v2-extensionCard__empty">' +
+          escapeHtml(asText(p.per_grantee_prompt)) + "</p></div>"
+        : renderResourcesAllocation(p);
+    } else if (asText(p.resources_mode) === "allocation") {
+      body = renderResourcesAllocation(p);
+    } else {
+      body = renderResourcesLibrary(p);
     }
-    return renderResourcesLibrary(p);
+    return subtabs + body;
   }
 
   function renderExtensions(extensions) {
@@ -2028,15 +2232,158 @@
     });
   }
 
+  function bindInnerSubtabs(ctx, target) {
+    Array.prototype.forEach.call(target.querySelectorAll(".v2-innerSubtabs__option"), function (node) {
+      if (node.dataset.subtabBound === "1") return;
+      node.dataset.subtabBound = "1";
+      node.addEventListener("click", function () {
+        var payload;
+        try {
+          payload = JSON.parse(node.getAttribute("data-subtab-action") || "{}");
+        } catch (_) {
+          return;
+        }
+        if (payload && payload.requested_surface_id && typeof ctx.loadShell === "function") {
+          ctx.loadShell(payload);
+        }
+      });
+    });
+  }
+
+  // Browse drill-down navigates by patching the current envelope's surface_query
+  // and reloading the shell (same mechanic as the grantee/extension selectors).
+  function browseNav(ctx, patch) {
+    var env = ctx.getEnvelope && ctx.getEnvelope();
+    if (!env || typeof ctx.loadShell !== "function") return;
+    var sq = Object.assign({}, env.surface_query || {});
+    Object.keys(patch).forEach(function (k) {
+      if (patch[k] === null) {
+        delete sq[k];
+      } else {
+        sq[k] = patch[k];
+      }
+    });
+    ctx.loadShell({
+      schema: "mycite.v2.portal.shell.request.v1",
+      requested_surface_id: env.surface_id,
+      surface_query: sq,
+    });
+  }
+
+  function bindResourcesBrowse(ctx, app) {
+    Array.prototype.forEach.call(app.querySelectorAll("[data-open-type]"), function (b) {
+      b.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        browseNav(ctx, {
+          extension_subtab: "browse",
+          browse_view: "directory",
+          browse_type: b.getAttribute("data-open-type"),
+          browse_instance: null,
+        });
+      });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll("[data-open-instance]"), function (b) {
+      b.addEventListener("click", function () {
+        browseNav(ctx, { browse_view: "instance", browse_instance: b.getAttribute("data-open-instance") });
+      });
+    });
+    Array.prototype.forEach.call(app.querySelectorAll("[data-browse-back]"), function (b) {
+      b.addEventListener("click", function () {
+        if (b.getAttribute("data-browse-back") === "hierarchy") {
+          browseNav(ctx, { browse_view: "hierarchy", browse_type: null, browse_instance: null });
+        } else {
+          browseNav(ctx, { browse_view: "directory", browse_instance: null });
+        }
+      });
+    });
+    // Subtype filter chips: client-side filter of the directory list (no reload).
+    Array.prototype.forEach.call(app.querySelectorAll("[data-subtype-filter]"), function (chip) {
+      chip.addEventListener("click", function () {
+        var sel = chip.getAttribute("data-subtype-filter");
+        Array.prototype.forEach.call(app.querySelectorAll(".v2-browseFilter"), function (c) {
+          c.classList.toggle("is-active", c === chip);
+        });
+        Array.prototype.forEach.call(app.querySelectorAll(".v2-leafletDir__item"), function (item) {
+          var t = item.getAttribute("data-full-type") || "";
+          var show = !sel || t === sel || t.indexOf(sel + "-") === 0;
+          item.style.display = show ? "" : "none";
+        });
+      });
+    });
+  }
+
+  function bindResourcesManifest(ctx, app) {
+    var setRoute = app.getAttribute("data-set-icon-route");
+    var optionsRoute = app.getAttribute("data-icon-options-route");
+    var optionsCache = null;
+    function loadOptions() {
+      if (optionsCache) return Promise.resolve(optionsCache);
+      return fetch(optionsRoute, { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          optionsCache = (j && j.options) || [];
+          return optionsCache;
+        });
+    }
+    function reload() {
+      var env = ctx.getEnvelope && ctx.getEnvelope();
+      if (env && typeof ctx.loadShell === "function") {
+        ctx.loadShell({
+          schema: "mycite.v2.portal.shell.request.v1",
+          requested_surface_id: env.surface_id,
+          surface_query: env.surface_query || {},
+        });
+      }
+    }
+    Array.prototype.forEach.call(app.querySelectorAll("[data-edit-icon]"), function (btn) {
+      btn.addEventListener("click", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var full = btn.getAttribute("data-edit-icon");
+        var row = btn.closest(".v2-typeNode__row");
+        if (!row || row.querySelector(".v2-typeNode__picker")) return;
+        loadOptions().then(function (options) {
+          var sel = document.createElement("select");
+          sel.className = "v2-typeNode__picker";
+          sel.appendChild(new Option("(manifest default)", ""));
+          options.forEach(function (o) {
+            sel.appendChild(new Option(asText(o.icon_ref), asText(o.icon_ref)));
+          });
+          sel.addEventListener("change", function () {
+            fetch(setRoute, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ full_slug: full, icon_ref: sel.value }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) {
+                if (res && res.ok) reload();
+              });
+          });
+          row.appendChild(sel);
+          sel.focus();
+        });
+      });
+    });
+  }
+
   function bindResourcesApp(ctx, target) {
+    bindInnerSubtabs(ctx, target);
     var app = target.querySelector(".v2-resourcesApp");
     if (!app || app.dataset.resourcesBound === "1") return;
     app.dataset.resourcesBound = "1";
     var uploadForm = app.querySelector("[data-resources-upload-route]");
     if (uploadForm) bindResourcesUpload(uploadForm);
-    if (app.getAttribute("data-resources-mode") === "library") {
+    var mode = app.getAttribute("data-resources-mode");
+    if (app.classList.contains("v2-typeManifest")) {
+      bindResourcesManifest(ctx, app);
+    } else if (app.classList.contains("v2-typeBrowse")) {
+      bindResourcesBrowse(ctx, app);
+    } else if (mode === "library") {
       bindResourcesLibrary(ctx, app);
-    } else {
+    } else if (mode === "allocation") {
       bindResourcesAllocation(ctx, app);
     }
   }
