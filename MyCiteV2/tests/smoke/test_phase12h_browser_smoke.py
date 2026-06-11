@@ -145,6 +145,7 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                             "surface_query": {
                                 "selected_grantee_msn": "alpha",
                                 "selected_extension_tool_id": "ext_paypal",
+                                "extension_subtab": "per_grantee",
                             },
                         }
                     ),
@@ -153,22 +154,24 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 self.assertEqual(api_resp.status, 200)
                 payload = api_resp.json()
                 surface = payload.get("surface_payload") or {}
-                selector = surface.get("grantee_selector")
-                self.assertIsNotNone(selector, "grantee_selector missing from surface_payload")
-                # The list leads with a synthetic "All — Overall" entry; the
-                # real grantees follow.
+                # The surface-level grantee selector is RETIRED; on the Per-grantee
+                # subtab the active extension hosts the grantee PICKER in-card.
+                self.assertIsNone(surface.get("grantee_selector"))
+
+                def _active_payload(p, tool_id="ext_paypal"):
+                    for ext in p.get("extensions") or []:
+                        if ext.get("tool_id") == tool_id:
+                            return ext.get("payload") or {}
+                    return {}
+
+                picker = _active_payload(surface).get("grantee_picker") or {}
                 self.assertEqual(
                     sorted(
                         g["msn_id"]
-                        for g in (selector.get("grantees") or [])
+                        for g in (picker.get("grantees") or [])
                         if not g.get("is_overall")
                     ),
                     ["alpha", "beta"],
-                )
-                self.assertEqual(
-                    len([g for g in selector["grantees"] if g.get("active")]),
-                    1,
-                    "exactly one entry should be active",
                 )
 
                 # Switching grantees via surface_query pivots extension domain.
@@ -184,16 +187,14 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                             "surface_query": {
                                 "selected_grantee_msn": "beta",
                                 "selected_extension_tool_id": "ext_paypal",
+                                "extension_subtab": "per_grantee",
                             },
                         }
                     ),
                     headers={"content-type": "application/json"},
                 )
                 surface2 = (api_resp2.json() or {}).get("surface_payload") or {}
-                self.assertEqual(
-                    surface2["grantee_selector"]["selected_grantee_msn"],
-                    "beta",
-                )
+                self.assertIsNone(surface2.get("grantee_selector"))
 
                 def _ext_domain(p, tool_id):
                     for ext in p.get("extensions") or []:
@@ -208,38 +209,26 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
                 # Phase 14b: navigate to the new extensions surface (the
                 # legacy /tool-exposure URL 302-redirects to this anyway).
                 page.goto(
-                    f"{base}/portal/utilities/extensions",
+                    f"{base}/portal/utilities/extensions"
+                    "?selected_extension_tool_id=ext_paypal&extension_subtab=per_grantee",
                     wait_until="networkidle",
                     timeout=15000,
                 )
-                try:
-                    page.wait_for_response(
-                        lambda r: "/portal/api/v2/shell" in r.url
-                        and r.request.method == "POST",
-                        timeout=10000,
-                    )
-                except Exception:
-                    pass  # may have completed before the listener registered
-
+                # The in-card grantee picker renders on the Per-grantee subtab.
                 page.wait_for_selector(".v2-granteeSelector", timeout=10000)
                 option_count = page.eval_on_selector_all(
                     ".v2-granteeSelector__option", "els => els.length"
                 )
-                active_count = page.eval_on_selector_all(
-                    ".v2-granteeSelector__option.is-active", "els => els.length"
-                )
-                # 3 options: the synthetic "All — Overall" entry + the 2
-                # grantees. On a default (no-query) load the surface is in the
-                # global view, so the Overall entry is the single active one.
-                self.assertEqual(option_count, 3)
-                self.assertEqual(active_count, 1)
+                # 2 options (alpha, beta) — the synthetic "All — Overall" entry is
+                # dropped in-card (the Overall subtab is the way back).
+                self.assertEqual(option_count, 2)
 
                 with page.expect_response(
                     lambda r: "/portal/api/v2/shell" in r.url
                     and r.request.method == "POST",
                     timeout=5000,
                 ) as resp_info:
-                    page.click(".v2-granteeSelector__option:not(.is-active)")
+                    page.click(".v2-granteeSelector__option")
                 clicked_resp = resp_info.value
                 req_body = json.loads(clicked_resp.request.post_data or "{}")
                 clicked_msn = (req_body.get("surface_query") or {}).get("selected_grantee_msn")

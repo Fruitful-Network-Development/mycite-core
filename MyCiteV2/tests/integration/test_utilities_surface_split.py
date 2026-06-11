@@ -122,17 +122,19 @@ class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
         }
         self.assertNotIn("ext_grantee_profile", tab_ids)
 
-    def test_extensions_surface_has_grantee_selector(self) -> None:
+    def test_extensions_surface_has_no_top_grantee_selector(self) -> None:
+        # The surface-level grantee selector is RETIRED for the Extensions surface:
+        # per-grantee is reached via each extension's "Per-grantee" inner subtab
+        # (which hosts the grantee picker). The active extension carries the inner
+        # subtab strip instead, defaulting to Overall.
         payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
-        selector = payload.get("grantee_selector")
-        self.assertIsNotNone(selector)
-        # Each select_action must point back to THIS surface, not the legacy
-        # tool-exposure surface — Phase 14b's _grantee_selector_for_target.
-        for grantee in selector.get("grantees") or []:
-            self.assertEqual(
-                grantee["select_action"]["payload"]["requested_surface_id"],
-                UTILITIES_EXTENSIONS_SURFACE_ID,
-            )
+        self.assertIsNone(payload.get("grantee_selector"))
+        active = payload.get("extensions") or []
+        self.assertTrue(active)
+        sel = (active[0].get("payload") or {}).get("inner_subtab_selector") or {}
+        ids = [t.get("id") for t in sel.get("tabs") or []]
+        self.assertIn("overall", ids)
+        self.assertIn("per_grantee", ids)
 
 
 class UtilitiesGranteeProfileSurfaceTests(unittest.TestCase):
