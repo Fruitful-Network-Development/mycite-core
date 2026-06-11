@@ -665,6 +665,19 @@ def _build_utilities_surface_context(
 
     query = dict(surface_query or {})
     mode = _resolve_utilities_mode(query, default_to_global=default_to_global)
+    # The active extension's INNER subtab is the mode switch on the Extensions
+    # surface: "per_grantee" → grantee mode (when a grantee is selected); any
+    # other subtab (Overall/Manifest/Browse) → global. This makes "Overall" the
+    # default per-extension view and routes per-grantee uniformly through the
+    # subtab. Surfaces that never set extension_subtab (Grantee-Profile, legacy)
+    # are unaffected.
+    _subtab = _as_text(query.get("extension_subtab"))
+    if _subtab:
+        mode = (
+            "grantee"
+            if (_subtab == "per_grantee" and _as_text(query.get("selected_grantee_msn")))
+            else "global"
+        )
     tool_state = {
         "selected_grantee_msn": query.get("selected_grantee_msn", ""),
         "selected_domain": query.get("selected_domain", ""),
@@ -950,12 +963,10 @@ def _surface_payload_for_extensions(
         if grantee_selector
         else ""
     )
-    if grantee_selector is not None:
-        payload["grantee_selector"] = _grantee_selector_for_target(
-            grantee_selector,
-            UTILITIES_EXTENSIONS_SURFACE_ID,
-            preserved_query={"selected_extension_tool_id": active_tool_id},
-        )
+    # The surface-level grantee selector is RETIRED for the Extensions surface:
+    # per-grantee is reached via each extension's "Per-grantee" inner subtab, which
+    # hosts the grantee picker. "Overall" is the default view. (The Grantee-Profile
+    # surface keeps its own selector — it is a different surface payload builder.)
     if operational:
         payload["extension_subtab_selector"] = _build_extension_subtab_selector(
             operational,
@@ -966,13 +977,22 @@ def _surface_payload_for_extensions(
         active_entries = [
             ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
         ]
-        # Attach the per-extension INNER subtab strip into the active card's
-        # payload (so the JS card renderer sees it). The extension renderer
-        # already produced the active subtab's content from ctx["extension_subtab"];
-        # both sides resolve the same default (the first declared subtab).
         if active_entries and active_tool_id in _EXTENSION_SUBTABS:
             active_subtab = _resolve_inner_subtab(active_tool_id, _as_text(extension_subtab))
-            entry_payload = active_entries[0].get("payload")
+            entry = active_entries[0]
+            # Per-grantee subtab with NO grantee chosen yet: show only the picker +
+            # a prompt, not the Overall payload render_extension produced under
+            # global mode. Resources returns its own prompt — don't clobber it.
+            if active_subtab == "per_grantee" and not selected_grantee_msn:
+                cur = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
+                if not cur.get("per_grantee_prompt"):
+                    entry["payload"] = {
+                        "per_grantee_prompt": (
+                            f"Select a grantee to manage "
+                            f"{_as_text(entry.get('label')) or 'this extension'} for one grantee."
+                        )
+                    }
+            entry_payload = entry.get("payload")
             if isinstance(entry_payload, dict):
                 entry_payload["inner_subtab_selector"] = _build_inner_subtab_selector(
                     active_tool_id,
@@ -980,6 +1000,22 @@ def _surface_payload_for_extensions(
                     selected_grantee_msn=selected_grantee_msn,
                     utilities_mode=mode,
                 )
+                # Host the grantee picker in-card on the Per-grantee subtab. Drop
+                # the synthetic "All — Overall" entry — the Overall subtab is the
+                # way back to the global view.
+                if active_subtab == "per_grantee" and grantee_selector is not None:
+                    picker = _grantee_selector_for_target(
+                        grantee_selector,
+                        UTILITIES_EXTENSIONS_SURFACE_ID,
+                        preserved_query={
+                            "selected_extension_tool_id": active_tool_id,
+                            "extension_subtab": "per_grantee",
+                        },
+                    )
+                    picker["grantees"] = [
+                        g for g in (picker.get("grantees") or []) if not g.get("is_overall")
+                    ]
+                    entry_payload["grantee_picker"] = picker
         payload["extensions"] = active_entries
     return payload
 
@@ -1258,7 +1294,20 @@ def _build_extension_subtab_selector(
 # declares ordered subtabs here, the shell builds the strip, and the extension
 # renderer produces only the active subtab's CONTENT (branching on
 # ctx["extension_subtab"], defaulting to the first id).
+# Every operational extension gets the same convention: an "Overall" (global)
+# view that is the DEFAULT, plus a "Per-grantee" subtab that hosts the grantee
+# picker + that extension's per-grantee view. Resources keeps richer overall
+# subtabs (Manifest/Browse). The first id is the default subtab.
+_DEFAULT_EXTENSION_SUBTABS: tuple[dict[str, str], ...] = (
+    {"id": "overall", "label": "Overall"},
+    {"id": "per_grantee", "label": "Per-grantee"},
+)
 _EXTENSION_SUBTABS: dict[str, tuple[dict[str, str], ...]] = {
+    "ext_aws_email": _DEFAULT_EXTENSION_SUBTABS,
+    "ext_analytics": _DEFAULT_EXTENSION_SUBTABS,
+    "ext_newsletter": _DEFAULT_EXTENSION_SUBTABS,
+    "ext_paypal": _DEFAULT_EXTENSION_SUBTABS,
+    "ext_connect": _DEFAULT_EXTENSION_SUBTABS,
     "ext_resources": (
         {"id": "manifest", "label": "Manifest"},
         {"id": "browse", "label": "Browse"},
@@ -1303,7 +1352,11 @@ def _build_inner_subtab_selector(
                         "surface_query": {
                             "selected_grantee_msn": selected_grantee_msn,
                             "selected_extension_tool_id": tool_id,
-                            "utilities_mode": utilities_mode,
+                            # The subtab IS the mode switch: Per-grantee engages
+                            # grantee mode; every other subtab (Overall/Manifest/
+                            # Browse) engages global mode — so "Overall" is the
+                            # default and per-grantee is reached via the subtab.
+                            "utilities_mode": "grantee" if sub_id == "per_grantee" else "global",
                             "extension_subtab": sub_id,
                         },
                     },

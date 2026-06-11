@@ -33,23 +33,35 @@ class InnerSubtabResolve(unittest.TestCase):
         self.assertEqual(_resolve_inner_subtab("ext_resources", ""), "manifest")
         self.assertEqual(_resolve_inner_subtab("ext_resources", "browse"), "browse")
         self.assertEqual(_resolve_inner_subtab("ext_resources", "bogus"), "manifest")
-        self.assertEqual(_resolve_inner_subtab("ext_aws_email", "x"), "")  # declares no subtabs
+        # Every operational extension now declares subtabs, defaulting to Overall.
+        self.assertEqual(_resolve_inner_subtab("ext_aws_email", "x"), "overall")
+        self.assertEqual(_resolve_inner_subtab("ext_aws_email", "per_grantee"), "per_grantee")
+        # A tool with no subtab declaration (e.g. the grantee-profile surface tool).
+        self.assertEqual(_resolve_inner_subtab("ext_grantee_profile", "x"), "")
 
 
 class InnerSubtabSelector(unittest.TestCase):
-    def test_tabs_and_select_action(self) -> None:
+    def test_subtab_drives_mode(self) -> None:
+        # The subtab is the mode switch: per_grantee -> grantee, anything else -> global.
         sel = _build_inner_subtab_selector(
             "ext_resources", "browse", selected_grantee_msn="acme", utilities_mode="grantee"
         )
         self.assertEqual([t["id"] for t in sel["tabs"]], ["manifest", "browse", "per_grantee"])
         self.assertEqual(sel["selected_subtab"], "browse")
-        browse = next(t for t in sel["tabs"] if t["id"] == "browse")
-        self.assertTrue(browse["active"])
-        sq = browse["select_action"]["payload"]["surface_query"]
-        self.assertEqual(sq["extension_subtab"], "browse")
-        self.assertEqual(sq["selected_extension_tool_id"], "ext_resources")
-        self.assertEqual(sq["selected_grantee_msn"], "acme")
-        self.assertEqual(sq["utilities_mode"], "grantee")
+        by_id = {t["id"]: t["select_action"]["payload"]["surface_query"] for t in sel["tabs"]}
+        self.assertEqual(by_id["browse"]["utilities_mode"], "global")
+        self.assertEqual(by_id["manifest"]["utilities_mode"], "global")
+        self.assertEqual(by_id["per_grantee"]["utilities_mode"], "grantee")
+        self.assertEqual(by_id["browse"]["extension_subtab"], "browse")
+        self.assertEqual(by_id["browse"]["selected_extension_tool_id"], "ext_resources")
+        self.assertEqual(by_id["browse"]["selected_grantee_msn"], "acme")
+
+    def test_operational_extension_has_overall_pergrantee(self) -> None:
+        sel = _build_inner_subtab_selector(
+            "ext_aws_email", "overall", selected_grantee_msn="", utilities_mode="global"
+        )
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["overall", "per_grantee"])
+        self.assertTrue(next(t for t in sel["tabs"] if t["id"] == "overall")["active"])
 
 
 class SurfaceAttachesInnerSelector(unittest.TestCase):
@@ -72,15 +84,49 @@ class SurfaceAttachesInnerSelector(unittest.TestCase):
         self.assertEqual(sel["selected_subtab"], "browse")
         self.assertEqual([t["id"] for t in sel["tabs"]], ["manifest", "browse", "per_grantee"])
 
-    def test_no_inner_selector_for_non_subtab_extension(self) -> None:
-        extensions = [self._ext("ext_aws_email", {"configuration": {"label": "x"}})]
+    def test_operational_extension_gets_inner_selector_no_surface_selector(self) -> None:
+        # Every operational extension now carries the inner subtab strip, and the
+        # Extensions surface no longer hosts a top-level grantee selector.
+        extensions = [self._ext("ext_aws_email", {"overall_roster": True})]
         payload = _surface_payload_for_extensions(
             extensions=extensions,
-            grantee_selector=None,
+            grantee_selector={"selected_grantee_msn": "", "grantees": []},
             selected_extension_tool_id="ext_aws_email",
+            extension_subtab="overall",
             mode="global",
         )
-        self.assertNotIn("inner_subtab_selector", payload["extensions"][0]["payload"])
+        sel = payload["extensions"][0]["payload"]["inner_subtab_selector"]
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["overall", "per_grantee"])
+        self.assertNotIn("grantee_selector", payload)
+
+    def test_per_grantee_subtab_no_grantee_shows_prompt_and_picker(self) -> None:
+        def _entry(msn, label, overall):
+            return {
+                "msn_id": msn, "label": label, "is_overall": overall,
+                "select_action": {
+                    "route": "/portal/api/v2/shell",
+                    "schema": "mycite.v2.portal.shell.request.v1",
+                    "payload": {
+                        "requested_surface_id": "utilities.extensions",
+                        "surface_query": {"selected_grantee_msn": msn, "utilities_mode": "grantee" if msn else "global"},
+                    },
+                },
+            }
+        gsel = {"label": "Grantee", "selected_grantee_msn": "", "mode": "global",
+                "grantees": [_entry("", "All — Overall", True), _entry("acme", "Acme", False)]}
+        extensions = [self._ext("ext_aws_email", {"overall_roster": True})]
+        payload = _surface_payload_for_extensions(
+            extensions=extensions, grantee_selector=gsel,
+            selected_extension_tool_id="ext_aws_email",
+            extension_subtab="per_grantee", mode="global",
+        )
+        ep = payload["extensions"][0]["payload"]
+        # no grantee chosen → the overall roster is replaced by a prompt
+        self.assertIn("per_grantee_prompt", ep)
+        self.assertNotIn("overall_roster", ep)
+        # the picker is hosted in-card, WITHOUT the synthetic "All — Overall" entry
+        self.assertIn("grantee_picker", ep)
+        self.assertTrue(all(not g.get("is_overall") for g in ep["grantee_picker"]["grantees"]))
 
 
 class TypeBrowserJsInvariants(unittest.TestCase):

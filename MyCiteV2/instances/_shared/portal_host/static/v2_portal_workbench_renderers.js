@@ -1009,17 +1009,25 @@
 
   function renderExtensionCardBody(payload) {
     var p = asObject(payload);
-    var html = "";
+    // The Per-grantee subtab hosts the grantee picker in-card (when present).
+    var picker = p.grantee_picker ? renderGranteeSelector(p.grantee_picker) : "";
+    var html = picker;
 
     // ext_resources renders its own self-contained asset-library app.
     if (p.resources_app) {
-      return renderResourcesApp(p);
+      return picker + renderResourcesApp(p);
+    }
+
+    // Per-grantee subtab with no grantee chosen yet → picker + a prompt.
+    if (asText(p.per_grantee_prompt)) {
+      return picker +
+        '<p class="v2-extensionCard__empty">' + escapeHtml(asText(p.per_grantee_prompt)) + "</p>";
     }
 
     // GLOBAL ("Overall") mode: a read-only roster of every grantee for this
-    // extension. To manage one, select it in the grantee selector above.
+    // extension. Pick one from the Per-grantee subtab to manage it.
     if (p.overall_roster) {
-      return renderOverallRoster(p);
+      return picker + renderOverallRoster(p);
     }
 
     if (asObject(p.form_frame).component_type) {
@@ -1589,7 +1597,8 @@
 
   function renderResourcesApp(payload) {
     var p = asObject(payload);
-    var subtabs = renderInnerSubtabs(p.inner_subtab_selector);
+    // The inner subtab strip is now rendered at the card level (renderExtensions)
+    // uniformly for every extension, so it is NOT prepended here.
     var sub = asText(p.resources_subtab);
     var body;
     if (sub === "manifest") {
@@ -1606,7 +1615,7 @@
     } else {
       body = renderResourcesLibrary(p);
     }
-    return subtabs + body;
+    return body;
   }
 
   function renderExtensions(extensions) {
@@ -1617,6 +1626,10 @@
       list
         .map(function (entry) {
           var e = asObject(entry);
+          // Inner subtab strip (Overall / Per-grantee, or Manifest/Browse/...) is
+          // rendered at the card level uniformly for EVERY extension that declares
+          // subtabs server-side.
+          var subtabs = renderInnerSubtabs(asObject(e.payload).inner_subtab_selector);
           var body = renderExtensionCardBody(e.payload);
           return (
             '<article class="v2-card v2-extensionCard" data-tool-id="' +
@@ -1628,6 +1641,7 @@
             (e.summary
               ? '<p class="v2-extensionCard__intro">' + escapeHtml(asText(e.summary)) + "</p>"
               : "") +
+            subtabs +
             body +
             "</article>"
           );
@@ -2427,6 +2441,14 @@
   function bindExtensionActions(ctx, target, extensions) {
     if (!target || !extensions || !extensions.length) return;
     bindResourcesApp(ctx, target);
+    // Bind the in-card grantee picker hosted by the Per-grantee subtab (reuses the
+    // grantee-selector mechanic: a click posts its select_action via loadShell).
+    asList(extensions).forEach(function (entry) {
+      var picker = asObject(asObject(entry).payload).grantee_picker;
+      if (picker && asList(picker.grantees).length) {
+        bindGranteeSelector(ctx, target, picker);
+      }
+    });
     Array.prototype.forEach.call(
       target.querySelectorAll("form[data-form-submit-route]"),
       function (form) {
