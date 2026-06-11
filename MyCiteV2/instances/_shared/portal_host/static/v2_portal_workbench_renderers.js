@@ -1474,7 +1474,8 @@
       '<div class="v2-resourcesApp v2-typeManifest" data-set-icon-route="' +
       escapeHtml(asText(p.set_icon_ref_route)) + '" data-icon-options-route="' +
       escapeHtml(asText(p.icon_options_route)) + '" data-icon-url-prefix="' +
-      escapeHtml(asText(p.icon_url_prefix)) + '">' +
+      escapeHtml(asText(p.icon_url_prefix)) + '" data-nav-base="' +
+      escapeHtml(JSON.stringify(asObject(p.nav_base_query))) + '">' +
       '<p class="v2-extensionCard__intro">The master leaflet TYPE registry — every type and subtype with ' +
       'its icon and rolled-up leaflet count. Use "edit icon" to reassign a type\'s icon.</p>' +
       '<div class="v2-typeTree">' + roots.map(renderNode).join("") + otherRow + "</div></div>"
@@ -1581,7 +1582,9 @@
         '<div class="v2-browseGrid">' +
         roots.map(function (n) { return renderBrowseBox(n, p, byParent); }).join("") + "</div>";
     }
-    return '<div class="v2-resourcesApp v2-typeBrowse"><div class="v2-leafletDir">' + inner + "</div></div>";
+    return '<div class="v2-resourcesApp v2-typeBrowse" data-nav-base="' +
+      escapeHtml(JSON.stringify(asObject(p.nav_base_query))) + '" data-dir-type="' +
+      escapeHtml(asText(p.browse_type)) + '"><div class="v2-leafletDir">' + inner + "</div></div>";
   }
 
   function renderResourcesApp(payload) {
@@ -2250,13 +2253,21 @@
     });
   }
 
-  // Browse drill-down navigates by patching the current envelope's surface_query
-  // and reloading the shell (same mechanic as the grantee/extension selectors).
-  function browseNav(ctx, patch) {
+  // Browse drill-down reloads the shell with the SERVER-STAMPED base query
+  // (data-nav-base: the pinned extension/subtab/grantee/mode keys) plus a
+  // per-action patch. The runtime envelope exposes surface_id but NOT
+  // surface_query, so the base MUST come from the payload, not the envelope.
+  function resourcesNav(ctx, app, patch) {
     var env = ctx.getEnvelope && ctx.getEnvelope();
     if (!env || typeof ctx.loadShell !== "function") return;
-    var sq = Object.assign({}, env.surface_query || {});
-    Object.keys(patch).forEach(function (k) {
+    var base = {};
+    try {
+      base = JSON.parse((app && app.getAttribute("data-nav-base")) || "{}");
+    } catch (_) {
+      base = {};
+    }
+    var sq = Object.assign({}, base);
+    Object.keys(patch || {}).forEach(function (k) {
       if (patch[k] === null) {
         delete sq[k];
       } else {
@@ -2271,12 +2282,12 @@
   }
 
   function bindResourcesBrowse(ctx, app) {
+    var dirType = app.getAttribute("data-dir-type") || "";
     Array.prototype.forEach.call(app.querySelectorAll("[data-open-type]"), function (b) {
       b.addEventListener("click", function (e) {
         e.preventDefault();
         e.stopPropagation();
-        browseNav(ctx, {
-          extension_subtab: "browse",
+        resourcesNav(ctx, app, {
           browse_view: "directory",
           browse_type: b.getAttribute("data-open-type"),
           browse_instance: null,
@@ -2285,15 +2296,19 @@
     });
     Array.prototype.forEach.call(app.querySelectorAll("[data-open-instance]"), function (b) {
       b.addEventListener("click", function () {
-        browseNav(ctx, { browse_view: "instance", browse_instance: b.getAttribute("data-open-instance") });
+        resourcesNav(ctx, app, {
+          browse_view: "instance",
+          browse_type: dirType,
+          browse_instance: b.getAttribute("data-open-instance"),
+        });
       });
     });
     Array.prototype.forEach.call(app.querySelectorAll("[data-browse-back]"), function (b) {
       b.addEventListener("click", function () {
         if (b.getAttribute("data-browse-back") === "hierarchy") {
-          browseNav(ctx, { browse_view: "hierarchy", browse_type: null, browse_instance: null });
+          resourcesNav(ctx, app, { browse_view: "hierarchy", browse_type: null, browse_instance: null });
         } else {
-          browseNav(ctx, { browse_view: "directory", browse_instance: null });
+          resourcesNav(ctx, app, { browse_view: "directory", browse_type: dirType, browse_instance: null });
         }
       });
     });
@@ -2327,14 +2342,9 @@
         });
     }
     function reload() {
-      var env = ctx.getEnvelope && ctx.getEnvelope();
-      if (env && typeof ctx.loadShell === "function") {
-        ctx.loadShell({
-          schema: "mycite.v2.portal.shell.request.v1",
-          requested_surface_id: env.surface_id,
-          surface_query: env.surface_query || {},
-        });
-      }
+      // Re-render the Manifest subtab from the server-stamped base query (the
+      // envelope has no surface_query), so the new icon shows after an edit.
+      resourcesNav(ctx, app, {});
     }
     Array.prototype.forEach.call(app.querySelectorAll("[data-edit-icon]"), function (btn) {
       btn.addEventListener("click", function (e) {

@@ -2317,6 +2317,20 @@ _RESOURCES_TYPE_ROUTES = {
 }
 
 
+def _resources_nav_base_query(ctx: dict[str, Any], subtab: str) -> dict[str, str]:
+    """The pinned surface_query keys every Resources nav action must carry so a
+    drill-down / reload stays on this extension + subtab + grantee + mode. The JS
+    merges its per-action patch onto this; the runtime envelope does NOT expose
+    surface_query (only surface_id), so it must be stamped server-side."""
+    sq = ctx.get("surface_query") if isinstance(ctx.get("surface_query"), dict) else {}
+    return {
+        "selected_extension_tool_id": "ext_resources",
+        "extension_subtab": subtab,
+        "selected_grantee_msn": _as_text(sq.get("selected_grantee_msn")),
+        "utilities_mode": _as_text(ctx.get("mode")) or "grantee",
+    }
+
+
 def _resources_manifest_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     """Manifest subtab: the editable leaflet TYPE registry (type_tree) — every
     type slug with its icon + rolled-up leaflet count."""
@@ -2336,6 +2350,7 @@ def _resources_manifest_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "nodes": nodes,
         "other_count": counts.get("", 0),
         "default_style": rt.load_manifest_default_style(webapps_root),
+        "nav_base_query": _resources_nav_base_query(ctx, "manifest"),
         **_RESOURCES_TYPE_ROUTES,
     }
 
@@ -2347,29 +2362,36 @@ def _resources_browse_instance(
     preview / generic structured view), per the type→viewer routing."""
     from . import resource_types as rt
 
-    viewer = _as_text(rt.resolve_instance_viewer(full_type).get("viewer")) or "generic"
     fname = _as_text(asset_path).rsplit("/", 1)[-1]
+    # Resolve the viewer from the OPENED leaflet's OWN type (parsed from its
+    # filename) — NOT the directory node, whose token mis-routes when it is a
+    # roll-up/root (e.g. an icon opened from the `artifact` directory must use the
+    # asset preview, not the generic viewer). browse_type stays for the back-link.
+    actual_type = rt.parse_leaflet_type(fname) or full_type
+    viewer = _as_text(rt.resolve_instance_viewer(actual_type).get("viewer")) or "generic"
     if viewer == "profile":
         slug = _profile_slug(fname)
         return {"viewer": "profile", "slug": slug, "detail": profile_detail(webapps_root, slug) or {}}
     if viewer == "asset":
-        for row in rt.leaflets_for_type(webapps_root, full_type, include_pii=include_pii):
+        for row in rt.leaflets_for_type(webapps_root, actual_type, include_pii=include_pii):
             if _as_text(row.get("filename")) == fname:
                 return {"viewer": "asset", "detail": row}
         return {"viewer": "asset", "detail": {"filename": fname, "asset_path": asset_path}}
     # analytics / event / generic → read-only structured view (deep-linking the
     # full analytics/event editors is a follow-up).
-    detail = rt.structured_leaflet_view(webapps_root, full_type, asset_path, include_pii=include_pii)
+    detail = rt.structured_leaflet_view(webapps_root, actual_type, asset_path, include_pii=include_pii)
     return {"viewer": "generic", "detail": detail or {"filename": fname}}
 
 
 def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     """Browse subtab: hierarchy → directory → instance (keyed by browse_view).
-    OVERALL scope excludes PII types; a grantee-scoped browse may include them."""
+    PII types (event/custom/contacts) are NEVER listed here — they are managed
+    grantee-scoped via the Per-grantee subtab + dashboard, so a cross-grantee
+    Browse can't leak them. (Owner-scoped PII browse is a follow-up.)"""
     from . import resource_types as rt
 
     webapps_root = ctx.get("webapps_root")
-    include_pii = _as_text(ctx.get("mode")) == "grantee"
+    include_pii = False
     view = _as_text(ctx.get("browse_view")) or "hierarchy"
     browse_type = _as_text(ctx.get("browse_type"))
     base: dict[str, Any] = {
@@ -2378,6 +2400,7 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "sprite_href": _ICON_SPRITE_HREF,
         "icon_url_prefix": _ICON_URL_PREFIX,
         "browse_view": view,
+        "nav_base_query": _resources_nav_base_query(ctx, "browse"),
         **_RESOURCES_TYPE_ROUTES,
     }
     nodes_by_slug = {n["full_slug"]: n for n in rt.flatten_type_tree(webapps_root)}
@@ -2399,8 +2422,9 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
             nodes_by_slug[c] for c in node.get("child_slugs", []) if c in nodes_by_slug
         ]
         return base
-    # hierarchy: every node (count + child links) — JS renders depth-0 boxes and
-    # reveals children on expand.
+    # hierarchy (default + fall-through when browse_type is missing): force
+    # browse_view to match the data shape so the JS renders the right branch.
+    base["browse_view"] = "hierarchy"
     counts = rt.type_leaflet_counts(webapps_root, include_pii=include_pii)
     base["nodes"] = [{**n, "count": counts.get(n["full_slug"], 0)} for n in nodes_by_slug.values()]
     return base
