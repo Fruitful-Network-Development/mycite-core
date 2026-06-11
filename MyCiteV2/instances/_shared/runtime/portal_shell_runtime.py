@@ -696,6 +696,16 @@ def _build_utilities_surface_context(
     if mode == "global":
         ctx["grantees"] = grantees
 
+    # Per-extension inner-subtab + Browse drill-down state. Additive and verbatim
+    # from surface_query: an extension renderer branches on its active subtab and
+    # drill level without re-parsing the request; extensions that ignore these
+    # keys render exactly as before. (Reusable convention — see _EXTENSION_SUBTABS.)
+    ctx["surface_query"] = dict(query)
+    ctx["extension_subtab"] = _as_text(query.get("extension_subtab"))
+    ctx["browse_type"] = _as_text(query.get("browse_type"))
+    ctx["browse_view"] = _as_text(query.get("browse_view"))
+    ctx["browse_instance"] = _as_text(query.get("browse_instance"))
+
     # Phase 12h: surface-level grantee selector. Each entry carries the
     # transition payload the client posts to switch grantees. The shell-
     # request layer normalizes `selected_grantee_msn` into surface_query.

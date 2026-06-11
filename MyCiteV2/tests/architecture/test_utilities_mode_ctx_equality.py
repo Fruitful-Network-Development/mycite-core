@@ -48,7 +48,9 @@ def _seed_private_with_grantee() -> Path:
     return private_dir
 
 # The ctx keys that existed before the mode mechanism. Grantee mode must
-# preserve exactly these, plus the single additive "mode" key.
+# preserve exactly these, plus the single additive "mode" key, plus the
+# per-extension inner-subtab/Browse drill-down state (additive, verbatim from
+# surface_query; extensions that ignore these keys render exactly as before).
 _LEGACY_CTX_KEYS = frozenset(
     {
         "grantee",
@@ -58,6 +60,9 @@ _LEGACY_CTX_KEYS = frozenset(
         "authority_db_file",
         "portal_instance_id",
     }
+)
+_INNER_SUBTAB_CTX_KEYS = frozenset(
+    {"surface_query", "extension_subtab", "browse_type", "browse_view", "browse_instance"}
 )
 
 
@@ -77,9 +82,14 @@ class GranteeModeCtxEquality(unittest.TestCase):
         ctx = _build(query={"selected_grantee_msn": "acme"})["ctx"]
         self.assertEqual(ctx["mode"], "grantee")
         self.assertEqual(
-            set(ctx) - {"mode"},
+            set(ctx) - {"mode"} - _INNER_SUBTAB_CTX_KEYS,
             set(_LEGACY_CTX_KEYS),
-            "grantee-mode ctx must equal the legacy key set plus only 'mode'",
+            "grantee-mode ctx must equal the legacy key set plus 'mode' + inner-subtab state",
+        )
+        self.assertEqual(
+            set(ctx) & _INNER_SUBTAB_CTX_KEYS,
+            set(_INNER_SUBTAB_CTX_KEYS),
+            "ctx must always carry the additive inner-subtab/Browse state keys",
         )
         self.assertNotIn(
             "grantees", ctx, "grantee mode must NOT carry the aggregation roster"
