@@ -211,7 +211,19 @@
     return (
       asList(surfacePayload && surfacePayload.cards).length > 0 ||
       asList(surfacePayload && surfacePayload.sections).length > 0 ||
-      asList(surfacePayload && surfacePayload.notes).length > 0
+      asList(surfacePayload && surfacePayload.notes).length > 0 ||
+      // The Utilities Extensions surface's content lives in `extensions` (the
+      // active extension card) + `extension_subtab_selector` (the between-
+      // extension tab strip), not cards/sections. Recognize it here so the
+      // content probe doesn't depend on grantee_selector (retired from this
+      // surface — its absence used to short-circuit to the "no workbench view"
+      // fallback, blanking the whole extensions page).
+      asList(surfacePayload && surfacePayload.extensions).length > 0 ||
+      asList(
+        surfacePayload &&
+          surfacePayload.extension_subtab_selector &&
+          surfacePayload.extension_subtab_selector.tabs
+      ).length > 0
     );
   }
 
