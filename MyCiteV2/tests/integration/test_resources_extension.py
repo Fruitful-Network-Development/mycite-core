@@ -87,12 +87,26 @@ def _seed_profiles(webapps_root: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    # The explicit image_ref resolves only because its file is present (the
+    # resolver is existence-aware — an absent ref must NOT yield a 404 <img>).
+    (sc / "image" / "0000-00-00.artifact-image.org.jane_doe-profile_headshot.avif").write_text(
+        "x", encoding="utf-8")
     # Profile WITHOUT image_ref — image resolved by slug+role search.
     (sc / "profiles" / "0000-00-00.artifact-profile-legal_entity.acme_farm.profile.yaml").write_text(
         yaml.safe_dump({"name": "Acme Farm", "image_ref": None, "logo_ref": None}, sort_keys=False),
         encoding="utf-8",
     )
     (sc / "image" / "0000-00-00.artifact-image.org.acme_farm-logo.avif").write_text("x", encoding="utf-8")
+    # Profile carrying a PREDETERMINED logo_ref whose leaflet has not been
+    # produced — must fall through to a neutral placeholder, not a broken URL.
+    (sc / "profiles" / "0000-00-00.artifact-profile-legal_entity.ghost_farm.profile.yaml").write_text(
+        yaml.safe_dump(
+            {"name": "Ghost Farm", "image_ref": None,
+             "logo_ref": "0000-00-00.artifact-logo.ghost_farm.logo"},
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
     return webapps_root
 
 
@@ -113,7 +127,7 @@ class ExtResourcesRegistrationTests(unittest.TestCase):
         self.assertTrue(payload.get("resources_app"))
         # The library is a single flat leaflet index; profiles appear as rows.
         slugs = {row["slug"] for row in payload["leaflets"] if row["kind"] == "profile"}
-        self.assertEqual(slugs, {"jane_doe", "acme_farm"})
+        self.assertEqual(slugs, {"jane_doe", "acme_farm", "ghost_farm"})
 
 
 class ProfilesContactAppTests(unittest.TestCase):
@@ -128,6 +142,8 @@ class ProfilesContactAppTests(unittest.TestCase):
         self.assertTrue(rows["jane_doe"]["image_url"].endswith("jane_doe-profile_headshot.avif"))
         # slug+role search resolves the logo for the ref-less profile.
         self.assertTrue(rows["acme_farm"]["image_url"].endswith("acme_farm-logo.avif"))
+        # A predetermined logo_ref whose leaflet is absent falls through to "".
+        self.assertEqual(rows["ghost_farm"]["image_url"], "")
 
     def test_profile_detail_includes_empty_fields(self) -> None:
         detail = rx.profile_detail(self.tmp, "jane_doe")

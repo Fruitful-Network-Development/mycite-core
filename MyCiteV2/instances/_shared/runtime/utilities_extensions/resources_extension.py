@@ -131,18 +131,28 @@ def resolve_profile_image(
     """Resolve a profile's display image URL, or "" when none is found.
 
     Order:
-      1. explicit ``image_ref`` / ``logo_ref`` → /assets/images/<ref>.avif
+      1. explicit ``image_ref`` / ``logo_ref`` → /assets/images/<ref>.avif,
+         but ONLY when the referenced file is present (existence-aware).
       2. a gallery file whose name contains the slug AND a role token
          (logo / primary_mark / headshot / profile_headshot / brand-mark)
       3. "" (the UI renders a neutral placeholder).
+
+    Existence-awareness matters because the logo convention *pre-registers* a
+    predetermined ``logo_ref`` on every entity (``…artifact-logo.<slug>.logo``)
+    even before its leaflet is produced. An absent ref must fall through to the
+    slug+role search / placeholder, never emit a broken 404 <img>.
     """
     for key in ("image_ref", "logo_ref"):
         ref = _as_text(profile.get(key))
-        if ref:
-            # refs are stored without the .avif extension by convention.
-            if ref.lower().endswith((".avif", ".png", ".jpg", ".jpeg", ".svg")):
-                return _IMAGE_URL_PREFIX + ref
-            return _IMAGE_URL_PREFIX + ref + ".avif"
+        if not ref:
+            continue
+        # refs are stored without the .avif extension by convention.
+        fname = ref if ref.lower().endswith(
+            (".avif", ".png", ".jpg", ".jpeg", ".svg")) else ref + ".avif"
+        # When we can inspect the gallery, only honor a ref whose file exists;
+        # without a gallery dir, fall back to the historic best-effort behavior.
+        if image_gallery_dir is None or (image_gallery_dir / fname).exists():
+            return _IMAGE_URL_PREFIX + fname
     if image_gallery_dir is None or not slug:
         return ""
     try:
