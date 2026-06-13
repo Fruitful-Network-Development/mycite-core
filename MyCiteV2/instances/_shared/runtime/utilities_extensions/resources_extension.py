@@ -2376,30 +2376,6 @@ def _resources_nav_base_query(ctx: dict[str, Any], subtab: str) -> dict[str, str
     }
 
 
-def _resources_manifest_payload(ctx: dict[str, Any]) -> dict[str, Any]:
-    """Manifest subtab: the editable leaflet TYPE registry (type_tree) — every
-    type slug with its icon + rolled-up leaflet count."""
-    from . import resource_types as rt
-
-    webapps_root = ctx.get("webapps_root")
-    counts = rt.type_leaflet_counts(webapps_root)
-    nodes = [
-        {**node, "count": counts.get(node["full_slug"], 0)}
-        for node in rt.flatten_type_tree(webapps_root)
-    ]
-    return {
-        "resources_app": True,
-        "resources_subtab": "manifest",
-        "sprite_href": _ICON_SPRITE_HREF,
-        "icon_url_prefix": _ICON_URL_PREFIX,
-        "nodes": nodes,
-        "other_count": counts.get("", 0),
-        "default_style": rt.load_manifest_default_style(webapps_root),
-        "nav_base_query": _resources_nav_base_query(ctx, "manifest"),
-        **_RESOURCES_TYPE_ROUTES,
-    }
-
-
 def _resources_browse_instance(
     webapps_root: str | Path | None, full_type: str, asset_path: str, *, include_pii: bool
 ) -> dict[str, Any]:
@@ -2479,6 +2455,9 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     base["browse_view"] = "hierarchy"
     counts = rt.type_leaflet_counts(webapps_root, include_pii=include_pii)
     base["nodes"] = [{**n, "count": counts.get(n["full_slug"], 0)} for n in nodes_by_slug.values()]
+    # The unified tab absorbs the old Manifest registry: surface the rolled-up
+    # "Other (unregistered types)" count so nothing the registry showed is lost.
+    base["other_count"] = counts.get("", 0)
     return base
 
 
@@ -2512,12 +2491,11 @@ def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
         if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
             return _resources_allocation_payload(ctx)
         return _resources_library_payload(ctx.get("webapps_root"))
-    subtab = _as_text(ctx.get("extension_subtab")) or "manifest"
-    if subtab == "browse":
-        return _resources_browse_payload(ctx)
+    subtab = _as_text(ctx.get("extension_subtab")) or "browse"
     if subtab == "per_grantee":
         return _resources_per_grantee_payload(ctx)
-    return _resources_manifest_payload(ctx)
+    # "browse" (and any legacy "manifest" link) → the UNIFIED type tab.
+    return _resources_browse_payload(ctx)
 
 
 __all__ = [

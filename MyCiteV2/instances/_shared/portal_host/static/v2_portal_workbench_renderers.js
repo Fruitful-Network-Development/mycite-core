@@ -1448,53 +1448,6 @@
     return '<span class="v2-typeIcon v2-typeIcon--none"></span>';
   }
 
-  function indexByParent(nodes) {
-    var byParent = {};
-    asList(nodes).forEach(function (n) {
-      var node = asObject(n);
-      var parent = asText(node.parent_slug);
-      (byParent[parent] = byParent[parent] || []).push(node);
-    });
-    return byParent;
-  }
-
-  function renderResourcesManifest(p) {
-    var byParent = indexByParent(p.nodes);
-    function renderNode(node) {
-      var full = asText(node.full_slug);
-      var kids = byParent[full] || [];
-      var head =
-        '<div class="v2-typeNode__row" data-full-slug="' + escapeHtml(full) + '">' +
-        renderTypeIcon(node, p) +
-        '<span class="v2-typeNode__label">' + escapeHtml(asText(node.label) || full) + "</span>" +
-        '<code class="v2-typeNode__slug">' + escapeHtml(full) + "</code>" +
-        '<span class="v2-typeNode__count">' + escapeHtml(String(node.count || 0)) + "</span>" +
-        '<button type="button" class="v2-typeNode__editIcon" data-edit-icon="' + escapeHtml(full) +
-        '" title="Change icon">edit icon</button></div>';
-      if (!kids.length) return '<div class="v2-typeNode">' + head + "</div>";
-      return '<details class="v2-typeNode v2-typeNode--branch"><summary>' + head + "</summary>" +
-        '<div class="v2-typeNode__children">' + kids.map(renderNode).join("") + "</div></details>";
-    }
-    var roots = byParent[""] || [];
-    var other = Number(p.other_count || 0);
-    var otherRow = other
-      ? '<div class="v2-typeNode"><div class="v2-typeNode__row">' +
-        '<span class="v2-typeIcon v2-typeIcon--none"></span>' +
-        '<span class="v2-typeNode__label">Other (unregistered types)</span>' +
-        '<span class="v2-typeNode__count">' + escapeHtml(String(other)) + "</span></div></div>"
-      : "";
-    return (
-      '<div class="v2-resourcesApp v2-typeManifest" data-set-icon-route="' +
-      escapeHtml(asText(p.set_icon_ref_route)) + '" data-icon-options-route="' +
-      escapeHtml(asText(p.icon_options_route)) + '" data-icon-url-prefix="' +
-      escapeHtml(asText(p.icon_url_prefix)) + '" data-nav-base="' +
-      escapeHtml(JSON.stringify(asObject(p.nav_base_query))) + '">' +
-      '<p class="v2-extensionCard__intro">The master leaflet TYPE registry — every type and subtype with ' +
-      'its icon and rolled-up leaflet count. Use "edit icon" to reassign a type\'s icon.</p>' +
-      '<div class="v2-typeTree">' + roots.map(renderNode).join("") + otherRow + "</div></div>"
-    );
-  }
-
   // Horizontal cluster tree (dendrogram) geometry. Pure layout over the flat
   // node list: true leaves (no children) align in the rightmost column (the
   // dendrogram property), internal/collapsed nodes sit at their own depth, and
@@ -1578,8 +1531,13 @@
         '" title="View instances of this type">' + renderTypeIcon(n, p) +
         '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>" +
         '<span class="v2-dendro__count">' + escapeHtml(String(n.count || 0)) + "</span></button>";
+      // The dendrogram IS the manifest: every node can reassign its own icon
+      // (the old Manifest tab's only unique capability, folded in per-node).
+      var edit =
+        '<button type="button" class="v2-dendro__editIcon" data-edit-icon="' + escapeHtml(full) +
+        '" title="Change this type’s icon" aria-label="Change icon">✎</button>';
       return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
-        "px;top:" + pl.y + 'px">' + toggle + view + "</div>";
+        "px;top:" + pl.y + 'px">' + toggle + view + edit + "</div>";
     }).join("");
     return (
       '<div class="v2-dendro__toolbar">' +
@@ -1705,20 +1663,29 @@
     } else if (view === "directory") {
       inner = renderBrowseDirectory(p);
     } else {
-      // Cluster-tree (dendrogram): the node data is stashed on the host so the
-      // binder can recompute the layout on expand/collapse with NO shell reload.
+      // Cluster-tree (dendrogram) = the UNIFIED type tab (registry + browser): the
+      // node data is stashed on the host so the binder can recompute the layout on
+      // expand/collapse with NO shell reload.
+      var other = Number(asObject(p).other_count || 0);
       inner =
-        '<p class="v2-extensionCard__intro">Browse leaflets by type. ▸/▾ expands a type’s ' +
-        "structure; click a type to view every leaflet under it (and its subtypes).</p>" +
+        '<p class="v2-extensionCard__intro">The leaflet TYPE registry and browser in one: ' +
+        "▸/▾ expands a type’s structure, ✎ changes its icon, and clicking a type lists every " +
+        "leaflet under it (and its subtypes).</p>" +
         '<div class="v2-dendro__host" data-dendro-host data-dendro-nodes="' +
         escapeHtml(JSON.stringify(asList(p.nodes))) + '">' +
-        renderDendrogram(p.nodes, p, new Set()) + "</div>";
+        renderDendrogram(p.nodes, p, new Set()) + "</div>" +
+        (other
+          ? '<p class="v2-dendro__other">+ ' + escapeHtml(String(other)) +
+            " leaflet(s) of unregistered types (no icon to assign)</p>"
+          : "");
     }
     return '<div class="v2-resourcesApp v2-typeBrowse" data-nav-base="' +
       escapeHtml(JSON.stringify(asObject(p.nav_base_query))) + '" data-dir-type="' +
       escapeHtml(asText(p.browse_type)) + '" data-sprite-href="' +
       escapeHtml(asText(p.sprite_href)) + '" data-icon-prefix="' +
-      escapeHtml(asText(p.icon_url_prefix)) + '" data-profile-detail-route="' +
+      escapeHtml(asText(p.icon_url_prefix)) + '" data-set-icon-route="' +
+      escapeHtml(asText(p.set_icon_ref_route)) + '" data-icon-options-route="' +
+      escapeHtml(asText(p.icon_options_route)) + '" data-profile-detail-route="' +
       escapeHtml(asText(p.profile_detail_route)) + '" data-profile-save-route="' +
       escapeHtml(asText(p.profile_save_route)) + '"><div class="v2-leafletDir">' + inner + "</div></div>";
   }
@@ -1729,9 +1696,9 @@
     // uniformly for every extension, so it is NOT prepended here.
     var sub = asText(p.resources_subtab);
     var body;
-    if (sub === "manifest") {
-      body = renderResourcesManifest(p);
-    } else if (sub === "browse") {
+    // "browse" is the unified type tab; "manifest" is legacy (any stale client
+    // state) → same renderer.
+    if (sub === "browse" || sub === "manifest") {
       body = renderResourcesBrowse(p);
     } else if (sub === "per_grantee") {
       body = asText(p.per_grantee_prompt)
@@ -2450,15 +2417,17 @@
         }
       }
     });
-    bindDendrogram(app);
+    bindDendrogram(ctx, app);
     bindDirectoryFilter(app);
     bindBrowseInstanceEdit(ctx, app);
   }
 
-  // Dendrogram expand/collapse — mutate a client-side `collapsed` Set and re-render
-  // ONLY the dendro host (no shell reload). The host-level listener persists across
+  // Dendrogram expand/collapse + per-node icon editing (the folded-in Manifest).
+  // Expand/collapse mutates a client-side `collapsed` Set and re-renders ONLY the
+  // dendro host (no shell reload). Icon edit reuses the manifest endpoints and
+  // reloads the surface so the new icon shows. The host listener persists across
   // re-renders; nav (data-open-type) is handled by the container delegation above.
-  function bindDendrogram(app) {
+  function bindDendrogram(ctx, app) {
     var host = app.querySelector("[data-dendro-host]");
     if (!host) return;
     var nodes;
@@ -2468,6 +2437,17 @@
       sprite_href: app.getAttribute("data-sprite-href") || "",
       icon_url_prefix: app.getAttribute("data-icon-prefix") || "",
     };
+    var setRoute = app.getAttribute("data-set-icon-route");
+    var optionsRoute = app.getAttribute("data-icon-options-route");
+    var optionsCache = null;
+    function loadIconOptions() {
+      if (optionsCache) return Promise.resolve(optionsCache);
+      if (!optionsRoute) return Promise.resolve([]);
+      return fetch(optionsRoute, { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { optionsCache = (j && j.options) || []; return optionsCache; })
+        .catch(function () { return []; });
+    }
     var collapsed = new Set();
     function rerender() { host.innerHTML = renderDendrogram(nodes, p, collapsed); }
     host.addEventListener("click", function (e) {
@@ -2492,6 +2472,36 @@
           });
         }
         rerender();
+        return;
+      }
+      var edit = el.closest("[data-edit-icon]");
+      if (edit && setRoute) {
+        e.preventDefault();
+        e.stopPropagation();
+        var full = edit.getAttribute("data-edit-icon");
+        var node = edit.closest(".v2-dendro__node");
+        if (!node || node.querySelector(".v2-dendro__picker")) return;
+        loadIconOptions().then(function (options) {
+          var sel = document.createElement("select");
+          sel.className = "v2-dendro__picker";
+          sel.appendChild(new Option("(manifest default)", ""));
+          options.forEach(function (o) {
+            sel.appendChild(new Option(asText(o.icon_ref), asText(o.icon_ref)));
+          });
+          sel.addEventListener("change", function () {
+            fetch(setRoute, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
+              body: JSON.stringify({ full_slug: full, icon_ref: sel.value }),
+            })
+              .then(function (r) { return r.json(); })
+              .then(function (res) { if (res && res.ok) resourcesNav(ctx, app, {}); })
+              .catch(function () {});
+          });
+          node.appendChild(sel);
+          sel.focus();
+        });
       }
     });
   }
@@ -2591,57 +2601,6 @@
     });
   }
 
-  function bindResourcesManifest(ctx, app) {
-    var setRoute = app.getAttribute("data-set-icon-route");
-    var optionsRoute = app.getAttribute("data-icon-options-route");
-    var optionsCache = null;
-    function loadOptions() {
-      if (optionsCache) return Promise.resolve(optionsCache);
-      return fetch(optionsRoute, { credentials: "same-origin" })
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          optionsCache = (j && j.options) || [];
-          return optionsCache;
-        });
-    }
-    function reload() {
-      // Re-render the Manifest subtab from the server-stamped base query (the
-      // envelope has no surface_query), so the new icon shows after an edit.
-      resourcesNav(ctx, app, {});
-    }
-    Array.prototype.forEach.call(app.querySelectorAll("[data-edit-icon]"), function (btn) {
-      btn.addEventListener("click", function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        var full = btn.getAttribute("data-edit-icon");
-        var row = btn.closest(".v2-typeNode__row");
-        if (!row || row.querySelector(".v2-typeNode__picker")) return;
-        loadOptions().then(function (options) {
-          var sel = document.createElement("select");
-          sel.className = "v2-typeNode__picker";
-          sel.appendChild(new Option("(manifest default)", ""));
-          options.forEach(function (o) {
-            sel.appendChild(new Option(asText(o.icon_ref), asText(o.icon_ref)));
-          });
-          sel.addEventListener("change", function () {
-            fetch(setRoute, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "same-origin",
-              body: JSON.stringify({ full_slug: full, icon_ref: sel.value }),
-            })
-              .then(function (r) { return r.json(); })
-              .then(function (res) {
-                if (res && res.ok) reload();
-              });
-          });
-          row.appendChild(sel);
-          sel.focus();
-        });
-      });
-    });
-  }
-
   function bindResourcesApp(ctx, target) {
     bindInnerSubtabs(ctx, target);
     var app = target.querySelector(".v2-resourcesApp");
@@ -2650,9 +2609,7 @@
     var uploadForm = app.querySelector("[data-resources-upload-route]");
     if (uploadForm) bindResourcesUpload(uploadForm);
     var mode = app.getAttribute("data-resources-mode");
-    if (app.classList.contains("v2-typeManifest")) {
-      bindResourcesManifest(ctx, app);
-    } else if (app.classList.contains("v2-typeBrowse")) {
+    if (app.classList.contains("v2-typeBrowse")) {
       bindResourcesBrowse(ctx, app);
     } else if (mode === "library") {
       bindResourcesLibrary(ctx, app);

@@ -1334,8 +1334,10 @@ _EXTENSION_SUBTABS: dict[str, tuple[dict[str, str], ...]] = {
     "ext_newsletter": _DEFAULT_EXTENSION_SUBTABS,
     "ext_paypal": _DEFAULT_EXTENSION_SUBTABS,
     "ext_connect": _DEFAULT_EXTENSION_SUBTABS,
+    # Browse is the UNIFIED type tab: the cluster-tree hierarchy IS the manifest
+    # (per-node icon editing) AND the instance browser — there is no separate
+    # Manifest tab. Per-grantee stays its own (allocation) concern.
     "ext_resources": (
-        {"id": "manifest", "label": "Manifest"},
         {"id": "browse", "label": "Browse"},
         {"id": "per_grantee", "label": "Per-grantee"},
     ),
