@@ -31,9 +31,10 @@ from MyCiteV2.tests.unit.test_resource_types import _seed
 
 class InnerSubtabResolve(unittest.TestCase):
     def test_default_valid_invalid_none(self) -> None:
-        self.assertEqual(_resolve_inner_subtab("ext_resources", ""), "manifest")
+        # Manifest is folded into Browse — Browse is the unified default type tab.
+        self.assertEqual(_resolve_inner_subtab("ext_resources", ""), "browse")
         self.assertEqual(_resolve_inner_subtab("ext_resources", "browse"), "browse")
-        self.assertEqual(_resolve_inner_subtab("ext_resources", "bogus"), "manifest")
+        self.assertEqual(_resolve_inner_subtab("ext_resources", "bogus"), "browse")
         # Every operational extension now declares subtabs, defaulting to Overall.
         self.assertEqual(_resolve_inner_subtab("ext_aws_email", "x"), "overall")
         self.assertEqual(_resolve_inner_subtab("ext_aws_email", "per_grantee"), "per_grantee")
@@ -47,11 +48,10 @@ class InnerSubtabSelector(unittest.TestCase):
         sel = _build_inner_subtab_selector(
             "ext_resources", "browse", selected_grantee_msn="acme", utilities_mode="grantee"
         )
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["manifest", "browse", "per_grantee"])
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "per_grantee"])
         self.assertEqual(sel["selected_subtab"], "browse")
         by_id = {t["id"]: t["select_action"]["payload"]["surface_query"] for t in sel["tabs"]}
         self.assertEqual(by_id["browse"]["utilities_mode"], "global")
-        self.assertEqual(by_id["manifest"]["utilities_mode"], "global")
         self.assertEqual(by_id["per_grantee"]["utilities_mode"], "grantee")
         self.assertEqual(by_id["browse"]["extension_subtab"], "browse")
         self.assertEqual(by_id["browse"]["selected_extension_tool_id"], "ext_resources")
@@ -83,7 +83,7 @@ class SurfaceAttachesInnerSelector(unittest.TestCase):
         self.assertEqual([e["tool_id"] for e in active], ["ext_resources"])
         sel = active[0]["payload"]["inner_subtab_selector"]
         self.assertEqual(sel["selected_subtab"], "browse")
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["manifest", "browse", "per_grantee"])
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "per_grantee"])
 
     def test_operational_extension_gets_inner_selector_no_surface_selector(self) -> None:
         # Every operational extension now carries the inner subtab strip, and the
@@ -184,21 +184,27 @@ class TypeBrowserJsInvariants(unittest.TestCase):
         for token in (
             "function renderInnerSubtabs(",
             "function bindInnerSubtabs(",
-            "function renderResourcesManifest(",
             "function renderResourcesBrowse(",
             "function renderTypeIcon(",
             "function bindResourcesBrowse(",
-            "function bindResourcesManifest(",
-            # Browse hierarchy is a horizontal cluster tree (dendrogram): the
-            # layout + render fns, and the per-node "select for viewing" hook.
+            # Browse is the UNIFIED type tab (Manifest folded in): the cluster-tree
+            # layout + render fns, the per-node "select for viewing" hook, and the
+            # per-node icon-edit hook that replaces the old Manifest tab.
             "function clusterLayout(",
             "function renderDendrogram(",
             "data-open-type",
             "data-dendro-toggle",
+            "data-edit-icon",
             "inner_subtab_selector",
             "<use href=",  # sprite icon rendering
         ):
             self.assertIn(token, self.js, token)
+
+    def test_js_has_no_separate_manifest_tab(self) -> None:
+        # The Manifest subtab is folded into Browse — its dedicated renderer/binder
+        # must be gone so the two-tab regression can't quietly come back.
+        for token in ("function renderResourcesManifest(", "function bindResourcesManifest("):
+            self.assertNotIn(token, self.js, token)
 
     def test_css_has_theme_classes(self) -> None:
         for cls in (
@@ -292,6 +298,22 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         p = self._browse(browse_view="hierarchy")
         self.assertNotIn("leaflets", p)
         self.assertIn("nodes", p)
+
+    def test_browse_hierarchy_carries_folded_in_manifest_capability(self) -> None:
+        # The unified Browse hierarchy absorbs the Manifest registry: it must carry
+        # the icon-edit routes + the rolled-up "Other (unregistered)" count so the
+        # dendrogram can host per-node icon editing (there is no separate tab).
+        p = self._browse(browse_view="hierarchy")
+        self.assertEqual(p["set_icon_ref_route"], "/__fnd/resources/manifest/set-icon-ref")
+        self.assertEqual(p["icon_options_route"], "/__fnd/resources/icon-options")
+        self.assertIn("other_count", p)
+
+    def test_render_ext_resources_defaults_to_browse(self) -> None:
+        # Unknown / legacy 'manifest' subtab must resolve to the unified Browse tab,
+        # never a now-removed manifest payload.
+        for sub in ("", "manifest", "bogus"):
+            ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": sub}
+            self.assertEqual(rx._render_ext_resources(ctx)["resources_subtab"], "browse")
 
 
 if __name__ == "__main__":

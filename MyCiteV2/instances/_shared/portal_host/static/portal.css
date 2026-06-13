@@ -9836,6 +9836,33 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-variant-numeric: tabular-nums;
   color: #57606a;
 }
+.v2-dendro__editIcon {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #57606a;
+  cursor: pointer;
+}
+.v2-dendro__editIcon:hover {
+  background: #eef1f5;
+}
+.v2-dendro__picker {
+  margin-left: 4px;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 4px;
+}
+.v2-dendro__other {
+  margin: 8px 2px 0;
+  color: #57606a;
+  font-size: 12px;
+}
 /* Directory + instance */
 .v2-leafletDir__bar {
   display: flex;
