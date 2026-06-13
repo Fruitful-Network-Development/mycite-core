@@ -1312,6 +1312,15 @@ def _asset_descriptor(filename: str) -> tuple[str, str, str]:
     return slug, owner, ext.lower()
 
 
+def _leaflet_display_name(slug: str) -> str:
+    """A human display name from a leaflet's NAME slug: snake/kebab → Title Case
+    (``greenfield_berry_farm`` → ``Greenfield Berry Farm``), falling back to the raw
+    slug. Uniform across leaflet types so the browser shows the name, not the full
+    filename or the snake_case slug."""
+    pretty = _as_text(slug).replace("_", " ").replace("-", " ").strip()
+    return pretty.title() if pretty else _as_text(slug)
+
+
 def _gallery_slug(gallery: str, filename: str) -> str:
     """The organizing slug for a gallery member (profiles use _profile_slug)."""
     if gallery == "profiles":

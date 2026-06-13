@@ -1248,7 +1248,7 @@
       return '<div class="v2-resourcesField"><label>' + escapeHtml(kv[0]) +
         "</label><div>" + escapeHtml(asText(kv[1]) || "—") + "</div></div>";
     }).join("");
-    return "<h4>" + escapeHtml(asText(r.title) || asText(r.slug)) + "</h4>" + img +
+    return "<h4>" + escapeHtml(asText(r.title) || asText(r.display_name) || asText(r.slug)) + "</h4>" + img +
       '<div class="v2-resourcesDetail__meta">' + rows + "</div>";
   }
 
@@ -1636,7 +1636,7 @@
       escapeHtml(String(leaflets.length)) + " instance" + (leaflets.length === 1 ? "" : "s") + '…" />';
     var rows = leaflets.map(function (l) {
       var r = asObject(l);
-      var name = asText(r.slug) || asText(r.filename);
+      var name = asText(r.display_name) || asText(r.slug) || asText(r.filename);
       var thumb = asText(r.image_url)
         ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' + escapeHtml(asText(r.image_url)) +
           '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
