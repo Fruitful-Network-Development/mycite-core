@@ -258,7 +258,7 @@ def _deep_apply_unescaped(obj: Any, old: str, new: str) -> tuple[Any, int]:
                 count += 1
                 return _html.escape(new, quote=False)
 
-            def repl(mo: "re.Match[str]") -> str:
+            def repl(mo: re.Match[str]) -> str:
                 nonlocal count
                 if _html.unescape(mo.group(1)) == old:
                     count += 1
