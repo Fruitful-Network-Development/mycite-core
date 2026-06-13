@@ -326,5 +326,54 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         self.assertIn("artifact-icon", slugs)
 
 
+class FieldIconConvention(unittest.TestCase):
+    """The field/value → icon convention (content representation; SEPARATE from the
+    type→icon manifest)."""
+
+    def setUp(self) -> None:
+        self._td = tempfile.TemporaryDirectory()
+        self.root = Path(self._td.name)
+        _seed(self.root)
+
+    def tearDown(self) -> None:
+        self._td.cleanup()
+
+    def test_resolve_field_links_contacts_and_socials(self) -> None:
+        profile = {
+            "website": "example.org",
+            "email": "a@b.org",
+            "phone": "(234) 334-4622",
+            "socials": [
+                {"platform": "instagram", "value": "https://instagram.com/x"},
+                {"platform": "x", "value": "https://x.com/y"},
+                {"platform": "weirdnet", "value": "https://weird.net/z"},
+            ],
+        }
+        by_kind = {link["kind"]: link for link in rx.resolve_field_links(profile, self.root)}
+        self.assertEqual(by_kind["website"]["icon_ref"], "0000-00-00.artifact-icon.mycite.globe")
+        self.assertEqual(by_kind["website"]["href"], "https://example.org")
+        self.assertEqual(by_kind["email"]["href"], "mailto:a@b.org")
+        self.assertTrue(by_kind["phone"]["href"].startswith("tel:"))
+        self.assertEqual(by_kind["instagram"]["icon_ref"], "0000-00-00.artifact-logo.instagram.logo")
+        self.assertEqual(by_kind["x"]["icon_ref"], "0000-00-00.artifact-logo.x_twitter.logo")
+        # unknown social platform still renders, with the generic 'link' icon
+        self.assertEqual(by_kind["weirdnet"]["icon_ref"], "0000-00-00.artifact-icon.mycite-ui.link")
+        self.assertTrue(by_kind["website"]["icon_url"].endswith(".svg"))
+
+    def test_field_icon_override_roundtrip(self) -> None:
+        self.assertEqual(
+            rx.load_field_icon_map(self.root)["website"], "0000-00-00.artifact-icon.mycite.globe"
+        )
+        res = rx.set_field_icon(self.root, "website", "0000-00-00.artifact-icon.mycite.webpage")
+        self.assertTrue(res["ok"], res)
+        self.assertEqual(
+            rx.load_field_icon_map(self.root)["website"], "0000-00-00.artifact-icon.mycite.webpage"
+        )
+        rx.set_field_icon(self.root, "website", "")  # reset → seeded default
+        self.assertEqual(
+            rx.load_field_icon_map(self.root)["website"], "0000-00-00.artifact-icon.mycite.globe"
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

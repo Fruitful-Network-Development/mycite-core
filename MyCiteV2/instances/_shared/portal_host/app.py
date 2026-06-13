@@ -2281,6 +2281,33 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         options = resource_types.list_icon_options(host_config.webapps_root)
         return jsonify({"ok": True, "options": options}), 200
 
+    @app.get("/__fnd/resources/field-icons")
+    def fnd_resources_field_icons() -> tuple[Any, int]:
+        """The field/value → icon map (kind → icon_ref) — content representation,
+        SEPARATE from the type→icon manifest. Reusable by the dashboard + sites."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        icon_map = resources_extension.load_field_icon_map(host_config.webapps_root)
+        return jsonify({"ok": True, "field_icons": icon_map}), 200
+
+    @app.post("/__fnd/resources/field-icons/set")
+    def fnd_resources_field_icons_set() -> tuple[Any, int]:
+        """Reassign a field KIND's icon (website/email/phone/instagram/…) in the
+        field-icon override side-car. icon_ref "" resets to the seeded default."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resources_extension,
+        )
+
+        payload = _json_payload()
+        result = resources_extension.set_field_icon(
+            host_config.webapps_root,
+            _as_text(payload.get("kind")),
+            _as_text(payload.get("icon_ref")),
+        )
+        return jsonify(result), 200 if result.get("ok") else 400
+
     @app.post("/__fnd/resources/manifest/set-icon-ref")
     def fnd_resources_manifest_set_icon_ref() -> tuple[Any, int]:
         """Reassign a leaflet TYPE's icon (override side-car; the SSOT manifest is
