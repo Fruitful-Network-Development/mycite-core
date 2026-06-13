@@ -10024,6 +10024,21 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-fieldLink__val:hover {
   text-decoration: underline;
 }
+/* Grantee-scoped extra fields (scope_fields) */
+.v2-scopeBlock {
+  margin-top: 12px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--ide-panel-bg, #fff);
+}
+.v2-scopeBlock__head {
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #57606a;
+}
 .v2-genericLeaflet__fields {
   display: grid;
   gap: 4px;

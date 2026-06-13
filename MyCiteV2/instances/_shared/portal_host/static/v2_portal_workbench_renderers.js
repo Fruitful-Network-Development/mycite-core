@@ -1589,6 +1589,25 @@
     return '<div class="v2-fieldLinks">' + rows + "</div>";
   }
 
+  // Grantee-scoped extra fields: one block per scope (e.g. CVCC), each with its
+  // icon-bearing contact/social links + the remaining scalar fields.
+  function renderProfileScopes(scopes) {
+    var list = asList(scopes);
+    if (!list.length) return "";
+    return list.map(function (sc) {
+      var o = asObject(sc);
+      var fields = asList(o.fields).map(function (f) {
+        var fld = asObject(f);
+        return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
+          "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
+      }).join("");
+      return '<section class="v2-scopeBlock"><h5 class="v2-scopeBlock__head">' +
+        escapeHtml(asText(o.label) || asText(o.scope)) + "</h5>" +
+        renderFieldLinks(o.links) +
+        '<div class="v2-resourcesDetail__meta">' + fields + "</div></section>";
+    }).join("");
+  }
+
   function renderBrowseInstance(p) {
     var inst = asObject(p.instance);
     var viewer = asText(inst.viewer);
@@ -1604,6 +1623,9 @@
           return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
             "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
         }).join("") + "</div>" +
+        // Grantee-scoped extra fields (scope_fields): one block per grantee scope,
+        // shown here + on the grantee's own site, kept out of the general FND views.
+        renderProfileScopes(d.scopes) +
         // Edit reuses the library's profile detail/save endpoints (fetched lazily
         // on click): the read-only view stays the default, "Edit profile" swaps in
         // the same component-library form + save→propagate the library uses.

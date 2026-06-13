@@ -360,6 +360,18 @@ class FieldIconConvention(unittest.TestCase):
         self.assertEqual(by_kind["weirdnet"]["icon_ref"], "0000-00-00.artifact-icon.mycite-ui.link")
         self.assertTrue(by_kind["website"]["icon_url"].endswith(".svg"))
 
+    def test_resolve_profile_scopes(self) -> None:
+        # Grantee-scoped extra fields surface as one block per scope, with contact/
+        # social values inside the block resolved to field-icon links.
+        profile = {"scope_fields": {"cvcc": {"lease_id": "CI-07", "website": "tillff.square.site"}}}
+        scopes = rx.resolve_profile_scopes(profile, self.root)
+        self.assertEqual(len(scopes), 1)
+        self.assertEqual(scopes[0]["scope"], "cvcc")
+        self.assertEqual(scopes[0]["label"], "CVCC")
+        self.assertIn("lease_id", {f["key"] for f in scopes[0]["fields"]})
+        self.assertIn("website", {link["kind"] for link in scopes[0]["links"]})
+        self.assertEqual(rx.resolve_profile_scopes({}, self.root), [])
+
     def test_field_icon_override_roundtrip(self) -> None:
         self.assertEqual(
             rx.load_field_icon_map(self.root)["website"], "0000-00-00.artifact-icon.mycite.globe"
