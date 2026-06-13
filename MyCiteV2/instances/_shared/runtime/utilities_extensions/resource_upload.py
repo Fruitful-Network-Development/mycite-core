@@ -33,7 +33,9 @@ the pure backend (no Flask dependency) so it can be unit-tested directly.
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 import subprocess
 import tempfile
@@ -48,7 +50,23 @@ _log = logging.getLogger("mycite.portal_host")
 # raises a clear UploadError rather than silently falling back.
 _AVIFENC_BIN = "/usr/bin/avifenc"
 
-VALID_KINDS = ("icon", "image", "document", "audio", "profile")
+# Logo leaflets are 512×512 transparent-canvas AVIFs (the master-manifest
+# convention). The portal venv deliberately has no Pillow — process_logos.py
+# isolates raster encoding in a dedicated venv and re-invokes itself as the
+# ``_encode-batch`` worker under it. The ``logo`` upload kind reuses exactly
+# that proven worker (no second copy of the fit-to-512² canvas logic). The venv
+# path mirrors process_logos.py's ``VENV_PY`` and is env-overridable for tests
+# and alternate hosts; the script itself lives under the site-core tree
+# (derived from ``webapps_root``, already a hard dependency of this module).
+_DEFAULT_LOGO_ENCODER_PY = "/srv/agentic/venvs/logo-proc/bin/python"
+
+
+def _logo_encoder_py() -> str:
+    """The Python that runs the isolated Pillow worker, read at call time so the
+    env override applies without a reimport (and so tests can point it at a stub)."""
+    return os.environ.get("MYCITE_LOGO_ENCODER_PYTHON", _DEFAULT_LOGO_ENCODER_PY)
+
+VALID_KINDS = ("icon", "image", "document", "audio", "profile", "logo")
 
 # Galleries live under <webapps_root>/clients/_shared/site-core/<gallery>/.
 _SITE_CORE_REL = ("clients", "_shared", "site-core")
@@ -58,6 +76,9 @@ _GALLERY_BY_KIND = {
     "document": "document",
     "audio": "audio",
     "profile": "profiles",
+    # Logos are brand marks stored in the shared image/ gallery alongside the
+    # existing 0000-00-00.artifact-logo.<slug>.logo.avif leaflets.
+    "logo": "image",
 }
 
 # Raster inputs we accept for the image kind. Detection is by magic bytes, not
@@ -156,6 +177,60 @@ def _resolve_image(data: bytes, slug: str) -> tuple[bytes, str]:
     )
 
 
+def _process_logos_script(webapps_root: str | Path) -> Path:
+    """Path to the site-core logo pipeline whose ``_encode-batch`` worker we
+    reuse to fit an uploaded brand mark onto a 512×512 transparent canvas."""
+    return Path(webapps_root).joinpath(*_SITE_CORE_REL, "scripts", "process_logos.py")
+
+
+def _resolve_logo(data: bytes, *, webapps_root: str | Path) -> tuple[bytes, str]:
+    """Return (avif_bytes, "avif") for a logo upload, normalized to a 512×512
+    transparent-canvas AVIF via process_logos.py's ``_encode-batch`` worker
+    (run under the isolated Pillow venv). Raises :class:`UploadError` for an
+    unsupported input or a missing/failed encoder."""
+    detected = _detect_image_kind(data)
+    if detected not in ("png", "jpeg", "avif"):
+        raise UploadError(
+            "unsupported logo image: expected PNG, JPEG, or AVIF "
+            "(detected by file content, not extension)"
+        )
+    encoder = Path(_logo_encoder_py())
+    script = _process_logos_script(webapps_root)
+    if not encoder.exists():
+        raise UploadError(
+            f"logo encoder venv not found at {encoder}; cannot normalize logo "
+            "(set MYCITE_LOGO_ENCODER_PYTHON)"
+        )
+    if not script.is_file():
+        raise UploadError(
+            f"logo pipeline not found at {script}; cannot normalize logo"
+        )
+    with tempfile.TemporaryDirectory(prefix="resource_logo_") as tmpdir:
+        src = Path(tmpdir) / f"src.{detected}"
+        dst = Path(tmpdir) / "out.avif"
+        jobs = Path(tmpdir) / "jobs.json"
+        results = Path(tmpdir) / "results.json"
+        src.write_bytes(data)
+        jobs.write_text(
+            json.dumps([{"src": str(src), "dst": str(dst), "mode": "new"}])
+        )
+        try:
+            completed = subprocess.run(
+                [str(encoder), str(script), "_encode-batch", str(jobs), str(results)],
+                check=False,
+                capture_output=True,
+                timeout=120,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise UploadError(f"logo normalization failed: {exc}") from exc
+        if completed.returncode != 0 or not dst.exists():
+            detail = completed.stderr.decode("utf-8", "replace").strip()
+            raise UploadError(
+                "logo normalization failed" + (f": {detail}" if detail else "")
+            )
+        return dst.read_bytes(), "avif"
+
+
 def _build_filename(
     kind: str,
     *,
@@ -164,6 +239,12 @@ def _build_filename(
     owner: str,
     ext: str,
 ) -> str:
+    if kind == "logo":
+        # Brand mark: no owner segment; the role token is "logo" and the slug
+        # is the entity slug, so the name matches an existing profile's
+        # predetermined logo_ref (0000-00-00.artifact-logo.<slug>.logo) and
+        # resolves automatically without any profile edit.
+        return f"0000-00-00.artifact-logo.{slug}.logo.{ext}"
     if kind == "profile":
         given = _require_safe_segment(given_name, field="given_name")
         # The personhood token may carry an optional -<industry> dash spec
@@ -216,14 +297,16 @@ def handle_upload(
 
     # Validate the path-bearing components up front (anti-traversal).
     slug = _require_safe_segment(slug, field="slug")
-    if kind != "profile":
+    if kind not in ("profile", "logo"):
         owner = _require_safe_segment(owner, field="owner")
     else:
-        owner = str(owner or "").strip()  # not used in the profile filename
+        owner = str(owner or "").strip()  # not used in the profile/logo filename
 
     # Resolve final bytes + extension per kind.
     if kind == "image":
         final_bytes, ext = _resolve_image(file_bytes, slug)
+    elif kind == "logo":
+        final_bytes, ext = _resolve_logo(file_bytes, webapps_root=webapps_root)
     elif kind == "icon":
         upload_ext = _ext_of(filename)
         if upload_ext and upload_ext != "svg":

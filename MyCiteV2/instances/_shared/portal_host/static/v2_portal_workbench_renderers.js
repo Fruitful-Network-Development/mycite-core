@@ -1177,13 +1177,14 @@
     var action = asObject(payload.upload_action);
     var route = asText(action.route) || "/portal/api/resources/upload";
     return (
-      '<details class="v2-resourcesUpload"><summary>Upload an asset</summary>' +
+      '<details class="v2-resourcesUpload" open><summary>Upload / create an asset</summary>' +
       '<form class="v2-resourcesUploadForm" data-resources-upload-route="' +
       escapeHtml(route) +
       '">' +
       '<label>Kind<select name="kind">' +
-      '<option value="image">image</option>' +
-      '<option value="icon">icon</option>' +
+      '<option value="image">image (raster → AVIF)</option>' +
+      '<option value="logo">logo (brand mark → 512² AVIF)</option>' +
+      '<option value="icon">icon (SVG)</option>' +
       '<option value="document">document</option>' +
       '<option value="audio">audio</option>' +
       "</select></label>" +
@@ -1192,6 +1193,11 @@
       '<label>Owner<input type="text" name="owner" /></label>' +
       '<label>File<input type="file" name="file" required /></label>' +
       '<button type="submit" class="v2-rowAction--primary">Upload</button>' +
+      '<p class="v2-resourcesUpload__hint">A <strong>logo</strong> named for an ' +
+      "entity slug (e.g. <code>aurora_springs_honey</code>) is fit to a 512² AVIF " +
+      "and resolves automatically against that profile's predetermined logo_ref — " +
+      "no profile edit needed. <strong>Owner</strong> is ignored for logo/profile." +
+      "</p>" +
       '<p class="v2-resourcesUpload__result" hidden></p>' +
       "</form></details>"
     );

@@ -2666,6 +2666,13 @@ def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
     subtab = _as_text(ctx.get("extension_subtab")) or "browse"
     if subtab == "per_grantee":
         return _resources_per_grantee_payload(ctx)
+    if subtab == "create":
+        # The two-pane LIBRARY view: upload form (incl. the logo kind) + the
+        # flat searchable leaflet list with retitle / rename-slug / delete /
+        # icon-dedup. Folding Manifest into Browse had orphaned this payload
+        # from the surface (it set extension_subtab, so the legacy keyless
+        # path that reached it never fired); the Create subtab restores it.
+        return _resources_library_payload(ctx.get("webapps_root"))
     # "browse" (and any legacy "manifest" link) → the UNIFIED type tab.
     return _resources_browse_payload(ctx)
 

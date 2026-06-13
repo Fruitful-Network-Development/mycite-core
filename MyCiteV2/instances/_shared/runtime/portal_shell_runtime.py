@@ -1339,6 +1339,7 @@ _EXTENSION_SUBTABS: dict[str, tuple[dict[str, str], ...]] = {
     # Manifest tab. Per-grantee stays its own (allocation) concern.
     "ext_resources": (
         {"id": "browse", "label": "Browse"},
+        {"id": "create", "label": "Create"},
         {"id": "per_grantee", "label": "Per-grantee"},
     ),
 }

@@ -35,6 +35,8 @@ class InnerSubtabResolve(unittest.TestCase):
         self.assertEqual(_resolve_inner_subtab("ext_resources", ""), "browse")
         self.assertEqual(_resolve_inner_subtab("ext_resources", "browse"), "browse")
         self.assertEqual(_resolve_inner_subtab("ext_resources", "bogus"), "browse")
+        # Create (upload + library management) is a declared subtab.
+        self.assertEqual(_resolve_inner_subtab("ext_resources", "create"), "create")
         # Every operational extension now declares subtabs, defaulting to Overall.
         self.assertEqual(_resolve_inner_subtab("ext_aws_email", "x"), "overall")
         self.assertEqual(_resolve_inner_subtab("ext_aws_email", "per_grantee"), "per_grantee")
@@ -48,7 +50,7 @@ class InnerSubtabSelector(unittest.TestCase):
         sel = _build_inner_subtab_selector(
             "ext_resources", "browse", selected_grantee_msn="acme", utilities_mode="grantee"
         )
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "per_grantee"])
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "create", "per_grantee"])
         self.assertEqual(sel["selected_subtab"], "browse")
         by_id = {t["id"]: t["select_action"]["payload"]["surface_query"] for t in sel["tabs"]}
         self.assertEqual(by_id["browse"]["utilities_mode"], "global")
@@ -83,7 +85,7 @@ class SurfaceAttachesInnerSelector(unittest.TestCase):
         self.assertEqual([e["tool_id"] for e in active], ["ext_resources"])
         sel = active[0]["payload"]["inner_subtab_selector"]
         self.assertEqual(sel["selected_subtab"], "browse")
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "per_grantee"])
+        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "create", "per_grantee"])
 
     def test_operational_extension_gets_inner_selector_no_surface_selector(self) -> None:
         # Every operational extension now carries the inner subtab strip, and the
@@ -314,6 +316,15 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         for sub in ("", "manifest", "bogus"):
             ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": sub}
             self.assertEqual(rx._render_ext_resources(ctx)["resources_subtab"], "browse")
+
+    def test_render_ext_resources_create_routes_to_library(self) -> None:
+        # The Create subtab restores the two-pane LIBRARY payload (upload form +
+        # retitle/rename/delete) that folding Manifest into Browse had orphaned
+        # from the surface — the only path carrying upload_action.
+        ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": "create"}
+        p = rx._render_ext_resources(ctx)
+        self.assertEqual(p["resources_mode"], "library")
+        self.assertEqual(p["upload_action"]["route"], "/portal/api/resources/upload")
 
     def test_browse_hierarchy_includes_unregistered_on_disk_types(self) -> None:
         # The cluster map must include EVERY on-disk leaflet type — not just the

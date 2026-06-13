@@ -230,6 +230,84 @@ class ResourceUploadRouteTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 400)
         self.assertEqual(resp.get_json()["error"], "file_required")
 
+    # ---- logo kind (brand mark → 512² AVIF leaflet) --------------------
+    def _use_stub_encoder(self, tmp: Path) -> None:
+        """Stage a fake process_logos.py `_encode-batch` worker + point the
+        encoder env at this interpreter, so the logo path is exercised without
+        the real Pillow venv. The stub writes a sentinel AVIF per job."""
+        scripts = tmp.joinpath("webapps", *_SITE_CORE, "scripts")
+        scripts.mkdir(parents=True, exist_ok=True)
+        (scripts / "process_logos.py").write_text(
+            "import json, sys\n"
+            "jobs = json.load(open(sys.argv[2]))\n"
+            "for j in jobs:\n"
+            "    open(j['dst'], 'wb').write(b'AVIFSTUB')\n"
+            "json.dump([{'dst': j['dst'], 'status': 'ok-new'} for j in jobs],"
+            " open(sys.argv[3], 'w'))\n",
+            encoding="utf-8",
+        )
+        prev = os.environ.get("MYCITE_LOGO_ENCODER_PYTHON")
+        os.environ["MYCITE_LOGO_ENCODER_PYTHON"] = sys.executable
+        self.addCleanup(self._restore_encoder_env, prev)
+
+    @staticmethod
+    def _restore_encoder_env(prev) -> None:
+        if prev is None:
+            os.environ.pop("MYCITE_LOGO_ENCODER_PYTHON", None)
+        else:
+            os.environ["MYCITE_LOGO_ENCODER_PYTHON"] = prev
+
+    def test_logo_kind_lands_as_logo_leaflet(self) -> None:
+        client, tmp = self._build_client()
+        self._use_stub_encoder(tmp)
+        resp = self._post(
+            client,
+            data_bytes=_PNG_1X1,
+            filename="bee.png",
+            kind="logo",
+            slug="aurora_springs_honey",
+            owner="",  # ignored for logo
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        body = resp.get_json()
+        # No owner segment; role token is "logo" → matches a profile's
+        # predetermined logo_ref so it resolves with no profile edit.
+        self.assertEqual(
+            body["asset_id"],
+            "0000-00-00.artifact-logo.aurora_springs_honey.logo.avif",
+        )
+        self.assertEqual(body["gallery"], "image")
+        written = self._gallery(tmp, "image") / body["asset_id"]
+        self.assertEqual(written.read_bytes(), b"AVIFSTUB")
+
+    def test_logo_unsupported_input_rejected(self) -> None:
+        client, _tmp = self._build_client()
+        resp = self._post(
+            client,
+            data_bytes=b"GIF89a\x01\x00\x01\x00",
+            filename="x.gif",
+            kind="logo",
+            slug="acme_farm",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"], "invalid_upload")
+
+    def test_logo_missing_encoder_returns_clear_400(self) -> None:
+        client, tmp = self._build_client()
+        prev = os.environ.get("MYCITE_LOGO_ENCODER_PYTHON")
+        os.environ["MYCITE_LOGO_ENCODER_PYTHON"] = str(tmp / "no-such-python")
+        self.addCleanup(self._restore_encoder_env, prev)
+        resp = self._post(
+            client,
+            data_bytes=_PNG_1X1,
+            filename="x.png",
+            kind="logo",
+            slug="acme_farm",
+        )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.get_json()["error"], "invalid_upload")
+        self.assertIn("logo encoder", resp.get_json()["detail"])
+
 
 if __name__ == "__main__":
     unittest.main()
