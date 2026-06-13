@@ -449,16 +449,94 @@ def list_icon_options(webapps_root: str | Path | None) -> list[dict[str, Any]]:
     return options
 
 
+def _humanize_segment(seg: str) -> str:
+    return _as_text(seg).replace("_", " ").title()
+
+
+def browsable_full_slugs(webapps_root: str | Path | None) -> set[str]:
+    """Every TYPE node slug the browser can show: the manifest-registered slugs PLUS
+    every dash-prefix of every on-disk leaflet TYPE token (PII included — icon edits
+    are type-level, not content). The complete universe a node can legitimately be."""
+    slugs = set(registered_full_slugs(webapps_root))
+    for token in build_type_leaflet_index(webapps_root, include_pii=True):
+        segs = token.split("-")
+        for cut in range(1, len(segs) + 1):
+            slugs.add("-".join(segs[:cut]))
+    return slugs
+
+
+def complete_type_nodes(
+    webapps_root: str | Path | None, *, include_pii: bool = False
+) -> list[dict[str, Any]]:
+    """Every TYPE node to browse, with rolled-up ``count`` — the manifest's registered
+    nodes PLUS a SYNTHESIZED node for any on-disk leaflet TYPE the manifest doesn't
+    register (and any missing ancestor), so icons/images/documents/audio/… and every
+    unregistered subtype are visible + browsable instead of silently absorbed into a
+    parent. Synthesized nodes get a humanized label + the manifest ``default_style``
+    icon; an icon override (side-car) is honored for registered AND synthesized slugs.
+    """
+    registered = {row["full_slug"]: row for row in flatten_type_tree(webapps_root)}
+    overrides = load_icon_overrides(webapps_root)
+    default_style = load_manifest_default_style(webapps_root)
+    default_icon = _as_text(default_style.get("icon"))
+    default_color = _as_text(default_style.get("color"))
+    index = build_type_leaflet_index(webapps_root, include_pii=include_pii)
+
+    slugs: set[str] = set(registered)
+    for token in index:
+        segs = token.split("-")
+        for cut in range(1, len(segs) + 1):
+            slugs.add("-".join(segs[:cut]))
+
+    children: dict[str, list[str]] = {}
+    for slug in slugs:
+        parent = "-".join(slug.split("-")[:-1])
+        if parent:
+            children.setdefault(parent, []).append(slug)
+
+    # Roll up so a base type includes all dash-descendants (mirrors type_leaflet_counts).
+    counts: dict[str, int] = {s: 0 for s in slugs}
+    for token, rows in index.items():
+        n = len(rows)
+        for s in slugs:
+            if token == s or token.startswith(s + "-"):
+                counts[s] += n
+
+    nodes: list[dict[str, Any]] = []
+    for slug in sorted(slugs):
+        segs = slug.split("-")
+        reg = registered.get(slug)
+        if reg is not None:
+            node = dict(reg)
+        else:
+            node = {
+                "full_slug": slug,
+                "segments": list(segs),
+                "label": _humanize_segment(segs[-1]),
+                "icon": default_icon,
+                "color": default_color,
+                "synthetic": True,
+            }
+        node["icon_ref"] = overrides.get(slug) or _as_text(node.get("icon_ref"))
+        node["depth"] = len(segs) - 1
+        node["parent_slug"] = "-".join(segs[:-1])
+        node["child_slugs"] = sorted(children.get(slug, []))
+        node["has_children"] = bool(children.get(slug))
+        node["count"] = counts.get(slug, 0)
+        nodes.append(node)
+    return nodes
+
+
 def set_type_icon_ref(
     webapps_root: str | Path | None, full_slug: str, icon_ref: str
 ) -> dict[str, Any]:
-    """Persist an operator icon reassignment for a registered type node into the
+    """Persist an operator icon reassignment for a browsable type node into the
     overrides side-car (atomic). ``icon_ref`` "" clears the override (falls back
-    to the manifest). Validates the node is registered and the icon asset exists;
-    never edits the SSOT manifest."""
+    to the manifest). Validates the node is a browsable type (registered OR an
+    on-disk type) and the icon asset exists; never edits the SSOT manifest."""
     full_slug = _as_text(full_slug)
     icon_ref = _as_text(icon_ref)
-    if full_slug not in registered_full_slugs(webapps_root):
+    if full_slug not in browsable_full_slugs(webapps_root):
         return {"ok": False, "error": f"unknown type node: {full_slug or '(empty)'}"}
     path = _icon_overrides_path(webapps_root)
     if path is None:
@@ -477,7 +555,9 @@ def set_type_icon_ref(
 
 
 __all__ = [
+    "browsable_full_slugs",
     "build_type_leaflet_index",
+    "complete_type_nodes",
     "flatten_type_tree",
     "leaflets_for_type",
     "list_icon_options",

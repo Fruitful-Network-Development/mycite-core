@@ -111,6 +111,37 @@ class ResourceTypesTest(unittest.TestCase):
         self.assertEqual(node["label"], "Crop")
         self.assertIsNone(rt.type_node_full(self.root, "artifact-nope"))
 
+    def test_complete_type_nodes_synthesizes_unregistered_types(self) -> None:
+        # An on-disk leaflet TYPE the manifest does NOT register (here: audio) must
+        # become a synthesized, browsable node — not vanish into a parent's rollup.
+        audio = self.root / "clients" / "_shared" / "site-core" / "audio"
+        audio.mkdir(parents=True, exist_ok=True)
+        (audio / "0000-00-00.artifact-audio.fnd.welcome.yaml").write_text("x\n", encoding="utf-8")
+        nodes = {n["full_slug"]: n for n in rt.complete_type_nodes(self.root)}
+        # the unregistered audio type is now a node, under the registered 'artifact' root
+        self.assertIn("artifact-audio", nodes)
+        self.assertTrue(nodes["artifact-audio"].get("synthetic"))
+        self.assertEqual(nodes["artifact-audio"]["count"], 1)
+        self.assertEqual(nodes["artifact-audio"]["parent_slug"], "artifact")
+        self.assertEqual(nodes["artifact-audio"]["label"], "Audio")
+        self.assertIn("artifact-audio", nodes["artifact"]["child_slugs"])
+        # registered nodes keep their manifest label
+        self.assertEqual(nodes["artifact-profile"]["label"], "Profile")
+        self.assertFalse(nodes["artifact-profile"].get("synthetic"))
+
+    def test_set_icon_ref_accepts_unregistered_on_disk_type(self) -> None:
+        # The ✎ icon edit on a synthesized node must succeed (validated against the
+        # browsable set, not just manifest-registered slugs).
+        audio = self.root / "clients" / "_shared" / "site-core" / "audio"
+        audio.mkdir(parents=True, exist_ok=True)
+        (audio / "0000-00-00.artifact-audio.fnd.welcome.yaml").write_text("x\n", encoding="utf-8")
+        icon = rt.list_icon_options(self.root)[0]["icon_ref"]
+        res = rt.set_type_icon_ref(self.root, "artifact-audio", icon)
+        self.assertTrue(res["ok"], res)
+        # the override now shows on the synthesized node
+        nodes = {n["full_slug"]: n for n in rt.complete_type_nodes(self.root)}
+        self.assertEqual(nodes["artifact-audio"]["icon_ref"], icon)
+
     # ---- filename TYPE parse + node match -------------------------------- #
     def test_parse_leaflet_type(self) -> None:
         self.assertEqual(

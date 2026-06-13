@@ -315,6 +315,16 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
             ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": sub}
             self.assertEqual(rx._render_ext_resources(ctx)["resources_subtab"], "browse")
 
+    def test_browse_hierarchy_includes_unregistered_on_disk_types(self) -> None:
+        # The cluster map must include EVERY on-disk leaflet type — not just the
+        # manifest-registered ones — so icons/images/docs/audio are all browsable.
+        audio = self.root / "clients" / "_shared" / "site-core" / "audio"
+        audio.mkdir(parents=True, exist_ok=True)
+        (audio / "0000-00-00.artifact-audio.fnd.welcome.yaml").write_text("x\n", encoding="utf-8")
+        slugs = {n["full_slug"] for n in self._browse(browse_view="hierarchy")["nodes"]}
+        self.assertIn("artifact-audio", slugs)
+        self.assertIn("artifact-icon", slugs)
+
 
 if __name__ == "__main__":
     unittest.main()
