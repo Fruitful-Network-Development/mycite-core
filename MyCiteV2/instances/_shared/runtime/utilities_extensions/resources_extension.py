@@ -166,6 +166,51 @@ def resolve_profile_image(
     return ""
 
 
+def attach_profile_thumbnails(
+    webapps_root: str | Path | None, rows: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Populate ``image_url`` on ``profiles`` rows IN PLACE from the image gallery.
+
+    The by-type index (``resource_types.build_type_leaflet_index``) types profiles by
+    FILENAME only (no YAML load), so a profile row arrives with ``image_url == ""``.
+    Resolve each profile's logo/headshot by the same slug + role-token convention as
+    ``resolve_profile_image`` branch 2 — but list the image gallery ONCE for the whole
+    row set (calling ``resolve_profile_image`` per row would re-glob the dir every
+    time) and memoize per slug. Rows with no match keep ``image_url == ""`` → the
+    directory renders the neutral dot placeholder. Used by the Browse *directory* view
+    only (never the hierarchy), so the dendrogram render pays nothing for it. The
+    cheap slug+role match deliberately skips the explicit ``image_ref``/``logo_ref``
+    path (that needs a per-profile YAML load); the predetermined logo/headshot
+    filenames embed the slug, so they still resolve.
+    """
+    site_core = _site_core_root(webapps_root)
+    image_dir = (site_core / "image") if site_core is not None else None
+    if image_dir is None or not image_dir.is_dir():
+        return rows
+    try:
+        names = sorted(p.name for p in image_dir.iterdir() if p.is_file())
+    except OSError:
+        return rows
+    lowered = [(name, name.lower()) for name in names]
+    by_slug: dict[str, str] = {}
+    for row in rows:
+        if row.get("gallery") != "profiles" or _as_text(row.get("image_url")):
+            continue
+        slug = _as_text(row.get("slug"))
+        if not slug:
+            continue
+        if slug not in by_slug:
+            url = ""
+            for name, lower in lowered:
+                if slug in lower and any(t in lower for t in _IMAGE_ROLE_TOKENS):
+                    url = _IMAGE_URL_PREFIX + name
+                    break
+            by_slug[slug] = url
+        if by_slug[slug]:
+            row["image_url"] = by_slug[slug]
+    return rows
+
+
 # --------------------------------------------------------------------------- #
 # profile listing + detail
 # --------------------------------------------------------------------------- #
@@ -2422,6 +2467,9 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         base["leaflets"] = rt.leaflets_for_type(
             webapps_root, browse_type, include_subtypes=True, include_pii=include_pii
         )
+        # Profiles arrive image-less (typed by filename only) — resolve each one's
+        # logo/headshot once so the instance list shows a thumbnail, not just a dot.
+        attach_profile_thumbnails(webapps_root, base["leaflets"])
         base["subtypes"] = [
             nodes_by_slug[c] for c in node.get("child_slugs", []) if c in nodes_by_slug
         ]
