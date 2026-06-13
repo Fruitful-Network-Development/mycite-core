@@ -9991,6 +9991,39 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-browseEdit__pane {
   margin-top: 10px;
 }
+/* Field/value → icon links (content representation) */
+.v2-fieldLinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 10px 0;
+}
+.v2-fieldLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.v2-fieldLink__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  object-fit: contain;
+}
+.v2-fieldLink__icon--none {
+  display: inline-block;
+  border-radius: 3px;
+  background: var(--ide-border, #d8dee4);
+  opacity: 0.5;
+}
+.v2-fieldLink__val {
+  color: var(--ide-accent, #1f883d);
+  text-decoration: none;
+  word-break: break-word;
+}
+.v2-fieldLink__val:hover {
+  text-decoration: underline;
+}
 .v2-genericLeaflet__fields {
   display: grid;
   gap: 4px;

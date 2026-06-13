@@ -411,6 +411,8 @@ def profile_detail(
         "display_name": _profile_display_name(profile, slug),
         "image_url": resolve_profile_image(profile, slug, image_dir),
         "fields": fields,
+        # Contact + social values as icon-bearing links (field/value → icon map).
+        "contact_links": resolve_field_links(profile, webapps_root),
     }
 
 
@@ -1319,6 +1321,134 @@ def _leaflet_display_name(slug: str) -> str:
     filename or the snake_case slug."""
     pretty = _as_text(slug).replace("_", " ").replace("-", " ").strip()
     return pretty.title() if pretty else _as_text(slug)
+
+
+# --------------------------------------------------------------------------- #
+# field/value → icon convention (CONTENT representation; SEPARATE from the
+# type→icon manifest). A leaflet's contact + social VALUES (website / email /
+# phone / socials[].platform) render with recognizable icons in the portal viewer
+# and dashboard. Operator overrides live in a side-car keyed by VALUE KIND, so the
+# same uniform mapping is reused across leaflets and surfaces.
+# --------------------------------------------------------------------------- #
+_FIELD_ICON_MAP_REL = ("schema", "field_icon_map.mycite.yaml")
+_FIELD_ICON_DEFAULTS: dict[str, str] = {
+    "website": "0000-00-00.artifact-icon.mycite.globe",
+    "email": "0000-00-00.artifact-icon.mycite-ui.mail",
+    "phone": "0000-00-00.artifact-icon.mycite.phoneme",
+    "link": "0000-00-00.artifact-icon.mycite-ui.link",
+    "facebook": "0000-00-00.artifact-logo.facebook.logo",
+    "instagram": "0000-00-00.artifact-logo.instagram.logo",
+    "linkedin": "0000-00-00.artifact-logo.linkedin.logo",
+    "youtube": "0000-00-00.artifact-logo.youtube.logo",
+    "x": "0000-00-00.artifact-logo.x_twitter.logo",
+    "twitter": "0000-00-00.artifact-logo.x_twitter.logo",
+    "gmail": "0000-00-00.artifact-logo.gmail.logo",
+}
+# Contact field NAME → value kind. A social entry's ``platform`` is itself the kind.
+_FIELD_NAME_KIND: dict[str, str] = {
+    "website": "website",
+    "email": "email",
+    "secondary_email": "email",
+    "org_email": "email",
+    "phone": "phone",
+    "secondary_phone": "phone",
+}
+_FIELD_ICON_PREFIX = "/assets/icons/"
+
+
+def _field_icon_map_path(webapps_root: str | Path | None) -> Path | None:
+    root = _site_core_root(webapps_root)
+    return root.joinpath(*_FIELD_ICON_MAP_REL) if root is not None else None
+
+
+def load_field_icon_map(webapps_root: str | Path | None) -> dict[str, str]:
+    """``kind -> icon_ref`` for content-field representation: the seeded defaults
+    merged over the operator override side-car. SEPARATE from the type→icon manifest
+    (this maps a VALUE kind inside a leaflet, not the leaflet's type)."""
+    merged = dict(_FIELD_ICON_DEFAULTS)
+    path = _field_icon_map_path(webapps_root)
+    if path is not None and path.is_file():
+        for k, v in _load_yaml_mapping(path).items():
+            key = _as_text(k).lower()
+            if key:
+                merged[key] = _as_text(v)
+    return merged
+
+
+def set_field_icon(webapps_root: str | Path | None, kind: str, icon_ref: str) -> dict[str, Any]:
+    """Persist an operator field-kind → icon override (atomic side-car). ``icon_ref``
+    "" removes the override (falls back to the seeded default / no icon)."""
+    kind = _as_text(kind).lower()
+    icon_ref = _as_text(icon_ref)
+    if not kind:
+        return {"ok": False, "error": "missing field kind"}
+    path = _field_icon_map_path(webapps_root)
+    if path is None:
+        return {"ok": False, "error": "site-core root unavailable"}
+    overrides: dict[str, str] = {}
+    if path.is_file():
+        overrides = {
+            _as_text(k).lower(): _as_text(v)
+            for k, v in _load_yaml_mapping(path).items()
+            if _as_text(k)
+        }
+    if icon_ref:
+        overrides[kind] = icon_ref
+    else:
+        overrides.pop(kind, None)
+    _atomic_write_text(
+        path, yaml.safe_dump(overrides, default_flow_style=False, sort_keys=True, allow_unicode=True)
+    )
+    return {"ok": True, "kind": kind, "icon_ref": icon_ref}
+
+
+def _field_link_href(kind: str, value: str) -> str:
+    v = _as_text(value)
+    if not v:
+        return ""
+    if v.lower().startswith(("http://", "https://", "mailto:", "tel:")):
+        return v
+    if kind == "email" or "@" in v:
+        return "mailto:" + v
+    if kind == "phone":
+        digits = "".join(c for c in v if c.isdigit() or c == "+")
+        return ("tel:" + digits) if digits else v
+    return ("https://" + v) if "." in v else v
+
+
+def resolve_field_links(profile: dict[str, Any], webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """A profile's contact + social values as icon-bearing links:
+    ``[{kind, label, value, href, icon_ref, icon_url}]`` — for the portal viewer and
+    dashboard. Uses the field-icon map; unknown social platforms fall back to the
+    generic 'link' icon."""
+    icon_map = load_field_icon_map(webapps_root)
+    links: list[dict[str, Any]] = []
+
+    def emit(kind: str, value: Any, label: str) -> None:
+        v = _as_text(value)
+        if not v:
+            return
+        ref = icon_map.get(kind) or icon_map.get("link", "")
+        links.append(
+            {
+                "kind": kind,
+                "label": label,
+                "value": v,
+                "href": _field_link_href(kind, v),
+                "icon_ref": ref,
+                "icon_url": (_FIELD_ICON_PREFIX + ref + ".svg") if ref else "",
+            }
+        )
+
+    for fname, kind in _FIELD_NAME_KIND.items():
+        emit(kind, profile.get(fname), _as_text(fname).replace("_", " ").title())
+    socials = profile.get("socials")
+    if isinstance(socials, list):
+        for s in socials:
+            if isinstance(s, dict):
+                platform = _as_text(s.get("platform")).lower()
+                emit(platform or "link", s.get("value"), platform.title() if platform else "Link")
+    return links
 
 
 def _gallery_slug(gallery: str, filename: str) -> str:

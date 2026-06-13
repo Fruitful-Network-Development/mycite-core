@@ -1567,6 +1567,28 @@
         '<pre class="v2-genericLeaflet__raw">' + escapeHtml(raw) + "</pre></details>" : "");
   }
 
+  // Content-field representation: render a leaflet's contact + social VALUES as
+  // icon-bearing links (field/value → icon convention; server resolves the icon).
+  function renderFieldLinks(links) {
+    var list = asList(links);
+    if (!list.length) return "";
+    var rows = list.map(function (l) {
+      var o = asObject(l);
+      var icon = asText(o.icon_url)
+        ? '<img class="v2-fieldLink__icon" src="' + escapeHtml(asText(o.icon_url)) +
+          '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
+        : '<span class="v2-fieldLink__icon v2-fieldLink__icon--none" aria-hidden="true"></span>';
+      var val = escapeHtml(asText(o.value));
+      var href = asText(o.href);
+      var inner = href
+        ? '<a class="v2-fieldLink__val" href="' + escapeHtml(href) +
+          '" target="_blank" rel="noopener noreferrer">' + val + "</a>"
+        : '<span class="v2-fieldLink__val">' + val + "</span>";
+      return '<div class="v2-fieldLink" title="' + escapeHtml(asText(o.label)) + '">' + icon + inner + "</div>";
+    }).join("");
+    return '<div class="v2-fieldLinks">' + rows + "</div>";
+  }
+
   function renderBrowseInstance(p) {
     var inst = asObject(p.instance);
     var viewer = asText(inst.viewer);
@@ -1575,6 +1597,7 @@
     if (viewer === "profile") {
       var pslug = asText(d.slug);
       body = renderProfileHead({ title: asText(d.display_name), slug: pslug, image_url: asText(d.image_url) }) +
+        renderFieldLinks(d.contact_links) +
         '<div class="v2-resourcesDetail__meta">' +
         asList(d.fields).map(function (f) {
           var fld = asObject(f);
