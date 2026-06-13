@@ -413,6 +413,9 @@ def profile_detail(
         "fields": fields,
         # Contact + social values as icon-bearing links (field/value → icon map).
         "contact_links": resolve_field_links(profile, webapps_root),
+        # Grantee-scoped extra fields (scope_fields) — shown in the grantee's own
+        # views, kept out of the general FND views.
+        "scopes": resolve_profile_scopes(profile, webapps_root),
     }
 
 
@@ -1449,6 +1452,34 @@ def resolve_field_links(profile: dict[str, Any], webapps_root: str | Path | None
                 platform = _as_text(s.get("platform")).lower()
                 emit(platform or "link", s.get("value"), platform.title() if platform else "Link")
     return links
+
+
+def resolve_profile_scopes(profile: dict[str, Any], webapps_root: str | Path | None) -> list[dict[str, Any]]:
+    """A profile's grantee-scoped EXTRA fields (``scope_fields: {<grantee>: {k: v}}``)
+    as one block per grantee scope — for views that should show them (the grantee's own
+    site + dashboard), kept OUT of the general FND views. Each block: ``{scope, label,
+    fields: [{key,label,value}], links: [field-link…]}`` (contact/social values inside a
+    scope block get icons via the field-icon convention). Empty when no scope_fields."""
+    raw = profile.get("scope_fields")
+    if not isinstance(raw, dict):
+        return []
+    out: list[dict[str, Any]] = []
+    for scope, block in raw.items():
+        if not isinstance(block, dict):
+            continue
+        fields = [
+            {"key": _as_text(k), "label": _as_text(k).replace("_", " ").title(), "value": _scalar_str(v)}
+            for k, v in block.items()
+        ]
+        out.append(
+            {
+                "scope": _as_text(scope),
+                "label": _as_text(scope).upper(),
+                "fields": fields,
+                "links": resolve_field_links(block, webapps_root),
+            }
+        )
+    return out
 
 
 def _gallery_slug(gallery: str, filename: str) -> str:
