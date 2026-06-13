@@ -9715,8 +9715,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: var(--ide-border, #eaeef2);
   font-variant-numeric: tabular-nums;
 }
-.v2-typeNode__editIcon,
-.v2-browseBox__open {
+.v2-typeNode__editIcon {
   border: 1px solid var(--ide-border, #d8dee4);
   background: var(--ide-panel-bg, #fff);
   border-radius: 6px;
@@ -9725,8 +9724,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 11px;
   cursor: pointer;
 }
-.v2-typeNode__editIcon:hover,
-.v2-browseBox__open:hover {
+.v2-typeNode__editIcon:hover {
   background: #eef1f5;
 }
 .v2-typeNode__picker {
@@ -9735,44 +9733,108 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 12px;
   padding: 3px 6px;
 }
-/* Browse grid + boxes */
-.v2-browseGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 8px;
+/* Browse — horizontal cluster tree (dendrogram). SVG draws the links; the nodes
+   are absolutely-positioned HTML so the icon/label/buttons reuse existing CSS. */
+.v2-dendro__host {
   margin-top: 8px;
+  overflow: auto;
+  max-height: 70vh;
 }
-.v2-browseBox {
-  border: 1px solid var(--ide-border, #d8dee4);
-  border-radius: 8px;
-  background: var(--ide-panel-bg, #fff);
-  padding: 6px 8px;
-}
-.v2-browseBox__head {
+.v2-dendro__toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-.v2-browseBox__label {
-  font-weight: 600;
-}
-.v2-browseBox__count {
-  margin-left: auto;
-  font-variant-numeric: tabular-nums;
-  color: #57606a;
-}
-.v2-browseBox__children {
-  margin-top: 6px;
-  display: grid;
   gap: 6px;
+  margin-bottom: 6px;
 }
-.v2-browseBox--branch > summary {
-  list-style: none;
+.v2-dendro__all {
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 2px 10px;
+  font: inherit;
+  font-size: 11px;
   cursor: pointer;
 }
-.v2-browseBox--branch > summary::-webkit-details-marker {
-  display: none;
+.v2-dendro__all:hover {
+  background: #eef1f5;
+}
+.v2-dendro {
+  position: relative;
+  font-size: 13px;
+}
+.v2-dendro__links {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.v2-dendro__link {
+  fill: none;
+  stroke: var(--ide-border, #d8dee4);
+  stroke-width: 1.5;
+}
+.v2-dendro__node {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.v2-dendro__toggle {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 4px;
+  font-size: 10px;
+  color: #57606a;
+  cursor: pointer;
+}
+.v2-dendro__toggle:hover {
+  background: #eef1f5;
+}
+.v2-dendro__toggle--leaf {
+  border: none;
+  background: none;
+  cursor: default;
+}
+.v2-dendro__view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 170px;
+  border: 1px solid transparent;
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.v2-dendro__view:hover {
+  border-color: var(--ide-border, #d8dee4);
+  background: #eef1f5;
+}
+.v2-dendro__node.is-leaf .v2-dendro__view {
+  max-width: 260px;
+}
+.v2-dendro__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+.v2-dendro__count {
+  flex: 0 0 auto;
+  min-width: 1.4em;
+  text-align: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--ide-border, #eaeef2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #57606a;
 }
 /* Directory + instance */
 .v2-leafletDir__bar {
@@ -9835,14 +9897,75 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-leafletDir__item:hover {
   background: #eef1f5;
 }
+.v2-leafletDir__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
 .v2-leafletDir__name {
   font-weight: 600;
   font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-leafletDir__meta {
+  font-size: 11px;
+  color: #57606a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .v2-leafletDir__type {
   margin-left: auto;
+  flex: 0 0 auto;
   font-size: 10px;
   color: #57606a;
+}
+.v2-leafletDir__count {
+  margin-left: auto;
+  min-width: 1.6em;
+  text-align: center;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ide-border, #eaeef2);
+  font-variant-numeric: tabular-nums;
+}
+.v2-leafletDir__search {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 6px 0;
+  padding: 5px 9px;
+  font: inherit;
+  font-size: 13px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 6px;
+  background: var(--ide-panel-bg, #fff);
+}
+.v2-leafletDir__empty {
+  margin: 8px 2px;
+  color: #57606a;
+  font-size: 13px;
+}
+.v2-browseEdit {
+  margin-top: 12px;
+  border-top: 1px solid var(--ide-border, #d8dee4);
+  padding-top: 10px;
+}
+.v2-browseEdit__btn {
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.v2-browseEdit__btn:hover {
+  background: #eef1f5;
+}
+.v2-browseEdit__pane {
+  margin-top: 10px;
 }
 .v2-genericLeaflet__fields {
   display: grid;

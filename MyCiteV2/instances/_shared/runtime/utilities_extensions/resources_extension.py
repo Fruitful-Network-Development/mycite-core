@@ -2401,6 +2401,10 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
         "icon_url_prefix": _ICON_URL_PREFIX,
         "browse_view": view,
         "nav_base_query": _resources_nav_base_query(ctx, "browse"),
+        # In-browse profile view/edit reuses the library's detail+save endpoints
+        # (the instance viewer renders the edit_frame + posts a save → propagate).
+        "profile_detail_route": "/__fnd/resources/profile/detail",
+        "profile_save_route": "/__fnd/resources/profile/save",
         **_RESOURCES_TYPE_ROUTES,
     }
     nodes_by_slug = {n["full_slug"]: n for n in rt.flatten_type_tree(webapps_root)}

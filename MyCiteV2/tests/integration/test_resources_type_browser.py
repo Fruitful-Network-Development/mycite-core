@@ -189,13 +189,25 @@ class TypeBrowserJsInvariants(unittest.TestCase):
             "function renderTypeIcon(",
             "function bindResourcesBrowse(",
             "function bindResourcesManifest(",
+            # Browse hierarchy is a horizontal cluster tree (dendrogram): the
+            # layout + render fns, and the per-node "select for viewing" hook.
+            "function clusterLayout(",
+            "function renderDendrogram(",
+            "data-open-type",
+            "data-dendro-toggle",
             "inner_subtab_selector",
             "<use href=",  # sprite icon rendering
         ):
             self.assertIn(token, self.js, token)
 
     def test_css_has_theme_classes(self) -> None:
-        for cls in (".v2-innerSubtabs__option", ".v2-typeTree", ".v2-browseGrid", ".v2-typeIcon"):
+        for cls in (
+            ".v2-innerSubtabs__option",
+            ".v2-typeTree",
+            ".v2-dendro",  # cluster-tree Browse hierarchy
+            ".v2-leafletDir__search",  # searchable instance list
+            ".v2-typeIcon",
+        ):
             self.assertIn(cls, self.css, cls)
 
 
@@ -251,6 +263,13 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         p = self._browse(browse_view="directory", browse_type="")
         self.assertEqual(p["browse_view"], "hierarchy")
         self.assertIn("nodes", p)
+
+    def test_browse_payload_carries_profile_edit_routes(self) -> None:
+        # In-browse profile view/edit reuses the library detail+save endpoints,
+        # so the Browse payload must stamp both routes for the instance viewer.
+        p = self._browse(browse_view="hierarchy")
+        self.assertEqual(p["profile_detail_route"], "/__fnd/resources/profile/detail")
+        self.assertEqual(p["profile_save_route"], "/__fnd/resources/profile/save")
 
 
 if __name__ == "__main__":

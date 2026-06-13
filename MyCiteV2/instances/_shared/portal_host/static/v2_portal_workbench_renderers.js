@@ -1495,20 +1495,100 @@
     );
   }
 
-  function renderBrowseBox(node, p, byParent) {
-    var full = asText(node.full_slug);
-    var kids = byParent[full] || [];
-    var head =
-      '<div class="v2-browseBox__head">' + renderTypeIcon(node, p) +
-      '<span class="v2-browseBox__label">' + escapeHtml(asText(node.label) || full) + "</span>" +
-      '<span class="v2-browseBox__count">' + escapeHtml(String(node.count || 0)) + "</span>" +
-      '<button type="button" class="v2-browseBox__open" data-open-type="' + escapeHtml(full) +
-      '" title="Open all leaflets of this type">open</button></div>';
-    if (!kids.length) return '<div class="v2-browseBox">' + head + "</div>";
-    return '<details class="v2-browseBox v2-browseBox--branch"><summary>' + head + "</summary>" +
-      '<div class="v2-browseBox__children">' +
-      kids.map(function (k) { return renderBrowseBox(k, p, byParent); }).join("") +
-      "</div></details>";
+  // Horizontal cluster tree (dendrogram) geometry. Pure layout over the flat
+  // node list: true leaves (no children) align in the rightmost column (the
+  // dendrogram property), internal/collapsed nodes sit at their own depth, and
+  // each parent is centered on its visible children (post-order breadth). A
+  // collapsed node is a layout-leaf (occupies one row) but keeps its own depth.
+  var DENDRO = { COL_W: 230, ROW_H: 30, NODE_W: 170, PAD_X: 14, PAD_Y: 18, TAIL: 300 };
+
+  function clusterLayout(nodes, collapsed) {
+    var list = asList(nodes).map(asObject);
+    var byParent = {};
+    var maxDepth = 0;
+    list.forEach(function (n) {
+      var parent = asText(n.parent_slug);
+      (byParent[parent] = byParent[parent] || []).push(n);
+      var d = Number(n.depth || 0);
+      if (d > maxDepth) maxDepth = d;
+    });
+    var placed = [];
+    var pos = {};
+    var slot = 0;
+    function walk(node) {
+      var full = asText(node.full_slug);
+      var depth = Number(node.depth || 0);
+      var hasChildren = !!node.has_children;
+      var isCollapsed = hasChildren && collapsed && collapsed.has(full);
+      var kids = !isCollapsed && byParent[full] ? byParent[full] : [];
+      var x = (hasChildren ? depth : maxDepth) * DENDRO.COL_W + DENDRO.PAD_X;
+      var y;
+      if (!kids.length) {
+        y = slot * DENDRO.ROW_H + DENDRO.PAD_Y;
+        slot += 1;
+      } else {
+        var ys = kids.map(walk);
+        y = (ys[0] + ys[ys.length - 1]) / 2;
+      }
+      pos[full] = { x: x, y: y };
+      placed.push({
+        node: node, x: x, y: y, hasChildren: hasChildren,
+        collapsed: isCollapsed, isLeaf: !hasChildren,
+      });
+      return y;
+    }
+    (byParent[""] || []).forEach(walk);
+    var links = [];
+    placed.forEach(function (pl) {
+      var parent = asText(pl.node.parent_slug);
+      if (parent && pos[parent]) {
+        links.push({ sx: pos[parent].x + DENDRO.NODE_W, sy: pos[parent].y, tx: pl.x, ty: pl.y });
+      }
+    });
+    return {
+      placed: placed,
+      links: links,
+      width: maxDepth * DENDRO.COL_W + DENDRO.TAIL,
+      height: slot * DENDRO.ROW_H + DENDRO.PAD_Y + 12,
+    };
+  }
+
+  // Hybrid render: SVG <path>s draw the links; absolutely-positioned HTML draws
+  // the nodes (so renderTypeIcon + real buttons + CSS ellipsis are reused). Each
+  // node carries an expand/collapse toggle and a [data-open-type] "view" button.
+  function renderDendrogram(nodes, p, collapsed) {
+    var lay = clusterLayout(nodes, collapsed);
+    var paths = lay.links.map(function (l) {
+      var mx = (l.sx + l.tx) / 2;
+      return '<path class="v2-dendro__link" d="M' + l.sx + "," + l.sy +
+        "C" + mx + "," + l.sy + " " + mx + "," + l.ty + " " + l.tx + "," + l.ty + '" />';
+    }).join("");
+    var svg = '<svg class="v2-dendro__links" width="' + lay.width + '" height="' + lay.height +
+      '" viewBox="0 0 ' + lay.width + " " + lay.height + '" aria-hidden="true">' + paths + "</svg>";
+    var nodeHtml = lay.placed.map(function (pl) {
+      var n = pl.node;
+      var full = asText(n.full_slug);
+      var toggle = pl.hasChildren
+        ? '<button type="button" class="v2-dendro__toggle" data-dendro-toggle="' + escapeHtml(full) +
+          '" aria-label="' + (pl.collapsed ? "Expand" : "Collapse") + ' structure" title="' +
+          (pl.collapsed ? "Expand" : "Collapse") + ' structure">' + (pl.collapsed ? "▸" : "▾") + "</button>"
+        : '<span class="v2-dendro__toggle v2-dendro__toggle--leaf" aria-hidden="true"></span>';
+      var view =
+        '<button type="button" class="v2-dendro__view" data-open-type="' + escapeHtml(full) +
+        '" title="View instances of this type">' + renderTypeIcon(n, p) +
+        '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>" +
+        '<span class="v2-dendro__count">' + escapeHtml(String(n.count || 0)) + "</span></button>";
+      return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
+        "px;top:" + pl.y + 'px">' + toggle + view + "</div>";
+    }).join("");
+    return (
+      '<div class="v2-dendro__toolbar">' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="expand">Expand all</button>' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="collapse">Collapse all</button>' +
+      "</div>" +
+      '<div class="v2-dendro" style="width:' + lay.width + "px;height:" + lay.height + 'px">' +
+      svg + nodeHtml + "</div>"
+    );
   }
 
   function renderGenericLeaflet(detail) {
@@ -1531,13 +1611,21 @@
     var d = asObject(inst.detail);
     var body;
     if (viewer === "profile") {
-      body = renderProfileHead({ title: asText(d.display_name), slug: asText(d.slug), image_url: asText(d.image_url) }) +
+      var pslug = asText(d.slug);
+      body = renderProfileHead({ title: asText(d.display_name), slug: pslug, image_url: asText(d.image_url) }) +
         '<div class="v2-resourcesDetail__meta">' +
         asList(d.fields).map(function (f) {
           var fld = asObject(f);
           return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
             "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
-        }).join("") + "</div>";
+        }).join("") + "</div>" +
+        // Edit reuses the library's profile detail/save endpoints (fetched lazily
+        // on click): the read-only view stays the default, "Edit profile" swaps in
+        // the same component-library form + save→propagate the library uses.
+        (pslug
+          ? '<div class="v2-browseEdit"><button type="button" class="v2-browseEdit__btn" data-edit-profile="' +
+            escapeHtml(pslug) + '">Edit profile</button><div class="v2-browseEdit__pane"></div></div>'
+          : "");
     } else if (viewer === "asset") {
       body = renderBinaryDetail(d);
     } else {
@@ -1546,6 +1634,27 @@
     return '<div class="v2-leafletDir__bar"><button type="button" class="v2-leafletDir__back" ' +
       'data-browse-back="directory">&larr; ' + escapeHtml(asText(p.type_label) || "Directory") + "</button></div>" +
       '<div class="v2-genericLeaflet">' + body + "</div>";
+  }
+
+  function leafletBytes(n) {
+    n = Number(n || 0);
+    if (!n) return "";
+    if (n < 1024) return n + " B";
+    if (n < 1048576) return Math.round(n / 1024) + " KB";
+    return (n / 1048576).toFixed(1) + " MB";
+  }
+
+  function leafletMeta(r) {
+    // A compact info-preview line for an instance (the operator's "preview of
+    // information or a small thumbnail" — non-image rows get this text preview).
+    var bits = [];
+    if (asText(r.subtype_tail)) bits.push(asText(r.subtype_tail));
+    if (asText(r.owner)) bits.push(asText(r.owner));
+    if (asText(r.gallery)) bits.push(asText(r.gallery));
+    var sz = leafletBytes(r.size_bytes);
+    if (sz) bits.push(sz);
+    else if (asText(r.ext)) bits.push(asText(r.ext));
+    return bits.join(" · ");
   }
 
   function renderBrowseDirectory(p) {
@@ -1560,23 +1669,32 @@
             escapeHtml(asText(n.full_slug)) + '">' + escapeHtml(asText(n.label)) + "</button>";
         }).join("") + "</div>"
       : "";
+    var search =
+      '<input type="search" class="v2-leafletDir__search" aria-label="Search instances" placeholder="Search ' +
+      escapeHtml(String(leaflets.length)) + " instance" + (leaflets.length === 1 ? "" : "s") + '…" />';
     var rows = leaflets.map(function (l) {
       var r = asObject(l);
+      var name = asText(r.slug) || asText(r.filename);
       var thumb = asText(r.image_url)
         ? '<img class="v2-resourcesThumb v2-resourcesThumb--sm" src="' + escapeHtml(asText(r.image_url)) +
           '" alt="" loading="lazy" onerror="this.style.display=\'none\'" />'
-        : "";
+        : '<span class="v2-resourcesThumb v2-resourcesThumb--sm v2-resourcesThumb--dot" aria-hidden="true"></span>';
+      var meta = leafletMeta(r);
+      var hay = (name + " " + asText(r.filename) + " " + asText(r.full_type) + " " + asText(r.owner)).toLowerCase();
       return '<button type="button" class="v2-leafletDir__item" data-open-instance="' +
-        escapeHtml(asText(r.asset_path)) + '" data-full-type="' + escapeHtml(asText(r.full_type)) + '">' +
-        thumb + '<span class="v2-leafletDir__name">' + escapeHtml(asText(r.slug) || asText(r.filename)) +
+        escapeHtml(asText(r.asset_path)) + '" data-full-type="' + escapeHtml(asText(r.full_type)) +
+        '" data-search="' + escapeHtml(hay) + '">' + thumb +
+        '<span class="v2-leafletDir__text"><span class="v2-leafletDir__name">' + escapeHtml(name) + "</span>" +
+        (meta ? '<span class="v2-leafletDir__meta">' + escapeHtml(meta) + "</span>" : "") +
         "</span><code class=\"v2-leafletDir__type\">" + escapeHtml(asText(r.full_type)) + "</code></button>";
     }).join("");
     return '<div class="v2-leafletDir__bar"><button type="button" class="v2-leafletDir__back" ' +
       'data-browse-back="hierarchy">&larr; Types</button><h4>' +
       escapeHtml(asText(p.type_label) || asText(p.browse_type)) + '</h4>' +
-      '<span class="v2-browseBox__count">' + escapeHtml(String(leaflets.length)) + "</span></div>" +
-      chips + '<div class="v2-leafletDir__list">' +
-      (rows || '<p class="v2-extensionCard__empty">No leaflets of this type.</p>') + "</div>";
+      '<span class="v2-leafletDir__count">' + escapeHtml(String(leaflets.length)) + "</span></div>" +
+      search + chips + '<div class="v2-leafletDir__list">' +
+      (rows || '<p class="v2-extensionCard__empty">No leaflets of this type.</p>') +
+      '</div><p class="v2-leafletDir__empty" hidden>No instances match your search.</p>';
   }
 
   function renderResourcesBrowse(p) {
@@ -1587,17 +1705,22 @@
     } else if (view === "directory") {
       inner = renderBrowseDirectory(p);
     } else {
-      var byParent = indexByParent(p.nodes);
-      var roots = byParent[""] || [];
+      // Cluster-tree (dendrogram): the node data is stashed on the host so the
+      // binder can recompute the layout on expand/collapse with NO shell reload.
       inner =
-        '<p class="v2-extensionCard__intro">Browse leaflets by type. Expand a type to see its subtypes; ' +
-        'use "open" to list every leaflet of that type.</p>' +
-        '<div class="v2-browseGrid">' +
-        roots.map(function (n) { return renderBrowseBox(n, p, byParent); }).join("") + "</div>";
+        '<p class="v2-extensionCard__intro">Browse leaflets by type. ▸/▾ expands a type’s ' +
+        "structure; click a type to view every leaflet under it (and its subtypes).</p>" +
+        '<div class="v2-dendro__host" data-dendro-host data-dendro-nodes="' +
+        escapeHtml(JSON.stringify(asList(p.nodes))) + '">' +
+        renderDendrogram(p.nodes, p, new Set()) + "</div>";
     }
     return '<div class="v2-resourcesApp v2-typeBrowse" data-nav-base="' +
       escapeHtml(JSON.stringify(asObject(p.nav_base_query))) + '" data-dir-type="' +
-      escapeHtml(asText(p.browse_type)) + '"><div class="v2-leafletDir">' + inner + "</div></div>";
+      escapeHtml(asText(p.browse_type)) + '" data-sprite-href="' +
+      escapeHtml(asText(p.sprite_href)) + '" data-icon-prefix="' +
+      escapeHtml(asText(p.icon_url_prefix)) + '" data-profile-detail-route="' +
+      escapeHtml(asText(p.profile_detail_route)) + '" data-profile-save-route="' +
+      escapeHtml(asText(p.profile_save_route)) + '"><div class="v2-leafletDir">' + inner + "</div></div>";
   }
 
   function renderResourcesApp(payload) {
@@ -2302,48 +2425,169 @@
 
   function bindResourcesBrowse(ctx, app) {
     var dirType = app.getAttribute("data-dir-type") || "";
-    Array.prototype.forEach.call(app.querySelectorAll("[data-open-type]"), function (b) {
-      b.addEventListener("click", function (e) {
+    // Navigation (drill-down) is DELEGATED on the container so the dendrogram's
+    // view buttons keep working after a client-side expand/collapse re-render.
+    app.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var ot = el.closest("[data-open-type]");
+      if (ot && app.contains(ot)) {
         e.preventDefault();
-        e.stopPropagation();
-        resourcesNav(ctx, app, {
-          browse_view: "directory",
-          browse_type: b.getAttribute("data-open-type"),
-          browse_instance: null,
-        });
-      });
-    });
-    Array.prototype.forEach.call(app.querySelectorAll("[data-open-instance]"), function (b) {
-      b.addEventListener("click", function () {
-        resourcesNav(ctx, app, {
-          browse_view: "instance",
-          browse_type: dirType,
-          browse_instance: b.getAttribute("data-open-instance"),
-        });
-      });
-    });
-    Array.prototype.forEach.call(app.querySelectorAll("[data-browse-back]"), function (b) {
-      b.addEventListener("click", function () {
-        if (b.getAttribute("data-browse-back") === "hierarchy") {
+        resourcesNav(ctx, app, { browse_view: "directory", browse_type: ot.getAttribute("data-open-type"), browse_instance: null });
+        return;
+      }
+      var oi = el.closest("[data-open-instance]");
+      if (oi && app.contains(oi)) {
+        resourcesNav(ctx, app, { browse_view: "instance", browse_type: dirType, browse_instance: oi.getAttribute("data-open-instance") });
+        return;
+      }
+      var bk = el.closest("[data-browse-back]");
+      if (bk && app.contains(bk)) {
+        if (bk.getAttribute("data-browse-back") === "hierarchy") {
           resourcesNav(ctx, app, { browse_view: "hierarchy", browse_type: null, browse_instance: null });
         } else {
           resourcesNav(ctx, app, { browse_view: "directory", browse_type: dirType, browse_instance: null });
         }
+      }
+    });
+    bindDendrogram(app);
+    bindDirectoryFilter(app);
+    bindBrowseInstanceEdit(ctx, app);
+  }
+
+  // Dendrogram expand/collapse — mutate a client-side `collapsed` Set and re-render
+  // ONLY the dendro host (no shell reload). The host-level listener persists across
+  // re-renders; nav (data-open-type) is handled by the container delegation above.
+  function bindDendrogram(app) {
+    var host = app.querySelector("[data-dendro-host]");
+    if (!host) return;
+    var nodes;
+    try { nodes = asList(JSON.parse(host.getAttribute("data-dendro-nodes") || "[]")); }
+    catch (_) { nodes = []; }
+    var p = {
+      sprite_href: app.getAttribute("data-sprite-href") || "",
+      icon_url_prefix: app.getAttribute("data-icon-prefix") || "",
+    };
+    var collapsed = new Set();
+    function rerender() { host.innerHTML = renderDendrogram(nodes, p, collapsed); }
+    host.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var tog = el.closest("[data-dendro-toggle]");
+      if (tog) {
+        e.preventDefault();
+        var slug = tog.getAttribute("data-dendro-toggle");
+        if (collapsed.has(slug)) collapsed.delete(slug); else collapsed.add(slug);
+        rerender();
+        return;
+      }
+      var all = el.closest("[data-dendro-all]");
+      if (all) {
+        e.preventDefault();
+        collapsed.clear();
+        if (all.getAttribute("data-dendro-all") === "collapse") {
+          nodes.forEach(function (n) {
+            var o = asObject(n);
+            if (o.has_children) collapsed.add(asText(o.full_slug));
+          });
+        }
+        rerender();
+      }
+    });
+  }
+
+  // Directory: unified text-search + subtype-chip filter over the instance list.
+  function bindDirectoryFilter(app) {
+    var items = app.querySelectorAll(".v2-leafletDir__item");
+    if (!items.length) return;
+    var searchEl = app.querySelector(".v2-leafletDir__search");
+    var chips = app.querySelectorAll(".v2-browseFilter");
+    var emptyEl = app.querySelector(".v2-leafletDir__empty");
+    var activeChip = "";
+    function apply() {
+      var q = searchEl ? (searchEl.value || "").trim().toLowerCase() : "";
+      var shown = 0;
+      Array.prototype.forEach.call(items, function (item) {
+        var t = item.getAttribute("data-full-type") || "";
+        var inChip = !activeChip || t === activeChip || t.indexOf(activeChip + "-") === 0;
+        var inSearch = !q || (item.getAttribute("data-search") || "").indexOf(q) !== -1;
+        var show = inChip && inSearch;
+        item.style.display = show ? "" : "none";
+        if (show) shown += 1;
+      });
+      if (emptyEl) emptyEl.hidden = shown !== 0;
+    }
+    Array.prototype.forEach.call(chips, function (chip) {
+      chip.addEventListener("click", function () {
+        activeChip = chip.getAttribute("data-subtype-filter") || "";
+        Array.prototype.forEach.call(chips, function (c) { c.classList.toggle("is-active", c === chip); });
+        apply();
       });
     });
-    // Subtype filter chips: client-side filter of the directory list (no reload).
-    Array.prototype.forEach.call(app.querySelectorAll("[data-subtype-filter]"), function (chip) {
-      chip.addEventListener("click", function () {
-        var sel = chip.getAttribute("data-subtype-filter");
-        Array.prototype.forEach.call(app.querySelectorAll(".v2-browseFilter"), function (c) {
-          c.classList.toggle("is-active", c === chip);
-        });
-        Array.prototype.forEach.call(app.querySelectorAll(".v2-leafletDir__item"), function (item) {
-          var t = item.getAttribute("data-full-type") || "";
-          var show = !sel || t === sel || t.indexOf(sel + "-") === 0;
-          item.style.display = show ? "" : "none";
-        });
-      });
+    if (searchEl) searchEl.addEventListener("input", apply);
+  }
+
+  // Instance view: lazily fetch the library's profile editor frame + bind save
+  // (reuses /__fnd/resources/profile/{detail,save} → save propagates + rebuilds).
+  function bindBrowseInstanceEdit(ctx, app) {
+    var editBtn = app.querySelector("[data-edit-profile]");
+    if (!editBtn) return;
+    var detailRoute = app.getAttribute("data-profile-detail-route");
+    var saveRoute = app.getAttribute("data-profile-save-route");
+    var pane = app.querySelector(".v2-browseEdit__pane");
+    if (!detailRoute || !pane) return;
+    editBtn.addEventListener("click", function () {
+      if (editBtn.getAttribute("data-open") === "1") {
+        pane.innerHTML = "";
+        editBtn.removeAttribute("data-open");
+        editBtn.textContent = "Edit profile";
+        return;
+      }
+      var slug = editBtn.getAttribute("data-edit-profile");
+      pane.innerHTML = '<p class="v2-resourcesDetail__loading">Loading…</p>';
+      fetch(detailRoute + "?slug=" + encodeURIComponent(slug), { credentials: "same-origin" })
+        .then(function (x) { return x.json(); })
+        .then(function (j) {
+          if (!j || !j.ok) { pane.innerHTML = '<p class="v2-resourcesDetail__error">Could not load profile.</p>'; return; }
+          var lib = componentLibrary();
+          var formHtml = lib && j.edit_frame && typeof lib.renderComponentFrame === "function"
+            ? lib.renderComponentFrame(j.edit_frame)
+            : '<p class="v2-resourcesDetail__error">Editor unavailable.</p>';
+          pane.innerHTML = formHtml + '<div class="v2-resourcesDetail__result"></div>';
+          editBtn.setAttribute("data-open", "1");
+          editBtn.textContent = "Close editor";
+          bindBrowseProfileSave(pane, slug, saveRoute);
+        })
+        .catch(function () { pane.innerHTML = '<p class="v2-resourcesDetail__error">Network error.</p>'; });
+    });
+  }
+
+  function bindBrowseProfileSave(pane, slug, saveRoute) {
+    var form = pane.querySelector("form");
+    if (!form || !saveRoute) return;
+    var resultEl = pane.querySelector(".v2-resourcesDetail__result");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var fields = collectFormFieldValues(form);
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) btn.disabled = true;
+      if (resultEl) resultEl.textContent = "Saving & rebuilding…";
+      fetch(saveRoute, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slug: slug, fields: fields }), credentials: "same-origin" })
+        .then(function (x) { return x.json().then(function (j) { return { status: x.status, body: j }; }); })
+        .then(function (out) {
+          if (btn) btn.disabled = false;
+          var ok = out.body && out.body.ok;
+          if (resultEl) {
+            if (ok) {
+              var prop = (out.body && out.body.propagation) || {};
+              var rebuilt = (prop.rebuilt || []).length;
+              resultEl.textContent = "Saved." + (rebuilt ? " Rebuilt " + rebuilt + " site(s)." : "");
+            } else {
+              resultEl.textContent = "Save failed: " + ((out.body && (out.body.detail || out.body.error)) || ("HTTP " + out.status));
+            }
+          }
+        })
+        .catch(function () { if (btn) btn.disabled = false; if (resultEl) resultEl.textContent = "Network error."; });
     });
   }
 
