@@ -219,22 +219,87 @@ def _dedupe(pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
     return out
 
 
+# Rendered text arrives as unicode (em-dash, curly quotes, ellipsis) but the SOURCE stores
+# entities (&mdash;, &rsquo;, &hellip;), so a raw / html.escape match misses them. Map
+# the common typographic chars back to the entities authors use.
+_NAMED_ENTITIES: dict[str, str] = {
+    "\u2014": "&mdash;", "\u2013": "&ndash;", "\u2026": "&hellip;",
+    "\u2019": "&rsquo;", "\u2018": "&lsquo;", "\u201d": "&rdquo;", "\u201c": "&ldquo;",
+    "\u203a": "&rsaquo;", "\u2039": "&lsaquo;", "\u00ab": "&laquo;", "\u00bb": "&raquo;",
+    "\u00a0": "&nbsp;", "\u2022": "&bull;", "\u00a9": "&copy;", "\u00ae": "&reg;",
+    "\u2122": "&trade;",
+}
+
+
+def _entify(s: str) -> str:
+    """Encode rendered text toward the page SOURCE's HTML form: escape ``<>&`` then map
+    the common typographic characters to the NAMED entities authors use (``&mdash;``,
+    ``&rsquo;``, ...), so an edit captured from rendered ``textContent`` matches an
+    entity-encoded source string."""
+    out = _html.escape(s, quote=False)
+    for ch, ent in _NAMED_ENTITIES.items():
+        if ch in out:
+            out = out.replace(ch, ent)
+    return out
+
+
+def _deep_apply_unescaped(obj: Any, old: str, new: str) -> tuple[Any, int]:
+    """Entity-TOLERANT placement (handles any entity the ``_entify`` map misses, incl.
+    numeric): replace a whole string value, OR a ``>...<`` text segment, whose
+    HTML-UNESCAPED form equals ``old`` (storing ``new`` with only ``<>&`` escaped).
+    Returns ``(obj, count)``."""
+    count = 0
+    seg = re.compile(r">([^<>]*)<")
+
+    def walk(o: Any) -> Any:
+        nonlocal count
+        if isinstance(o, str):
+            if _html.unescape(o) == old:
+                count += 1
+                return _html.escape(new, quote=False)
+
+            def repl(mo: re.Match[str]) -> str:
+                nonlocal count
+                if _html.unescape(mo.group(1)) == old:
+                    count += 1
+                    return ">" + _html.escape(new, quote=False) + "<"
+                return mo.group(0)
+
+            return seg.sub(repl, o)
+        if isinstance(o, dict):
+            return {k: walk(v) for k, v in o.items()}
+        if isinstance(o, list):
+            return [walk(v) for v in o]
+        return o
+
+    return walk(obj), count
+
+
 def _apply_text_edit(container: Any, old: str, new: str) -> tuple[Any, bool]:
     """Place a text edit precisely, trying in order: (1) an exact field VALUE
     (typed fields — replace every equal value, so visible + meta stay consistent);
     (2) the element-content form ``>old<`` (targets the rendered element, not
     attributes/title/JSON-LD, and is word-boundary safe); (3) a unique plain
-    substring. Returns (container, applied)."""
+    substring — each tried in raw, ``html.escape``, AND named-entity (``_entify``)
+    forms so a rendered-textContent edit matches an entity-encoded source; finally
+    (4) an entity-TOLERANT (``html.unescape``-normalized) value/segment match for any
+    remaining entity. Returns (container, applied)."""
     esc = lambda s: _html.escape(s, quote=False)  # noqa: E731
-    for m, r in _dedupe([(old, new), (esc(old), esc(new))]):
+    for m, r in _dedupe([(old, new), (esc(old), esc(new)), (_entify(old), _entify(new))]):
         if _deep_count_equal(container, m) > 0:
             return _deep_replace_equal(container, m, r), True
-    for m, r in _dedupe([(f">{old}<", f">{new}<"), (f">{esc(old)}<", f">{esc(new)}<")]):
+    for m, r in _dedupe([
+        (f">{old}<", f">{new}<"), (f">{esc(old)}<", f">{esc(new)}<"),
+        (f">{_entify(old)}<", f">{_entify(new)}<"),
+    ]):
         if _deep_count(container, m) > 0:
             return _deep_replace(container, m, r), True
-    for m, r in _dedupe([(old, new), (esc(old), esc(new))]):
+    for m, r in _dedupe([(old, new), (esc(old), esc(new)), (_entify(old), _entify(new))]):
         if _deep_count(container, m) == 1:
             return _deep_replace(container, m, r), True
+    obj, applied = _deep_apply_unescaped(container, old, new)
+    if applied > 0:
+        return obj, True
     return container, False
 
 

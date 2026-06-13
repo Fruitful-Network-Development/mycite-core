@@ -37,7 +37,9 @@ def _build_tree():
     (man / "scripts" / "render_lib" / "site_builder.py").write_text("def build_site(p): pass\n")
     manifest = {
         "pages": {"index": {"file": "index.html", "title": "Home", "content": {
-            "sections": [{"id": "hero", "html": f"<h1>Welcome</h1><img src=\"{IMG_A}\">"}],
+            "sections": [{"id": "hero",
+                          "html": f"<h1>Welcome</h1><p>Plans &amp; pricing &mdash; clear.</p>"
+                                  f"<img src=\"{IMG_A}\">"}],
             "hero_image": {"src": IMG_A},          # typed-field image (deep-walk must catch it)
         }}},
     }
@@ -105,6 +107,18 @@ class UnifiedEditorTests(unittest.TestCase):
                                   edits=[{"old": "Welcome", "new": "Hello"}])
         self.assertTrue(r["ok"])
         self.assertIn("<h1>Hello</h1>", self.man_manifest.read_text())
+
+    def test_manifest_text_edit_entity_tolerant(self):
+        # The Design tab captures rendered textContent (unicode "—" / "&"), but the
+        # source stores NAMED entities (&mdash; / &amp;). The edit must still place —
+        # this is the "Save failed: HTTP 400" bug (every em-dash/ampersand sentence
+        # failed because matching only tried raw + html.escape, not named entities).
+        r = sce.save_site_content(
+            self.root, MAN_SITE, "index",
+            edits=[{"old": "Plans & pricing — clear.", "new": "Plans & pricing — crystal clear."}],
+        )
+        self.assertTrue(r["ok"], r)
+        self.assertIn("crystal clear", self.man_manifest.read_text())
 
     def test_manifest_foreign_swap_rejected(self):
         r = sce.save_site_content(self.root, MAN_SITE, "index",
