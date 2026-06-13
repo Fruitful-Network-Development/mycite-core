@@ -129,6 +129,13 @@ class ResourceTypesTest(unittest.TestCase):
         self.assertEqual(nodes["artifact-profile"]["label"], "Profile")
         self.assertFalse(nodes["artifact-profile"].get("synthetic"))
 
+    def test_index_rows_carry_humanized_display_name(self) -> None:
+        # The instance list shows the NAME portion, Title-Cased — not the full
+        # filename or the raw snake_case slug.
+        rows = [r for rs in rt.build_type_leaflet_index(self.root).values() for r in rs]
+        by_slug = {r["slug"]: r for r in rows}
+        self.assertEqual(by_slug["bloom_hill_farm"]["display_name"], "Bloom Hill Farm")
+
     def test_set_icon_ref_accepts_unregistered_on_disk_type(self) -> None:
         # The ✎ icon edit on a synthesized node must succeed (validated against the
         # browsable set, not just manifest-registered slugs).

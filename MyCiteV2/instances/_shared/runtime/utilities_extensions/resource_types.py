@@ -32,6 +32,7 @@ from ._shared import _as_text
 from .resources_extension import (
     _asset_descriptor,
     _atomic_write_text,
+    _leaflet_display_name,
     _load_yaml_mapping,
     _profile_entity_flavor,
     _profile_slug,
@@ -277,6 +278,9 @@ def build_type_leaflet_index(
                     "node_slug": node_slug,
                     "subtype_tail": tail,
                     "slug": slug,
+                    # Human display name (the NAME portion, Title-Cased) so the
+                    # instance list shows a clean name, not the snake_case slug.
+                    "display_name": _leaflet_display_name(slug),
                     "owner": owner,
                     "ext": ext,
                     "size_bytes": int(size),
@@ -417,7 +421,8 @@ def structured_leaflet_view(
     return {
         "filename": path.name,
         "full_type": _as_text(full_type),
-        "label": path.name,
+        # Show the clean NAME, not the full filename, in the viewer header.
+        "label": _leaflet_display_name(_asset_descriptor(path.name)[0]),
         "fields": fields,
         "raw_yaml": raw,
     }
