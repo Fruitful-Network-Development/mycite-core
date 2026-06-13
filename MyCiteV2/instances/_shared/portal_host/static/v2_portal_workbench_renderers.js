@@ -1474,7 +1474,11 @@
       var hasChildren = !!node.has_children;
       var isCollapsed = hasChildren && collapsed && collapsed.has(full);
       var kids = !isCollapsed && byParent[full] ? byParent[full] : [];
-      var x = (hasChildren ? depth : maxDepth) * DENDRO.COL_W + DENDRO.PAD_X;
+      // Place every node at its OWN depth (tidy-tree), NOT pushed to the deepest
+      // leaf column. The type tree is very unbalanced (profile is 5 deep while
+      // icon/image/document/audio are depth-1 leaves); equal-depth leaves exiled
+      // those shallow types to the far-right column, off-screen in the card.
+      var x = depth * DENDRO.COL_W + DENDRO.PAD_X;
       var y;
       if (!kids.length) {
         y = slot * DENDRO.ROW_H + DENDRO.PAD_Y;

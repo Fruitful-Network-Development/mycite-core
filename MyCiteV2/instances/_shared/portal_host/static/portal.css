@@ -9817,9 +9817,6 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   border-color: var(--ide-border, #d8dee4);
   background: #eef1f5;
 }
-.v2-dendro__node.is-leaf .v2-dendro__view {
-  max-width: 260px;
-}
 .v2-dendro__label {
   overflow: hidden;
   text-overflow: ellipsis;

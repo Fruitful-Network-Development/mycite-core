@@ -2453,11 +2453,13 @@ def _resources_browse_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     # hierarchy (default + fall-through when browse_type is missing): force
     # browse_view to match the data shape so the JS renders the right branch.
     base["browse_view"] = "hierarchy"
-    counts = rt.type_leaflet_counts(webapps_root, include_pii=include_pii)
-    base["nodes"] = [{**n, "count": counts.get(n["full_slug"], 0)} for n in nodes_by_slug.values()]
-    # The unified tab absorbs the old Manifest registry: surface the rolled-up
-    # "Other (unregistered types)" count so nothing the registry showed is lost.
-    base["other_count"] = counts.get("", 0)
+    # Show EVERY on-disk leaflet type, not just the manifest-registered ones, so
+    # icons/images/documents/audio/… and any unregistered subtype are visible and
+    # browsable (the old code listed only registered nodes → those types vanished
+    # into a parent's rollup). complete_type_nodes synthesizes the missing nodes.
+    base["nodes"] = rt.complete_type_nodes(webapps_root, include_pii=include_pii)
+    # Every on-disk type is now its own node, so nothing is left in "Other".
+    base["other_count"] = 0
     return base
 
 
