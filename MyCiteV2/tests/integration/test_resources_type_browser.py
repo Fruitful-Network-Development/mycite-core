@@ -271,6 +271,28 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         self.assertEqual(p["profile_detail_route"], "/__fnd/resources/profile/detail")
         self.assertEqual(p["profile_save_route"], "/__fnd/resources/profile/save")
 
+    def test_directory_profile_thumbnails_resolved(self) -> None:
+        # A profile whose slug + a role token appear in an image filename gets a
+        # thumbnail in the directory list; a profile with no matching image keeps
+        # image_url == "" (the renderer shows the neutral dot placeholder). The
+        # image is seeded here (not in _seed) so the shared count fixtures are
+        # untouched.
+        img = self.root / "clients" / "_shared" / "site-core" / "image"
+        img.mkdir(parents=True, exist_ok=True)
+        thumb = "0000-00-00.artifact-image.bloom_hill_farm.profile_headshot.avif"
+        (img / thumb).write_text("x", encoding="utf-8")
+        d = self._browse(browse_view="directory", browse_type="artifact-profile")
+        rows = {r["slug"]: r for r in d["leaflets"]}
+        self.assertEqual(rows["bloom_hill_farm"]["image_url"], "/assets/images/" + thumb)
+        self.assertEqual(rows["nathan_seals"]["image_url"], "")
+
+    def test_hierarchy_unaffected_by_thumbnail_resolution(self) -> None:
+        # Thumbnails are a DIRECTORY-only concern — the hierarchy (dendrogram) payload
+        # must not carry per-leaflet image_url (it renders type nodes, not instances).
+        p = self._browse(browse_view="hierarchy")
+        self.assertNotIn("leaflets", p)
+        self.assertIn("nodes", p)
+
 
 if __name__ == "__main__":
     unittest.main()
