@@ -113,20 +113,22 @@ class TestContractsPure(unittest.TestCase):
 
 @unittest.skipUnless(_LIVE_DB.exists(), "live MOS not present")
 class TestContractsLive(unittest.TestCase):
-    def test_empty_contracts_with_drawdown_baseline(self) -> None:
+    def test_contracts_drawdown_invariants(self) -> None:
+        # Robust to however many contracts the live doc holds (the contract builder may
+        # have committed some): assert the draw-down ARITHMETIC invariants rather than a
+        # pristine-empty baseline.
         payload = ContractsTool().build_panel_payload(
             authority_db_file=_LIVE_DB, sandbox_id="agro_erp", document_id="", datum_address=""
         )
         self.assertIsNone(payload.get("error"))
         self.assertEqual(payload["schema"], "mycite.v2.portal.workbench.tool.contracts.v1")
-        # contracts doc is header-only -> 0 contracts, but the draw-down baseline lists
-        # the invoice purchased weights available for commitment.
-        self.assertEqual(payload["contract_count"], 0)
+        self.assertEqual(payload["contract_count"], len(payload["contracts"]))
+        self.assertGreaterEqual(payload["contract_count"], 0)
         self.assertGreater(len(payload["draw_down"]), 0)
         for d in payload["draw_down"]:
-            self.assertEqual(d["committed"], 0.0)
-            self.assertEqual(d["remaining"], d["purchased_weight"])
-            self.assertFalse(d["over_committed"])
+            self.assertGreaterEqual(d["committed"], 0.0)
+            self.assertAlmostEqual(d["remaining"], d["purchased_weight"] - d["committed"], places=6)
+            self.assertEqual(d["over_committed"], d["committed"] > d["purchased_weight"])
 
 
 if __name__ == "__main__":

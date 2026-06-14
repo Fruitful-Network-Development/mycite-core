@@ -39,17 +39,23 @@ def _doc(name: str, rows, *, archetype: str = "", source_kind: str = "sandbox_so
     )
 
 
+# A valid title-blob placeholder so each row is recognized as a definition head by the
+# shape-based NameIndex (the display label still comes from the row tail). Live docs
+# carry a real 512-bit ASCII title here.
+_BLOB = "0" * 512
+
+
 def _lcl():
     return _doc("lcl", [
-        ("4-2-1", [["4-2-1", "rf.3-1-1", "1-3-2-1-3", "rf.3-1-2", ""], ["brassicas"]]),
-        ("4-2-2", [["4-2-2", "rf.3-1-1", "1-3-2-2-1", "rf.3-1-2", ""], ["seed"]]),
-        ("4-2-3", [["4-2-3", "rf.3-1-5", "1-3-1-160", "rf.3-1-2", ""], ["brassica_oleracea-sidekick"]]),
+        ("4-2-1", [["4-2-1", "rf.3-1-1", "1-3-2-1-3", "rf.3-1-2", _BLOB], ["brassicas"]]),
+        ("4-2-2", [["4-2-2", "rf.3-1-1", "1-3-2-2-1", "rf.3-1-2", _BLOB], ["seed"]]),
+        ("4-2-3", [["4-2-3", "rf.3-1-5", "1-3-1-160", "rf.3-1-2", _BLOB], ["brassica_oleracea-sidekick"]]),
     ], archetype="agro_erp_taxonomy_row")
 
 
 def _txa():
     return _doc("txa", [
-        ("4-2-1", [["4-2-1", "rf.3-1-1", "1-1-3-3-5-8-21-4-4-4", "rf.3-1-2", ""], ["brassica_oleracea"]]),
+        ("4-2-1", [["4-2-1", "rf.3-1-1", "1-1-3-3-5-8-21-4-4-4", "rf.3-1-2", _BLOB], ["brassica_oleracea"]]),
     ])
 
 

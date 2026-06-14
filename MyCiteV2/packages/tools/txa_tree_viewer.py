@@ -15,17 +15,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_ops.datum_resolve import cached_index
 from MyCiteV2.packages.core.datum_ops.node_addrs import direct_children
 from MyCiteV2.packages.core.datum_ops.refs import defined_node_addrs
 from MyCiteV2.packages.core.structures.samras.codec import decode_canonical_bitstream
-from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
-from MyCiteV2.packages.tools.product_document_view import LclNameIndex
 
-from ._archetype import find_named_document, resolve_tool_document
+from ._archetype import find_named_document, read_sandbox_catalog, resolve_tool_document
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from ._shared.utilities import row_head as _row_head
@@ -74,7 +72,7 @@ def build_magnitude_tree(
 
     denoted: set[str] = set(structure.addresses)
     defined: set[str] = defined_node_addrs(defining_doc) if defining_doc is not None else set()
-    labels = LclNameIndex(defining_doc) if defining_doc is not None else None
+    labels = cached_index(defining_doc) if defining_doc is not None else None
 
     def _node(addr: str) -> dict[str, Any]:
         return {
@@ -116,17 +114,9 @@ class TxaTreeViewer:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        if authority_db_file is None:
-            return _error("authority database not configured")
-        try:
-            store = SqliteSystemDatumStoreAdapter(authority_db_file)
-            catalog = store.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id=_TENANT_DEFAULT)
-            )
-        except Exception as exc:
-            return _error(f"datum store unavailable: {exc}")
-
-        docs = list(getattr(catalog, "documents", ()) or ())
+        docs, err = read_sandbox_catalog(authority_db_file, tenant_id=_TENANT_DEFAULT)
+        if err:
+            return _error(err)
         sandbox = sandbox_id or "agro_erp"
         anchor = find_named_document(docs, sandbox=sandbox, name="anchor")
         if anchor is None:

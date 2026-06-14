@@ -8,12 +8,16 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from MyCiteV2.packages.core.datum_ops.datum_resolve import (
+    decode_label as _decode_title_bits,
+)
+from MyCiteV2.packages.core.datum_ops.datum_resolve import (
+    resolve_coordinate as _ring_coords,
+)
 from MyCiteV2.packages.tools import get as tools_get
 from MyCiteV2.packages.tools.farm_profile_viewer import (
     FarmProfileViewer,
-    _decode_title_bits,
     _feature,
-    _ring_coords,
 )
 
 _LIVE_DB = Path("/srv/webapps/mycite/fnd/private/mos_authority.sqlite3")

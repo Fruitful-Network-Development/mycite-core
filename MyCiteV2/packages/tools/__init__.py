@@ -16,8 +16,13 @@ from __future__ import annotations
 # Self-registering tool modules (import for side effect). Order is irrelevant
 # — ``_registry.all_tools()`` sorts by ``tool_id`` on read.
 from . import (
+    agro_record_doc_viewers,  # noqa: F401
+    contacts_viewer,  # noqa: F401
     contracts_tool,  # noqa: F401
     farm_profile_viewer,  # noqa: F401
+    invoices_viewer,  # noqa: F401
+    lcl_structure_viewer,  # noqa: F401
+    plots_viewer,  # noqa: F401
     product_document_view,  # noqa: F401
     txa_tree_viewer,  # noqa: F401
 )

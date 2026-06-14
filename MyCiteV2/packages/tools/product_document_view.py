@@ -20,22 +20,24 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_ops.datum_resolve import NameIndex, cached_index
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
-    AuthoritativeDatumDocumentRequest,
 )
-from MyCiteV2.packages.state_machine.lens.base import BinaryTextLens
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
 
+from ._archetype import read_sandbox_catalog
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
 
+# Back-compat alias: the cross-tool resolver now lives in datum_ops.datum_resolve
+# (shape-based scan + shared cache). txa_tree / contracts import this name from here.
+LclNameIndex = NameIndex
+
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.product_document.v1"
-_BINARY_TEXT = BinaryTextLens()
 
 # Field labels for the 9 value-group pairs, in head order. Mirrors the
 # product_profile.yaml value_group_reference_design (kept in sync there).
@@ -66,64 +68,6 @@ def _rows(document: AuthoritativeDatumDocument) -> list[Any]:
     return out
 
 
-class LclNameIndex:
-    """node_address → display name, built from a document's ``4-2-*`` rows.
-
-    Each ``4-2-*`` row is ``[[addr, ref, <node_addr>, ref, <512-bit title>], [label]]``.
-    The index keys on the node address (``head[2]``) and prefers the plain tail
-    label, falling back to the binary-decoded title. Resolves product_id leaves
-    (e.g. ``1-3-1-2`` → ``abelmoschus_esculentus-clemson_spineless``) and
-    classification/taxonomy nodes alike.
-    """
-
-    def __init__(self, document: AuthoritativeDatumDocument | None):
-        self._by_node: dict[str, str] = {}
-        if document is None:
-            return
-        for row in _rows(document):
-            if not _as_text(row.datum_address).startswith("4-2-"):
-                continue
-            raw = row.raw
-            if not (isinstance(raw, list) and raw and isinstance(raw[0], list)):
-                continue
-            head = raw[0]
-            if len(head) < 3:
-                continue
-            node_addr = _as_text(head[2])
-            if not node_addr:
-                continue
-            label = ""
-            if len(raw) > 1 and isinstance(raw[1], list) and raw[1]:
-                label = _as_text(raw[1][0])
-            if not label and len(head) >= 5:
-                label = _BINARY_TEXT.decode(head[4])
-            self._by_node.setdefault(node_addr, label)
-
-    def resolve(self, node_addr: str) -> str:
-        return self._by_node.get(_as_text(node_addr), "")
-
-    def __len__(self) -> int:
-        return len(self._by_node)
-
-
-# Memoize indexes per document_id so repeated renders don't rebuild the 1.6k-entry
-# decode. Keyed by document_id (which is content-hash derived, so it changes when
-# the document changes — no stale-index risk).
-_INDEX_CACHE: dict[str, LclNameIndex] = {}
-
-
-def _cached_index(document: AuthoritativeDatumDocument | None) -> LclNameIndex:
-    if document is None:
-        return LclNameIndex(None)
-    key = _as_text(getattr(document, "document_id", ""))
-    cached = _INDEX_CACHE.get(key)
-    if cached is None:
-        cached = LclNameIndex(document)
-        if key:
-            _INDEX_CACHE[key] = cached
-    return cached
-
-
 class ProductDocumentViewer:
     """Resolve an agro_erp ``product_profiles`` doc into a labelled product table."""
 
@@ -146,17 +90,9 @@ class ProductDocumentViewer:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        if authority_db_file is None:
-            return _error("authority database not configured")
-        try:
-            store = SqliteSystemDatumStoreAdapter(authority_db_file)
-            catalog = store.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id=_TENANT_DEFAULT)
-            )
-        except Exception as exc:  # pragma: no cover — defensive
-            return _error(f"datum store unavailable: {exc}")
-
-        docs = list(getattr(catalog, "documents", ()) or ())
+        docs, err = read_sandbox_catalog(authority_db_file, tenant_id=_TENANT_DEFAULT)
+        if err:
+            return _error(err)
         product_doc = next((d for d in docs if _as_text(getattr(d, "document_id", "")) == _as_text(document_id)), None)
         if product_doc is None:
             # fall back to the named product_profiles doc in the sandbox
@@ -165,8 +101,8 @@ class ProductDocumentViewer:
             return _error("product_profiles document not found")
 
         sandbox = sandbox_id or _sandbox_of(product_doc) or "agro_erp"
-        lcl_index = _cached_index(_find_named(docs, sandbox, "lcl"))
-        txa_index = _cached_index(_find_named(docs, sandbox, "txa"))
+        lcl_index = cached_index(_find_named(docs, sandbox, "lcl"))
+        txa_index = cached_index(_find_named(docs, sandbox, "txa"))
 
         products = build_product_rows(product_doc, lcl_index=lcl_index, txa_index=txa_index)
 

@@ -94,6 +94,29 @@ def tool_matches_document(tool: Any, doc: Any) -> bool:
     return bool(source_kind and source_kind in tool_source_kinds)
 
 
+def read_sandbox_catalog(authority_db_file: Any, *, tenant_id: str = "fnd") -> tuple[list[Any], str]:
+    """Open the authority store and return ``(documents, error)``.
+
+    Single-sources the db-guard → adapter → ``read_authoritative_datum_documents``
+    preamble that was copy-pasted across every WorkbenchTool. ``error`` is ``""`` on
+    success; a non-empty string (the message) on failure, with an empty ``documents``
+    list. Lazy imports keep this leaf module free of an adapter import cycle.
+    """
+    if authority_db_file is None:
+        return [], "authority database not configured"
+    try:
+        from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+        from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
+
+        store = SqliteSystemDatumStoreAdapter(authority_db_file)
+        catalog = store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id=tenant_id)
+        )
+    except Exception as exc:  # pragma: no cover — defensive
+        return [], f"datum store unavailable: {exc}"
+    return list(getattr(catalog, "documents", ()) or ()), ""
+
+
 def find_named_document(docs: Any, *, sandbox: str, name: str) -> Any | None:
     """First doc in ``sandbox`` whose canonical_name == ``name`` (sandbox '' = any)."""
     for doc in docs:
@@ -131,12 +154,32 @@ def resolve_tool_document(
         if document_id
         else None
     )
-    if selected is not None and _matches(selected):
-        return selected
+    if selected is not None:
+        # When a canonical_name is given it is AUTHORITATIVE: honor the selection only
+        # if the selected doc IS that named doc; otherwise ignore it and fall through to
+        # name-first resolution. (Without this, a selected doc that merely shares the
+        # tool's archetype — e.g. lcl selected while opening the txa-named tool, both
+        # `samras_taxonomy` — would wrongly win over the named doc.)
+        if canonical_name:
+            if _as_text(getattr(selected, "canonical_name", "")) == canonical_name:
+                return selected
+        elif _matches(selected):
+            return selected
+    # Prefer an exact canonical_name match in the sandbox BEFORE archetype matching.
+    # Several agro_erp docs share an archetype (txa AND lcl are both `samras_taxonomy`),
+    # so archetype-first would return whichever iterates first and mis-resolve a named
+    # tool (e.g. lcl_structure getting txa). When a canonical_name is given it is
+    # authoritative; archetype is only the fallback for unnamed/by-shape tools.
+    if canonical_name:
+        for doc in docs:
+            if sandbox and document_sandbox(doc) != sandbox:
+                continue
+            if _as_text(getattr(doc, "canonical_name", "")) == canonical_name:
+                return doc
     for doc in docs:
         if sandbox and document_sandbox(doc) != sandbox:
             continue
-        if _matches(doc):
+        if tool_matches_document(tool, doc):
             return doc
     return None
 
@@ -145,6 +188,7 @@ __all__ = [
     "document_archetypes",
     "document_sandbox",
     "find_named_document",
+    "read_sandbox_catalog",
     "resolve_tool_document",
     "tool_matches_document",
 ]

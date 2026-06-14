@@ -16,17 +16,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.core.structures.hops import decode_hops_coordinate_token
-from MyCiteV2.packages.ports.datum_store import (
-    AuthoritativeDatumDocumentRequest,
-)
-from MyCiteV2.packages.state_machine.lens.base import BinaryTextLens
+from MyCiteV2.packages.core.datum_ops.datum_resolve import decode_label, resolve_coordinate
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
 
-from ._archetype import resolve_tool_document
+from ._archetype import read_sandbox_catalog, resolve_tool_document
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from ._shared.utilities import row_head as _row_head
@@ -34,14 +29,12 @@ from ._shared.utilities import row_tail_label as _row_tail_label
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.farm_profile.v1"
-_HOPS_MARKER = "rf.3-1-3"
 _LCL_MARKER = "rf.3-1-5"
 _TITLE_MARKER = "rf.3-1-2"
 # Edge length (metres) for the LIVE preview packing when plots are not yet migrated.
 # The migration (TASK-006) persists plots at the operator-chosen --plot-edge-m; this
 # preview uses a coarser default so the unmigrated view is legible.
 PREVIEW_PLOT_EDGE_M = 60.0
-_BINARY_TEXT = BinaryTextLens()
 
 
 def _error(message: str) -> dict[str, Any]:
@@ -52,25 +45,6 @@ def _error(message: str) -> dict[str, Any]:
         "feature_count": 0,
         "fields": [],
     }
-
-
-def _decode_title_bits(bits: str) -> str:
-    try:
-        text = "".join(chr(int(bits[i : i + 8], 2)) for i in range(0, len(bits), 8))
-        return text.rstrip("\x00")
-    except Exception:
-        return ""
-
-
-def _ring_coords(head: list[Any]) -> list[tuple[float, float]]:
-    """Decode a family-4 ring row head (rf.3-1-3 HOPS tokens) → lon/lat coords."""
-    coords: list[tuple[float, float]] = []
-    for i in range(len(head) - 1):
-        if _as_text(head[i]) == _HOPS_MARKER:
-            decoded = decode_hops_coordinate_token(_as_text(head[i + 1]))
-            if decoded:
-                coords.append((decoded["longitude"]["value"], decoded["latitude"]["value"]))
-    return coords
 
 
 def _feature(coords: list[tuple[float, float]], *, kind: str, label: str, fid: str) -> dict[str, Any] | None:
@@ -105,17 +79,9 @@ class FarmProfileViewer:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        if authority_db_file is None:
-            return _error("authority database not configured")
-        try:
-            store = SqliteSystemDatumStoreAdapter(authority_db_file)
-            catalog = store.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id=_TENANT_DEFAULT)
-            )
-        except Exception as exc:
-            return _error(f"datum store unavailable: {exc}")
-
-        docs = list(getattr(catalog, "documents", ()) or ())
+        docs, err = read_sandbox_catalog(authority_db_file, tenant_id=_TENANT_DEFAULT)
+        if err:
+            return _error(err)
         # Resolve the farm_profile by archetype — NOT by trusting the selected
         # document_id. The workbench auto-selects the first sandbox doc (the
         # geometry-less anchor); resolving by document_id alone rendered that wrong
@@ -145,7 +111,7 @@ class FarmProfileViewer:
             if not label:
                 for i in range(len(head) - 1):
                     if _as_text(head[i]) == _TITLE_MARKER:
-                        label = _decode_title_bits(_as_text(head[i + 1]))
+                        label = decode_label(_as_text(head[i + 1]))
                         break
             geom_addr = next(
                 (_as_text(t) for t in head[2:] if _as_text(t).startswith(("5-", "6-"))),
@@ -166,7 +132,7 @@ class FarmProfileViewer:
             ring_row = rows.get(ring_addr)
             if ring_row is None:
                 continue
-            coords = _ring_coords(_row_head(ring_row))
+            coords = resolve_coordinate(_row_head(ring_row))
             kind, label = feature_meta.get(addr, ("field", _row_tail_label(row) or addr))
             if kind == "plot":
                 plot_count += 1

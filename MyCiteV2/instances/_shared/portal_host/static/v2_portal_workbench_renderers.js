@@ -5052,6 +5052,81 @@
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
   window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
   window.__MYCITE_V2_TOOL_RENDERERS["txa_tree"] = renderTxaTree;
+  // lcl_structure shares txa_tree's payload shape (tree/denoted/defined/empty), so it
+  // reuses the same renderer; the header reads "lcl magnitude" from payload.magnitude.
+  window.__MYCITE_V2_TOOL_RENDERERS["lcl_structure"] = renderTxaTree;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
+
+  // ---- Declarative container renderers (consolidation spine) --------------- //
+  // A tool whose panel_payload declares {container: "<kind>", ...} is painted by
+  // one shared renderer instead of a bespoke per-tool_id function. v2_portal_shell
+  // _core falls back to these when no tool_id-keyed renderer exists. New datum-doc
+  // viewers (invoices/contacts/plots/…) ride these — no new JS per tool.
+
+  function renderRecordTable(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var cols = Array.isArray(payload.columns) ? payload.columns : [];
+    var rows = Array.isArray(payload.rows) ? payload.rows : [];
+    var rck = payload.row_class_key;
+    var head = "<tr>" + cols.map(function (c) { return "<th>" + esc(c) + "</th>"; }).join("") + "</tr>";
+    var body = rows.map(function (r) {
+      r = r || {};
+      var cls = rck && r[rck] ? ' class="is-flagged"' : "";
+      return "<tr" + cls + ">" + cols.map(function (c) {
+        return "<td>" + esc(r[c] != null ? r[c] : "") + "</td>";
+      }).join("") + "</tr>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-recordTable">' +
+      '<header class="v2-recordTable__header">' + esc(payload.title || "") +
+      (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
+      (rows.length
+        ? '<div class="v2-recordTable__wrap"><table class="v2-recordTable__table"><thead>' +
+          head + "</thead><tbody>" + body + "</tbody></table></div>"
+        : '<p class="v2-recordTable__empty">' + esc(payload.empty_text || "No records.") + "</p>") +
+      "</section>";
+  }
+
+  function renderRecordList(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var items = Array.isArray(payload.items) ? payload.items : [];
+    function card(it) {
+      it = it || {};
+      var fields = (Array.isArray(it.fields) ? it.fields : []).map(function (f) {
+        f = f || {};
+        return '<div class="v2-recordList__field"><label>' + esc(f.label || "") +
+          "</label><div>" + esc(f.value != null && f.value !== "" ? f.value : "—") + "</div></div>";
+      }).join("");
+      var hay = ((it.title || "") + " " + (it.subtitle || "")).toLowerCase();
+      return '<article class="v2-recordList__item" data-search="' + esc(hay) + '"><h4>' +
+        esc(it.title || "") + "</h4>" +
+        (it.subtitle ? '<p class="v2-recordList__subtitle">' + esc(it.subtitle) + "</p>" : "") +
+        '<div class="v2-recordList__fields">' + fields + "</div></article>";
+    }
+    content.innerHTML =
+      '<section class="v2-recordList">' +
+      '<header class="v2-recordList__header">' + esc(payload.title || "") +
+      (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
+      '<input type="search" class="v2-recordList__search" placeholder="' +
+      esc(payload.search_placeholder || "Search…") + '" aria-label="Search records" />' +
+      '<div class="v2-recordList__items">' +
+      (items.length ? items.map(card).join("")
+                    : '<p class="v2-recordList__empty">' + esc(payload.empty_text || "No records.") + "</p>") +
+      "</div></section>";
+    var inp = content.querySelector(".v2-recordList__search");
+    var cards = content.querySelectorAll(".v2-recordList__item");
+    if (inp) inp.addEventListener("input", function () {
+      var q = (inp.value || "").trim().toLowerCase();
+      Array.prototype.forEach.call(cards, function (c) {
+        c.style.display = (!q || (c.getAttribute("data-search") || "").indexOf(q) !== -1) ? "" : "none";
+      });
+    });
+  }
+
+  window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+  window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
 })();

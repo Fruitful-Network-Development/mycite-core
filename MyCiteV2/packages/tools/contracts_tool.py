@@ -15,19 +15,16 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_ops.datum_resolve import NameIndex, cached_index, decode_label
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
-    AuthoritativeDatumDocumentRequest,
     AuthoritativeDatumDocumentRow,
 )
-from MyCiteV2.packages.state_machine.lens.base import BinaryTextLens
 from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
     WORKBENCH_UI_TOOL_ROUTE,
 )
-from MyCiteV2.packages.tools.product_document_view import LclNameIndex
 
-from ._archetype import find_named_document, resolve_tool_document
+from ._archetype import find_named_document, read_sandbox_catalog, resolve_tool_document
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
 
@@ -39,7 +36,6 @@ _RF_NOMINAL = "rf.3-1-7"
 _RF_TITLE = "rf.3-1-2"
 _NOMINAL_BITS = 136
 _TITLE_BITS = 512
-_BINARY_TEXT = BinaryTextLens()
 
 
 def _error(message: str) -> dict[str, Any]:
@@ -123,7 +119,7 @@ def _draw_down(inv_weights: dict[str, dict[str, Any]], committed: dict[str, floa
     return rows
 
 
-def _invoice_weights(invoices: AuthoritativeDatumDocument | None, lcl: LclNameIndex) -> dict[str, dict[str, Any]]:
+def _invoice_weights(invoices: AuthoritativeDatumDocument | None, lcl: NameIndex) -> dict[str, dict[str, Any]]:
     """invoice lcl-node -> {label, weight} from the invoices 4-6-* rows.
 
     Marker-driven (order-independent): the invoice node is the FIRST rf.3-1-5 value
@@ -140,7 +136,7 @@ def _invoice_weights(invoices: AuthoritativeDatumDocument | None, lcl: LclNameIn
         markers = [(_as_text(head[i]), head[i + 1]) for i in range(1, len(head) - 1, 2)]
         invoice_node = next((_as_text(v) for m, v in markers if m == _RF_LCL_ID), "")
         nominals = [v for m, v in markers if m == _RF_NOMINAL]
-        weight = _BINARY_TEXT.decode(nominals[0]) if nominals else ""
+        weight = decode_label(nominals[0]) if nominals else ""
         if invoice_node:
             out[invoice_node] = {"label": lcl.resolve(invoice_node) or invoice_node, "weight": _parse_weight(weight), "weight_text": weight}
     return out
@@ -164,16 +160,9 @@ class ContractsTool:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        if authority_db_file is None:
-            return _error("authority database not configured")
-        try:
-            store = SqliteSystemDatumStoreAdapter(authority_db_file)
-            catalog = store.read_authoritative_datum_documents(
-                AuthoritativeDatumDocumentRequest(tenant_id=_TENANT_DEFAULT)
-            )
-        except Exception as exc:
-            return _error(f"datum store unavailable: {exc}")
-        docs = list(getattr(catalog, "documents", ()) or ())
+        docs, err = read_sandbox_catalog(authority_db_file, tenant_id=_TENANT_DEFAULT)
+        if err:
+            return _error(err)
         sandbox = sandbox_id or "agro_erp"
         # Resolve the contracts doc by archetype, not by trusting the selected
         # document_id — the workbench auto-selects the first sandbox doc, which would
@@ -184,7 +173,7 @@ class ContractsTool:
         if doc is None:
             return _error("contracts document not found")
 
-        lcl = LclNameIndex(find_named_document(docs, sandbox=sandbox, name="lcl"))
+        lcl = cached_index(find_named_document(docs, sandbox=sandbox, name="lcl"))
         invoices = find_named_document(docs, sandbox=sandbox, name="invoices")
         inv_weights = _invoice_weights(invoices, lcl)
 
@@ -205,7 +194,7 @@ class ContractsTool:
                 elif marker == _RF_LCL_ID:
                     plot_node = _as_text(value)
                 elif marker == _RF_NOMINAL:
-                    nominals.append(_BINARY_TEXT.decode(value))
+                    nominals.append(decode_label(value))
             amount, cost = [*nominals, "", ""][:2]
             committed[invoice_node] = committed.get(invoice_node, 0.0) + _parse_weight(amount)
             contracts.append({

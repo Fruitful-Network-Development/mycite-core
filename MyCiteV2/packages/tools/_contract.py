@@ -49,3 +49,89 @@ class WorkbenchTool(Protocol):
     ) -> dict[str, Any]:
         """Return the panel_payload dict the JS renderer will consume."""
         ...
+
+
+class DatumDocTool:
+    """Template-method base for sandbox datum-document viewers (consolidation spine).
+
+    Owns the ``build_panel_payload`` preamble that was copy-pasted across every agro_erp
+    tool — db guard → store → read catalog → resolve the target doc by archetype/name →
+    standard error/success envelope. A subclass supplies ONLY the projection
+    (:meth:`shape_payload`) and its empty/error keys (:meth:`empty_body`).
+
+    Keeps every :class:`WorkbenchTool` Protocol member (``route`` / ``summary`` /
+    ``applies_to_*``) because :func:`_registry.register` ``isinstance``-checks the
+    runtime-checkable Protocol and the palette reads those via ``getattr``.
+    """
+
+    # --- identity (subclass overrides) ---
+    tool_id: str = ""
+    label: str = ""
+    summary: str = ""
+    schema: str = ""
+    # The canonical doc name the tool renders (resolved by name, then archetype).
+    canonical_name: str | None = None
+    # The JS container kind the renderer switches on (declarative dispatch).
+    container: str = ""
+    # --- Protocol members with spine defaults ---
+    tenant_id: str = "fnd"
+    default_sandbox: str = "agro_erp"
+    applies_to_archetype: tuple[str, ...] = ()
+    applies_to_source_kind: tuple[str, ...] = ()
+
+    @property
+    def route(self) -> str:  # Protocol member; the unified workbench route.
+        from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
+            WORKBENCH_UI_TOOL_ROUTE,
+        )
+
+        return WORKBENCH_UI_TOOL_ROUTE
+
+    # --- subclass hooks ---
+    def empty_body(self) -> dict[str, Any]:
+        """The tool-specific keys an error/empty payload must still carry."""
+        return {}
+
+    def shape_payload(
+        self, *, doc: Any, docs: list[Any], sandbox: str, datum_address: str
+    ) -> dict[str, Any]:
+        """Project the resolved ``doc`` (+ sibling ``docs``) into the panel body."""
+        raise NotImplementedError
+
+    # --- template method ---
+    def _error(self, message: str) -> dict[str, Any]:
+        return {"schema": self.schema, "error": message, **self.empty_body()}
+
+    def build_panel_payload(
+        self,
+        *,
+        authority_db_file: Path | None,
+        sandbox_id: str,
+        document_id: str,
+        datum_address: str,
+    ) -> dict[str, Any]:
+        from ._archetype import read_sandbox_catalog, resolve_tool_document
+        from ._shared.utilities import as_text
+
+        docs, err = read_sandbox_catalog(authority_db_file, tenant_id=self.tenant_id)
+        if err:
+            return self._error(err)
+        sandbox = sandbox_id or self.default_sandbox
+        doc = resolve_tool_document(
+            docs, tool=self, sandbox=sandbox, document_id=document_id, canonical_name=self.canonical_name
+        )
+        if doc is None:
+            return self._error(f"{self.canonical_name or 'target'} document not found")
+        try:
+            body = self.shape_payload(doc=doc, docs=docs, sandbox=sandbox, datum_address=datum_address)
+        except Exception as exc:  # pragma: no cover — defensive
+            return self._error(f"render failed: {exc}")
+        if "error" in body:
+            return {"schema": self.schema, **body}
+        return {
+            "schema": self.schema,
+            "sandbox_id": sandbox,
+            "document_id": as_text(getattr(doc, "document_id", "")),
+            "selected_row_address": as_text(datum_address),
+            **body,
+        }

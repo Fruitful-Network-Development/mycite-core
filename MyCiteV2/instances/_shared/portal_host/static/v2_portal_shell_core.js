@@ -451,7 +451,13 @@
       var box = boxes[i];
       var body = box && box.querySelector("[data-viz-box-content]");
       if (!body) return;
+      // tool_id-keyed renderer wins; otherwise fall back to a declarative container
+      // renderer chosen by panel_payload.container (the consolidation-spine path).
       var fn = renderers[p.tool_id];
+      if (typeof fn !== "function") {
+        var containers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+        fn = containers[((p.panel_payload || {}).container) || ""];
+      }
       if (typeof fn === "function") {
         try {
           fn(p.panel_payload || {}, body);
