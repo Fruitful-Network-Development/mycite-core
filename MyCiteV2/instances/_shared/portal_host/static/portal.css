@@ -10586,6 +10586,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: rgba(127,127,127,0.18); color: #9aa;
 }
 .v2-resourcesThumb--lg { width: 64px; height: 64px; flex-basis: 64px; }
+.v2-resourcesThumb--xl { width: 120px; height: 120px; flex-basis: 120px; border-radius: 8px; object-fit: contain; }
 .v2-resourcesThumb svg { width: 60%; height: 60%; }
 .v2-resourcesRow__text { display: flex; flex-direction: column; min-width: 0; }
 .v2-resourcesRow__name { font-weight: 600; font-size: 13px; }
@@ -10595,6 +10596,22 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 .v2-resourcesDetail__head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .v2-resourcesDetail__head h4 { flex: 1; margin: 0; }
+/* Layered profile detail — header band: base fields (left) beside an enlarged logo. */
+.v2-resourcesDetail__head--band { align-items: flex-start; gap: 16px; }
+.v2-resourcesDetail__headText { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.v2-resourcesDetail__headText h4 { margin: 0; }
+.v2-resourcesDetail__head--band .v2-resourcesThumb--xl { flex: 0 0 auto; }
+.v2-resourcesDetail__meta--inline { margin-top: 0; }
+/* Typed section block (mirrors .v2-scopeBlock): the "section break" between
+   base / legal-entity / agricultural / additional field groups. */
+.v2-typedBlock {
+  border: 1px solid rgba(127,127,127,0.28); border-radius: 8px;
+  padding: 10px 12px; margin-top: 12px;
+}
+.v2-typedBlock__head {
+  margin: 0 0 6px; font-size: 12px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; opacity: 0.85;
+}
 .v2-resourcesField { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
 .v2-resourcesField input, .v2-resourcesField textarea, .v2-resourcesField select,
 .v2-resourcesUploadForm input, .v2-resourcesUploadForm select,

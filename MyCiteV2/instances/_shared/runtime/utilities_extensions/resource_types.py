@@ -265,6 +265,14 @@ def build_type_leaflet_index(
                 slug, owner, ext = _profile_slug(p.name), _profile_entity_flavor(p.name), "yaml"
             else:
                 slug, owner, ext = _asset_descriptor(p.name)
+                # Kinded leaflets (e.g. ``…<name>.logo.avif``) carry the KIND as the
+                # trailing dot-token, so _asset_descriptor returns the kind ("logo")
+                # as the slug and the entity name as ``owner``. Swap them so the
+                # instance shows its entity name, not "Logo". (image/icon/custom put
+                # the name last, so slug != kind and they are untouched.)
+                kind = type_token.rsplit("-", 1)[-1] if type_token.startswith("artifact-") else ""
+                if kind and slug == kind and owner:
+                    slug, owner = owner, ""
             try:
                 size = p.stat().st_size
             except OSError:

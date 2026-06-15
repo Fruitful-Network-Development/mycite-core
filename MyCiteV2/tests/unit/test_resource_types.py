@@ -136,6 +136,22 @@ class ResourceTypesTest(unittest.TestCase):
         by_slug = {r["slug"]: r for r in rows}
         self.assertEqual(by_slug["bloom_hill_farm"]["display_name"], "Bloom Hill Farm")
 
+    def test_logo_instance_titled_by_entity_not_kind(self) -> None:
+        # Logos are ``<entity>.logo.<ext>`` — the trailing token is the KIND.
+        # The instance must show the entity name ("Akron Microgreens"), not the
+        # kind ("Logo"). image/icon (name-last, no kind suffix) stay correct.
+        img = self.root / "clients" / "_shared" / "site-core" / "image"
+        img.mkdir(parents=True, exist_ok=True)
+        (img / "0000-00-00.artifact-logo.akron_microgreens.logo.avif").write_text("x", encoding="utf-8")
+        (img / "0000-00-00.artifact-image.bloom_hill_farm.brand_mark.avif").write_text("x", encoding="utf-8")
+        index = rt.build_type_leaflet_index(self.root)
+        logo = index["artifact-logo"][0]
+        self.assertEqual(logo["slug"], "akron_microgreens")
+        self.assertEqual(logo["display_name"], "Akron Microgreens")
+        # Non-kinded image is unchanged (name is the last dot-token).
+        image = index["artifact-image"][0]
+        self.assertEqual(image["display_name"], "Brand Mark")
+
     def test_set_icon_ref_accepts_unregistered_on_disk_type(self) -> None:
         # The ✎ icon edit on a synthesized node must succeed (validated against the
         # browsable set, not just manifest-registered slugs).

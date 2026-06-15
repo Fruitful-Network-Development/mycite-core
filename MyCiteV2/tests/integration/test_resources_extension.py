@@ -154,6 +154,31 @@ class ProfilesContactAppTests(unittest.TestCase):
         self.assertEqual(by_key["entity_type"]["value"], "")
         self.assertEqual(by_key["email"]["value"], "old@x.org")
 
+    def test_profile_detail_layered_sections(self) -> None:
+        # An ag legal_entity profile yields a header band (base_fields) + ordered
+        # typed sections (legal / ag), branched on the filename flavor; the flat
+        # ``fields`` list stays for back-compat, and contact keys (website) stay
+        # out of the sections (they render as contact_links).
+        sc = self.tmp / "clients" / "_shared" / "site-core"
+        (sc / "profiles" / "0000-00-00.artifact-profile-legal_entity-ag-producer-crop.bloom_farm.profile.yaml").write_text(
+            yaml.safe_dump(
+                {"name": "Bloom Farm", "legal_name": "Bloom Farm, LLC", "entity_type": "111419",
+                 "location": "Akron, OH", "website": "https://bloom.example"},
+                sort_keys=False),
+            encoding="utf-8")
+        d = rx.profile_detail(self.tmp, "bloom_farm")
+        self.assertEqual(d["entity_flavor"], "legal_entity-ag-producer-crop")
+        self.assertTrue(d["is_ag"])
+        self.assertEqual((d["ag_role"], d["ag_subtype"]), ("producer", "crop"))
+        sec = {s["id"]: {f["key"] for f in s["fields"]} for s in d["sections"]}
+        self.assertIn("legal", sec)
+        self.assertIn("ag", sec)
+        self.assertTrue({"legal_name", "entity_type"} <= sec["legal"])
+        base_keys = {f["key"] for f in d["base_fields"]}
+        self.assertIn("location", base_keys)
+        self.assertNotIn("website", base_keys)  # contact key → contact_links, not a section
+        self.assertTrue(any(f["key"] == "legal_name" for f in d["fields"]))  # back-compat
+
     def test_save_profile_patches_canonical(self) -> None:
         result = rx.save_profile(self.tmp, "jane_doe", {"email": "new@x.org", "summary_bio": "New bio"})
         self.assertTrue(result["ok"])

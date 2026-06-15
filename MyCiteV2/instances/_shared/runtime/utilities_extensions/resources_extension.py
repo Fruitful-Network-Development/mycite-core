@@ -125,6 +125,27 @@ def _atomic_write_text(path: Path, text: str) -> None:
 # --------------------------------------------------------------------------- #
 # image resolution — "assumed logo if present"
 # --------------------------------------------------------------------------- #
+def _resolve_ref_image(
+    profile: dict[str, Any], image_gallery_dir: Path | None
+) -> str:
+    """Honor an explicit ``image_ref``/``logo_ref`` (existence-aware) → URL or "".
+
+    refs are stored without the .avif extension by convention. When a gallery dir
+    is given, only honor a ref whose file exists (so a pre-registered-but-absent
+    ``logo_ref`` falls through instead of emitting a 404 <img>); without one, fall
+    back to the historic best-effort behavior.
+    """
+    for key in ("image_ref", "logo_ref"):
+        ref = _as_text(profile.get(key))
+        if not ref:
+            continue
+        fname = ref if ref.lower().endswith(
+            (".avif", ".png", ".jpg", ".jpeg", ".svg")) else ref + ".avif"
+        if image_gallery_dir is None or (image_gallery_dir / fname).exists():
+            return _IMAGE_URL_PREFIX + fname
+    return ""
+
+
 def resolve_profile_image(
     profile: dict[str, Any], slug: str, image_gallery_dir: Path | None
 ) -> str:
@@ -142,17 +163,9 @@ def resolve_profile_image(
     even before its leaflet is produced. An absent ref must fall through to the
     slug+role search / placeholder, never emit a broken 404 <img>.
     """
-    for key in ("image_ref", "logo_ref"):
-        ref = _as_text(profile.get(key))
-        if not ref:
-            continue
-        # refs are stored without the .avif extension by convention.
-        fname = ref if ref.lower().endswith(
-            (".avif", ".png", ".jpg", ".jpeg", ".svg")) else ref + ".avif"
-        # When we can inspect the gallery, only honor a ref whose file exists;
-        # without a gallery dir, fall back to the historic best-effort behavior.
-        if image_gallery_dir is None or (image_gallery_dir / fname).exists():
-            return _IMAGE_URL_PREFIX + fname
+    ref_url = _resolve_ref_image(profile, image_gallery_dir)
+    if ref_url:
+        return ref_url
     if image_gallery_dir is None or not slug:
         return ""
     try:
@@ -192,6 +205,7 @@ def attach_profile_thumbnails(
     except OSError:
         return rows
     lowered = [(name, name.lower()) for name in names]
+    profiles_dir = _profiles_dir(webapps_root)
     by_slug: dict[str, str] = {}
     for row in rows:
         if row.get("gallery") != "profiles" or _as_text(row.get("image_url")):
@@ -205,6 +219,18 @@ def attach_profile_thumbnails(
                 if slug in lower and any(t in lower for t in _IMAGE_ROLE_TOKENS):
                     url = _IMAGE_URL_PREFIX + name
                     break
+            # The cheap slug-substring pass misses logos whose stem is a SHORTER
+            # form of the registered slug (e.g. logo ``akron_microgreens`` vs the
+            # slug ``akron_microgreens_llc`` after the legal-name enrichment), and
+            # logos whose stem differs entirely (``moon_farm`` → ``moon_farm_
+            # microgreens``). Fall back to the profile's explicit logo_ref/image_ref
+            # — one YAML load, and ONLY for the rows the slug pass missed.
+            if not url and profiles_dir is not None:
+                filename = _as_text(row.get("filename"))
+                if filename:
+                    profile = _load_yaml_mapping(profiles_dir / filename)
+                    if profile:
+                        url = _resolve_ref_image(profile, image_dir)
             by_slug[slug] = url
         if by_slug[slug]:
             row["image_url"] = by_slug[slug]
@@ -259,6 +285,88 @@ def _profile_display_name(profile: dict[str, Any], slug: str) -> str:
         if value:
             return value
     return slug.replace("_", " ").title()
+
+
+# Typed-section taxonomy for the layered profile detail. Keys are bucketed by
+# entity flavor so the viewer reads top-down: base identity → legal → ag → admin
+# → everything else. Contact/social keys are rendered as icon links
+# (``contact_links``) and name keys live in the header, so both are excluded.
+_HEADER_KEYS = frozenset({"name", "display_name", "title"})
+_BASE_KEYS = ("location", "summary_bio", "tags")
+_LEGAL_KEYS = ("legal_name", "legal_title", "principal_owner", "entity_type")
+_AG_KEYS = ("offerings", "operations", "operation_type", "gallery_refs")
+_ADMIN_KEYS = ("business_type", "map_pin")
+# Mirrors the keys of ``_FIELD_NAME_KIND`` (defined later) + socials; inlined so
+# this module-level constant doesn't depend on definition order.
+_CONTACT_KEYS = frozenset(
+    {"website", "email", "secondary_email", "org_email", "phone", "secondary_phone", "socials"}
+)
+
+
+def _profile_field(profile: dict[str, Any], key: str) -> dict[str, str]:
+    """One ``{key, label, value}`` detail row (NAICS code annotated with title)."""
+    value = _scalar_str(profile.get(key))
+    if key == "entity_type" and value:
+        title = _naics_title(value)
+        if title and title != value:
+            value = f"{value} — {title}"
+    return {
+        "key": key,
+        "label": "NAICS Code" if key == "entity_type" else str(key).replace("_", " ").title(),
+        "value": value,
+    }
+
+
+def _profile_sections(
+    profile: dict[str, Any], flavor: str
+) -> tuple[list[dict[str, str]], list[dict[str, Any]], dict[str, Any]]:
+    """Split a profile's fields into the header band (``base_fields``) + ordered,
+    non-empty typed ``sections``, branching on the filename entity flavor. Returns
+    ``(base_fields, sections, meta)`` where ``meta`` carries flavor/ag descriptors.
+    """
+    segs = flavor.split("-") if flavor else []
+    is_legal = segs[:1] == ["legal_entity"]
+    is_admin = segs[:1] == ["administrative_entity"]
+    is_ag = "ag" in segs
+    ag_role = ag_subtype = ""
+    if is_ag:
+        i = segs.index("ag")
+        ag_role = segs[i + 1] if len(segs) > i + 1 else ""
+        ag_subtype = segs[i + 2] if ag_role == "producer" and len(segs) > i + 2 else ""
+
+    base, legal, ag, admin, other = [], [], [], [], []
+    for key in profile:
+        if key in _CONTACT_KEYS or key in _HEADER_KEYS:
+            continue
+        fld = _profile_field(profile, key)
+        if key in _BASE_KEYS:
+            base.append(fld)
+        elif is_legal and key in _LEGAL_KEYS:
+            legal.append(fld)
+        elif is_ag and key in _AG_KEYS:
+            ag.append(fld)
+        elif is_admin and key in _ADMIN_KEYS:
+            admin.append(fld)
+        else:
+            other.append(fld)
+
+    sections: list[dict[str, Any]] = []
+    if legal:
+        sections.append({"id": "legal", "label": "Legal entity", "fields": legal})
+    if is_ag:  # emit even with no ag-specific YAML fields so the role/subtype shows
+        sections.append({"id": "ag", "label": "Agricultural", "fields": ag})
+    if admin:
+        sections.append({"id": "admin", "label": "Administrative", "fields": admin})
+    if other:
+        sections.append({"id": "other", "label": "Additional", "fields": other})
+
+    meta = {
+        "entity_flavor": flavor,
+        "is_ag": is_ag,
+        "ag_role": ag_role,
+        "ag_subtype": ag_subtype,
+    }
+    return base, sections, meta
 
 
 def list_profiles(webapps_root: str | Path | None) -> list[dict[str, Any]]:
@@ -392,25 +500,21 @@ def profile_detail(
     if path is None:
         return None
     profile = _load_yaml_mapping(path)
-    fields = []
-    for key in profile:
-        value = _scalar_str(profile.get(key))
-        # entity_type now holds a NAICS code — annotate with its title.
-        if key == "entity_type" and value:
-            title = _naics_title(value)
-            if title and title != value:
-                value = f"{value} — {title}"
-        fields.append({
-            "key": key,
-            "label": "NAICS Code" if key == "entity_type" else str(key).replace("_", " ").title(),
-            "value": value,
-        })
+    # Flat field list (EVERY key incl. empties) — kept for back-compat with the
+    # Library detail/edit form and existing tests.
+    fields = [_profile_field(profile, key) for key in profile]
+    # Layered/typed view for the Browse instance: a header band of base fields
+    # beside the enlarged logo, then ordered typed section blocks.
+    base_fields, sections, meta = _profile_sections(profile, _profile_entity_flavor(path.name))
     return {
         "slug": slug,
         "filename": path.name,
         "display_name": _profile_display_name(profile, slug),
         "image_url": resolve_profile_image(profile, slug, image_dir),
         "fields": fields,
+        "base_fields": base_fields,
+        "sections": sections,
+        **meta,  # entity_flavor / is_ag / ag_role / ag_subtype
         # Contact + social values as icon-bearing links (field/value → icon map).
         "contact_links": resolve_field_links(profile, webapps_root),
         # Grantee-scoped extra fields (scope_fields) — shown in the grantee's own

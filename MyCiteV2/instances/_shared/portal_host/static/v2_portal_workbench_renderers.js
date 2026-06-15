@@ -1614,6 +1614,30 @@
     }).join("");
   }
 
+  // Shared scalar field-row renderer (DRY: header band, typed sections, scopes).
+  function renderFieldRows(fields) {
+    return asList(fields).map(function (f) {
+      var fld = asObject(f);
+      return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
+        "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
+    }).join("");
+  }
+
+  // Header band: profile name + base fields (left) beside an enlarged logo/headshot.
+  function renderProfileHeader(d) {
+    var dd = asObject(d);
+    var img = asText(dd.image_url)
+      ? '<img class="v2-resourcesThumb v2-resourcesThumb--xl" src="' + escapeHtml(asText(dd.image_url)) +
+        '" alt="" onerror="this.style.display=\'none\'" />'
+      : "";
+    var base = renderFieldRows(dd.base_fields);
+    return '<div class="v2-resourcesDetail__head v2-resourcesDetail__head--band">' +
+      '<div class="v2-resourcesDetail__headText"><h4>' +
+      escapeHtml(asText(dd.display_name) || asText(dd.slug)) + "</h4>" +
+      (base ? '<div class="v2-resourcesDetail__meta v2-resourcesDetail__meta--inline">' + base + "</div>" : "") +
+      "</div>" + img + "</div>";
+  }
+
   function renderBrowseInstance(p) {
     var inst = asObject(p.instance);
     var viewer = asText(inst.viewer);
@@ -1621,14 +1645,20 @@
     var body;
     if (viewer === "profile") {
       var pslug = asText(d.slug);
-      body = renderProfileHead({ title: asText(d.display_name), slug: pslug, image_url: asText(d.image_url) }) +
+      // Layered/typed layout: base header band, contact links, then one section
+      // block per typed group (legal / ag / admin / additional), server-ordered.
+      body = renderProfileHeader(d) +
         renderFieldLinks(d.contact_links) +
-        '<div class="v2-resourcesDetail__meta">' +
-        asList(d.fields).map(function (f) {
-          var fld = asObject(f);
-          return '<div class="v2-resourcesField"><label>' + escapeHtml(asText(fld.label) || asText(fld.key)) +
-            "</label><div>" + escapeHtml(asText(fld.value) || "—") + "</div></div>";
-        }).join("") + "</div>" +
+        asList(d.sections).map(function (s) {
+          var o = asObject(s);
+          var head = escapeHtml(asText(o.label));
+          if (asText(o.id) === "ag" && asText(d.ag_role)) {
+            head += " · " + escapeHtml(asText(d.ag_role)) +
+              (asText(d.ag_subtype) ? " / " + escapeHtml(asText(d.ag_subtype)) : "");
+          }
+          return '<section class="v2-typedBlock"><h5 class="v2-typedBlock__head">' + head + "</h5>" +
+            '<div class="v2-resourcesDetail__meta">' + renderFieldRows(o.fields) + "</div></section>";
+        }).join("") +
         // Grantee-scoped extra fields (scope_fields): one block per grantee scope,
         // shown here + on the grantee's own site, kept out of the general FND views.
         renderProfileScopes(d.scopes) +

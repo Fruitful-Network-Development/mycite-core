@@ -294,6 +294,24 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         self.assertEqual(rows["bloom_hill_farm"]["image_url"], "/assets/images/" + thumb)
         self.assertEqual(rows["nathan_seals"]["image_url"], "")
 
+    def test_directory_logo_ref_fallback_resolves_thumbnail(self) -> None:
+        # A profile whose registered slug (akron_microgreens_llc) is NOT a substring
+        # of its logo's stem (akron_microgreens) is missed by the cheap slug+role
+        # match, but its explicit logo_ref still resolves the thumbnail in the
+        # directory list (the legal-name-enrichment slug/stem-mismatch case).
+        sc = self.root / "clients" / "_shared" / "site-core"
+        (sc / "profiles" / "0000-00-00.artifact-profile-legal_entity-ag-producer-crop.akron_microgreens_llc.profile.yaml").write_text(
+            "display_name: Akron Microgreens\nlogo_ref: 0000-00-00.artifact-logo.akron_microgreens.logo\n",
+            encoding="utf-8",
+        )
+        img = sc / "image"
+        img.mkdir(parents=True, exist_ok=True)
+        logo = "0000-00-00.artifact-logo.akron_microgreens.logo.avif"
+        (img / logo).write_text("x", encoding="utf-8")
+        d = self._browse(browse_view="directory", browse_type="artifact-profile")
+        rows = {r["slug"]: r for r in d["leaflets"]}
+        self.assertEqual(rows["akron_microgreens_llc"]["image_url"], "/assets/images/" + logo)
+
     def test_hierarchy_unaffected_by_thumbnail_resolution(self) -> None:
         # Thumbnails are a DIRECTORY-only concern — the hierarchy (dendrogram) payload
         # must not carry per-leaflet image_url (it renders type nodes, not instances).
