@@ -342,6 +342,14 @@ def build_portal_workbench_ui_bundle(
         shell_state=shell_state,
     )
     sandbox_label = sandbox_display_name(effective_sandbox)
+    # Scope at the source: when a concrete sandbox is selected (not the system
+    # corpus view), inject it as sandbox_filter so the read service scopes the
+    # document collection, the auto-selected document AND prev/next navigation —
+    # not just the control-panel list. Without this the datum-doc manager region
+    # shows every tenant doc and can auto-select / step into a foreign sandbox.
+    scoped_surface_query = dict(surface_query or {})
+    if effective_sandbox and effective_sandbox != WORKBENCH_UI_SANDBOX_TOKEN:
+        scoped_surface_query["sandbox_filter"] = effective_sandbox
     runtime_error = _workbench_sql_runtime_error(
         portal_instance_id=portal_scope.scope_id,
         authority_db_file=authority_db_file,
@@ -380,7 +388,7 @@ def build_portal_workbench_ui_bundle(
         model = WorkbenchUiReadService(authority_path).read_surface(
             portal_instance_id=portal_scope.scope_id,
             portal_domain=portal_domain,
-            surface_query=surface_query,
+            surface_query=scoped_surface_query,
             enabled_lens_ids=enabled_lens_ids,
         )
         model["surface_payload"]["schema"] = WORKBENCH_UI_TOOL_SURFACE_SCHEMA
@@ -396,7 +404,7 @@ def build_portal_workbench_ui_bundle(
         else {}
     )
     active_query = canonical_query_for_surface_query(
-        workspace_query or surface_query,
+        workspace_query or scoped_surface_query,
         surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
     )
     _decorate_workspace_navigation(portal_scope=portal_scope, base_query=active_query, model=model)
@@ -790,10 +798,18 @@ def build_portal_workbench_ui_bundle(
     # SEARCH moved to the Interface Panel (the tool surface). The WORKBENCH still
     # owns the working document/datum LISTS. The old nav-list groups are dropped.
     _ = workbench_ui_navigation_groups  # retained for reference; intentionally not surfaced
+    _ = workbench_mode_payload  # author forms still ride surface_payload; not on the control panel
+    _ = disclosure_groups  # sort/group/lens/visibility/inspector intentionally not surfaced
+    # Operator directive (2026-06-16): the workbench control panel exposes ONLY the
+    # sandbox switcher. The mode tabs (Docs/Datums/Author), inline author forms, lens
+    # toggles, doc/datum tab strip, and the sort/direction/grouping/visibility/inspector
+    # disclosures are all removed. Workbench authoring still exists — the
+    # new_source_document_form / new_datum_form slots remain on surface_payload, and the
+    # working document/datum lists remain in the WORKBENCH region (not control chrome).
     control_panel_controls = {
-        "lenses": True,
+        "lenses": False,
         "sandbox_selector": {"sandbox_id": effective_sandbox},
-        "doc_datum_tabs": True,
+        "doc_datum_tabs": False,
     }
     control_panel = build_unified_control_panel(
         portal_scope=portal_scope,
@@ -804,8 +820,8 @@ def build_portal_workbench_ui_bundle(
         actions=[],
         workbench_state=workbench_ui_workbench_state,
         tool_extensions=workbench_ui_extensions,
-        disclosure_groups=disclosure_groups,
-        workbench_mode=workbench_mode_payload,
+        disclosure_groups=[],
+        workbench_mode=None,
         control_panel_controls=control_panel_controls,
     )
     # Slim context_conditions: keep only the two identity rows the user

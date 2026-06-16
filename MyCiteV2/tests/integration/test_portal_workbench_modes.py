@@ -3,12 +3,16 @@
 Pins the user-facing simplification:
 
 * The unified workbench bundle changes its labels, posture, document
-  filter, and Author-mode form availability based on the resolved
-  sandbox — there is no separate "WORKBENCH UI" vs. "Agro-ERP"
-  divergence in the runtime.
-* The control panel emits exactly three mode tabs (Docs, Datums,
-  Author) plus mode-filtered navigation_groups and collapsed
-  disclosure_groups (Display options, Inspector).
+  filter, and author-form availability based on the resolved sandbox —
+  there is no separate "WORKBENCH UI" vs. "Agro-ERP" divergence.
+* Operator directive (2026-06-16): the control panel is stripped to the
+  sandbox selector ONLY — no mode tabs, no navigation groups, no
+  disclosure groups, no lens / doc-datum-tab controls. Workbench
+  authoring still exists: the new_source_document_form / new_datum_form
+  slots remain on surface_payload and the document/datum lists remain in
+  the workbench region.
+* The datum-doc manager (workbench region document_collection) is scoped
+  to the effective sandbox at the read service.
 * The `product_profile` template, once registered, appears in the
   agro_erp sandbox's new_source_document_form and round-trips
   through the stage → preview → apply scaffold pipeline as a new
@@ -95,23 +99,10 @@ class PortalWorkbenchModesTests(unittest.TestCase):
                 bundle["surface_payload"].get("new_datum_form"),
                 f"new_datum_form should be populated for {sandbox}",
             )
-            mode = bundle["control_panel"]["workbench_mode"] or {}
-            self.assertTrue(mode.get("writable"), sandbox)
-            tabs_by_mode = {t["mode"]: t for t in mode.get("tabs") or []}
-            self.assertTrue(
-                tabs_by_mode["author"]["available"],
-                f"Author tab should be available for {sandbox}",
-            )
-            self.assertIn(
-                "new_source_document",
-                mode.get("author_forms") or {},
-                f"author_forms.new_source_document should be present for {sandbox}",
-            )
-            self.assertIn(
-                "new_datum",
-                mode.get("author_forms") or {},
-                f"author_forms.new_datum should be present for {sandbox}",
-            )
+            # Authoring no longer rides the control panel (workbench_mode dropped per the
+            # operator directive); the author form slots remain on surface_payload, so
+            # workbench authoring still exists.
+            self.assertIsNone(bundle["control_panel"].get("workbench_mode"), sandbox)
             ndf = bundle["surface_payload"]["new_datum_form"]
             self.assertEqual(ndf["operation"], "insert_datum")
             self.assertEqual(ndf["target_authority"], "datum_workbench")
@@ -174,14 +165,9 @@ class PortalWorkbenchModesTests(unittest.TestCase):
         template_ids = {t["template_id"] for t in form.get("available_templates", [])}
         self.assertIn("product_profile", template_ids)
         self.assertIn("agro_erp_taxonomy_source", template_ids)
-        # Mode payload exposes the Author tab as available.
-        mode = bundle["control_panel"]["workbench_mode"] or {}
-        tabs_by_mode = {t["mode"]: t for t in mode.get("tabs") or []}
-        self.assertTrue(tabs_by_mode["author"]["available"])
-        self.assertTrue(mode.get("writable"))
-        # Author forms lifted onto control panel for the renderer.
-        self.assertIn("new_source_document", mode.get("author_forms") or {})
-        self.assertIn("new_datum", mode.get("author_forms") or {})
+        # Control panel stripped to the sandbox selector; authoring rides surface_payload.
+        self.assertIsNone(bundle["control_panel"].get("workbench_mode"))
+        self.assertIsNotNone(bundle["surface_payload"].get("new_datum_form"))
 
     def test_sandbox_filter_via_surface_query_matches_kwarg(self) -> None:
         kwarg_bundle = _build("agro_erp", db=self._db)
@@ -193,88 +179,77 @@ class PortalWorkbenchModesTests(unittest.TestCase):
             len(query_bundle["workbench"]["document_collection"]["documents"]),
         )
 
-    # --- Three-mode panel composition ----------------------------------
+    # --- Control panel = sandbox selector only (2026-06-16 directive) --
 
-    def test_default_landing_is_docs_mode(self) -> None:
+    def test_control_panel_is_sandbox_selector_only(self) -> None:
+        # Operator directive: the workbench control panel exposes ONLY the sandbox
+        # switcher — no mode tabs, no navigation groups, no disclosure groups, no lens
+        # or doc/datum-tab controls.
         bundle = _build("agro_erp", db=self._db)
         cp = bundle["control_panel"]
-        self.assertEqual((cp.get("workbench_mode") or {}).get("active"), "docs")
-        nav_titles = [g.get("title") for g in cp.get("navigation_groups") or []]
-        self.assertIn("Documents", nav_titles)
-        # Display options disclosure is present and collapsed by default.
-        discl = {g.get("title"): g for g in cp.get("disclosure_groups") or []}
-        self.assertIn("Display options", discl)
-        self.assertFalse(discl["Display options"].get("expanded"))
+        self.assertIsNone(cp.get("workbench_mode"))
+        self.assertEqual(cp.get("disclosure_groups") or [], [])
+        self.assertEqual(cp.get("navigation_groups") or [], [])
+        controls = cp.get("control_panel_controls") or {}
+        self.assertTrue(controls.get("sandbox_selector"))
+        self.assertFalse(controls.get("lenses"))
+        self.assertFalse(controls.get("doc_datum_tabs"))
 
-    def test_docs_mode_writable_sandbox_surfaces_create_button(self) -> None:
-        # The user's #2 complaint after v1 shipped: the create affordance
-        # is invisible from Docs mode. Pin the v2 fix: writable sandboxes
-        # get a "Create" nav group whose single entry shell_requests
-        # mode=author so clicking lands in the Author tab with the form.
+    def test_create_form_rides_surface_payload_not_control_panel(self) -> None:
+        # The "+ New document" affordance moved OFF the control panel onto
+        # surface_payload.new_source_document_form (the workbench region renders it);
+        # the control panel carries no Create/Documents nav group.
         bundle = _build("agro_erp", db=self._db)
-        cp = bundle["control_panel"]
-        groups = cp.get("navigation_groups") or []
-        titles = [g.get("title") for g in groups]
-        self.assertEqual(titles[0], "Create", "Create group should be the first nav group in Docs mode")
-        self.assertEqual(titles[1], "Documents")
-        create_entries = groups[0].get("entries") or []
-        self.assertEqual(len(create_entries), 1)
-        self.assertEqual(create_entries[0].get("label"), "+ New document")
-        shell_request = create_entries[0].get("shell_request") or {}
-        self.assertEqual(
-            (shell_request.get("surface_query") or {}).get("mode"),
-            "author",
-            "+ New document entry should switch the workbench into Author mode",
-        )
+        titles = [g.get("title") for g in bundle["control_panel"].get("navigation_groups") or []]
+        self.assertNotIn("Create", titles)
+        form = bundle["surface_payload"].get("new_source_document_form")
+        self.assertIsNotNone(form)
+        self.assertEqual(form.get("sandbox_id"), "agro_erp")
 
-    def test_docs_mode_every_sandbox_surfaces_create_button(self) -> None:
-        # Every sandbox is writable; even system shows the Create group in
-        # Docs mode so the create affordance is always discoverable.
+    def test_every_sandbox_create_form_on_surface_payload(self) -> None:
+        # The create form is always present on surface_payload (even default system),
+        # never on the control panel.
         bundle = _build(db=self._db)  # default sandbox=system
         cp = bundle["control_panel"]
-        titles = [g.get("title") for g in cp.get("navigation_groups") or []]
-        self.assertEqual(titles[0], "Create")
-        self.assertEqual(titles[1], "Documents")
+        self.assertNotIn("Create", [g.get("title") for g in cp.get("navigation_groups") or []])
+        self.assertIsNotNone(bundle["surface_payload"].get("new_source_document_form"))
 
-    def test_docs_nav_filters_documents_to_effective_sandbox(self) -> None:
-        # The control-panel Documents nav group used to leak the entire
-        # catalog when the sandbox filter was active. v2 pins the filter
-        # so the panel and the workbench region stay in sync.
+    def test_workbench_documents_scoped_to_effective_sandbox(self) -> None:
+        # Concern ③: the datum-doc manager (workbench region document_collection) is
+        # scoped to the effective sandbox at the read service, so agro_erp shows a strict
+        # subset of the system corpus and every doc is attributed to agro_erp.
         sys_bundle = _build(db=self._db)
         agro_bundle = _build("agro_erp", db=self._db)
 
-        def _docs_count(bundle):
-            nav = bundle["control_panel"]["navigation_groups"]
-            docs_group = next(g for g in nav if g.get("title") == "Documents")
-            return len(docs_group.get("entries") or [])
+        def _docs(bundle):
+            return bundle["workbench"]["document_collection"]["documents"]
 
-        sys_count = _docs_count(sys_bundle)
-        agro_count = _docs_count(agro_bundle)
-        self.assertGreater(sys_count, 0)
-        self.assertGreater(agro_count, 0)
+        sys_docs = _docs(sys_bundle)
+        agro_docs = _docs(agro_bundle)
+        self.assertGreater(len(sys_docs), 0)
+        self.assertGreater(len(agro_docs), 0)
         self.assertLess(
-            agro_count, sys_count,
-            f"agro_erp Documents nav ({agro_count}) should be a strict subset of system ({sys_count})",
+            len(agro_docs), len(sys_docs),
+            f"agro_erp docs ({len(agro_docs)}) should be a strict subset of system ({len(sys_docs)})",
         )
-        # And it should match the workbench region's filtered collection.
-        agro_workbench_docs = len(agro_bundle["workbench"]["document_collection"]["documents"])
-        self.assertEqual(agro_count, agro_workbench_docs)
+        for doc in agro_docs:
+            self.assertIn(".agro_erp.", doc.get("document_id", ""))
 
-    def test_explicit_mode_author_activates_inline_forms(self) -> None:
+    def test_author_forms_present_on_surface_payload(self) -> None:
+        # Authoring still exists post-strip: the create-doc form is on surface_payload
+        # with the agro_erp templates, regardless of any (now-removed) control-panel mode.
         bundle = _build("agro_erp", db=self._db, query={"mode": "author"})
-        cp = bundle["control_panel"]
-        mode = cp.get("workbench_mode") or {}
-        self.assertEqual(mode.get("active"), "author")
-        forms = mode.get("author_forms") or {}
-        self.assertIn("new_source_document", forms)
-        nsf = forms["new_source_document"]
+        self.assertIsNone(bundle["control_panel"].get("workbench_mode"))
+        nsf = bundle["surface_payload"].get("new_source_document_form") or {}
         self.assertEqual(nsf.get("sandbox_id"), "agro_erp")
         self.assertEqual(nsf.get("msn_id_default"), _MSN)
         template_ids = {t["template_id"] for t in nsf.get("available_templates") or []}
         self.assertIn("product_profile", template_ids)
 
-    def test_datums_mode_emits_inspector_disclosure(self) -> None:
-        # Need an explicit document query so the runtime lands in Datums mode.
+    def test_no_inspector_disclosure_in_control_panel(self) -> None:
+        # The Inspector / Display-options disclosures are removed from the control panel.
+        # Even with an explicit document selected, the control panel carries no disclosure
+        # groups; datum inspection lives in the workbench region.
         store = SqliteSystemDatumStoreAdapter(self._db)
         catalog = store.read_authoritative_datum_documents(
             AuthoritativeDatumDocumentRequest(tenant_id="fnd")
@@ -284,15 +259,8 @@ class PortalWorkbenchModesTests(unittest.TestCase):
         target_id = agro_docs[0].document_id
         bundle = _build("agro_erp", db=self._db, query={"document": target_id})
         cp = bundle["control_panel"]
-        self.assertEqual((cp.get("workbench_mode") or {}).get("active"), "datums")
-        discl = {g.get("title"): g for g in cp.get("disclosure_groups") or []}
-        self.assertIn("Display options", discl)
-        self.assertIn("Inspector", discl)
-        inspector_labels = {
-            c.get("label") for c in (discl["Inspector"].get("context_conditions") or [])
-        }
-        for expected_label in {"Version", "Row Identity", "Resolved Lens", "Document Sort"}:
-            self.assertIn(expected_label, inspector_labels)
+        self.assertEqual(cp.get("disclosure_groups") or [], [])
+        self.assertIsNone(cp.get("workbench_mode"))
 
     def test_context_conditions_are_slim(self) -> None:
         # Pre-refactor: Version, Row Identity, Resolved Lens, Document

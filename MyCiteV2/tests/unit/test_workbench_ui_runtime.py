@@ -126,11 +126,12 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(composition["regions"]["interface_panel"]["panels"], [])
             self.assertIn("tool_search", composition["regions"]["interface_panel"])
             self.assertNotIn("visualization_panel", composition["regions"])
-            # control panel = lenses + sandbox selector + doc/datum tabs; NO tool search.
+            # Operator directive (2026-06-16): the control panel exposes ONLY the
+            # sandbox selector. Lens toggles + the doc/datum tab strip are removed.
             cp_controls = composition["regions"]["control_panel"]["control_panel_controls"]
-            self.assertTrue(cp_controls.get("lenses"))
+            self.assertFalse(cp_controls.get("lenses"))
             self.assertTrue(cp_controls.get("sandbox_selector"))
-            self.assertTrue(cp_controls.get("doc_datum_tabs"))
+            self.assertFalse(cp_controls.get("doc_datum_tabs"))
             self.assertNotIn("tool_search", cp_controls)
 
     def test_shell_route_keeps_workbench_ui_runtime_owned_and_sql_context_led(self) -> None:
@@ -203,25 +204,14 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             ]
             self.assertEqual(top_labels, ["Document", "Selected Row"])
 
-            inspector_groups = [
-                group
-                for group in control_panel.get("disclosure_groups") or []
-                if group.get("title") == "Inspector"
-            ]
-            self.assertEqual(len(inspector_groups), 1, "Datums-mode renders an Inspector disclosure")
-            inspector_labels = {
-                cond.get("label")
-                for cond in (inspector_groups[0].get("context_conditions") or [])
-            }
-            for expected_label in {"Version", "Row Identity", "Resolved Lens", "Document Sort"}:
-                self.assertIn(expected_label, inspector_labels)
+            # Operator directive (2026-06-16): the control panel is stripped to the
+            # sandbox selector only — no Inspector/disclosure groups and no workbench
+            # mode tabs. Datum inspection lives in the workbench region + surface_payload
+            # (interface_panel_sections still expose the selection summary for inspectors).
+            self.assertEqual(control_panel.get("disclosure_groups") or [], [])
+            self.assertIsNone(control_panel.get("workbench_mode"))
 
             self.assertEqual(control_panel["surface_label"], "SYSTEM")
-            mode_payload = control_panel.get("workbench_mode") or {}
-            self.assertEqual(mode_payload.get("active"), "datums")
-            self.assertEqual(mode_payload.get("sandbox_id"), "system")
-            tab_modes = {tab.get("mode"): tab.get("active") for tab in mode_payload.get("tabs") or []}
-            self.assertEqual(tab_modes, {"docs": False, "datums": True, "author": False})
 
             workspace = envelope["surface_payload"]["workspace"]
             self.assertEqual(workspace["query"]["document"], envelope["canonical_query"]["document"])

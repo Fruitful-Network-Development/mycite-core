@@ -29,6 +29,22 @@ class TestRecordViewersRegistered(unittest.TestCase):
             self.assertEqual(tool.container, container, tid)
             self.assertTrue(tool.applies_to_archetype, tid)
 
+    def test_eligible_on_sandbox_source_documents(self) -> None:
+        # Concern ① (2026-06-16): the viewers claim the ``sandbox_source`` source_kind so
+        # the palette surfaces them whenever an agro_erp doc is selected, independent of
+        # whether the live doc carries the exact metadata.schema archetype token.
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import (
+            _viz_tool_matches,
+        )
+
+        for tid in ("invoices", "contacts", "plots", "livestock", "equipment", "soil", "growing_season"):
+            tool = tools_get(tid)
+            self.assertIn("sandbox_source", tool.applies_to_source_kind, tid)
+            self.assertTrue(
+                _viz_tool_matches(tool, archetypes=set(), source_kinds={"sandbox_source"}),
+                tid,
+            )
+
 
 @unittest.skipUnless(_LIVE_DB.exists(), "live MOS not present")
 class TestRecordViewersLive(unittest.TestCase):
@@ -67,6 +83,19 @@ class TestRecordViewersLive(unittest.TestCase):
             self.assertEqual(p["container"], "record_table", tid)
             self.assertGreater(p["row_count"], 0, tid)
             self.assertIn(col, p["columns"], tid)
+
+    def test_resolves_against_default_sandbox_when_opened_on_system(self) -> None:
+        # Concern ① (2026-06-16): a viewer opened while the workbench is on the ``system``
+        # corpus view (sandbox_id="system") must fall back to its own default_sandbox and
+        # still resolve its agro_erp doc — not error with "<doc> document not found".
+        for tid in ("invoices", "contacts", "plots", "livestock"):
+            p = tools_get(tid).build_panel_payload(
+                authority_db_file=_LIVE_DB, sandbox_id="system", document_id="", datum_address=""
+            )
+            self.assertIsNone(p.get("error"), f"{tid} should resolve via default_sandbox")
+            # record_table viewers report row_count; record_list (contacts) reports item_count.
+            count = p.get("row_count", p.get("item_count", 0))
+            self.assertGreater(count, 0, tid)
 
 
 if __name__ == "__main__":
