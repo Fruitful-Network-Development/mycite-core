@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import json
+import re
 import shutil
 import time
 from datetime import UTC, datetime
@@ -89,7 +90,16 @@ class Plan:
     report: dict
 
 
+def _unit_of(text: str) -> str:
+    """Trailing alphabetic unit token of a weight string ('10 lbs' -> 'lbs', '$40' -> '')."""
+    m = re.search(r"[A-Za-z]+", text or "")
+    return m.group(0).lower() if m else ""
+
+
 def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) -> Plan:
+    # Normalize the free-text amount/cost so a re-run with trivially-different whitespace
+    # dedups against the stored row (the dedup below compares against decode_label values).
+    amount, cost = amount.strip(), cost.strip()
     catalog = store.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=TENANT))
     live: dict[str, AuthoritativeDatumDocument] = {}
     cts_anchor = None
@@ -126,6 +136,16 @@ def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) 
             committed += _parse_weight(noms[0]) if noms else 0.0
     new_amt = _parse_weight(amount)
     purchased = info["weight"]
+    # The draw-down arithmetic is unit-blind (_parse_weight strips to a numeric prefix),
+    # so refuse a contract whose unit differs from the invoice's purchased-weight unit
+    # rather than silently comparing e.g. 90 kg against 100 lbs.
+    inv_unit, amt_unit = _unit_of(info.get("weight_text", "")), _unit_of(amount)
+    if inv_unit and amt_unit and inv_unit != amt_unit:
+        raise SystemExit(
+            f"unit mismatch: invoice {info['label']} purchased in {inv_unit!r} but contract "
+            f"amount is in {amt_unit!r}; the draw-down is unit-blind — supply the amount in "
+            f"the invoice's units ({inv_unit})"
+        )
     if committed + new_amt > purchased + 1e-9:
         raise SystemExit(
             f"draw-down exceeded: invoice {info['label']} purchased {purchased}, "
@@ -133,8 +153,12 @@ def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) 
         )
 
     # --- mint the contract row -----------------------------------------------
+    cts_rows = {r.datum_address: r.raw for r in _as_rows(cts_anchor)}
+    cts_time_row = cts_rows.get("1-1-5")
+    if not (cts_time_row and isinstance(cts_time_row[0], list) and len(cts_time_row[0]) > 2):
+        raise SystemExit("cts_gis anchor missing the 1-1-5 chronology row (cannot build time schema)")
     schema_payload = schema_from_anchor_payload(
-        {"1-1-1": [["1-1-1", ANCHOR_TIME_PRIMITIVE, str({r.datum_address: r.raw for r in _as_rows(cts_anchor)}["1-1-5"][0][2])], ["HOPS-chronological"]]}
+        {"1-1-1": [["1-1-1", ANCHOR_TIME_PRIMITIVE, str(cts_time_row[0][2])], ["HOPS-chronological"]]}
     )
     if not schema_payload.get("ok"):
         raise SystemExit(f"cts time schema decode failed: {schema_payload.get('error')}")
@@ -155,7 +179,9 @@ def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) 
         head = r.raw[0] if isinstance(r.raw, list) and r.raw else []
         pairs = [(as_text(head[i]), head[i + 1]) for i in range(1, len(head) - 1, 2)]
         refs = [as_text(v) for m, v in pairs if m == _RF_LCL_ID]
-        noms = [decode_label(v) for m, v in pairs if m == _RF_NOMINAL]
+        # Strip decoded nominals so the dedup matches the now-normalized amount/cost
+        # inputs (a re-run with trailing whitespace must still be detected as a duplicate).
+        noms = [decode_label(v).strip() for m, v in pairs if m == _RF_NOMINAL]
         dates = [as_text(v) for m, v in pairs if m == _RF_UTC]
         sig = ([*dates, ""][0], [*refs, "", ""][0], [*refs, "", ""][1],
                [*noms, "", ""][0], [*noms, "", ""][1])

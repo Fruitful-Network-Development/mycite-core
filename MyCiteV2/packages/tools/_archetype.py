@@ -154,12 +154,16 @@ def resolve_tool_document(
         if document_id
         else None
     )
-    if selected is not None:
+    if selected is not None and (not sandbox or document_sandbox(selected) == sandbox):
         # When a canonical_name is given it is AUTHORITATIVE: honor the selection only
         # if the selected doc IS that named doc; otherwise ignore it and fall through to
         # name-first resolution. (Without this, a selected doc that merely shares the
         # tool's archetype — e.g. lcl selected while opening the txa-named tool, both
-        # `samras_taxonomy` — would wrongly win over the named doc.)
+        # `samras_taxonomy` — would wrongly win over the named doc.) The sandbox guard
+        # keeps a selection from a DIFFERENT sandbox that happens to share the
+        # canonical_name/archetype from winning (reachable when the workbench auto-selects
+        # a foreign-sandbox doc); every other resolution path below is sandbox-scoped, so
+        # the selected branch must be too.
         if canonical_name:
             if _as_text(getattr(selected, "canonical_name", "")) == canonical_name:
                 return selected

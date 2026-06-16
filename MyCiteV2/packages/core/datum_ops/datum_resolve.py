@@ -143,7 +143,11 @@ class NameIndex:
 
 
 # Process-lifetime cache keyed on document_id (content-hash derived → no stale risk).
+# Bounded: document_ids are content-hash derived, so every write mints a fresh key and
+# superseded versions would otherwise accumulate unboundedly over the portal's lifetime.
+# Cap with FIFO eviction of the oldest entry (dicts preserve insertion order).
 _INDEX_CACHE: dict[str, NameIndex] = {}
+_INDEX_CACHE_MAX = 64
 
 
 def cached_index(document: Any | None) -> NameIndex:
@@ -156,6 +160,8 @@ def cached_index(document: Any | None) -> NameIndex:
         cached = NameIndex(document)
         if key:
             _INDEX_CACHE[key] = cached
+            if len(_INDEX_CACHE) > _INDEX_CACHE_MAX:
+                _INDEX_CACHE.pop(next(iter(_INDEX_CACHE)))
     return cached
 
 

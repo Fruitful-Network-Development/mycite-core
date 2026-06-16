@@ -91,6 +91,21 @@ class TestResolveToolDocument(unittest.TestCase):
         )
         self.assertIsNone(got)
 
+    def test_foreign_sandbox_selection_does_not_win(self) -> None:
+        # Review finding #9: a SELECTED doc from a DIFFERENT sandbox that shares the
+        # canonical_name must not be honored across the sandbox boundary; resolution must
+        # fall back to the in-sandbox target. (Reachable once the workbench can
+        # auto-select a foreign-sandbox doc.)
+        foreign = _doc(
+            "farm_profile", sandbox="other_sb",
+            rows=[{"datum_address": "4-4-1", "raw": [["4-4-1", "rf.3-1-3", "3-76-1"], ["ring"]]}],
+        )
+        got = resolve_tool_document(
+            [foreign, self.anchor, self.farm], tool=_GeoTool(), sandbox="agro_erp",
+            document_id=foreign.document_id, canonical_name="farm_profile",
+        )
+        self.assertIs(got, self.farm)
+
 
 @unittest.skipUnless(_LIVE_DB.exists(), "live MOS not present")
 class TestLiveResolutionRegression(unittest.TestCase):
