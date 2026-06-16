@@ -77,10 +77,11 @@ class DatumDocTool:
     tenant_id: str = "fnd"
     default_sandbox: str = "agro_erp"
     applies_to_archetype: tuple[str, ...] = ()
-    # Every agro_erp datum doc is a ``sandbox_source``; claiming that source_kind makes
-    # the viewer eligible in the palette whenever an agro_erp doc is selected, instead of
-    # relying solely on the live doc carrying the exact ``metadata.schema`` archetype token.
-    applies_to_source_kind: tuple[str, ...] = ("sandbox_source",)
+    # Intentionally EMPTY: eligibility is by ARCHETYPE token only. Each live agro_erp doc
+    # carries its mycite.v2.datum.agro_erp.<x>.v1 (or hops_geospatial_filament) archetype,
+    # which scopes a viewer to the one sandbox holding its doc. Claiming a broad source_kind
+    # (e.g. "sandbox_source") would surface the viewer in EVERY sandbox (cts_gis/fnd_csm/…).
+    applies_to_source_kind: tuple[str, ...] = ()
 
     @property
     def route(self) -> str:  # Protocol member; the unified workbench route.
@@ -113,25 +114,16 @@ class DatumDocTool:
         document_id: str,
         datum_address: str,
     ) -> dict[str, Any]:
-        from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
-            WORKBENCH_UI_SANDBOX_TOKEN,
-        )
-
         from ._archetype import read_sandbox_catalog, resolve_tool_document
         from ._shared.utilities import as_text
 
         docs, err = read_sandbox_catalog(authority_db_file, tenant_id=self.tenant_id)
         if err:
             return self._error(err)
-        # The system token is the corpus-wide reflective view, not a real sandbox; an
-        # agro_erp viewer opened while the workbench is on ``system`` must still resolve
-        # against its own sandbox (else "<doc> not found"). Honor an explicit concrete
-        # sandbox; fall back to default_sandbox for the system token or empty.
-        sandbox = (
-            sandbox_id
-            if sandbox_id and sandbox_id != WORKBENCH_UI_SANDBOX_TOKEN
-            else self.default_sandbox
-        )
+        # Resolve against the ACTIVE sandbox. A viewer is only addable where its datum docs
+        # exist (archetype-scoped search), so this receives the right sandbox; invoked under
+        # any other sandbox it resolves to nothing ("not found"), which is correct.
+        sandbox = sandbox_id or self.default_sandbox
         doc = resolve_tool_document(
             docs, tool=self, sandbox=sandbox, document_id=document_id, canonical_name=self.canonical_name
         )

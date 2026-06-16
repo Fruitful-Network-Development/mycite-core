@@ -878,6 +878,10 @@
       delete next.surface_query.document;
       delete next.surface_query.row;
       delete next.surface_query.mode;
+      // Clear the interface panel too: a tool widget is only valid where its datum docs
+      // exist, so switching sandbox empties the open tool containers (re-add per sandbox).
+      delete next.surface_query.tools;
+      delete next.surface_query.tool;
       loadShell(next).catch(function () {});
     });
   }

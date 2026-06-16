@@ -56,7 +56,7 @@ class LclStructureViewer:
     # `samras_taxonomy`. The tool resolves anchor+lcl BY NAME regardless of the selected
     # doc and degrades gracefully off-context (mirrors txa_tree).
     applies_to_archetype: tuple[str, ...] = ("samras_taxonomy",)
-    applies_to_source_kind: tuple[str, ...] = ("sandbox_source",)
+    applies_to_source_kind: tuple[str, ...] = ()
 
     def build_panel_payload(
         self,
