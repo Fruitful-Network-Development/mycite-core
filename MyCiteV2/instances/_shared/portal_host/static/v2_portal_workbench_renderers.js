@@ -1729,7 +1729,11 @@
         '" data-search="' + escapeHtml(hay) + '">' + thumb +
         '<span class="v2-leafletDir__text"><span class="v2-leafletDir__name">' + escapeHtml(name) + "</span>" +
         (meta ? '<span class="v2-leafletDir__meta">' + escapeHtml(meta) + "</span>" : "") +
-        "</span><code class=\"v2-leafletDir__type\">" + escapeHtml(asText(r.full_type)) + "</code></button>";
+        // The leaflet's display NAME is the card title (the subtype/owner ride the meta
+        // line). The full TYPE token is redundant here — you're already inside that
+        // type's directory — and as a non-shrinking <code> it overflowed the grid card
+        // and squeezed the name to nothing. Drop it so the card shows only the name.
+        "</span></button>";
     }).join("");
     return '<div class="v2-leafletDir__bar"><button type="button" class="v2-leafletDir__back" ' +
       'data-browse-back="hierarchy">&larr; Types</button><h4>' +

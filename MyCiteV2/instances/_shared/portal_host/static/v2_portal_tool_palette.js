@@ -160,11 +160,15 @@
     if (!target) return Promise.resolve({ schema: "", tools: [] });
     var listEl = target.querySelector("[data-palette-list]") || target;
     var inputEl = target.querySelector("[data-palette-input]");
-    // When a sandbox is in context (and no specific document is selected), the
-    // search bar lists the visualizers eligible for the whole sandbox's
-    // contents; otherwise it lists the tools for the selected datum.
-    var fetcher =
-      ctx && asText(ctx.sandboxId) && !asText(ctx.documentId) ? fetchForSandbox : fetchEligible;
+    // The interface-panel search is a DISCOVERY surface: whenever a sandbox is in
+    // context, list every visualizer valid for that sandbox's contents so the user
+    // can find + add one regardless of which document the workbench auto-selected.
+    // (The workbench always auto-selects a document — often the geometry-less anchor,
+    // which matches NO tool — so gating discovery on "no document selected" left the
+    // search permanently empty and the sandbox's tools undiscoverable.) The selected
+    // document still drives what each ADDED tool renders, not the search list. Only the
+    // corpus view (no sandbox) falls back to datum-scoped eligibility.
+    var fetcher = ctx && asText(ctx.sandboxId) ? fetchForSandbox : fetchEligible;
     return fetcher(ctx).then(function (payload) {
       var query = inputEl ? inputEl.value : "";
       var items = payload.tools || payload.visualizers || [];

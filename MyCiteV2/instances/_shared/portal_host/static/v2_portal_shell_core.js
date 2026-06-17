@@ -480,22 +480,42 @@
   function mountInterfacePanelSearch(search) {
     var mount = qs("[data-ip-tool-search-mount]");
     if (!mount) return;
-    if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return;
-    window.PortalToolPalette.mount(mount, {
+    var ctx = {
       tenantId: search.tenant_id || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
       sandboxId: search.sandbox_id || "",
       documentId: search.document_id || "",
       datumAddress: search.datum_address || "",
       onDispatch: function (item) { appendToolToShell(item, mount); },
-    });
-    var input = mount.querySelector("[data-palette-input]");
-    var list = mount.querySelector("[data-palette-list]");
-    if (input && list) {
-      input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
-      input.addEventListener("blur", function () {
-        setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
-      });
+    };
+    function doMount() {
+      if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return false;
+      window.PortalToolPalette.mount(mount, ctx);
+      var input = mount.querySelector("[data-palette-input]");
+      var list = mount.querySelector("[data-palette-list]");
+      if (input && list) {
+        input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
+        input.addEventListener("blur", function () {
+          setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
+        });
+      }
+      return true;
     }
+    if (doMount()) return;
+    // tool_palette is startup-critical but the sequential module loader can bring it
+    // up AFTER shell_core has already fired the bootstrap render — so on a fresh page
+    // load PortalToolPalette may not exist yet the first time this runs, which left the
+    // Tools panel permanently empty until some other interaction forced a re-render.
+    // Mount as soon as the module registers (one-shot; later renders mount above).
+    if (mount.__awaitingPalette) return;
+    mount.__awaitingPalette = true;
+    var onModuleReady = function (ev) {
+      if (ev && ev.detail && ev.detail.module_id && ev.detail.module_id !== "tool_palette") return;
+      if (doMount()) {
+        mount.__awaitingPalette = false;
+        window.removeEventListener("mycite:shell-module-ready", onModuleReady);
+      }
+    };
+    window.addEventListener("mycite:shell-module-ready", onModuleReady);
   }
 
   // surface_query.tools is a comma-joined, ordered, de-duplicated tool-id list.
@@ -843,29 +863,40 @@
     });
   }
 
-  function bindSandboxSelector() {
+  function bindSandboxSelector(activeSandbox) {
     var select = qs("[data-sandbox-selector]");
     if (!select) return;
-    if (select.getAttribute("data-sandbox-bound") === "true") return;  // idempotent re-mount
-    select.setAttribute("data-sandbox-bound", "true");
     var sandboxes = Array.isArray(window.__MYCITE_V2_SANDBOXES) ? window.__MYCITE_V2_SANDBOXES : [];
     if (!sandboxes.length) {
       select.setAttribute("hidden", "hidden");
       return;
     }
-    // Populate options.
-    select.innerHTML = sandboxes
-      .map(function (s) {
-        return '<option value="' + escapeHtml(s.token) + '">' + escapeHtml(s.label) + "</option>";
-      })
-      .join("");
-    // Seed from URL ?sandbox=... if present, else default to system.
+    // Reflect the ACTIVE sandbox the server resolved (control_panel_controls.sandbox_selector
+    // .sandbox_id), preferring an explicit ?sandbox=. WITHOUT this the <select> shows its
+    // first option (SANDBOX_DISPLAY_NAMES is sorted, so "agro_erp" leads) while the workbench
+    // is really in another sandbox (e.g. "system" on the default /portal/system) — so opening
+    // the dropdown and re-picking the already-shown option fires NO `change` event and the
+    // user cannot switch INTO it. Sync the value on every render (the options/listener bind
+    // once via the guard below) so the control always tracks reality.
     var urlSandbox = "";
     try {
       urlSandbox = new URLSearchParams(window.location.search).get("sandbox") || "";
     } catch (e) {}
-    if (urlSandbox) select.value = urlSandbox;
+    if (select.getAttribute("data-sandbox-bound") !== "true") {
+      select.setAttribute("data-sandbox-bound", "true");
+      // Populate options.
+      select.innerHTML = sandboxes
+        .map(function (s) {
+          return '<option value="' + escapeHtml(s.token) + '">' + escapeHtml(s.label) + "</option>";
+        })
+        .join("");
+      bindSandboxSelectorChange(select);
+    }
+    var seed = urlSandbox || (activeSandbox != null ? String(activeSandbox) : "");
+    if (seed) select.value = seed;
+  }
 
+  function bindSandboxSelectorChange(select) {
     select.addEventListener("change", function () {
       var token = select.value;
       var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
@@ -918,7 +949,7 @@
       }
     }
     if (controls.sandbox_selector) {
-      bindSandboxSelector();
+      bindSandboxSelector(controls.sandbox_selector.sandbox_id);
     }
   }
 

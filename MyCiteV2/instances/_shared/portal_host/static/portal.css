@@ -9941,12 +9941,6 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.v2-leafletDir__type {
-  margin-left: auto;
-  flex: 0 0 auto;
-  font-size: 10px;
-  color: #57606a;
-}
 .v2-leafletDir__count {
   margin-left: auto;
   min-width: 1.6em;

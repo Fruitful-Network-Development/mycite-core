@@ -269,6 +269,16 @@
       module_id: token,
       file: contract.file,
     });
+    // Announce readiness. The startup loader brings modules up sequentially, so a
+    // render kicked off by an earlier module (e.g. shell_core's bootstrap render)
+    // can run before a later startup-critical module (e.g. tool_palette) has
+    // executed. Consumers that mount such a module listen for this event and mount
+    // when their dependency arrives, instead of silently giving up on first render.
+    try {
+      window.dispatchEvent(
+        new CustomEvent("mycite:shell-module-ready", { detail: { module_id: token } })
+      );
+    } catch (e) {}
     return true;
   }
 
