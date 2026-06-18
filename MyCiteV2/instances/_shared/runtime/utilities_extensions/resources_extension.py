@@ -108,7 +108,15 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
-    """Write ``text`` to ``path`` atomically (temp file + os.replace)."""
+    """Write ``text`` to ``path`` atomically (temp file + os.replace).
+
+    ``mkstemp`` creates the temp file 0600, and ``os.replace`` carries that
+    mode onto the destination. Left as-is, a rewrite silently strips the
+    group/other read bits — so a static page or manifest re-saved through here
+    becomes unreadable to nginx (the worker runs as ``admin``) and the URL
+    starts returning 403. Preserve the destination's existing mode when
+    overwriting, and default new files to 0644 so they stay served.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
     try:
@@ -116,6 +124,11 @@ def _atomic_write_text(path: Path, text: str) -> None:
             handle.write(text)
             handle.flush()
             os.fsync(handle.fileno())
+        try:
+            mode = os.stat(path).st_mode & 0o777   # preserve existing perms
+        except FileNotFoundError:
+            mode = 0o644                            # readable default for a new file
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
     finally:
         if os.path.exists(tmp):

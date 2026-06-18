@@ -140,6 +140,21 @@ class UnifiedEditorTests(unittest.TestCase):
         self.assertTrue(r["ok"])
         self.assertIn("<h1>Trapp Farm</h1>", self.stat_index.read_text())
 
+    def test_static_save_preserves_file_mode(self):
+        # Regression: the atomic writer used mkstemp (0600) + os.replace, so every
+        # saved page inherited 0600 and became unreadable to nginx — the live site
+        # 403'd right after a Design-tab save. A save must preserve the page's
+        # existing permissions (here 0664 stays group/other readable).
+        import os
+        import stat
+        os.chmod(self.stat_index, 0o664)
+        r = sce.save_site_content(self.root, STAT_SITE, "index.html",
+                                  edits=[{"old": "Trapp", "new": "Trapp Farm"}])
+        self.assertTrue(r["ok"], r)
+        mode = stat.S_IMODE(os.stat(self.stat_index).st_mode)
+        self.assertTrue(mode & 0o044, f"page not group/other readable after save: {oct(mode)}")
+        self.assertEqual(mode, 0o664, oct(mode))
+
     def test_static_ambiguous_text_rejected(self):
         # "Crops" appears once on crops.html but the edit targets index.html where it's absent.
         r = sce.save_site_content(self.root, STAT_SITE, "index.html",
