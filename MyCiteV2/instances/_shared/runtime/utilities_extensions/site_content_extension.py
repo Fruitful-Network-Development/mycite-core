@@ -338,6 +338,20 @@ def _swap_kind(new: str) -> str:
     return "image"
 
 
+def _restore_files(snapshot: dict[str, bytes | None]) -> None:
+    """Best-effort rollback after a failed multi-file save: rewrite each file to
+    its pre-save bytes, or remove one that didn't exist before. Writing into an
+    existing file preserves its mode."""
+    for p, data in snapshot.items():
+        try:
+            if data is None:
+                Path(p).unlink(missing_ok=True)
+            else:
+                Path(p).write_bytes(data)
+        except OSError:
+            pass
+
+
 def save_site_content(
     webapps_root: str | Path | None,
     site: str,
@@ -365,23 +379,40 @@ def save_site_content(
     errors: list[str] = []
     new_images: list[str] = []
 
-    # Build a single replaceable container for either site kind.
+    # Build a single replaceable container for either site kind. For manifest
+    # sites scope it to {shared top-level keys} + {ONLY the edited page} so an
+    # edit/swap can't bleed into OTHER pages, while still reaching shared
+    # nav/footer and keeping a page's visible + meta fields in sync.
     mp = html_path = None
+    orig_manifest: dict[str, Any] = {}
+    scoped_page: str | None = None
     orig_data: dict[str, Any] = {}
     if kind == "manifest":
         mp = _site_manifest_path(webapps_root, site)
         if mp is None:
             return {"ok": False, "error": "no_manifest"}
-        orig_data = {str(p): json.loads(p.read_text(encoding="utf-8"))
-                     for p in (fd / "data").glob("*.json")} if (fd / "data").is_dir() else {}
-        container: Any = {"manifest": json.loads(mp.read_text(encoding="utf-8")),
+        try:
+            orig_manifest = json.loads(mp.read_text(encoding="utf-8"))
+            orig_data = {str(p): json.loads(p.read_text(encoding="utf-8"))
+                         for p in (fd / "data").glob("*.json")} if (fd / "data").is_dir() else {}
+        except (OSError, ValueError) as exc:
+            return {"ok": False, "error": "unreadable_source", "detail": str(exc)}
+        man_view = json.loads(json.dumps(orig_manifest))   # deep copy to edit
+        pages = man_view.get("pages")
+        if isinstance(pages, dict) and page in pages:
+            scoped_page = page
+            man_view["pages"] = {page: pages[page]}
+        container: Any = {"manifest": man_view,
                           "data": {k: json.loads(json.dumps(v)) for k, v in orig_data.items()}}
     else:
         rel = rx._as_text(page).lstrip("/") or "index.html"
         html_path = (fd / rel).resolve()
         if fd.resolve() not in html_path.parents or not html_path.is_file():
             return {"ok": False, "error": "no_page"}
-        container = {"html": html_path.read_text(encoding="utf-8")}
+        try:
+            container = {"html": html_path.read_text(encoding="utf-8")}
+        except OSError as exc:
+            return {"ok": False, "error": "unreadable_source", "detail": str(exc)}
 
     applied = 0
     for sw in swaps:
@@ -417,15 +448,46 @@ def save_site_content(
         return {"ok": True, "applied": 0, "rebuilt": False}
 
     if kind == "manifest":
-        rx._atomic_write_text(mp, json.dumps(container["manifest"], indent=2, ensure_ascii=False) + "\n")
+        # Merge the scoped edited view back into the full manifest: only the
+        # edited page + shared top-level keys change; other pages are untouched.
+        edited = container["manifest"]
+        if scoped_page is not None:
+            result_manifest = orig_manifest
+            for k, v in edited.items():
+                if k == "pages":
+                    result_manifest["pages"][scoped_page] = v[scoped_page]
+                else:
+                    result_manifest[k] = v
+        else:
+            result_manifest = edited
+        targets: dict[str, str] = {
+            str(mp): json.dumps(result_manifest, indent=2, ensure_ascii=False) + "\n"}
         for k, d in container["data"].items():
             if d != orig_data.get(k):
-                rx._atomic_write_text(Path(k), json.dumps(d, indent=2, ensure_ascii=False) + "\n")
-        _allocate_images(webapps_root, site, new_images)
+                targets[k] = json.dumps(d, indent=2, ensure_ascii=False) + "\n"
+        # Snapshot originals so a failed write OR render rolls back cleanly — no
+        # manifest<->HTML divergence left on the live site.
+        snapshot = {p: (Path(p).read_bytes() if Path(p).exists() else None) for p in targets}
+        try:
+            for p, text in targets.items():
+                rx._atomic_write_text(Path(p), text)
+        except OSError as exc:
+            _restore_files(snapshot)
+            return {"ok": False, "applied": 0, "rebuilt": False,
+                    "error": "write_failed", "detail": str(exc)}
         ok, note = _render_site(fd)
-        return {"ok": ok, "applied": applied, "rebuilt": ok, "detail": note}
+        if not ok:
+            _restore_files(snapshot)
+            return {"ok": False, "applied": 0, "rebuilt": False,
+                    "error": "render_failed", "detail": note}
+        _allocate_images(webapps_root, site, new_images)
+        return {"ok": True, "applied": applied, "rebuilt": True, "detail": note}
 
-    rx._atomic_write_text(html_path, container["html"])
+    try:
+        rx._atomic_write_text(html_path, container["html"])
+    except OSError as exc:
+        return {"ok": False, "applied": 0, "rebuilt": False,
+                "error": "write_failed", "detail": str(exc)}
     _allocate_images(webapps_root, site, new_images)
     return {"ok": True, "applied": applied, "rebuilt": False}
 

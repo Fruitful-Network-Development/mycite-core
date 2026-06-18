@@ -1013,5 +1013,64 @@ class NetworkRefsAllocationTests(unittest.TestCase):
         self.assertEqual(off_map["in_use_by"], [])
 
 
+class OwnerLinkRewriteTests(unittest.TestCase):
+    """O5 — a profile rename must repoint event leaflets linked by ``owner:``."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="ext_owner_links_"))
+        self.ev = self.root / "clients" / "_shared" / "site-core" / "event"
+        self.ev.mkdir(parents=True)
+
+    def _event(self, name: str, owner: str) -> Path:
+        p = self.ev / name
+        p.write_text(yaml.safe_dump(
+            {"schema": "mycite.site_core.event.v2", "owner": owner, "title": "Market Day"},
+            sort_keys=False), encoding="utf-8")
+        return p
+
+    def test_owner_link_files_filters_by_owner(self) -> None:
+        self._event("2026-05-20.artifact-event-finite.greenfield_berry_farm.a.yaml", "greenfield_berry_farm")
+        self._event("2026-05-20.artifact-event-finite.zzz.b.yaml", "zzz")
+        hits = rx._owner_link_files(self.root, "greenfield_berry_farm")
+        self.assertEqual([p.name for p in hits],
+                         ["2026-05-20.artifact-event-finite.greenfield_berry_farm.a.yaml"])
+
+    def test_rewrite_owner_links_repoints_and_renames(self) -> None:
+        self._event("2026-05-20.artifact-event-finite.greenfield_berry_farm.market.yaml",
+                    "greenfield_berry_farm")
+        self._event("2026-05-20.artifact-event-finite.other_farm.market.yaml", "other_farm")
+        changes = rx._rewrite_owner_links(self.root, "greenfield_berry_farm", "greenfield_farm")
+        self.assertEqual(len(changes), 1)
+        names = {p.name for p in self.ev.glob("*.yaml")}
+        self.assertIn("2026-05-20.artifact-event-finite.greenfield_farm.market.yaml", names)
+        self.assertNotIn("2026-05-20.artifact-event-finite.greenfield_berry_farm.market.yaml", names)
+        moved = yaml.safe_load(
+            (self.ev / "2026-05-20.artifact-event-finite.greenfield_farm.market.yaml").read_text())
+        self.assertEqual(moved["owner"], "greenfield_farm")
+        # the unrelated farm's event is untouched (no bleed)
+        other = yaml.safe_load(
+            (self.ev / "2026-05-20.artifact-event-finite.other_farm.market.yaml").read_text())
+        self.assertEqual(other["owner"], "other_farm")
+
+
+class ManifestCorruptionGuardTests(unittest.TestCase):
+    """O3 — add_asset_to_manifest must NOT overwrite an unparseable manifest."""
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp(prefix="ext_manifest_guard_"))
+        self.assets = self.root / "clients" / "demo.com" / "frontend" / "assets"
+        self.assets.mkdir(parents=True)
+        self.mp = self.assets / "0000-00-00.demo.shared_resources.yaml"
+
+    def test_add_asset_refuses_unparseable_manifest(self) -> None:
+        self.mp.write_text("resources:\n  image: [unclosed\n", encoding="utf-8")  # invalid YAML
+        before = self.mp.read_text()
+        r = rx.add_asset_to_manifest(self.root, site="demo.com", kind="image",
+                                     asset_id="x", asset_path="/assets/images/x.avif")
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["error"], "unparseable_manifest")
+        self.assertEqual(before, self.mp.read_text())  # left intact for a human
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -126,6 +126,33 @@ class UnifiedEditorTests(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertIn(IMG_A, self.man_manifest.read_text())
 
+    def test_manifest_edit_scoped_to_page_no_bleed(self):
+        # The same heading appears on two pages; editing it on `index` must NOT
+        # mutate the identical text on `about` (cross-page bleed).
+        m = json.loads(self.man_manifest.read_text())
+        m["pages"]["index"]["content"]["sections"][0]["html"] += "<h2>Our Mission</h2>"
+        m["pages"]["about"] = {"file": "about.html", "title": "About",
+                               "content": {"sections": [{"id": "a", "html": "<h2>Our Mission</h2>"}]}}
+        self.man_manifest.write_text(json.dumps(m), encoding="utf-8")
+        r = sce.save_site_content(self.root, MAN_SITE, "index",
+                                  edits=[{"old": "Our Mission", "new": "Our Purpose"}])
+        self.assertTrue(r["ok"], r)
+        out = json.loads(self.man_manifest.read_text())
+        self.assertIn("Our Purpose", out["pages"]["index"]["content"]["sections"][0]["html"])
+        self.assertEqual("<h2>Our Mission</h2>",
+                         out["pages"]["about"]["content"]["sections"][0]["html"])
+
+    def test_manifest_render_failure_rolls_back(self):
+        # A render failure must roll the manifest back so the live source never
+        # diverges from the (unchanged) rendered HTML.
+        sce._render_site = lambda fd: (False, "render boom")
+        before = self.man_manifest.read_text()
+        r = sce.save_site_content(self.root, MAN_SITE, "index",
+                                  edits=[{"old": "Welcome", "new": "Hello"}])
+        self.assertFalse(r["ok"])
+        self.assertEqual(r.get("error"), "render_failed")
+        self.assertEqual(before, self.man_manifest.read_text())
+
     # ---- static save (.html) ----
     def test_static_image_swap_in_html(self):
         r = sce.save_site_content(self.root, STAT_SITE, "index.html",

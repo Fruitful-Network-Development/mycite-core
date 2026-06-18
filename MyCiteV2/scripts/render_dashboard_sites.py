@@ -24,7 +24,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -249,7 +251,21 @@ def write_site(site: Site, files: dict[str, bytes]) -> list[str]:
         dst.parent.mkdir(parents=True, exist_ok=True)
         if dst.exists() and dst.read_bytes() == payload:
             continue
-        dst.write_bytes(payload)
+        # Atomic write so an interrupt can't leave a truncated dashboard file
+        # served by nginx; preserve the existing mode (else default 0644).
+        fd, tmp = tempfile.mkstemp(dir=str(dst.parent), prefix=f".{dst.name}.", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(payload)
+            try:
+                mode = os.stat(dst).st_mode & 0o777
+            except FileNotFoundError:
+                mode = 0o644
+            os.chmod(tmp, mode)
+            os.replace(tmp, dst)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
         changed.append(rel)
     return changed
 
@@ -308,9 +324,11 @@ def main() -> int:
             return 2
 
     if args.render:
+        # Render (and validate every grantee) BEFORE writing anything, so a
+        # missing/mismatched profile aborts with zero partial writes.
+        rendered = [(site, render_for_site(site)) for site in selected]
         total_changes = 0
-        for site in selected:
-            files = render_for_site(site)
+        for site, files in rendered:
             changes = write_site(site, files)
             if changes:
                 print(f"[{site.domain}] wrote {len(changes)} files:")

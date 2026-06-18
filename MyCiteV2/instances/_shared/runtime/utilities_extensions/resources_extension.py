@@ -107,6 +107,25 @@ def _load_yaml_mapping(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def _load_yaml_mapping_required(path: Path) -> dict[str, Any]:
+    """Like ``_load_yaml_mapping`` but distinguishes an UNPARSEABLE existing file
+    (raises ``ValueError``) from a genuinely absent one (``{}``). Callers that
+    LOAD -> mutate -> overwrite the same file must use this, so a momentarily
+    corrupt manifest is never silently replaced by a near-empty one that drops
+    every previously-recorded entry."""
+    if not path.exists():
+        return {}
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ValueError(f"unparseable manifest {path}: {exc}") from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"manifest {path} is not a mapping")
+    return data
+
+
 def _atomic_write_text(path: Path, text: str) -> None:
     """Write ``text`` to ``path`` atomically (temp file + os.replace).
 
@@ -1226,7 +1245,12 @@ def add_asset_to_manifest(
     manifest_path = _shared_manifest_path(webapps_root, site)
     if manifest_path is None:
         return {"ok": False, "error": "no_manifest"}
-    data = _load_yaml_mapping(manifest_path)
+    try:
+        data = _load_yaml_mapping_required(manifest_path)
+    except ValueError as exc:
+        # Refuse to overwrite a corrupt manifest with a 1-entry file (would drop
+        # every previously-allocated asset). Leave it for a human to repair.
+        return {"ok": False, "error": "unparseable_manifest", "detail": str(exc)}
     section = _manifest_section(data, kind)
     for entry in section:
         if isinstance(entry, dict) and _as_text(entry.get("asset_path")) == asset_path:
@@ -2062,6 +2086,45 @@ def _excerpt_is_owned_by_slug(filename: str, slug: str) -> bool:
     return re.search(rf"(?:^|[.]){re.escape(slug)}-", name) is not None
 
 
+def _owner_link_files(webapps_root: str | Path, slug: str) -> list[Path]:
+    """Event leaflets that link a profile via their internal ``owner:`` slug.
+    The related-ref scan keys on the canonical filename STEM, so these (which
+    name the profile only by its slug) are otherwise missed by a rename."""
+    out: list[Path] = []
+    root = Path(webapps_root) / "clients" / "_shared" / "site-core" / "event"
+    if not root.is_dir():
+        return out
+    for p in sorted(root.glob("*.yaml")):
+        if _as_text(_load_yaml_mapping(p).get("owner")) == slug:
+            out.append(p)
+    return out
+
+
+def _rewrite_owner_links(
+    webapps_root: str | Path, old_slug: str, new_slug: str
+) -> list[dict[str, str]]:
+    """Repoint event leaflets owned by a renamed profile: rewrite the ``owner:``
+    field and the filename slug token (collision-guarded). Returns a per-file
+    change list. Without this a profile rename orphans the farm's market-event
+    pins (events resolve their profile via ``owner``, not the canonical stem)."""
+    changes: list[dict[str, str]] = []
+    for p in _owner_link_files(webapps_root, old_slug):
+        data = _load_yaml_mapping(p)
+        data["owner"] = new_slug
+        new_path = p.parent / _replace_slug_token(p.name, old_slug, new_slug)
+        if new_path != p and new_path.exists():
+            changes.append({"old": str(p), "skipped": "collision"})
+            continue
+        _backup_file(p)
+        _atomic_write_text(
+            p, yaml.safe_dump(data, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        )
+        if new_path != p:
+            os.replace(str(p), str(new_path))
+        changes.append({"old": str(p), "new": str(new_path)})
+    return changes
+
+
 def cascade_rename_profile_slug(
     webapps_root: str | Path | None,
     old_slug: str,
@@ -2095,6 +2158,7 @@ def cascade_rename_profile_slug(
         "fnd_network": False,
         "data_files": [],
         "data_other": [],
+        "owner_links": [],
         "sites": [],
     }
     if not webapps_root:
@@ -2165,6 +2229,7 @@ def cascade_rename_profile_slug(
     data_files, data_other = _find_data_profile_refs(webapps_root, old_slug)
     report["data_files"] = data_files
     report["data_other"] = data_other
+    report["owner_links"] = [str(p) for p in _owner_link_files(webapps_root, old_slug)]
     report["sites"] = sorted({str(ex.parent.parent) for ex, _ in excerpt_plan})
 
     if not apply:
@@ -2175,7 +2240,6 @@ def cascade_rename_profile_slug(
     # mechanical. A mid-way failure is surfaced (with the partial report) rather
     # than silently swallowed; full rollback is intentionally out of scope. ----
     try:
-        os.replace(str(canonical), str(canonical.parent / new_canonical_name))
         for ex, new_ex in excerpt_plan:
             if new_ex != ex:
                 os.replace(str(ex), str(new_ex))
@@ -2226,6 +2290,14 @@ def cascade_rename_profile_slug(
             if new_text != text:
                 _backup_file(p)
                 _atomic_write_text(p, new_text)
+        # Event leaflets link a profile via their internal ``owner:`` slug (not
+        # the canonical stem), so the related-ref scan misses them — repoint them
+        # or the rename orphans the farm's market-event pins (O5).
+        report["owner_links"] = _rewrite_owner_links(webapps_root, old_slug, new_slug)
+        # Move the canonical file LAST (before propagate, which resolves by the
+        # new slug): a mid-cascade failure then leaves the profile reachable at
+        # the OLD name with referrers consistent instead of orphaned (O6).
+        os.replace(str(canonical), str(canonical.parent / new_canonical_name))
         # Re-derive the (now new-named) excerpts + rebuild owning sites +
         # regenerate the FND map dataset (new_slug is now in the FND refs).
         report["propagation"] = propagate_profile(webapps_root, new_slug)
