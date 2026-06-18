@@ -47,6 +47,10 @@ class Site:
     brand_primary_dark: str  # #RRGGBB
     brand_accent_soft: str   # #RRGGBB
     optional_tabs_jobs: bool = False
+    # Per-site files that legitimately exist in the dashboard dir but the
+    # renderer never emits (e.g. an operator-only tab loaded conditionally).
+    # Listed here so --check does not flag them as UNEXPECTED drift.
+    allowed_extra: tuple[str, ...] = ()
 
 
 SITES: tuple[Site, ...] = (
@@ -74,6 +78,9 @@ SITES: tuple[Site, ...] = (
         brand_primary="#0f6e56",
         brand_primary_dark="#0a5b46",
         brand_accent_soft="#d7ece4",
+        # FND-only operator panel, lazy-loaded by tabs/tolling.js for FND's
+        # grantee id; absent on other sites by design.
+        allowed_extra=("tabs/tolling_operator.js",),
     ),
     Site(
         short_name="TFF",
@@ -265,12 +272,15 @@ def check_site(site: Site, files: dict[str, bytes]) -> list[str]:
     # Detect EXTRA files in the per-site dashboard dir that the renderer
     # would never emit — those are also drift.
     expected = {(dst_root / rel).resolve() for rel in files}
+    allowed_extra = {(dst_root / rel).resolve() for rel in site.allowed_extra}
     if dst_root.exists():
         for p in dst_root.rglob("*"):
             if not p.is_file():
                 continue
-            if p.resolve() not in expected:
-                drift.append(f"{site.domain}/{p.relative_to(dst_root).as_posix()}: UNEXPECTED")
+            rp = p.resolve()
+            if rp in expected or rp in allowed_extra:
+                continue
+            drift.append(f"{site.domain}/{p.relative_to(dst_root).as_posix()}: UNEXPECTED")
     return drift
 
 

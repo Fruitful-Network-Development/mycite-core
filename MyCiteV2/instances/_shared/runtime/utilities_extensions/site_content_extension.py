@@ -100,6 +100,7 @@ def _pages(webapps_root: str | Path | None, site: str, kind: str) -> list[dict[s
             if isinstance(page, dict) and page.get("file"):
                 out.append({"page": pk, "path": _page_path_from_file(rx._as_text(page.get("file"))),
                             "label": rx._as_text(page.get("title")) or pk})
+        out.sort(key=lambda e: e["path"] != "/")  # float the home page to pages[0]
         return out
     # static: every page-level .html minus tooling/asset dirs
     out = []
@@ -109,6 +110,7 @@ def _pages(webapps_root: str | Path | None, site: str, kind: str) -> list[dict[s
             continue
         out.append({"page": rel, "path": _page_path_from_file(rel),
                     "label": rel[:-5].replace("/", " · ").replace("-", " ").title()})
+    out.sort(key=lambda e: e["path"] != "/")  # float the home page to pages[0]
     return out
 
 
