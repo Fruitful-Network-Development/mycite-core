@@ -155,6 +155,13 @@ class UnifiedEditorTests(unittest.TestCase):
         self.assertTrue(mode & 0o044, f"page not group/other readable after save: {oct(mode)}")
         self.assertEqual(mode, 0o664, oct(mode))
 
+    def test_empty_text_edit_rejected(self):
+        # An inline edit must not blank content to "" / whitespace (silent loss).
+        r = sce.save_site_content(self.root, STAT_SITE, "index.html",
+                                  edits=[{"old": "Trapp", "new": "   "}])
+        self.assertFalse(r["ok"])
+        self.assertIn("<h1>Trapp</h1>", self.stat_index.read_text())
+
     def test_static_ambiguous_text_rejected(self):
         # "Crops" appears once on crops.html but the edit targets index.html where it's absent.
         r = sce.save_site_content(self.root, STAT_SITE, "index.html",

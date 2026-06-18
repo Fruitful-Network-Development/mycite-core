@@ -318,8 +318,11 @@ def _render_site(frontend_dir: Path) -> tuple[bool, str]:
         "build_site(Path('.').resolve())"
     )
     try:
+        # Keep this BELOW gunicorn's worker --timeout (180s): a runaway render
+        # must fail here as a clean error, not let gunicorn SIGKILL the single
+        # worker mid-write (which would 502 every grantee + risk a partial site).
         done = subprocess.run([sys.executable, "-c", code], check=False,
-                              capture_output=True, timeout=300, cwd=str(frontend_dir))
+                              capture_output=True, timeout=150, cwd=str(frontend_dir))
     except (OSError, subprocess.TimeoutExpired) as exc:
         return False, f"render failed to launch: {exc}"
     if done.returncode != 0:
@@ -397,7 +400,9 @@ def save_site_content(
     for ed in edits:
         old = _CONTROL_RE.sub("", rx._as_text(ed.get("old")))
         new = _CONTROL_RE.sub("", rx._as_text(ed.get("new")))
-        if not old or len(new) > _MAX_TEXT:
+        if not old or not new.strip() or len(new) > _MAX_TEXT:
+            # Reject empty/whitespace-only `new`: an inline edit must not blank a
+            # heading/section to "" (silent content loss on the live page).
             errors.append("invalid text edit")
             continue
         container, done = _apply_text_edit(container, old, new)

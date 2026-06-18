@@ -2216,10 +2216,16 @@ def cascade_rename_profile_slug(
                 text = p.read_text(encoding="utf-8")
             except OSError:
                 continue
-            needle = "/profile/" + old_slug
-            if needle in text:
+            # Bound the slug at a URL delimiter so a prefix-sibling slug is not
+            # clobbered (old_slug "dan" must not rewrite "/profile/dan_white").
+            new_text = re.sub(
+                rf"(/profile/){re.escape(old_slug)}(?=[\"'/?#\s]|$)",
+                lambda m: m.group(1) + new_slug,
+                text,
+            )
+            if new_text != text:
                 _backup_file(p)
-                _atomic_write_text(p, text.replace(needle, "/profile/" + new_slug))
+                _atomic_write_text(p, new_text)
         # Re-derive the (now new-named) excerpts + rebuild owning sites +
         # regenerate the FND map dataset (new_slug is now in the FND refs).
         report["propagation"] = propagate_profile(webapps_root, new_slug)

@@ -746,6 +746,14 @@ def _atomic_write_yaml(path: Path, data: dict[str, Any]) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
+        # mkstemp creates the temp 0600; carry over the destination's existing
+        # mode (else default 0644) so a profile YAML written into the served
+        # /assets/profiles/ dir stays readable by nginx instead of 403-ing.
+        try:
+            mode = os.stat(path).st_mode & 0o777
+        except FileNotFoundError:
+            mode = 0o644
+        os.chmod(tmp_path, mode)
         os.replace(tmp_path, path)
     except Exception:
         if os.path.exists(tmp_path):
