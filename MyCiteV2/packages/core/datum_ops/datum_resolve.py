@@ -107,6 +107,53 @@ def resolve_coordinate(head: list[Any]) -> list[tuple[float, float]]:
     return coords
 
 
+def rewrite_title(raw: Any, label: str) -> list[Any]:
+    """Re-encode a datum row's ``rf.3-1-2`` title from plain ASCII, in lock-step.
+
+    A binary-title row is ``[head, [echo_label, …], …]`` where the head magnitude
+    after the :data:`Markers.TITLE` marker is the canonical 512-bit blob and the
+    tail's first element echoes the plain text. Return a NEW raw row with that blob
+    re-encoded from ``label`` (via :func:`encode_label`) and the tail echo synced —
+    **preserving** every other head slot, the rest of the tail (``tail[1:]``), and
+    any trailing raw elements (a record sidecar). The marker is found by the
+    canonical marker-only walk (odd head positions, as :func:`iter_marker_pairs`),
+    so a TITLE token that happens to sit in a magnitude (data) slot is never
+    mistaken for the marker.
+
+    Single sources the retitle discipline previously copy-pasted in
+    ``portal_datum_workbench_mutation_runtime._update_primary_value`` and
+    ``scripts/edit_agro_erp_farm_profile.build``.
+
+    Raises ``ValueError`` when ``raw`` is not a canonical binary-title row — a list
+    head with a TITLE marker and a *list* tail (``primary_value_unsupported_shape``
+    / ``not_a_title_row`` / ``title_slot_missing``) — or when ``label`` does not
+    encode (``title_invalid``: >64 chars or non-ASCII). It never converts a
+    record-shape (dict) tail or drops sidecar data.
+    """
+    if not (isinstance(raw, (list, tuple)) and raw and isinstance(raw[0], (list, tuple))):
+        raise ValueError("primary_value_unsupported_shape")
+    tail = raw[1] if len(raw) > 1 else None
+    if not isinstance(tail, (list, tuple)):
+        # Record-shape (dict) or tail-less row: not a plain binary-title row —
+        # refuse rather than clobber its named magnitudes.
+        raise ValueError("not_a_title_row")
+    head = list(raw[0])
+    title_index = -1
+    for marker_pos in range(1, len(head) - 1, 2):  # markers at odd slots (iter_marker_pairs)
+        if as_text(head[marker_pos]) == Markers.TITLE:
+            title_index = marker_pos + 1
+            break
+    if title_index < 0:
+        raise ValueError("title_slot_missing")
+    try:
+        head[title_index] = encode_label(label)
+    except (ValueError, UnicodeEncodeError) as exc:
+        # encode_label raises ValueError (>64 chars) / UnicodeEncodeError (non-ASCII).
+        raise ValueError(f"title_invalid: {exc}") from exc
+    new_tail = [label, *list(tail)[1:]]
+    return [head, new_tail, *list(raw)[2:]]
+
+
 class NameIndex:
     """node_address → display name, built from a document's *definition* rows.
 
@@ -173,4 +220,5 @@ __all__ = [
     "encode_label",
     "iter_marker_pairs",
     "resolve_coordinate",
+    "rewrite_title",
 ]

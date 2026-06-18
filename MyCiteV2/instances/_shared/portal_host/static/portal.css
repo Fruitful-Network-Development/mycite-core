@@ -3716,7 +3716,8 @@ body.is-modal-open {
 
 .ide-interfacePanel {
   border-left: 1px solid var(--line);
-  background: #fafafa;
+  background: var(--paper);
+  color: var(--ink);
   width: auto;
   max-width: none;
   /* Flex column establishes a definite-height chain for the content
@@ -3753,8 +3754,8 @@ body.is-modal-open {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: #fafafa;
-  border-bottom: 1px solid #ddd;
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
@@ -3767,7 +3768,7 @@ body.is-modal-open {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #777;
+  color: var(--ink2);
 }
 
 .ide-interfacePanel__title {
@@ -3776,8 +3777,9 @@ body.is-modal-open {
 }
 
 .ide-interfacePanel__close {
-  border: 1px solid #bbb;
-  background: #fff;
+  border: 1px solid var(--line);
+  background: var(--paper2);
+  color: var(--ink);
   border-radius: 6px;
   padding: 4px 10px;
   cursor: pointer;
@@ -10370,6 +10372,24 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 0.85em;
   color: var(--muted, #888);
 }
+/* Interface-panel tool search: results render as an OVERLAY dropdown anchored to the
+   search box (hidden until focus/type) so they don't displace the tool boxes below.
+   Mirrors .ide-menubar__toolSearchResults. */
+.portal-tool-palette { position: relative; }
+.portal-tool-palette__results {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 60;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+}
+.portal-tool-palette__results[hidden] { display: none; }
 
 /* Plan v2 — sandbox selector in menubar center. */
 .ide-menubar__sandboxLabel {
@@ -10458,10 +10478,11 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   gap: 0.75rem;
 }
 .ide-vizBox {
-  border: 1px solid var(--border, #2a2a2a);
+  border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
-  background: var(--surface, #1b1b1b);
+  background: var(--paper2);
+  color: var(--ink);
 }
 .ide-vizBox__header {
   display: flex;
@@ -10469,7 +10490,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid var(--border, #2a2a2a);
+  border-bottom: 1px solid var(--line);
   font-size: 0.8em;
   font-weight: 600;
 }
@@ -10496,17 +10517,16 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   overflow: auto;
 }
 
-/* --- Tool surface contrast + fill-height (interface panel) -----------------
-   The .ide-vizBox keeps its dark surface, but it lives inside the light
-   interface panel, so its content inherited dark text (dark-on-dark). Force
-   LIGHT content on the dark box, and make the box + tools area FILL the panel
-   height so collapsing the workbench gives the tool real vertical room (not
-   just width). */
+/* --- Tool surface fill-height + theme-aware content (interface panel) -------
+   The .ide-vizBox is theme-aware (var(--paper2)/--ink) so it blends with the
+   panel on every theme (Paper/Ocean/Forest/Midnight). Here we keep only the flex
+   fill-height rules (so a collapsed workbench gives the tool real vertical room)
+   and theme the inner content colors. */
 .ide-vizBox {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  color: #e8e7df;
+  color: var(--ink);
 }
 .ide-interfacePanel__tools {
   flex: 1 1 auto;
@@ -10521,25 +10541,25 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .ide-vizBox__content {
   flex: 1 1 auto;
   min-height: 0;
-  color: #e8e7df;
+  color: var(--ink);
 }
-.ide-vizBox__content a { color: #8fb6ff; }
-.ide-vizBox__content code { color: #f0d9a8; background: rgba(255, 255, 255, 0.06); padding: 0 3px; border-radius: 3px; }
-.ide-vizBox__content table { width: 100%; border-collapse: collapse; color: #e8e7df; }
+.ide-vizBox__content a { color: var(--accent); }
+.ide-vizBox__content code { color: var(--accent); background: color-mix(in srgb, var(--ink) 8%, transparent); padding: 0 3px; border-radius: 3px; }
+.ide-vizBox__content table { width: 100%; border-collapse: collapse; color: var(--ink); }
 .ide-vizBox__content th,
-.ide-vizBox__content td { border-bottom: 1px solid #2f2f2f; padding: 3px 6px; text-align: left; }
-.ide-vizBox__content th { color: #b9b8ad; font-weight: 600; }
+.ide-vizBox__content td { border-bottom: 1px solid var(--line); padding: 3px 6px; text-align: left; }
+.ide-vizBox__content th { color: var(--ink2); font-weight: 600; }
 .ide-interfacePanel__tools .ide-interfacePanel__empty,
 .ide-visualizationPanel__empty,
-.ide-visualizationPanel__error { color: #b9b8ad; font-size: 13px; }
-.ide-visualizationPanel__error { color: #e08a8a; }
+.ide-visualizationPanel__error { color: var(--ink2); font-size: 13px; }
+.ide-visualizationPanel__error { color: var(--danger, #c0392b); }
 
 /* TXA node-address tree (nested <details>) — indented, navigable, light text. */
 .v2-txatree { font-size: 13px; }
-.v2-txatree__header { color: #b9b8ad; font-size: 12px; margin-bottom: 8px; }
-.v2-txatree__empty { color: #9a9a90; }
+.v2-txatree__header { color: var(--ink2); font-size: 12px; margin-bottom: 8px; }
+.v2-txatree__empty { color: var(--ink2); }
 .v2-txatree__node { margin-left: 14px; }
-.v2-txatree__leaf { margin-left: 14px; padding: 2px 0; color: #cfcec4; }
+.v2-txatree__leaf { margin-left: 14px; padding: 2px 0; color: var(--ink); }
 .v2-txatree__body > .v2-txatree__node,
 .v2-txatree__body > .v2-txatree__leaf { margin-left: 0; }
 .v2-txatree summary {
@@ -10547,14 +10567,14 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   display: list-item;
   list-style: revert;
   padding: 2px 0;
-  color: #e8e7df;
+  color: var(--ink);
 }
-.v2-txatree summary:hover { color: #ffffff; }
-.v2-txatree__addr { color: #8fb6ff; font-variant-numeric: tabular-nums; }
-.v2-txatree__label { color: #e8e7df; }
-.v2-txatree__emptyTag { color: #c79350; font-size: 11px; font-style: italic; }
+.v2-txatree summary:hover { color: var(--accent); }
+.v2-txatree__addr { color: var(--accent); font-variant-numeric: tabular-nums; }
+.v2-txatree__label { color: var(--ink); }
+.v2-txatree__emptyTag { color: var(--accent2); font-size: 11px; font-style: italic; }
 .v2-txatree__node.is-empty > summary .v2-txatree__label,
-.v2-txatree__leaf.is-empty { color: #8f8f86; font-style: italic; }
+.v2-txatree__leaf.is-empty { color: var(--ink2); font-style: italic; }
 
 /* ext_resources — the shared site-core asset library (profiles contact-app,
    galleries, upload, icon dedup). Rendered inside its extension card. */

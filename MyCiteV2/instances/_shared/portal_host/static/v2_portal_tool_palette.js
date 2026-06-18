@@ -185,13 +185,16 @@
       '<div class="portal-tool-palette__search">' +
       '<input type="search" data-palette-input placeholder="Search tools…" autocomplete="off">' +
       "</div>" +
-      '<div data-palette-list class="portal-tool-palette__results"></div>';
+      // Discovery results are an overlay DROPDOWN: hidden until the user engages the
+      // search (focus/blur is wired by the interface-panel host; typing toggles below).
+      '<div data-palette-list class="portal-tool-palette__results" hidden></div>';
     var inputEl = target.querySelector("[data-palette-input]");
     var listEl = target.querySelector("[data-palette-list]");
     if (inputEl) {
       inputEl.addEventListener("input", function () {
         var tools = target.__paletteTools || [];
         renderList(listEl, filterTools(tools, inputEl.value), ctx);
+        if (listEl) listEl.toggleAttribute("hidden", !inputEl.value.trim());
       });
     }
     refresh(target, ctx);

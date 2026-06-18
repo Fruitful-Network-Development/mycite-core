@@ -3155,6 +3155,8 @@
       escapeHtml(rawJson) +
       '" data-row-primary-key="' +
       escapeHtml(primaryKeyPath) +
+      '" data-row-lens="' +
+      escapeHtml(asText(row.resolved_lens)) +
       '">' +
       '<td class="v2-workbenchUi__editorAddr">' +
       escapeHtml(addr || "—") +
@@ -3343,7 +3345,21 @@
   // head[1] as a PAIRS-style 2*index-1 would assume. It also degrades
   // gracefully when a row is shorter than its family's template (extra cells
   // stay blank, since head[slot] is then undefined).
-  function _ideRowCells(cell, columns) {
+  // Interpreted lens: show the server's lens-decoded value ONLY for the cell the lens
+  // actually resolved for — the one whose raw token equals primary_value_token (e.g.
+  // the binary title → "brassica"). Gating on resolved_lens != identity AND an exact
+  // token match keeps sibling magnitudes (e.g. the node-address "1") raw, which a
+  // blanket decode would mangle to "1 bits". lens === "raw" disables it entirely.
+  function _ideInterpret(cell, rawText, lens) {
+    if (lens === "raw" || !cell) return rawText;
+    var resolved = cell.resolved_lens;
+    if (!resolved || resolved === "identity") return rawText;
+    if (cell.display_value && asText(rawText) === asText(cell.primary_value_token)) {
+      return asText(cell.display_value);
+    }
+    return rawText;
+  }
+  function _ideRowCells(cell, columns, lens) {
     var raw = cell.raw;
     var head = (raw && Array.isArray(raw) && Array.isArray(raw[0])) ? raw[0] : null;
     var tail = (raw && Array.isArray(raw) && raw.length > 1) ? raw[1] : null;
@@ -3357,24 +3373,27 @@
         }
         case "relation":
         case "reference":
-        case "magnitude":
           return head ? _ideCellText(head[slot++]) : "";
+        case "magnitude":
+          return _ideInterpret(cell, head ? _ideCellText(head[slot++]) : "", lens);
         case "references": {
           var rest = head ? head.slice(slot).map(_ideCellText).join(", ") : "";
           if (head) slot = head.length;
           return rest;
         }
-        case "record_key":
-          return (tail && typeof tail === "object" && !Array.isArray(tail)) ? _ideCellText(tail[col.key]) : "";
+        case "record_key": {
+          var rk = (tail && typeof tail === "object" && !Array.isArray(tail)) ? _ideCellText(tail[col.key]) : "";
+          return _ideInterpret(cell, rk, lens);
+        }
         case "value":
-          return _ideCellText(raw);
+          return _ideInterpret(cell, _ideCellText(raw), lens);
         default:
           return "";
       }
     });
   }
-  function renderDatumIdeGridRow(cell, columns) {
-    var values = _ideRowCells(cell, columns);
+  function renderDatumIdeGridRow(cell, columns, lens) {
+    var values = _ideRowCells(cell, columns, lens);
     var tds = columns.map(function (col, i) {
       var full = values[i];
       var shown = _ideTruncate(full, 28);
@@ -3385,7 +3404,7 @@
     return '<tr class="v2-ide__row' + (cell.selected ? " is-selected" : "") +
       '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds + "</tr>";
   }
-  function renderDatumIdeValueGroup(group) {
+  function renderDatumIdeValueGroup(group, lens) {
     var columns = asList(group.column_template);
     if (!columns.length) columns = [{ role: "address" }];
     var cells = asList(group.cells);
@@ -3393,7 +3412,7 @@
       return '<th class="v2-ide__col v2-ide__col--' + escapeHtml(col.role) + '">' +
         escapeHtml(_ideColumnLabel(col)) + "</th>";
     }).join("");
-    var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns); }).join("");
+    var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns, lens); }).join("");
     return '<section class="v2-ide__valueGroup" data-value-group-id="' +
       escapeHtml(String(asObject(group).value_group)) + '">' +
       '<header class="v2-ide__vgHeader"><h5>' +
@@ -3408,9 +3427,10 @@
       return '<div class="v2-ide" data-region="datum-ide"><p class="v2-workbenchUi__empty">' +
         "No datum rows yet — use the composer above to author the first datum.</p></div>";
     }
+    var lens = asText(datumGrid.lens) || "interpreted";
     var sections = layers.map(function (layer) {
       var layerId = String(asObject(layer).layer);
-      var vgs = asList(layer.value_groups).map(renderDatumIdeValueGroup).join("");
+      var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens); }).join("");
       return '<section class="v2-ide__layer" data-layer-id="' + escapeHtml(layerId) + '">' +
         '<header class="v2-ide__layerHeader"><h4>' +
         escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs + "</section>";
@@ -3762,12 +3782,22 @@
         return;
       }
       var mode = getMode(rowEl);
-      var payloadText;
+      var lens = rowEl.getAttribute("data-row-lens") || "";
+      var operation = "update_row_raw";
+      var payloadText = null;
+      var displayValue = null;
       try {
         if (mode === "raw") {
           var textarea = rowRawTextarea(rowEl);
           payloadText = textarea ? textarea.value : "";
           JSON.parse(payloadText);  // throw if invalid JSON before staging
+        } else if (lens === "binary_text") {
+          // Title edit in ASCII: the server re-encodes to the canonical binary
+          // (encode_label) and syncs the head magnitude + tail label, so the quick
+          // value is sent as a display_value, not a raw-payload patch.
+          var titleInput = rowQuickInput(rowEl);
+          operation = "update_primary_value";
+          displayValue = titleInput ? titleInput.value : "";
         } else {
           var input = rowQuickInput(rowEl);
           var quickValue = input ? input.value : "";
@@ -3791,9 +3821,10 @@
         sandbox_id: sandboxId,
         document_id: documentId,
         datum_address: address,
-        operation: "update_row_raw",
-        payload_text: payloadText,
+        operation: operation,
       };
+      if (payloadText != null) body.payload_text = payloadText;
+      if (displayValue != null) body.display_value = displayValue;
       stageThenApply(body, stageEndpoint, applyEndpoint)
         .then(function () {
           setRowStatus(rowEl, "Saved.", "ok");

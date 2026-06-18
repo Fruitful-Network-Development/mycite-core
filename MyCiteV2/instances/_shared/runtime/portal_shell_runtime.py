@@ -1486,6 +1486,7 @@ def _build_agro_erp_tool_bundle(
     authority_db_file: str | Path | None,
     tool_rows: list[dict[str, Any]],
     surface_query: dict[str, str] | None,
+    private_dir: str | Path | None = None,
     **_: Any,
 ) -> dict[str, Any]:
     from MyCiteV2.instances._shared.runtime.portal_agro_erp_runtime import (
@@ -1499,6 +1500,8 @@ def _build_agro_erp_tool_bundle(
         authority_db_file=authority_db_file,
         tool_rows=tool_rows,
         surface_query=surface_query,
+        # Honor Control-Panel lens toggles on the agro-erp surface too (was all-enabled).
+        private_dir=private_dir,
     )
 
 

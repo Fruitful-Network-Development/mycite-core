@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_ops.datum_resolve import rewrite_title
 from MyCiteV2.packages.core.datum_rules import classify_row
 from MyCiteV2.packages.core.datum_templates import (
     TemplateRegistry,
@@ -31,6 +32,7 @@ DATUM_WORKBENCH_MUTATION_SCHEMA = "mycite.v2.portal.datum_workbench.mutation_res
 _ALLOWED_ACTIONS = {"stage", "validate", "preview", "apply", "discard"}
 _ALLOWED_OPERATIONS = {
     "update_row_raw",
+    "update_primary_value",
     "insert_datum",
     "delete_datum",
     "move_datum",
@@ -194,6 +196,46 @@ def _replace_row_raw(
         identity = store.read_document_version_identity(tenant_id=tenant_id, document_id=document.document_id)
         result["persisted_version_hash"] = _as_text((identity or {}).get("version_hash"))
     return result
+
+
+def _update_primary_value(
+    store: SqliteSystemDatumStoreAdapter,
+    *,
+    tenant_id: str,
+    document_id: str,
+    datum_address: str,
+    display_value: str,
+    apply: bool,
+) -> dict[str, Any]:
+    """Retitle a binary-title datum from a human-readable ASCII value.
+
+    The head magnitude after the ``rf.3-1-2`` (``Markers.TITLE``) marker is the
+    canonical 512-bit blob; the tail label echoes the plain text. Delegate to the
+    shared :func:`rewrite_title` codec helper, which re-encodes BOTH in lock-step —
+    the same discipline as ``scripts/edit_agro_erp_farm_profile.py`` — so the row's
+    derived hashes stay consistent (they fold over the whole raw), and which
+    PRESERVES any tail echo siblings / record sidecar and REFUSES non-title rows
+    (the client gate is ``resolved_lens == "binary_text"``, which also matches
+    network/nominal binary blobs, not just ``rf.3-1-2`` titles). This is the write
+    half of the BinaryTextLens read display (the grid decodes the head back to ASCII).
+    """
+    label = _as_text(display_value)
+    if not label:
+        raise ValueError("title_required")
+    document = _document_for_mutation(store, tenant_id=tenant_id, document_id=document_id)
+    target = next((row for row in document.rows if row.datum_address == datum_address), None)
+    if target is None:
+        raise ValueError("datum_address_missing")
+    new_raw = rewrite_title(target.raw, label)
+    _reject_malformed_row(datum_address, new_raw)
+    return _replace_row_raw(
+        store,
+        tenant_id=tenant_id,
+        document_id=document_id,
+        datum_address=datum_address,
+        raw=new_raw,
+        apply=apply,
+    )
 
 
 def _scaffold_datum(
@@ -436,6 +478,15 @@ def _preview_or_apply(
             document_id=document_id,
             datum_address=datum_address,
             raw=raw,
+            apply=apply,
+        )
+    if operation == "update_primary_value":
+        return _update_primary_value(
+            store,
+            tenant_id=tenant_id,
+            document_id=document_id,
+            datum_address=datum_address,
+            display_value=_as_text(payload.get("display_value")),
             apply=apply,
         )
     if operation == "insert_datum":

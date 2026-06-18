@@ -11,6 +11,7 @@ it is exempt from the MOS-only on-disk rule (same posture as tool_exposure).
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import tempfile
@@ -28,8 +29,12 @@ def _state_path(private_dir: str | Path) -> Path:
     return Path(private_dir) / LENS_STATE_SUBPATH
 
 
-def _catalog_lens_ids() -> set[str]:
-    return {entry["lens_id"] for entry in DEFAULT_DATUM_LENS_REGISTRY.catalog()}
+@functools.lru_cache(maxsize=1)
+def _catalog_lens_ids() -> frozenset[str]:
+    # The built-in lens catalog is fixed for the process lifetime, but this is on
+    # the per-surface render hot path (resolved up to 3× per request) — memoize the
+    # id set instead of rebuilding the full catalog (bindings dict + sort) each call.
+    return frozenset(entry["lens_id"] for entry in DEFAULT_DATUM_LENS_REGISTRY.catalog())
 
 
 def read_disabled_lens_ids(private_dir: str | Path | None) -> frozenset[str]:

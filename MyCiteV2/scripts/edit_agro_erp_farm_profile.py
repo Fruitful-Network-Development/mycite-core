@@ -22,7 +22,11 @@ import time
 from pathlib import Path
 
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
-from MyCiteV2.packages.core.datum_ops.datum_resolve import Markers, decode_label, encode_label
+from MyCiteV2.packages.core.datum_ops.datum_resolve import (
+    decode_label,
+    encode_label,
+    rewrite_title,
+)
 from MyCiteV2.packages.core.structures.samras.structure import as_text
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
@@ -56,24 +60,20 @@ def build(store, *, feature: str, label: str) -> Plan:
     target = next((r for r in rows if as_text(r.datum_address) == feature), None)
     if target is None:
         raise SystemExit(f"feature {feature} not found in farm_profile")
-    head = list(target.raw[0])
     old_label = as_text(target.raw[1][0]) if len(target.raw) > 1 and target.raw[1] else ""
-    # rewrite the rf.3-1-2 title blob magnitude (slot after the TITLE marker)
-    replaced = False
-    for i in range(1, len(head) - 1):
-        if as_text(head[i]) == Markers.TITLE:
-            head[i + 1] = encode_label(label)
-            replaced = True
-            break
-    if not replaced:
-        raise SystemExit(f"feature {feature} has no rf.3-1-2 title slot to edit")
-    new_row = AuthoritativeDatumDocumentRow(datum_address=feature, raw=[head, [label]])
+    # Rewrite the rf.3-1-2 title blob + tail echo via the shared lock-step codec
+    # helper (preserves any tail siblings / record sidecar; refuses non-title rows).
+    try:
+        new_raw = rewrite_title(target.raw, label)
+    except ValueError as exc:
+        raise SystemExit(f"feature {feature}: {exc}") from exc
+    new_row = AuthoritativeDatumDocumentRow(datum_address=feature, raw=new_raw)
     new_rows = [new_row if as_text(r.datum_address) == feature else r for r in rows]
     new_doc, version_hash = _finalize(dataclasses.replace(fp, rows=tuple(new_rows)), "farm_profile")
 
     report = {
         "feature": feature, "old_label": old_label, "new_label": label,
-        "title_roundtrip": decode_label(head[i + 1]),
+        "title_roundtrip": decode_label(encode_label(label)),
         "changed": new_doc.document_id != fp.document_id,
     }
     return Plan(doc=new_doc, prior_id=fp.document_id, version_hash=version_hash, report=report)

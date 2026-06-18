@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -13,6 +14,11 @@ from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime 
     run_datum_workbench_mutation_action,
 )
 from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
+from MyCiteV2.packages.core.datum_ops.datum_resolve import (
+    Markers,
+    decode_label,
+    encode_label,
+)
 
 
 class DatumWorkbenchMutationRuntimeTests(unittest.TestCase):
@@ -208,6 +214,97 @@ class CreateDocumentOperationTests(unittest.TestCase):
             )
             self.assertFalse(result["ok"])
             self.assertEqual(result["error"]["code"], "datum_mutation_failed")
+
+
+class UpdatePrimaryValueOperationTests(unittest.TestCase):
+    """`update_primary_value`: edit a binary-title datum in ASCII, store as binary.
+
+    The head magnitude after the rf.3-1-2 marker is the canonical 512-bit blob; the
+    tail label echoes the plain text. The op re-encodes via encode_label and rewrites
+    BOTH in lock-step, completing the round-trip with the read-time BinaryTextLens.
+    """
+
+    def _bootstrap_title_doc(self, db_file: Path) -> tuple[str, str]:
+        """Seed a doc with a binary-title row; return (document_id, sandbox_id)."""
+        from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
+            _document_sandbox_id,
+        )
+        from MyCiteV2.packages.ports.datum_store import AuthoritativeDatumDocumentRequest
+
+        with TemporaryDirectory() as src:
+            root = Path(src)
+            data_dir = root / "data"
+            public_dir = root / "public"
+            (data_dir / "system").mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+            seed = {
+                "1-0-1": [["1-0-1", "~", "0-0-0"], ["anchor-root"]],
+                "4-2-1": [
+                    ["4-2-1", "rf.3-1-1", "1", Markers.TITLE, encode_label("brassica")],
+                    ["brassica"],
+                ],
+            }
+            (data_dir / "system" / "anthology.json").write_text(
+                json.dumps(seed, indent=2), encoding="utf-8"
+            )
+            SqliteSystemDatumStoreAdapter(db_file).bootstrap_from_filesystem(
+                data_dir=data_dir,
+                public_dir=public_dir,
+                tenant_id="fnd",
+                canonical_ids=True,
+            )
+        store = SqliteSystemDatumStoreAdapter(db_file, allow_legacy_writes=False)
+        cat = store.read_authoritative_datum_documents(
+            AuthoritativeDatumDocumentRequest(tenant_id="fnd")
+        )
+        doc = next(d for d in cat.documents if d.canonical_name == "anthology")
+        return doc.document_id, _document_sandbox_id(
+            authority_db_file=db_file, document_id=doc.document_id
+        )
+
+    def _update(self, db_file: Path, doc_id: str, sandbox: str, *, value: str, action: str = "preview") -> dict:
+        return run_datum_workbench_mutation_action(
+            action,
+            {
+                "target_authority": "datum_workbench",
+                "sandbox_id": sandbox,
+                "document_id": doc_id,
+                "datum_address": "4-2-1",
+                "operation": "update_primary_value",
+                "display_value": value,
+            },
+            authority_db_file=db_file,
+            portal_instance_id="fnd",
+        )
+
+    def test_encodes_ascii_into_head_and_syncs_tail(self) -> None:
+        with TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "authority.sqlite3"
+            doc_id, sandbox = self._bootstrap_title_doc(db_file)
+            result = self._update(db_file, doc_id, sandbox, value="kale")
+            self.assertTrue(result["ok"], result)
+            row = next(
+                r for r in result["preview"]["updated_document"]["rows"]
+                if r["datum_address"] == "4-2-1"
+            )
+            head, tail = row["raw"][0], row["raw"][1]
+            # head title slot (after the rf.3-1-2 marker) is the re-encoded binary…
+            self.assertEqual(head[4], encode_label("kale"))
+            self.assertEqual(decode_label(head[4]), "kale")
+            # …and the tail label echoes the plain ASCII (lock-step).
+            self.assertEqual(tail, ["kale"])
+
+    def test_rejects_over_long_and_empty_titles(self) -> None:
+        with TemporaryDirectory() as tmp:
+            db_file = Path(tmp) / "authority.sqlite3"
+            doc_id, sandbox = self._bootstrap_title_doc(db_file)
+            too_long = self._update(db_file, doc_id, sandbox, value="x" * 65, action="apply")
+            self.assertFalse(too_long["ok"])
+            self.assertEqual(too_long["error"]["code"], "datum_mutation_failed")
+            self.assertIn("title_invalid", too_long["error"]["message"])
+            empty = self._update(db_file, doc_id, sandbox, value="", action="apply")
+            self.assertFalse(empty["ok"])
+            self.assertIn("title_required", empty["error"]["message"])
 
 
 if __name__ == "__main__":

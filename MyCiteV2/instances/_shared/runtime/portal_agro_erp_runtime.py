@@ -29,6 +29,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from MyCiteV2.instances._shared.runtime.portal_lens_runtime import enabled_lens_ids
 from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
     build_portal_workbench_ui_bundle,
 )
@@ -52,13 +53,16 @@ def build_portal_agro_erp_surface_bundle(
     authority_db_file: str | Path | None,
     tool_rows: list[dict[str, Any]] | None = None,
     surface_query: dict[str, Any] | None = None,
+    private_dir: str | Path | None = None,
     **_: Any,
 ) -> dict[str, Any]:
     """Build the surface bundle for ``/portal/system/tools/agro-erp``.
 
     Delegates to the unified workbench runtime with ``sandbox="agro_erp"``
     and re-stamps the surface identifiers so legacy routes and bookmarks
-    still resolve to the Agro-ERP schema.
+    still resolve to the Agro-ERP schema. Honors the operator's Control-Panel
+    lens toggles (``enabled_lens_ids``) like the ``/portal/system`` path does —
+    previously this surface ran all-lenses-enabled regardless of the toggles.
     """
     bundle = build_portal_workbench_ui_bundle(
         portal_scope=portal_scope,
@@ -68,6 +72,7 @@ def build_portal_agro_erp_surface_bundle(
         tool_rows=tool_rows,
         surface_query=surface_query,
         sandbox=AGRO_ERP_SANDBOX_TOKEN,
+        enabled_lens_ids=enabled_lens_ids(private_dir),
     )
 
     # Re-stamp the surface identifiers so the route and schema remain

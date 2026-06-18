@@ -125,14 +125,16 @@ class BinaryTextLens(TrimmedStringLens):
         chars: list[str] = []
         for group in groups:
             if len(group) < 8:
-                break
+                break  # trailing partial byte — nothing decodable left
             value = int(group, 2)
             if value == 0:
-                break
+                break  # NUL terminates the encode_label 512-bit zero padding
             if 32 <= value <= 126:
                 chars.append(chr(value))
                 continue
-            return f"{len(token)} bits"
+            # Non-printable byte: keep the readable run and mark the gap rather than
+            # discarding the whole decode (which would hide a legible prefix).
+            chars.append("·")
         decoded = "".join(chars).strip()
         return decoded or f"{len(token)} bits"
 
