@@ -110,7 +110,7 @@ class TestPaletteRegistryMembership(unittest.TestCase):
         for retired in ("workbench_ui", "cts_gis", "cts_gis_district", "cts_gis_admin"):
             self.assertNotIn(retired, ids)
         # The real per-doc tools remain.
-        for live in ("contracts", "farm_profile", "product_document", "txa_tree"):
+        for live in ("contracts", "farm_profile", "product_document", "samras_structure"):
             self.assertIn(live, ids)
 
 

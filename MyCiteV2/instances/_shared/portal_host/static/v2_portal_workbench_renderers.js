@@ -1559,6 +1559,139 @@
     );
   }
 
+  // ── SAMRAS structure dendrogram (txa / msn / lcl id-space) ────────────────
+  // The SAMRAS id-space rendered with the SAME cluster diagram as the Resource type
+  // browser — reuses clusterLayout + DENDRO + the .v2-dendro markup/links — but the
+  // nodes are browse-only (address + label, defined vs empty; no icon/count/edit) and a
+  // structure <select> reloads the shell. Lives in IIFE#1 so clusterLayout is in scope.
+  function _samrasDendroBody(nodes, collapsed) {
+    var lay = clusterLayout(nodes, collapsed);
+    var paths = lay.links.map(function (l) {
+      var mx = (l.sx + l.tx) / 2;
+      return '<path class="v2-dendro__link" d="M' + l.sx + "," + l.sy +
+        "C" + mx + "," + l.sy + " " + mx + "," + l.ty + " " + l.tx + "," + l.ty + '" />';
+    }).join("");
+    var svg = '<svg class="v2-dendro__links" width="' + lay.width + '" height="' + lay.height +
+      '" viewBox="0 0 ' + lay.width + " " + lay.height + '" aria-hidden="true">' + paths + "</svg>";
+    var nodeHtml = lay.placed.map(function (pl) {
+      var n = pl.node;
+      var full = asText(n.full_slug);
+      var isEmpty = asText(n.status) === "empty";
+      var toggle = pl.hasChildren
+        ? '<button type="button" class="v2-dendro__toggle" data-dendro-toggle="' + escapeHtml(full) +
+          '" aria-label="' + (pl.collapsed ? "Expand" : "Collapse") + '" title="' +
+          (pl.collapsed ? "Expand" : "Collapse") + '">' + (pl.collapsed ? "▸" : "▾") + "</button>"
+        : '<span class="v2-dendro__toggle v2-dendro__toggle--leaf" aria-hidden="true"></span>';
+      var label = isEmpty
+        ? '<span class="v2-dendro__empty">(undefined — denoted by magnitude)</span>'
+        : '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>";
+      var body = '<span class="v2-dendro__view v2-dendro__view--static' +
+        (isEmpty ? " is-empty" : " is-defined") + '"><span class="v2-dendro__addr">' +
+        escapeHtml(full) + "</span>" + label + "</span>";
+      return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
+        "px;top:" + pl.y + 'px">' + toggle + body + "</div>";
+    }).join("");
+    return (
+      '<div class="v2-dendro__toolbar">' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="expand">Expand all</button>' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="collapse">Collapse all</button>' +
+      "</div>" +
+      '<div class="v2-dendro" style="width:' + lay.width + "px;height:" + lay.height + 'px">' +
+      svg + nodeHtml + "</div>"
+    );
+  }
+
+  function _samrasCollapsedInit(nodes) {
+    // Collapse every branch by default (a 4670-node tree must not paint at once), then
+    // expand the root(s) so the top categories are visible on open.
+    var collapsed = new Set();
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (o.has_children) collapsed.add(asText(o.full_slug));
+    });
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (o.has_children && !asText(o.parent_slug)) collapsed.delete(asText(o.full_slug));
+    });
+    return collapsed;
+  }
+
+  function renderSamrasDendrogram(payload, content) {
+    payload = asObject(payload);
+    if (asText(payload.error)) {
+      content.innerHTML = '<p class="ide-visualizationPanel__error">' +
+        escapeHtml(asText(payload.error)) + "</p>";
+      return;
+    }
+    var nodes = asList(payload.nodes);
+    var structures = asList(payload.structures);
+    var selected = asText(payload.structure || payload.magnitude);
+    var options = structures.map(function (s) {
+      s = asObject(s);
+      var name = asText(s.name);
+      var sel = name === selected ? " selected" : "";
+      var hint = s.has_titles ? "" : " (no titles)";
+      return '<option value="' + escapeHtml(name) + '"' + sel + ">" + escapeHtml(name + hint) + "</option>";
+    }).join("");
+    var selector = structures.length
+      ? '<div class="v2-samras__bar"><label class="v2-samras__label">Structure ' +
+        '<select class="v2-samras__select" data-samras-select>' + options + "</select></label>" +
+        (payload.has_titles ? "" : '<span class="v2-samras__note">no title document — addresses only</span>') +
+        "</div>"
+      : "";
+    content.innerHTML =
+      '<section class="v2-clusterTree">' +
+      selector +
+      '<header class="v2-clusterTree__header">' +
+      escapeHtml(selected || "structure") + " · " +
+      escapeHtml(String(payload.denoted_count || 0)) + " denoted · " +
+      escapeHtml(String(payload.defined_count || 0)) + " defined · " +
+      escapeHtml(String(payload.empty_count || 0)) + " empty</header>" +
+      '<div class="v2-dendro__host" data-samras-host></div></section>';
+    var selectEl = content.querySelector("[data-samras-select]");
+    if (selectEl) selectEl.addEventListener("change", function () {
+      if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+        window.PortalShellCore.setSurfaceQuery("samras_structure", selectEl.value);
+      }
+    });
+    var host = content.querySelector("[data-samras-host]");
+    if (!host) return;
+    if (!nodes.length) {
+      host.innerHTML = '<p class="v2-clusterTree__empty">No nodes denoted by the magnitude.</p>';
+      return;
+    }
+    var collapsed = _samrasCollapsedInit(nodes);
+    function rerender() { host.innerHTML = _samrasDendroBody(nodes, collapsed); }
+    rerender();
+    host.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var tog = el.closest("[data-dendro-toggle]");
+      if (tog && host.contains(tog)) {
+        e.preventDefault();
+        var slug = tog.getAttribute("data-dendro-toggle");
+        if (collapsed.has(slug)) collapsed.delete(slug); else collapsed.add(slug);
+        rerender();
+        return;
+      }
+      var all = el.closest("[data-dendro-all]");
+      if (all && host.contains(all)) {
+        e.preventDefault();
+        collapsed.clear();
+        if (all.getAttribute("data-dendro-all") === "collapse") {
+          asList(nodes).forEach(function (n) {
+            var o = asObject(n);
+            if (o.has_children) collapsed.add(asText(o.full_slug));
+          });
+        }
+        rerender();
+      }
+    });
+  }
+
+  window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  window.__MYCITE_V2_TOOL_RENDERERS["samras_structure"] = renderSamrasDendrogram;
+
   function renderGenericLeaflet(detail) {
     var d = asObject(detail);
     var fields = asList(d.fields).map(function (f) {
@@ -5071,55 +5204,12 @@
       "</section>";
   }
 
-  function renderTxaTreeNode(node) {
-    node = node || {};
-    var isEmpty = node.status === "empty";
-    var head =
-      '<span class="v2-txatree__addr">' + esc(node.address || "") + "</span> " +
-      (isEmpty
-        ? '<span class="v2-txatree__emptyTag">(undefined — denoted by magnitude)</span>'
-        : '<span class="v2-txatree__label">' + esc(node.label || "") + "</span>");
-    var kids = Array.isArray(node.children) ? node.children : [];
-    if (kids.length) {
-      return (
-        '<details class="v2-txatree__node' + (isEmpty ? " is-empty" : "") + '">' +
-        "<summary>" + head + "</summary>" +
-        kids.map(renderTxaTreeNode).join("") +
-        "</details>"
-      );
-    }
-    return '<div class="v2-txatree__leaf' + (isEmpty ? " is-empty" : "") + '">' + head + "</div>";
-  }
-
-  function renderTxaTree(payload, content) {
-    // Collapsible node-address tree: DEFINED nodes show their label; EMPTY nodes
-    // (denoted by the anchor magnitude but not defined in txa) are flagged. Collapsed
-    // by default so a 1000+ node tree only paints expanded branches.
-    payload = payload || {};
-    if (errorOr(payload, content)) return;
-    var tree = Array.isArray(payload.tree) ? payload.tree : [];
-    content.innerHTML =
-      '<section class="v2-txatree">' +
-      '<header class="v2-txatree__header">' +
-      esc(payload.magnitude || "txa") + " magnitude · " +
-      esc(payload.denoted_count || 0) + " denoted · " +
-      esc(payload.defined_count || 0) + " defined · " +
-      esc(payload.empty_count || 0) + " empty</header>" +
-      '<div class="v2-txatree__body">' +
-      (tree.length
-        ? tree.map(renderTxaTreeNode).join("")
-        : '<p class="v2-txatree__empty">No nodes denoted by the magnitude.</p>') +
-      "</div></section>";
-  }
-
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
   window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
-  window.__MYCITE_V2_TOOL_RENDERERS["txa_tree"] = renderTxaTree;
-  // lcl_structure shares txa_tree's payload shape (tree/denoted/defined/empty), so it
-  // reuses the same renderer; the header reads "lcl magnitude" from payload.magnitude.
-  window.__MYCITE_V2_TOOL_RENDERERS["lcl_structure"] = renderTxaTree;
+  // samras_structure renders via the cluster dendrogram (renderSamrasDendrogram), defined
+  // and registered in IIFE#1 alongside clusterLayout (the Resource type-browser diagram).
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_admin"] = renderCtsGisAdmin;
 
@@ -5191,7 +5281,57 @@
     });
   }
 
+  // Generic composite container: lay out N panes side by side, delegating each pane's
+  // body to its own tool (or container) renderer. The seam for multi-tool sections — a
+  // composite is just a declaration of panes (see tools/agronomics_viewer.py), so a
+  // section can be reworked, or new composites assembled, without touching the sub-tools.
+  function renderComposite(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var panes = Array.isArray(payload.panes) ? payload.panes : [];
+    if (!panes.length) {
+      content.innerHTML = '<p class="ide-visualizationPanel__empty">No panes to display.</p>';
+      return;
+    }
+    content.innerHTML =
+      '<div class="v2-composite">' +
+      panes
+        .map(function (p, i) {
+          p = p || {};
+          return '<section class="v2-composite__pane" data-pane-index="' + i + '">' +
+            '<header class="v2-composite__paneHeader">' + esc(p.label || p.tool_id || "") + "</header>" +
+            '<div class="v2-composite__paneBody" data-pane-body></div></section>';
+        })
+        .join("") +
+      "</div>";
+    var bodies = content.querySelectorAll("[data-pane-body]");
+    var toolRenderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var containerRenderers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+    panes.forEach(function (p, i) {
+      p = p || {};
+      var body = bodies[i];
+      if (!body) return;
+      var sub = p.panel_payload || {};
+      var fn = toolRenderers[p.tool_id];
+      if (typeof fn !== "function") fn = containerRenderers[(sub.container) || ""];
+      if (typeof fn === "function") {
+        try {
+          fn(sub, body);
+        } catch (err) {
+          body.innerHTML =
+            '<p class="ide-visualizationPanel__error">Pane render failed: ' +
+            esc(err && err.message ? err.message : String(err)) + "</p>";
+        }
+      } else {
+        body.innerHTML =
+          '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
+          esc(p.tool_id) + "</code>.</p>";
+      }
+    });
+  }
+
   window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["composite"] = renderComposite;
 })();

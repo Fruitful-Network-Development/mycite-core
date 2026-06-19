@@ -113,7 +113,7 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
         tool_ids = {tool["tool_id"] for tool in out["tools"]}
         # Real per-doc viz tools are registered; the retired surface (workbench_ui) +
         # legacy fixed-artifact viewers (cts_gis*) are not. (packages/tools/__init__.py)
-        self.assertIn("txa_tree", tool_ids)
+        self.assertIn("samras_structure", tool_ids)
         self.assertNotIn("cts_gis", tool_ids)
         self.assertNotIn("workbench_ui", tool_ids)
 
@@ -128,7 +128,7 @@ class BuildEligibleToolsResponseTests(unittest.TestCase):
             datum_store=store,
         )
         tool_ids = {tool["tool_id"] for tool in out["tools"]}
-        self.assertIn("txa_tree", tool_ids)
+        self.assertIn("samras_structure", tool_ids)
         self.assertNotIn("cts_gis", tool_ids)
         self.assertNotIn("workbench_ui", tool_ids)
 
@@ -187,7 +187,7 @@ class PaletteEndpointHTTPTests(unittest.TestCase):
         payload = resp.get_json()
         self.assertEqual(payload["schema"], PORTAL_PALETTE_RESPONSE_SCHEMA)
         tool_ids = {tool["tool_id"] for tool in payload["tools"]}
-        self.assertIn("txa_tree", tool_ids)
+        self.assertIn("samras_structure", tool_ids)
         self.assertNotIn("cts_gis", tool_ids)
         self.assertNotIn("workbench_ui", tool_ids)
 
@@ -200,7 +200,7 @@ class PaletteEndpointHTTPTests(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         payload = resp.get_json()
         tool_ids = {tool["tool_id"] for tool in payload["tools"]}
-        self.assertIn("txa_tree", tool_ids)
+        self.assertIn("samras_structure", tool_ids)
         self.assertNotIn("cts_gis", tool_ids)
         self.assertNotIn("workbench_ui", tool_ids)
 

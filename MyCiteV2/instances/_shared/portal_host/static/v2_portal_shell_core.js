@@ -822,6 +822,18 @@
     getEnvelope: function () {
       return lastEnvelope;
     },
+    // Set one surface_query param and reload, preserving the rest (document, tools,
+    // sandbox, lens). Same clone-request+loadShell pattern as the sandbox selector and
+    // the tool palette; reachable from tool renderers (separate IIFE) via this global.
+    setSurfaceQuery: function (key, value) {
+      var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
+      if (!request || !key) return;
+      var next = cloneRequest(request);
+      next.surface_query =
+        next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
+      next.surface_query[key] = value;
+      loadShell(next).catch(function () {});
+    },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("shell_core");

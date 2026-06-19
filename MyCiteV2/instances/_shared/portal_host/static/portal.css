@@ -9835,6 +9835,25 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-variant-numeric: tabular-nums;
   color: #57606a;
 }
+/* SAMRAS structure dendrogram: browse-only static nodes (address + label, no
+   view/edit button) reusing the .v2-dendro cluster diagram. */
+.v2-clusterTree__header { color: var(--ink2); font-size: 12px; margin-bottom: 4px; }
+.v2-clusterTree__empty { color: var(--ink2); font-size: 13px; }
+.v2-dendro__view--static,
+.v2-dendro__view--static:hover {
+  cursor: default;
+  background: none;
+  border-color: transparent;
+  max-width: 280px;
+}
+.v2-dendro__addr {
+  flex: 0 0 auto;
+  margin-right: 4px;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+.v2-dendro__empty { color: var(--ink2); font-style: italic; }
+.v2-dendro__view--static.is-empty .v2-dendro__addr { color: var(--ink2); }
 .v2-dendro__editIcon {
   flex: 0 0 auto;
   width: 18px;
@@ -10092,6 +10111,12 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-activitylink.is-active {
   outline: 2px solid var(--ide-accent, #1f883d);
   outline-offset: -2px;
+}
+/* The generic table wrapper had no rule, so a wide datum grid (deep node addresses)
+   was clipped by the first overflow:hidden ancestor instead of scrolling. Make it a
+   horizontal scroll container (mirrors .v2-workbenchUi__tableWrap / .data-tool__tableWrap). */
+.v2-tableWrap {
+  overflow-x: auto;
 }
 .v2-table {
   width: 100%;
@@ -10555,7 +10580,50 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .ide-visualizationPanel__error { color: var(--danger, #c0392b); }
 
 /* TXA node-address tree (nested <details>) — indented, navigable, light text. */
+/* Composite tool: N sub-tool panes laid out side by side (e.g. agronomics =
+   farm_profile | LCL). Fills the vizBox height; each pane scrolls independently.
+   On a narrow interface panel the row scrolls horizontally — widen the panel
+   (splitter) or collapse the workbench for a roomier side-by-side. */
+.v2-composite {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+  height: 100%;
+  overflow-x: auto;
+}
+.v2-composite__pane {
+  flex: 1 1 0;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--paper2);
+}
+.v2-composite__paneHeader {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink2);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.v2-composite__paneBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px 8px; }
+
 .v2-txatree { font-size: 13px; }
+/* SAMRAS structure tool: the txa/msn/lcl selector bar above the node tree. */
+.v2-samras__bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.v2-samras__label { font-size: 12px; color: var(--ink2); display: inline-flex; align-items: center; gap: 6px; }
+.v2-samras__select {
+  font: inherit; font-size: 12px; padding: 2px 6px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--paper2); color: var(--ink); cursor: pointer;
+}
+.v2-samras__note { font-size: 11px; font-style: italic; color: var(--ink2); }
 .v2-txatree__header { color: var(--ink2); font-size: 12px; margin-bottom: 8px; }
 .v2-txatree__empty { color: var(--ink2); }
 .v2-txatree__node { margin-left: 14px; }

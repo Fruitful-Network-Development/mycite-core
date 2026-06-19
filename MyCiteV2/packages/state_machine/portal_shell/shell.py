@@ -1222,6 +1222,12 @@ def canonical_query_for_surface_query(
         tools = _as_text(normalized.get("tools")) or _as_text(normalized.get("tool"))
         if tools:
             query["tools"] = tools
+        # Per-tool selection: the unified SAMRAS structure viewer picks which anchor
+        # structure (txa/msn/lcl) to render. Free-form name; the tool validates it
+        # against the structures it discovers (unknown → falls back to the first).
+        samras_structure = _as_text(normalized.get("samras_structure"))
+        if samras_structure:
+            query["samras_structure"] = samras_structure
         return query
     return {}
 

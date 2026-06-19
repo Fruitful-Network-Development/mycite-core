@@ -981,12 +981,18 @@ def _build_interface_tool_panel(
                 panels.append({"tool_id": tid, "tool_label": tid, "panel_payload": {"error": f"unknown tool: {tid}"}})
                 continue
             try:
-                payload = tool.build_panel_payload(
-                    authority_db_file=authority_path,
-                    sandbox_id=sandbox_id,
-                    document_id=document_id,
-                    datum_address=datum_address,
-                )
+                _kw: dict[str, Any] = {
+                    "authority_db_file": authority_path,
+                    "sandbox_id": sandbox_id,
+                    "document_id": document_id,
+                    "datum_address": datum_address,
+                }
+                # Opt-in: a tool that declares wants_surface_query reads per-tool params
+                # (e.g. samras_structure picks which SAMRAS structure to render). Other
+                # tools' signatures are untouched.
+                if getattr(tool, "wants_surface_query", False):
+                    _kw["extra_query"] = surface_query if isinstance(surface_query, dict) else {}
+                payload = tool.build_panel_payload(**_kw)
             except Exception as exc:  # pragma: no cover — tool errors must not crash the shell
                 payload = {"error": f"tool failed: {exc}"}
             panels.append({

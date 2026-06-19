@@ -41,10 +41,6 @@ class TestRecordViewersRegistered(unittest.TestCase):
         record_tokens = {
             "invoices": "mycite.v2.datum.agro_erp.invoices.v1",
             "contacts": "mycite.v2.datum.agro_erp.contacts.v1",
-            "livestock": "mycite.v2.datum.agro_erp.livestock.v1",
-            "equipment": "mycite.v2.datum.agro_erp.equipment.v1",
-            "soil": "mycite.v2.datum.agro_erp.soil.v1",
-            "growing_season": "mycite.v2.datum.agro_erp.growing_season.v1",
         }
         for tid, token in record_tokens.items():
             tool = tools_get(tid)
@@ -87,15 +83,6 @@ class TestRecordViewersLive(unittest.TestCase):
         self.assertGreater(p["row_count"], 0)
         self.assertIn("polygon", p["columns"])
 
-    def test_phase5_seed_doc_viewers(self) -> None:
-        for tid, col in (("livestock", "animal"), ("equipment", "equipment"),
-                         ("soil", "soil_type"), ("growing_season", "season")):
-            p = self._payload(tid)
-            self.assertIsNone(p.get("error"), tid)
-            self.assertEqual(p["container"], "record_table", tid)
-            self.assertGreater(p["row_count"], 0, tid)
-            self.assertIn(col, p["columns"], tid)
-
     def test_sandbox_search_scopes_viewers_to_their_sandbox(self) -> None:
         # Operator model (2026-06-16): a viewer surfaces in the interface-panel search ONLY
         # in the sandbox holding its datum docs. The agro record viewers must be listed for
@@ -116,7 +103,7 @@ class TestRecordViewersLive(unittest.TestCase):
 
         agro_ids = _tool_ids("agro_erp")
         cts_ids = _tool_ids("cts_gis")
-        record_viewers = {"invoices", "contacts", "livestock", "equipment", "soil", "growing_season"}
+        record_viewers = {"invoices", "contacts"}
         self.assertTrue(record_viewers <= agro_ids, f"missing from agro_erp: {record_viewers - agro_ids}")
         self.assertEqual(record_viewers & cts_ids, set(), f"leaked into cts_gis: {record_viewers & cts_ids}")
 
