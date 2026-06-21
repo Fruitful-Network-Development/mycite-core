@@ -173,6 +173,9 @@ class NewsletterGranteeRoutesTests(unittest.TestCase):
         (fnd_csm / f"grantee.fnd.{FND}.json").write_text(json.dumps({
             "schema": GRANTEE_PROFILE_SCHEMA, "msn_id": FND, "label": "FND",
             "short_name": "FND", "domains": [DOMAIN], "users": [],
+            # Newsletter capability is the grantee config's newsletter block;
+            # the grantee routes (save/list/send) gate on it.
+            "newsletter": {"selected_sender_address": f"news@{DOMAIN}"},
         }), encoding="utf-8")
         config = V2PortalHostConfig(
             portal_instance_id="fnd", public_dir=tmp / "public", private_dir=tmp / "private",
@@ -208,6 +211,25 @@ class NewsletterGranteeRoutesTests(unittest.TestCase):
                         json={"slug": "spring_update", "subject": "Spring update",
                               "body_text": "y"}, headers=H)
         self.assertEqual(r.status_code, 409, r.get_data(as_text=True))
+
+    def test_grantee_without_newsletter_block_is_gated(self):
+        """A grantee whose config JSON has no `newsletter` block cannot reach
+        the newsletter routes — list/save return newsletter_not_enabled (403),
+        not a confusing domain_not_configured. This is the convention: only
+        grantees with a newsletter block have a newsletter."""
+        client, tmp = self._client()
+        # Overwrite the fixture grantee, dropping the newsletter block.
+        fnd_csm = tmp / "private" / "utilities" / "tools" / "fnd-csm"
+        (fnd_csm / f"grantee.fnd.{FND}.json").write_text(json.dumps({
+            "schema": GRANTEE_PROFILE_SCHEMA, "msn_id": FND, "label": "FND",
+            "short_name": "FND", "domains": [DOMAIN], "users": [],
+        }), encoding="utf-8")
+        listed = client.get("/__fnd/newsletter/grantee/list", headers=H)
+        self.assertEqual(listed.status_code, 403, listed.get_data(as_text=True))
+        self.assertEqual(listed.get_json().get("error"), "newsletter_not_enabled")
+        saved = client.post("/__fnd/newsletter/grantee/save",
+                            json={"subject": "x", "body_text": "y"}, headers=H)
+        self.assertEqual(saved.status_code, 403, saved.get_data(as_text=True))
 
 
 if __name__ == "__main__":

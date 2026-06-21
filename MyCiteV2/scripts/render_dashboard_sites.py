@@ -191,7 +191,15 @@ def site_config_payload(site: Site, grantee: dict) -> dict:
             "accent_soft":        site.brand_accent_soft,
         },
         "footer": {"contact_email": contact},
-        "optional_tabs": {"jobs": site.optional_tabs_jobs},
+        "optional_tabs": {
+            "jobs": site.optional_tabs_jobs,
+            # Newsletter capability is the grantee config JSON's newsletter
+            # block (single source of truth; the dashboard gates on the same
+            # signal via whoami.has_newsletter).
+            "newsletter": bool(
+                (grantee.get("newsletter") or {}).get("selected_sender_address")
+            ),
+        },
     }
 
 

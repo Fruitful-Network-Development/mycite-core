@@ -5996,8 +5996,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             webapps_root=host_config.webapps_root,
         )
 
+    def _grantee_has_newsletter(grantee: dict[str, Any] | None) -> bool:
+        """A grantee "has a newsletter" iff its config JSON carries a
+        ``newsletter`` block with a non-empty ``selected_sender_address``.
+        Single source of truth for newsletter capability — the dashboard tab
+        and the send path both gate on it."""
+        newsletter = (grantee or {}).get("newsletter") or {}
+        if not isinstance(newsletter, dict):
+            return False
+        return bool(_as_text(newsletter.get("selected_sender_address")))
+
+    def _grantee_profile_for_msn(msn: str) -> dict[str, Any] | None:
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            load_grantee_directory,
+        )
+
+        target = _as_text(msn)
+        for profile in load_grantee_directory(_configured_fnd_csm_root()):
+            if _as_text(profile.get("msn_id")) == target:
+                return profile
+        return None
+
     def _grantee_newsletter_scope() -> tuple[str, str, tuple[Any, int] | None]:
-        """(entity, primary_domain, err) for the calling grantee."""
+        """(entity, primary_domain, err) for the calling grantee.
+
+        Returns ``newsletter_not_enabled`` (403) when the resolved grantee has
+        no ``newsletter`` block, so list/save/send all refuse cleanly for a
+        contact-only site instead of dead-ending on ``domain_not_configured``.
+        """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
         )
@@ -6006,6 +6032,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         requested_msn, err = _resolve_grantee_scope()
         if err:
             return "", "", err
+        if not _grantee_has_newsletter(_grantee_profile_for_msn(requested_msn)):
+            return "", "", (jsonify({"ok": False, "error": "newsletter_not_enabled"}), 403)
         domains = domains_for_grantee(requested_msn, fnd_csm_root=_configured_fnd_csm_root())
         domain = domains[0] if domains else ""
         if not domain:
@@ -6821,6 +6849,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 "short_name": _as_text(caller.get("short_name")),
                 "label": _as_text(caller.get("label")),
                 "domains": [str(d) for d in caller.get("domains") or []],
+                "has_newsletter": _grantee_has_newsletter(caller),
             },
         }), 200
 
