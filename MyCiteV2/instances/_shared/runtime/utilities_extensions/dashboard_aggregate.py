@@ -562,8 +562,109 @@ def build_resources_summary(
     }
 
 
+def build_grantee_resource_tree(
+    *,
+    msn_id: str,
+    fnd_csm_root: str | Path,
+    webapps_clients_root: str | Path,
+    webapps_root: str | Path,
+) -> dict[str, Any]:
+    """Grantee-scoped resource type-tree for the dashboard Resources → Browse
+    node-cluster graph.
+
+    Reuses the canonical artifact type-tree (resource_types.flatten_type_tree),
+    filtered to the types the grantee actually owns assets in, with
+    grantee-scoped rolled-up counts and the matching instances. The ``nodes``
+    are exactly the shape the portal dendrogram consumes (full_slug /
+    parent_slug / depth / has_children / label / count), so the dashboard
+    renders the SAME cluster graph — scoped to this grantee, read-only.
+    """
+    from . import resource_types as rt
+
+    summary = build_resources_summary(
+        msn_id=msn_id,
+        fnd_csm_root=fnd_csm_root,
+        webapps_clients_root=webapps_clients_root,
+    )
+    rows = rt.flatten_type_tree(webapps_root)
+    by_slug = {r["full_slug"]: r for r in rows}
+    full_slugs = set(by_slug)
+    _OTHER = "other"
+
+    def _classify(asset: dict[str, Any], kind: str) -> str:
+        ident = _as_text(asset.get("asset_id")) or _as_text(asset.get("asset_path"))
+        base = ident.rsplit("/", 1)[-1]
+        token = rt.parse_leaflet_type(base)
+        node_slug = rt.match_type_to_node(full_slugs, token)[0] if token else ""
+        if node_slug:
+            return node_slug
+        for cand in (f"artifact-{kind}", kind):
+            if cand in full_slugs:
+                return cand
+        return _OTHER
+
+    direct: dict[str, int] = {}
+    instances: dict[str, list[dict[str, Any]]] = {}
+    for kind_key, items in (summary.get("resources") or {}).items():
+        kind = kind_key[:-1] if kind_key.endswith("s") else kind_key
+        for asset in items:
+            slug = _classify(asset, kind)
+            direct[slug] = direct.get(slug, 0) + 1
+            instances.setdefault(slug, []).append({
+                "asset_id": _as_text(asset.get("asset_id")),
+                "asset_path": _as_text(asset.get("asset_path")),
+                "domain": _as_text(asset.get("domain")),
+                "notes": _as_text(asset.get("notes")),
+            })
+
+    def _ancestors(slug: str):
+        cur = slug
+        while cur:
+            yield cur
+            cur = _as_text(by_slug.get(cur, {}).get("parent_slug"))
+
+    scoped: set[str] = set()
+    for slug in direct:
+        if slug == _OTHER:
+            scoped.add(_OTHER)
+        else:
+            scoped.update(_ancestors(slug))
+
+    def _rolled(slug: str) -> int:
+        return sum(c for d, c in direct.items() if slug in set(_ancestors(d)))
+
+    nodes: list[dict[str, Any]] = []
+    for slug in sorted(scoped, key=lambda s: (int(by_slug.get(s, {}).get("depth", 0)), s)):
+        if slug == _OTHER:
+            nodes.append({
+                "full_slug": _OTHER, "parent_slug": "", "depth": 0,
+                "label": "Other", "icon_ref": "", "has_children": False,
+                "count": direct.get(_OTHER, 0),
+            })
+            continue
+        row = by_slug[slug]
+        scoped_children = [c for c in row.get("child_slugs", []) if c in scoped]
+        nodes.append({
+            "full_slug": slug,
+            "parent_slug": _as_text(row.get("parent_slug")),
+            "depth": int(row.get("depth", 0)),
+            "label": _as_text(row.get("label")) or slug,
+            "icon_ref": _as_text(row.get("icon_ref")),
+            "has_children": bool(scoped_children),
+            "count": _rolled(slug),
+        })
+
+    return {
+        "grantee": summary.get("grantee", {}),
+        "nodes": nodes,
+        "instances": instances,
+        "counts": summary.get("counts", {}),
+    }
+
+
 __all__ = [
     "build_email_dashboard",
+    "build_grantee_resource_tree",
     "build_grantee_summary",
     "build_resources_summary",
     "dashboard_error",

@@ -97,6 +97,14 @@ _SAFE_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 # given_name for a profile must name the entity flavor.
 _PROFILE_GIVEN_NAMES = ("legal_entity", "natural_entity")
 
+# A plausible client domain (lowercase host with a dotted TLD). Used to scope a
+# grantee upload to its own site dir.
+_DOMAIN_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9-]+)+$")
+
+
+def _as_text(value: Any) -> str:
+    return str(value if value is not None else "").strip()
+
 
 class UploadError(ValueError):
     """Raised when an upload is malformed, unsupported, or unsafe."""
@@ -361,3 +369,130 @@ def handle_upload(
         "asset_path": str(dest_path),
         "gallery": gallery,
     }
+
+
+# Grantee dashboard uploads are intentionally narrower than the operator path
+# above: a client may only add IMAGES (forced to AVIF) and DOCUMENTS to their
+# OWN site, selecting from these existing artifact kinds. They cannot create or
+# edit artifact TYPES/icons, upload a profile/logo/icon, or write to the shared
+# gallery or another grantee's site.
+_GRANTEE_UPLOAD_KINDS = ("image", "document")
+_GRANTEE_ASSET_SUBDIR = {"image": "images", "document": "documents"}
+_GRANTEE_ARTIFACT_TOKEN = {"image": "artifact-image", "document": "artifact-document"}
+
+
+def handle_grantee_upload(
+    file_bytes: bytes,
+    filename: str,
+    kind: str,
+    *,
+    title: str,
+    slug: str,
+    domain: str,
+    clients_root: str | Path,
+) -> dict[str, Any]:
+    """Grantee-scoped upload of an image (→AVIF) or document into the grantee's
+    OWN site (``clients/<domain>/frontend/assets/<images|documents>/``) and
+    register it in that site's shared-resources record-manifest so it appears in
+    the dashboard Library/Browse. SELECT-only kinds (image/document) — no type,
+    icon, profile, or logo creation. Returns ``{asset_id, asset_path, kind}``.
+    """
+    import yaml
+
+    if not isinstance(file_bytes, (bytes, bytearray)) or not bytes(file_bytes):
+        raise UploadError("file is empty")
+    file_bytes = bytes(file_bytes)
+    kind = str(kind or "").strip().lower()
+    if kind not in _GRANTEE_UPLOAD_KINDS:
+        raise UploadError(
+            f"kind must be one of {_GRANTEE_UPLOAD_KINDS} (got {kind!r})"
+        )
+    if not str(title or "").strip():
+        raise UploadError("title is required")
+    slug = _require_safe_segment(slug, field="slug")
+    domain = _as_text(domain).lower()
+    if not _DOMAIN_RE.match(domain):
+        raise UploadError("invalid domain")
+
+    assets_dir = Path(clients_root) / domain / "frontend" / "assets"
+    manifests = sorted(assets_dir.glob("*record-manifest*.shared_resources.yaml"))
+    if not manifests:
+        raise UploadError("site has no resource manifest")
+    man_path = manifests[0]
+    try:
+        data = yaml.safe_load(man_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        raise UploadError("could not read resource manifest") from exc
+    if not isinstance(data, dict):
+        raise UploadError("malformed resource manifest")
+    # Defence in depth: the manifest must declare the domain we were scoped to.
+    man_domain = _as_text(data.get("site_domain")).lower()
+    if man_domain and man_domain != domain:
+        raise UploadError("manifest domain mismatch")
+    site_entity = _as_text(data.get("site_entity"))
+    if not site_entity:
+        raise UploadError("manifest missing site_entity")
+
+    if kind == "image":
+        final_bytes, ext = _resolve_image(file_bytes, slug)
+    else:  # document
+        ext = _ext_of(filename)
+        if not ext or not _SAFE_SEGMENT.match(ext):
+            raise UploadError("document upload must have a safe file extension")
+        final_bytes = file_bytes
+
+    asset_id = f"0000-00-00.{_GRANTEE_ARTIFACT_TOKEN[kind]}.{site_entity}.{slug}"
+    dest_name = f"{asset_id}.{ext}"
+    subdir = _GRANTEE_ASSET_SUBDIR[kind]
+    out_dir = assets_dir / subdir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = out_dir / dest_name
+    if out_dir.resolve() not in dest_path.resolve().parents:
+        raise UploadError("resolved destination escapes the assets directory")
+    asset_web_path = f"/assets/{subdir}/{dest_name}"
+
+    tmp = out_dir / f".{dest_name}.{uuid.uuid4().hex}.tmp"
+    try:
+        tmp.write_bytes(final_bytes)
+        tmp.replace(dest_path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+    # Register in the manifest (replace any same-id entry, else append) and
+    # atomically rewrite — preserving the file mode so nginx (other-read) can
+    # still serve it (mirrors the _atomic_write_text fix from the design-save
+    # incident).
+    resources = data.setdefault("resources", {})
+    if not isinstance(resources, dict):
+        raise UploadError("malformed resource manifest resources")
+    bucket = resources.setdefault(kind, [])
+    if not isinstance(bucket, list):
+        raise UploadError(f"malformed resource manifest resources.{kind}")
+    bucket[:] = [
+        e for e in bucket
+        if not (isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id)
+    ]
+    bucket.append({
+        "asset_id": asset_id,
+        "asset_path": asset_web_path,
+        "consumers": [],
+        "entity_scope": site_entity,
+    })
+    man_tmp = man_path.with_name(f".{man_path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        man_tmp.write_text(
+            yaml.safe_dump(data, sort_keys=False, allow_unicode=True),
+            encoding="utf-8",
+        )
+        try:
+            os.chmod(man_tmp, man_path.stat().st_mode)
+        except OSError:
+            pass
+        man_tmp.replace(man_path)
+    finally:
+        if man_tmp.exists():
+            man_tmp.unlink()
+
+    _log.info("grantee_upload stored %s for %s", asset_id, domain)
+    return {"asset_id": asset_id, "asset_path": asset_web_path, "kind": kind}

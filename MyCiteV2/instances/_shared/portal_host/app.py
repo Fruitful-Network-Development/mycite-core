@@ -6949,6 +6949,76 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         return jsonify({"ok": True, **payload}), 200
 
+    @app.get("/__fnd/resources/tree")
+    def fnd_resources_tree() -> tuple[Any, int]:
+        """Grantee-scoped resource type-tree for the dashboard Resources → Browse
+        node-cluster graph (the same dendrogram shape the portal uses, filtered
+        to the caller's own assets). Read-only; scoped by _resolve_grantee_scope."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.dashboard_aggregate import (
+            build_grantee_resource_tree,
+        )
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        payload = build_grantee_resource_tree(
+            msn_id=msn,
+            fnd_csm_root=Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
+            webapps_clients_root=Path(host_config.webapps_root) / "clients",
+            webapps_root=host_config.webapps_root,
+        )
+        return jsonify({"ok": True, **payload}), 200
+
+    @app.post("/__fnd/resources/upload")
+    def fnd_resources_upload() -> tuple[Any, int]:
+        """Grantee-scoped upload of an image (→AVIF) or document into the
+        caller's OWN site, registered in its record-manifest so it appears in
+        the dashboard Library/Browse. Image/document only — no type/icon/profile
+        creation (that stays operator-only). Scoped by _resolve_grantee_scope:
+        a grantee can only upload to its own domain."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions import (
+            resource_upload,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(msn, fnd_csm_root=_configured_fnd_csm_root())
+        domain = domains[0] if domains else ""
+        if not domain:
+            return jsonify({"ok": False, "error": "no_domain"}), 404
+
+        upload = request.files.get("file")
+        if upload is None:
+            return jsonify({"ok": False, "error": "file_required"}), 400
+        file_bytes = upload.read()
+
+        def _field(name: str) -> str:
+            return _as_text(request.form.get(name))
+
+        try:
+            result = resource_upload.handle_grantee_upload(
+                file_bytes,
+                upload.filename or "",
+                _field("kind"),
+                title=_field("title"),
+                slug=_field("slug"),
+                domain=domain,
+                clients_root=Path(host_config.webapps_root) / "clients",
+            )
+        except resource_upload.UploadError as exc:
+            return jsonify({"ok": False, "error": "invalid_upload", "detail": str(exc)}), 400
+        except Exception:  # pragma: no cover - unexpected backend failure
+            _log.exception("grantee resource upload failed")
+            return jsonify({"ok": False, "error": "upload_failed"}), 500
+        return jsonify({"ok": True, **result}), 200
+
     def _grantee_scope_tokens(grantee: dict[str, Any] | None) -> list[str]:
         """Identity tokens for a grantee used to scope the public profile
         roster to its own entity: short_name + label + each owned domain."""

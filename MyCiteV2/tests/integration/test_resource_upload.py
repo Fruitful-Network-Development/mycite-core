@@ -311,3 +311,73 @@ class ResourceUploadRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
+class GranteeUploadTests(unittest.TestCase):
+    """handle_grantee_upload: client uploads an image (→AVIF) or document into
+    its OWN site + registers it in the record-manifest. Image/document only."""
+
+    def _site(self):
+        import yaml
+        tmp = Path(tempfile.mkdtemp(prefix="grantee_upload_"))
+        assets = tmp / "example.test" / "frontend" / "assets"
+        assets.mkdir(parents=True)
+        man = assets / "0000-00-00.record-manifest.test_site-website.shared_resources.yaml"
+        man.write_text(yaml.safe_dump({
+            "manifest_kind": "record-manifest", "site_entity": "test_site",
+            "site_domain": "example.test",
+            "resources": {"image": [], "document": []},
+        }), encoding="utf-8")
+        return tmp, man
+
+    @unittest.skipUnless(HAS_AVIFENC, "avifenc required")
+    def test_image_upload_converts_to_avif_and_registers(self):
+        import yaml
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            handle_grantee_upload,
+        )
+        tmp, man = self._site()
+        res = handle_grantee_upload(
+            _PNG_1X1, "shot.png", "image", title="Hero", slug="hero_shot",
+            domain="example.test", clients_root=tmp,
+        )
+        self.assertEqual(res["asset_id"], "0000-00-00.artifact-image.test_site.hero_shot")
+        self.assertEqual(res["asset_path"], "/assets/images/0000-00-00.artifact-image.test_site.hero_shot.avif")
+        out = tmp / "example.test/frontend/assets/images/0000-00-00.artifact-image.test_site.hero_shot.avif"
+        self.assertTrue(out.exists())
+        self.assertIn(b"ftyp", out.read_bytes()[:16])
+        ids = [e["asset_id"] for e in yaml.safe_load(man.read_text())["resources"]["image"]]
+        self.assertIn("0000-00-00.artifact-image.test_site.hero_shot", ids)
+
+    def test_document_upload_registers(self):
+        import yaml
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            handle_grantee_upload,
+        )
+        tmp, man = self._site()
+        res = handle_grantee_upload(
+            b"%PDF-1.4 test", "resume.pdf", "document", title="Resume",
+            slug="resume", domain="example.test", clients_root=tmp,
+        )
+        self.assertEqual(res["asset_path"], "/assets/documents/0000-00-00.artifact-document.test_site.resume.pdf")
+        self.assertEqual(len(yaml.safe_load(man.read_text())["resources"]["document"]), 1)
+
+    def test_rejects_non_select_kinds(self):
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            UploadError, handle_grantee_upload,
+        )
+        tmp, _ = self._site()
+        for kind in ("icon", "profile", "logo", "type"):
+            with self.assertRaises(UploadError):
+                handle_grantee_upload(_SVG_ICON, "x.svg", kind, title="x",
+                                      slug="x", domain="example.test", clients_root=tmp)
+
+    def test_rejects_traversal_slug(self):
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            UploadError, handle_grantee_upload,
+        )
+        tmp, _ = self._site()
+        with self.assertRaises(UploadError):
+            handle_grantee_upload(_PNG_1X1, "x.png", "image", title="x",
+                                  slug="../evil", domain="example.test", clients_root=tmp)
