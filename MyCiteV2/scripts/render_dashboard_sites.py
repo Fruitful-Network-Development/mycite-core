@@ -92,6 +92,22 @@ SITES: tuple[Site, ...] = (
         brand_primary_dark="#6b4321",
         brand_accent_soft="#ede2d4",
     ),
+    Site(
+        short_name="RCO",
+        domain="rubycorpus.com",
+        site_title="Ruby Corpus",
+        brand_primary="#f31587",
+        brand_primary_dark="#b01065",
+        brand_accent_soft="#fcd6ea",
+    ),
+    Site(
+        short_name="ECO",
+        domain="eclecticorigins.co",
+        site_title="Eclectic Origins",
+        brand_primary="#4c512f",
+        brand_primary_dark="#363a22",
+        brand_accent_soft="#e6e2d2",
+    ),
 )
 
 
