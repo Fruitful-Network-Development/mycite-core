@@ -165,6 +165,24 @@ class DashboardProfilesTests(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 405, resp.get_data(as_text=True))
 
+    def test_operator_only_resource_mutations_blocked_for_grantees(self) -> None:
+        # The per-grantee /dashboard/api/ proxy forwards every /__fnd/* path, so
+        # operator-only resource-mutation routes must reject a non-operator
+        # grantee caller (X-Auth-Request-Grantee != operator) — otherwise a
+        # dashboard-cred client could edit the shared type manifest or another
+        # grantee's assets/profiles.
+        client = self._client()
+        for path in (
+            "/__fnd/resources/profile/save",
+            "/__fnd/resources/manifest/set-icon-ref",
+            "/__fnd/resources/asset/delete",
+        ):
+            resp = client.post(
+                path, headers={"X-Auth-Request-Grantee": CVCC}, json={}
+            )
+            self.assertEqual(resp.status_code, 403, f"{path}: {resp.get_data(as_text=True)}")
+            self.assertEqual(resp.get_json().get("error"), "operator_only", path)
+
 
 if __name__ == "__main__":
     unittest.main()

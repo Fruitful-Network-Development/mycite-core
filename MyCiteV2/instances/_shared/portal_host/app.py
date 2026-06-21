@@ -4457,6 +4457,42 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # the convention used by /__fnd/tolling/refresh.
         return not _as_text(request.headers.get("X-Auth-Request-Grantee"))
 
+    # Resource-mutation routes (type/icon manifest edits, asset
+    # retitle/rename/delete, profile save→propagate) are OPERATOR-only. The
+    # per-grantee /dashboard/api/ proxy forwards every /__fnd/* path, so without
+    # this gate a dashboard-cred client could mutate the shared resource type
+    # manifest or another grantee's assets. Reject any caller that resolves to a
+    # non-operator grantee; operator requests are header-absent (or carry the
+    # operator's own msn) and still pass.
+    _OPERATOR_ONLY_RESOURCE_PATHS = (
+        "/__fnd/resources/profile/save",
+        "/__fnd/resources/icon/dedup",
+        "/__fnd/resources/field-icons/set",
+    )
+    _OPERATOR_ONLY_RESOURCE_PREFIXES = (
+        "/__fnd/resources/manifest/",
+        "/__fnd/resources/asset/",
+    )
+
+    @app.before_request
+    def _gate_operator_only_resource_routes():
+        path = request.path
+        if path not in _OPERATOR_ONLY_RESOURCE_PATHS and not path.startswith(
+            _OPERATOR_ONLY_RESOURCE_PREFIXES
+        ):
+            return None
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            OPERATOR_MSN_ID,
+            resolve_grantee_from_headers,
+        )
+
+        caller = resolve_grantee_from_headers(
+            request.headers, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+        return None
+
     def _analytics_salt() -> str:
         cached = _ANALYTICS_SALT_HOLDER.get("salt")
         if cached:
