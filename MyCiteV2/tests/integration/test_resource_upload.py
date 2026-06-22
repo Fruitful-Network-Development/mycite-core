@@ -433,3 +433,9 @@ class GranteeUploadTests(unittest.TestCase):
         with self.assertRaises(UploadError):
             handle_grantee_upload(bomb, "bomb.png", "image", title="x", slug="x",
                                   domain="example.test", clients_root=root)
+        # A crafted JPEG whose APP0 length runs off the end (to skip the real SOF)
+        # is structurally inconsistent → rejected, not silently passed to avifenc.
+        jbomb = b"\xff\xd8" + b"\xff\xe0" + (9000).to_bytes(2, "big") + b"X" * 20
+        with self.assertRaises(UploadError):
+            handle_grantee_upload(jbomb, "bomb.jpg", "image", title="x", slug="x",
+                                  domain="example.test", clients_root=root)

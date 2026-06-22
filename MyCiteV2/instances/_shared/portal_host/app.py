@@ -4489,10 +4489,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             resolve_grantee_from_headers,
         )
 
+        # The operator is the portal oauth context: NO grantee claim header. A
+        # request that carries X-Auth-Request-Grantee is a dashboard caller and
+        # must resolve to the operator's own msn to pass — a claim that resolves
+        # to a grantee, OR fails to resolve at all (e.g. the fnd-csm dir is
+        # unreadable), is denied. This fails CLOSED: an unresolvable but PRESENT
+        # claim is never silently escalated to operator.
+        grantee_claim = (request.headers.get("X-Auth-Request-Grantee") or "").strip()
+        if not grantee_claim:
+            return None
         caller = resolve_grantee_from_headers(
             request.headers, fnd_csm_root=_configured_fnd_csm_root()
         )
-        if caller is not None and str(caller.get("msn_id")) != OPERATOR_MSN_ID:
+        if caller is None or str(caller.get("msn_id")) != OPERATOR_MSN_ID:
             return jsonify({"ok": False, "error": "operator_only"}), 403
         return None
 

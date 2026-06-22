@@ -49,6 +49,7 @@ _log = logging.getLogger("mycite.portal_host")
 # so PATH manipulation cannot redirect it. If the binary is missing, conversion
 # raises a clear UploadError rather than silently falling back.
 _AVIFENC_BIN = "/usr/bin/avifenc"
+_AVIFENC_MAX_AS = 2 * 1024 * 1024 * 1024  # 2 GiB address-space cap for avifenc
 
 # Logo leaflets are 512×512 transparent-canvas AVIFs (the master-manifest
 # convention). The portal venv deliberately has no Pillow — process_logos.py
@@ -144,6 +145,19 @@ def _ext_of(filename: str) -> str:
     return suffix[1:].lower() if suffix else ""
 
 
+def _avifenc_rlimit() -> None:  # pragma: no cover - runs in the forked child
+    """Cap the avifenc child's address space so a decompression-bomb image that
+    slips past the header pixel-check can't OOM the single-worker portal host.
+    2 GiB comfortably fits a legitimate <=40 MP encode but is far below the many
+    GiB a multi-gigapixel raster would demand."""
+    try:
+        import resource as _res
+
+        _res.setrlimit(_res.RLIMIT_AS, (_AVIFENC_MAX_AS, _AVIFENC_MAX_AS))
+    except Exception:
+        pass
+
+
 def _convert_raster_to_avif(data: bytes, source_kind: str) -> bytes:
     """Write ``data`` to a temp file and run avifenc → return AVIF bytes."""
     with tempfile.TemporaryDirectory(prefix="resource_upload_") as tmpdir:
@@ -156,6 +170,7 @@ def _convert_raster_to_avif(data: bytes, source_kind: str) -> bytes:
                 check=False,
                 capture_output=True,
                 timeout=120,
+                preexec_fn=_avifenc_rlimit,
             )
         except FileNotFoundError as exc:
             raise UploadError(
@@ -394,28 +409,45 @@ _GRANTEE_MAX_BYTES = 10 * 1024 * 1024          # 10 MiB per uploaded file
 _GRANTEE_MAX_IMAGE_PIXELS = 40_000_000         # 40 MP — blocks a decode bomb
 
 
+_IMAGE_PIXELS_SUSPECT = 1 << 60  # forces rejection by any sane pixel cap
+
+
 def _image_pixel_count(data: bytes) -> int:
     """width*height read from a PNG/JPEG header WITHOUT decoding the raster, so a
     decompression-bomb image (tiny compressed, billions of pixels) is rejected
-    before avifenc allocates the full bitmap. 0 when undetermined (e.g. AVIF,
-    already a bounded compressed format)."""
+    before avifenc allocates the full bitmap. Returns 0 when undetermined (e.g.
+    AVIF, already a bounded compressed format), or a huge sentinel when the JPEG
+    segment structure is internally inconsistent — e.g. a crafted segment length
+    that would skip the real SOF — so the caller rejects rather than trusts a
+    misleading 0. (avifenc additionally runs under a hard address-space cap.)"""
     if data[:8] == _PNG_MAGIC and len(data) >= 24:
         return int.from_bytes(data[16:20], "big") * int.from_bytes(data[20:24], "big")
     if data[:3] == _JPEG_MAGIC:
         i, n = 2, len(data)
-        while i + 9 < n:
+        while i + 1 < n:
             if data[i] != 0xFF:
-                i += 1
-                continue
+                return _IMAGE_PIXELS_SUSPECT  # not at a marker boundary → length lied
             marker = data[i + 1]
-            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+            if marker == 0xFF:
+                i += 1  # fill byte run
+                continue
+            if marker in (0xD9, 0xDA):  # EOI / start-of-scan reached, no SOF seen
+                return 0
+            if marker == 0x01 or 0xD0 <= marker <= 0xD8:  # standalone markers, no length
+                i += 2
+                continue
+            if i + 4 > n:
+                return _IMAGE_PIXELS_SUSPECT
+            seg_len = int.from_bytes(data[i + 2:i + 4], "big")
+            if seg_len < 2 or i + 2 + seg_len > n:  # length absurd / runs off the end
+                return _IMAGE_PIXELS_SUSPECT
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):  # SOFn
+                if i + 9 > n:
+                    return _IMAGE_PIXELS_SUSPECT
                 h = int.from_bytes(data[i + 5:i + 7], "big")
                 w = int.from_bytes(data[i + 7:i + 9], "big")
                 return w * h
-            if marker == 0xD8 or marker == 0xD9 or 0xD0 <= marker <= 0xD7:
-                i += 2
-                continue
-            i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+            i += 2 + seg_len
     return 0
 
 
@@ -557,43 +589,51 @@ def handle_grantee_upload(
             raise UploadError("resolved destination escapes the gallery directory")
         asset_web_path = f"/assets/{_GRANTEE_URL_SEGMENT[kind]}/{dest_name}"
 
-        # Atomic asset write, other-readable (nginx worker runs as admin).
+        # Build the manifest entry (replace any same-id entry, else append),
+        # remembering the on-disk name of a superseded same-id asset so a
+        # different-extension re-upload doesn't orphan the old bytes.
+        resources = data.setdefault("resources", {})
+        if not isinstance(resources, dict):
+            raise UploadError("malformed resource manifest resources")
+        bucket = resources.setdefault(kind, [])
+        if not isinstance(bucket, list):
+            raise UploadError(f"malformed resource manifest resources.{kind}")
+        superseded = {
+            _as_text(e.get("asset_path")).rsplit("/", 1)[-1]
+            for e in bucket
+            if isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id
+        }
+        bucket[:] = [
+            e for e in bucket
+            if not (isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id)
+        ]
+        bucket.append({
+            "asset_id": asset_id,
+            "asset_path": asset_web_path,
+            "consumers": [],
+            "entity_scope": site_entity,
+        })
+
+        # Commit ORDER: stage bytes → write manifest → replace into the gallery.
+        # The dest file is only touched AFTER the manifest is durably written, so
+        # a manifest-write failure leaves the prior asset + manifest intact (no
+        # data loss, no never-listed orphan).
         tmp = gallery_dir / f".{dest_name}.{uuid.uuid4().hex}.tmp"
         try:
             tmp.write_bytes(final_bytes)
-            os.chmod(tmp, 0o644)
-            tmp.replace(dest_path)
+            os.chmod(tmp, 0o644)                     # other-readable for nginx
+            _atomic_write_manifest(man_path, data)   # manifest first
+            tmp.replace(dest_path)                   # then commit the bytes
         finally:
             if tmp.exists():
                 tmp.unlink()
-
-        # Register in the manifest (replace any same-id entry, else append). If
-        # registration fails after the asset bytes were committed, roll the asset
-        # back so we never leave a served-but-unlisted orphan in the shared pool.
-        try:
-            resources = data.setdefault("resources", {})
-            if not isinstance(resources, dict):
-                raise UploadError("malformed resource manifest resources")
-            bucket = resources.setdefault(kind, [])
-            if not isinstance(bucket, list):
-                raise UploadError(f"malformed resource manifest resources.{kind}")
-            bucket[:] = [
-                e for e in bucket
-                if not (isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id)
-            ]
-            bucket.append({
-                "asset_id": asset_id,
-                "asset_path": asset_web_path,
-                "consumers": [],
-                "entity_scope": site_entity,
-            })
-            _atomic_write_manifest(man_path, data)
-        except Exception:
-            try:
-                dest_path.unlink()
-            except OSError:
-                pass
-            raise
+        # Drop a superseded same-id file whose name (extension) changed.
+        for old_name in superseded:
+            if old_name and old_name != dest_name:
+                try:
+                    (gallery_dir / old_name).unlink()
+                except OSError:
+                    pass
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)

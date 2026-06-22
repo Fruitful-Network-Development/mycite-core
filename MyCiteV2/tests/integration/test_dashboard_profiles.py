@@ -187,6 +187,23 @@ class DashboardProfilesTests(unittest.TestCase):
             self.assertEqual(resp.status_code, 403, f"{path}: {resp.get_data(as_text=True)}")
             self.assertEqual(resp.get_json().get("error"), "operator_only", path)
 
+    def test_operator_gate_fails_closed_on_unresolvable_grantee(self) -> None:
+        # A PRESENT but unresolvable X-Auth-Request-Grantee (e.g. the fnd-csm dir
+        # is unreadable, or a stale msn) must be DENIED, not treated as operator.
+        client = self._client()
+        resp = client.post(
+            "/__fnd/grantee/save",
+            headers={"X-Auth-Request-Grantee": "9-9-9-not-a-real-msn"},
+            json={},
+        )
+        self.assertEqual(resp.status_code, 403, resp.get_data(as_text=True))
+        self.assertEqual(resp.get_json().get("error"), "operator_only")
+        # No grantee header at all == operator (portal oauth) → gate passes, so
+        # the handler runs and rejects on the empty body (invalid_request), NOT
+        # operator_only.
+        resp2 = client.post("/__fnd/grantee/save", json={})
+        self.assertEqual(resp2.get_json().get("error"), "invalid_request")
+
 
 if __name__ == "__main__":
     unittest.main()
