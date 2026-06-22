@@ -419,7 +419,10 @@ class PaypalManagementTests(unittest.TestCase):
 
     def test_grantee_save_blocks_foreign_grantee(self) -> None:
         client, _ = self._build_client(paypal=None)
-        # Caller is grantee "alpha" (header); they may not edit grantee "beta".
+        # grantee/save is OPERATOR-only (config is operator-managed): any grantee
+        # caller is rejected by the before_request gate with operator_only —
+        # before the handler's own grantee_not_owned guard — so a dashboard-cred
+        # client can edit no grantee config (its own OR a foreign one).
         resp = client.post(
             "/__fnd/grantee/save",
             data=json.dumps({"msn_id": "beta", "fields": {"label": "Hijacked"}}),
@@ -427,7 +430,7 @@ class PaypalManagementTests(unittest.TestCase):
             headers={"X-Auth-Request-Grantee": "alpha"},
         )
         self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.get_json()["error"], "grantee_not_owned")
+        self.assertEqual(resp.get_json()["error"], "operator_only")
 
     # ---- single-store export ---------------------------------------------
 
