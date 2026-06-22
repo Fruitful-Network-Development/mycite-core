@@ -4457,17 +4457,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # the convention used by /__fnd/tolling/refresh.
         return not _as_text(request.headers.get("X-Auth-Request-Grantee"))
 
-    # Resource-mutation routes (type/icon manifest edits, asset
-    # retitle/rename/delete, profile save→propagate) are OPERATOR-only. The
-    # per-grantee /dashboard/api/ proxy forwards every /__fnd/* path, so without
-    # this gate a dashboard-cred client could mutate the shared resource type
-    # manifest or another grantee's assets. Reject any caller that resolves to a
-    # non-operator grantee; operator requests are header-absent (or carry the
-    # operator's own msn) and still pass.
+    # OPERATOR-only mutation routes. The per-grantee /dashboard/api/ proxy
+    # forwards every /__fnd/* path, so without this gate a dashboard-cred client
+    # could (a) mutate the shared resource type manifest / another grantee's
+    # assets, or (b) — most dangerous — POST /__fnd/grantee/save with ANY msn_id
+    # in the body and rewrite that grantee's config (PayPal client_secret, SES,
+    # …) cross-tenant. Reject any caller that resolves to a non-operator grantee;
+    # operator requests are header-absent (or carry the operator's own msn) and
+    # still pass. Grantee-scoped edits (their own site content, contacts, their
+    # own newsletter) are NOT listed here — they have their own scope checks.
     _OPERATOR_ONLY_RESOURCE_PATHS = (
         "/__fnd/resources/profile/save",
         "/__fnd/resources/icon/dedup",
         "/__fnd/resources/field-icons/set",
+        "/__fnd/grantee/save",
     )
     _OPERATOR_ONLY_RESOURCE_PREFIXES = (
         "/__fnd/resources/manifest/",

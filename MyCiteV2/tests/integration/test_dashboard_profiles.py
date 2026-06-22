@@ -176,6 +176,10 @@ class DashboardProfilesTests(unittest.TestCase):
             "/__fnd/resources/profile/save",
             "/__fnd/resources/manifest/set-icon-ref",
             "/__fnd/resources/asset/delete",
+            # grantee/save takes msn_id from the BODY and rewrites that grantee's
+            # config (PayPal client_secret, SES, …) — must be operator-only or a
+            # dashboard-cred client could tamper with any grantee cross-tenant.
+            "/__fnd/grantee/save",
         ):
             resp = client.post(
                 path, headers={"X-Auth-Request-Grantee": CVCC}, json={}
