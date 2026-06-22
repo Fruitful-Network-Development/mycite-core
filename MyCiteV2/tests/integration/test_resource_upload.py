@@ -388,6 +388,8 @@ class GranteeUploadTests(unittest.TestCase):
         self.assertEqual(len(mans), 1, "a missing manifest must be auto-created")
         data = yaml.safe_load(mans[0].read_text())
         self.assertEqual(data["site_domain"], "example.test")
+        self.assertEqual(data["manifest_kind"], "shared_resources")  # canonical, not record-manifest
+        self.assertEqual(data["site_entity"], "example")  # first DNS label, snake-cased
         self.assertIn(res["asset_id"], [e["asset_id"] for e in data["resources"]["document"]])
 
     def test_rejects_non_select_kinds(self):
@@ -408,3 +410,26 @@ class GranteeUploadTests(unittest.TestCase):
         with self.assertRaises(UploadError):
             handle_grantee_upload(_PNG_1X1, "x.png", "image", title="x",
                                   slug="../evil", domain="example.test", clients_root=root)
+
+    def test_rejects_oversized_file(self):
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            UploadError, handle_grantee_upload,
+        )
+        root, _ = self._clients_root()
+        big = b"\x00" * (10 * 1024 * 1024 + 1)
+        with self.assertRaises(UploadError):
+            handle_grantee_upload(big, "big.pdf", "document", title="x", slug="x",
+                                  domain="example.test", clients_root=root)
+
+    def test_rejects_pixel_bomb_image(self):
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            UploadError, handle_grantee_upload,
+        )
+        root, _ = self._clients_root()
+        # A tiny PNG whose IHDR claims 50000x50000 (2.5e9 px) — rejected before avifenc.
+        bomb = (b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x0dIHDR"
+                + (50000).to_bytes(4, "big") + (50000).to_bytes(4, "big")
+                + b"\x08\x02\x00\x00\x00")
+        with self.assertRaises(UploadError):
+            handle_grantee_upload(bomb, "bomb.png", "image", title="x", slug="x",
+                                  domain="example.test", clients_root=root)

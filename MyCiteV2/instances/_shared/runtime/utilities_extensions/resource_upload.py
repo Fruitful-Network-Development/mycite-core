@@ -389,15 +389,43 @@ _GRANTEE_DOC_EXTS = (
 _GRANTEE_GALLERY_DIR = {"image": "image", "document": "document"}
 _GRANTEE_URL_SEGMENT = {"image": "images", "document": "document"}
 _GRANTEE_ARTIFACT_TOKEN = {"image": "artifact-image", "document": "artifact-document"}
+# Server-side caps (belt-and-suspenders to nginx's 12m request cap).
+_GRANTEE_MAX_BYTES = 10 * 1024 * 1024          # 10 MiB per uploaded file
+_GRANTEE_MAX_IMAGE_PIXELS = 40_000_000         # 40 MP — blocks a decode bomb
+
+
+def _image_pixel_count(data: bytes) -> int:
+    """width*height read from a PNG/JPEG header WITHOUT decoding the raster, so a
+    decompression-bomb image (tiny compressed, billions of pixels) is rejected
+    before avifenc allocates the full bitmap. 0 when undetermined (e.g. AVIF,
+    already a bounded compressed format)."""
+    if data[:8] == _PNG_MAGIC and len(data) >= 24:
+        return int.from_bytes(data[16:20], "big") * int.from_bytes(data[20:24], "big")
+    if data[:3] == _JPEG_MAGIC:
+        i, n = 2, len(data)
+        while i + 9 < n:
+            if data[i] != 0xFF:
+                i += 1
+                continue
+            marker = data[i + 1]
+            if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                h = int.from_bytes(data[i + 5:i + 7], "big")
+                w = int.from_bytes(data[i + 7:i + 9], "big")
+                return w * h
+            if marker == 0xD8 or marker == 0xD9 or 0xD0 <= marker <= 0xD7:
+                i += 2
+                continue
+            i += 2 + int.from_bytes(data[i + 2:i + 4], "big")
+    return 0
 
 
 def _grantee_entity_for_domain(domain: str) -> str:
-    """Stable entity slug for a site (canonical map, else derived from domain)."""
-    from MyCiteV2.packages.adapters.filesystem.contact_leaflet import (
-        entity_for_domain,
-    )
-
-    return entity_for_domain(domain) or domain.split(".", 1)[0]
+    """Stable site-entity slug for an AUTO-CREATED manifest: the first DNS label,
+    snake-cased (rubycorpus.com → 'rubycorpus'). Sites the operator already set
+    up ship a manifest carrying the human legal-entity slug, which this never
+    overrides (it is only consulted when no manifest exists)."""
+    first = domain.split(".", 1)[0].lower()
+    return re.sub(r"[^a-z0-9]+", "_", first).strip("_") or "site"
 
 
 def _atomic_write_manifest(path: Path, data: dict[str, Any]) -> None:
@@ -448,6 +476,8 @@ def handle_grantee_upload(
     if not isinstance(file_bytes, (bytes, bytearray)) or not bytes(file_bytes):
         raise UploadError("file is empty")
     file_bytes = bytes(file_bytes)
+    if len(file_bytes) > _GRANTEE_MAX_BYTES:
+        raise UploadError(f"file too large (max {_GRANTEE_MAX_BYTES // (1024 * 1024)} MiB)")
     kind = _as_text(kind).lower()
     if kind not in _GRANTEE_UPLOAD_KINDS:
         raise UploadError(
@@ -469,6 +499,11 @@ def handle_grantee_upload(
 
     # Resolve final bytes + extension per kind (before the lock).
     if kind == "image":
+        pixels = _image_pixel_count(file_bytes)
+        if pixels > _GRANTEE_MAX_IMAGE_PIXELS:
+            raise UploadError(
+                f"image too large ({pixels:,} px; max {_GRANTEE_MAX_IMAGE_PIXELS:,})"
+            )
         final_bytes, ext = _resolve_image(file_bytes, slug)
     else:  # document
         ext = _ext_of(filename).lower()
@@ -507,7 +542,7 @@ def handle_grantee_upload(
                 f"0000-00-00.record-manifest.{site_entity}-website.shared_resources.yaml"
             )
             data = {
-                "manifest_kind": "record-manifest",
+                "manifest_kind": "shared_resources",
                 "site_entity": site_entity,
                 "site_domain": domain,
                 "resources": {},
@@ -532,24 +567,33 @@ def handle_grantee_upload(
             if tmp.exists():
                 tmp.unlink()
 
-        # Register in the manifest (replace any same-id entry, else append).
-        resources = data.setdefault("resources", {})
-        if not isinstance(resources, dict):
-            raise UploadError("malformed resource manifest resources")
-        bucket = resources.setdefault(kind, [])
-        if not isinstance(bucket, list):
-            raise UploadError(f"malformed resource manifest resources.{kind}")
-        bucket[:] = [
-            e for e in bucket
-            if not (isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id)
-        ]
-        bucket.append({
-            "asset_id": asset_id,
-            "asset_path": asset_web_path,
-            "consumers": [],
-            "entity_scope": site_entity,
-        })
-        _atomic_write_manifest(man_path, data)
+        # Register in the manifest (replace any same-id entry, else append). If
+        # registration fails after the asset bytes were committed, roll the asset
+        # back so we never leave a served-but-unlisted orphan in the shared pool.
+        try:
+            resources = data.setdefault("resources", {})
+            if not isinstance(resources, dict):
+                raise UploadError("malformed resource manifest resources")
+            bucket = resources.setdefault(kind, [])
+            if not isinstance(bucket, list):
+                raise UploadError(f"malformed resource manifest resources.{kind}")
+            bucket[:] = [
+                e for e in bucket
+                if not (isinstance(e, dict) and _as_text(e.get("asset_id")) == asset_id)
+            ]
+            bucket.append({
+                "asset_id": asset_id,
+                "asset_path": asset_web_path,
+                "consumers": [],
+                "entity_scope": site_entity,
+            })
+            _atomic_write_manifest(man_path, data)
+        except Exception:
+            try:
+                dest_path.unlink()
+            except OSError:
+                pass
+            raise
     finally:
         fcntl.flock(lock_fd, fcntl.LOCK_UN)
         os.close(lock_fd)
