@@ -315,69 +315,96 @@ if __name__ == "__main__":
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class GranteeUploadTests(unittest.TestCase):
-    """handle_grantee_upload: client uploads an image (→AVIF) or document into
-    its OWN site + registers it in the record-manifest. Image/document only."""
+    """handle_grantee_upload: a client uploads an image (→AVIF) or inert document
+    into the SHARED site-core gallery (nginx serves /assets/{images,document}/
+    from there), keyed by the site entity + registered in the record-manifest.
+    Image/document only; missing manifest auto-created; concurrent-safe."""
 
-    def _site(self):
+    def _clients_root(self, *, with_manifest=True):
         import yaml
-        tmp = Path(tempfile.mkdtemp(prefix="grantee_upload_"))
-        assets = tmp / "example.test" / "frontend" / "assets"
+        root = Path(tempfile.mkdtemp(prefix="grantee_upload_"))
+        assets = root / "example.test" / "frontend" / "assets"
         assets.mkdir(parents=True)
-        man = assets / "0000-00-00.record-manifest.test_site-website.shared_resources.yaml"
-        man.write_text(yaml.safe_dump({
-            "manifest_kind": "record-manifest", "site_entity": "test_site",
-            "site_domain": "example.test",
-            "resources": {"image": [], "document": []},
-        }), encoding="utf-8")
-        return tmp, man
+        man = None
+        if with_manifest:
+            man = assets / "0000-00-00.record-manifest.test_site-website.shared_resources.yaml"
+            man.write_text(yaml.safe_dump({
+                "manifest_kind": "record-manifest", "site_entity": "test_site",
+                "site_domain": "example.test", "resources": {"image": [], "document": []},
+            }), encoding="utf-8")
+        return root, man
 
     @unittest.skipUnless(HAS_AVIFENC, "avifenc required")
-    def test_image_upload_converts_to_avif_and_registers(self):
+    def test_image_upload_to_shared_gallery_and_registers(self):
         import yaml
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             handle_grantee_upload,
         )
-        tmp, man = self._site()
+        root, man = self._clients_root()
         res = handle_grantee_upload(
             _PNG_1X1, "shot.png", "image", title="Hero", slug="hero_shot",
-            domain="example.test", clients_root=tmp,
+            domain="example.test", clients_root=root,
         )
-        self.assertEqual(res["asset_id"], "0000-00-00.artifact-image.test_site.hero_shot")
+        # Served via the SHARED gallery (where nginx aliases /assets/images/).
         self.assertEqual(res["asset_path"], "/assets/images/0000-00-00.artifact-image.test_site.hero_shot.avif")
-        out = tmp / "example.test/frontend/assets/images/0000-00-00.artifact-image.test_site.hero_shot.avif"
-        self.assertTrue(out.exists())
+        out = root / "_shared/site-core/image/0000-00-00.artifact-image.test_site.hero_shot.avif"
+        self.assertTrue(out.exists(), "image must land in the shared site-core gallery")
         self.assertIn(b"ftyp", out.read_bytes()[:16])
+        self.assertEqual(out.stat().st_mode & 0o004, 0o004, "must be other-readable for nginx")
         ids = [e["asset_id"] for e in yaml.safe_load(man.read_text())["resources"]["image"]]
         self.assertIn("0000-00-00.artifact-image.test_site.hero_shot", ids)
 
-    def test_document_upload_registers(self):
+    def test_document_uses_singular_path_and_inert_only(self):
+        import yaml
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
+            UploadError, handle_grantee_upload,
+        )
+        root, man = self._clients_root()
+        res = handle_grantee_upload(
+            b"%PDF-1.4 test", "resume.pdf", "document", title="Resume",
+            slug="resume", domain="example.test", clients_root=root,
+        )
+        # Singular /assets/document/ (matches the nginx alias + manifest_lint).
+        self.assertEqual(res["asset_path"], "/assets/document/0000-00-00.artifact-document.test_site.resume.pdf")
+        self.assertTrue((root / "_shared/site-core/document/0000-00-00.artifact-document.test_site.resume.pdf").exists())
+        self.assertEqual(len(yaml.safe_load(man.read_text())["resources"]["document"]), 1)
+        # Active-content document types are rejected.
+        for bad in ("evil.html", "evil.svg", "evil.xml", "evil.js"):
+            with self.assertRaises(UploadError):
+                handle_grantee_upload(b"<script>x</script>", bad, "document",
+                                      title="x", slug="x", domain="example.test", clients_root=root)
+
+    def test_autocreates_manifest_when_absent(self):
         import yaml
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             handle_grantee_upload,
         )
-        tmp, man = self._site()
+        root, _ = self._clients_root(with_manifest=False)
         res = handle_grantee_upload(
-            b"%PDF-1.4 test", "resume.pdf", "document", title="Resume",
-            slug="resume", domain="example.test", clients_root=tmp,
+            b"%PDF-1.4 x", "doc.pdf", "document", title="Doc", slug="doc",
+            domain="example.test", clients_root=root,
         )
-        self.assertEqual(res["asset_path"], "/assets/documents/0000-00-00.artifact-document.test_site.resume.pdf")
-        self.assertEqual(len(yaml.safe_load(man.read_text())["resources"]["document"]), 1)
+        mans = list((root / "example.test/frontend/assets").glob("*record-manifest*.shared_resources.yaml"))
+        self.assertEqual(len(mans), 1, "a missing manifest must be auto-created")
+        data = yaml.safe_load(mans[0].read_text())
+        self.assertEqual(data["site_domain"], "example.test")
+        self.assertIn(res["asset_id"], [e["asset_id"] for e in data["resources"]["document"]])
 
     def test_rejects_non_select_kinds(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             UploadError, handle_grantee_upload,
         )
-        tmp, _ = self._site()
+        root, _ = self._clients_root()
         for kind in ("icon", "profile", "logo", "type"):
             with self.assertRaises(UploadError):
                 handle_grantee_upload(_SVG_ICON, "x.svg", kind, title="x",
-                                      slug="x", domain="example.test", clients_root=tmp)
+                                      slug="x", domain="example.test", clients_root=root)
 
     def test_rejects_traversal_slug(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             UploadError, handle_grantee_upload,
         )
-        tmp, _ = self._site()
+        root, _ = self._clients_root()
         with self.assertRaises(UploadError):
             handle_grantee_upload(_PNG_1X1, "x.png", "image", title="x",
-                                  slug="../evil", domain="example.test", clients_root=tmp)
+                                  slug="../evil", domain="example.test", clients_root=root)
