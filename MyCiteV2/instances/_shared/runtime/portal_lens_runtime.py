@@ -60,15 +60,13 @@ def enabled_lens_ids(private_dir: str | Path | None) -> frozenset[str]:
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".lens_state.", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, separators=(",", ":"), sort_keys=True))
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+    """Atomic write for lens state (private, not served — KEEP leaves the 0600;
+    compact, key-sorted JSON). Thin shim over :func:`atomic_io.atomic_write_text`."""
+    from MyCiteV2.packages.adapters.filesystem.atomic_io import KEEP, atomic_write_text
+
+    atomic_write_text(
+        path, json.dumps(payload, separators=(",", ":"), sort_keys=True), mode=KEEP
+    )
 
 
 def set_lens_enabled(

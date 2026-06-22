@@ -461,27 +461,12 @@ def _grantee_entity_for_domain(domain: str) -> str:
 
 
 def _atomic_write_manifest(path: Path, data: dict[str, Any]) -> None:
-    """Write the YAML manifest atomically, preserving the destination's mode (or
-    defaulting a new file to 0644) so nginx (worker == admin) can still serve the
-    site — mirrors resources_extension._atomic_write_text's served-perms fix."""
-    import yaml
+    """Served-perms atomic YAML write for the record-manifest (preserve dest
+    mode, else 0644 so nginx can still serve the site). Thin shim over the shared
+    :func:`atomic_io.atomic_write_yaml`."""
+    from MyCiteV2.packages.adapters.filesystem.atomic_io import atomic_write_yaml
 
-    text = yaml.safe_dump(data, sort_keys=False, allow_unicode=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-            handle.flush()
-            os.fsync(handle.fileno())
-        try:
-            mode = os.stat(path).st_mode & 0o777
-        except FileNotFoundError:
-            mode = 0o644
-        os.chmod(tmp, mode)
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
+    atomic_write_yaml(path, data)
 
 
 def handle_grantee_upload(

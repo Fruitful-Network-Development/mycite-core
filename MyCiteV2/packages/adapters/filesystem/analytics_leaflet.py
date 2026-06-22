@@ -73,21 +73,13 @@ def prev_period(period: str) -> str:
 
 
 def atomic_write_text(path: Path, text: str) -> None:
-    """Atomically write ``text`` to ``path`` (temp in the same dir + os.replace).
-    Shared by the analytics + campaign leaflet stores so a torn write can never
-    read back as a truncated leaflet."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=".tmp-", suffix=".yaml")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.replace(tmp, str(path))
-    except Exception:
-        try:
-            os.unlink(tmp)
-        except OSError:
-            pass
-        raise
+    """Atomic write for the analytics + campaign leaflet stores (private state,
+    not nginx-served — KEEP leaves the 0600). Thin shim over the shared
+    :func:`atomic_io.atomic_write_text`; re-exported for ``campaign_leaflet``."""
+    from .atomic_io import KEEP
+    from .atomic_io import atomic_write_text as _shared_write
+
+    _shared_write(path, text, mode=KEEP)
 
 
 def _month_token(period: str) -> str:

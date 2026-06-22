@@ -7004,9 +7004,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         domains = domains_for_grantee(msn, fnd_csm_root=_configured_fnd_csm_root())
         # Target the site the request actually came from (the dashboard is served
         # from the grantee's own domain) rather than always domains[0] — matters
-        # for a multi-domain grantee.
+        # for a multi-domain grantee. Match host and domains BOTH www-stripped so
+        # a www. host still resolves to its own site instead of falling back.
         host = _normalize_domain(request.host)
-        domain = host if host in domains else (domains[0] if domains else "")
+        domain = next(
+            (d for d in domains if _normalize_domain(d) == host),
+            domains[0] if domains else "",
+        )
         if not domain:
             return jsonify({"ok": False, "error": "no_domain"}), 404
 

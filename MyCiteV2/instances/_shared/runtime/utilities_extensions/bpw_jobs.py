@@ -185,20 +185,11 @@ def _normalize_payload(
 
 
 def _atomic_write_yaml(path: Path, data: dict[str, Any]) -> None:
-    import yaml
+    """Atomic YAML write for legacy job files (private, not nginx-served — KEEP
+    leaves the 0600). Thin shim over the shared :func:`atomic_io.atomic_write_yaml`."""
+    from MyCiteV2.packages.adapters.filesystem.atomic_io import KEEP, atomic_write_yaml
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
-    )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
-        os.replace(tmp_path, path)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise
+    atomic_write_yaml(path, data, mode=KEEP)
 
 
 def save_job(

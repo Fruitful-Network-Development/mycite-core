@@ -604,21 +604,14 @@ def _count_active_contacts(
 
 
 def _atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
-    import os
-    import tempfile
+    """Atomic JSON write for the operator ledger (private state, not served —
+    KEEP leaves the 0600). Thin shim over the shared
+    :func:`atomic_io.atomic_write_text`."""
+    from MyCiteV2.packages.adapters.filesystem.atomic_io import KEEP, atomic_write_text
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    atomic_write_text(
+        path, json.dumps(payload, indent=2, sort_keys=False) + "\n", mode=KEEP
     )
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(json.dumps(payload, indent=2, sort_keys=False) + "\n")
-        os.replace(tmp_path, path)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise
 
 
 def _hash_line_id(period: str, service: str, usage_type: str, attribution_key: str) -> str:

@@ -48,34 +48,19 @@ def validate_profile_record(profile: dict) -> list[str]:
 
 
 def _atomic_write_json(path: Path, payload: dict) -> None:
-    """Write JSON atomically (temp + fsync + os.replace) with a single .bak of
-    the prior version. Mirrors packages/core/grantee/store.py:77-83 — replaces
-    the previous non-atomic ``write_text`` that could leave a half-written
-    (corrupt) profile if the process died mid-write."""
+    """Write an AWS CSM profile (SECRETS) atomically with a single .bak of the
+    prior version. The bytes go through the shared :func:`atomic_io.atomic_write_text`
+    with ``mode=KEEP`` so the file stays 0600 (mkstemp default) — these creds must
+    never become world-readable."""
+    from MyCiteV2.packages.adapters.filesystem.atomic_io import KEEP, atomic_write_text
+
     path = Path(path)
-    parent = path.parent
-    parent.mkdir(parents=True, exist_ok=True)
-    serialized = json.dumps(payload, indent=2) + "\n"
     if path.exists():
         try:
             shutil.copy2(path, path.with_suffix(path.suffix + ".bak"))
         except OSError:
             pass
-    temp_fd, temp_name = tempfile.mkstemp(
-        prefix=".aws_csm_", suffix=".tmp", dir=str(parent)
-    )
-    try:
-        with os.fdopen(temp_fd, "w", encoding="utf-8") as fp:
-            fp.write(serialized)
-            fp.flush()
-            os.fsync(fp.fileno())
-        os.replace(temp_name, path)
-    except OSError:
-        try:
-            os.unlink(temp_name)
-        except OSError:
-            pass
-        raise
+    atomic_write_text(path, json.dumps(payload, indent=2) + "\n", mode=KEEP)
 
 
 DEFAULT_GRANTEE = "fnd"
