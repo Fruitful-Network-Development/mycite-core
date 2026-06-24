@@ -90,11 +90,15 @@ class TestBuildMagnitudeTree(unittest.TestCase):
         self.assertEqual(nodes["1"]["depth"], 0)
         self.assertTrue(nodes["1"]["has_children"])
         self.assertEqual(nodes["1"]["status"], "defined")
+        # direct child count drives the node's pill badge (Resource-style chip)
+        self.assertEqual(nodes["1"]["count"], 2)
         self.assertEqual(nodes["1-1"]["parent_slug"], "1")
         self.assertEqual(nodes["1-1"]["depth"], 1)
         self.assertFalse(nodes["1-1"]["has_children"])
         self.assertEqual(nodes["1-1"]["status"], "empty")
+        self.assertEqual(nodes["1-1"]["count"], 0)
         self.assertEqual(nodes["1-2"]["status"], "defined")
+        self.assertEqual(nodes["1-2"]["count"], 0)
 
     def test_lcl_fixture(self) -> None:
         bits = build_magnitude_bitstream({"1-1", "1-2", "1-3"})

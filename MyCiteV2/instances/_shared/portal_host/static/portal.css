@@ -9839,21 +9839,42 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
    view/edit button) reusing the .v2-dendro cluster diagram. */
 .v2-clusterTree__header { color: var(--ink2); font-size: 12px; margin-bottom: 4px; }
 .v2-clusterTree__empty { color: var(--ink2); font-size: 13px; }
-.v2-dendro__view--static,
-.v2-dendro__view--static:hover {
+/* SAMRAS node: keep the shared .v2-dendro__view chip (white bg, transparent border)
+   but non-interactive — the body is a <span> with no drill-in handler, so it must
+   NOT take the Resource chip's clickable hover highlight (that reads as a dead click). */
+.v2-dendro__view--static {
   cursor: default;
-  background: none;
-  border-color: transparent;
   max-width: 280px;
+}
+.v2-dendro__view--static:hover {
+  border-color: transparent;
+  background: var(--ide-panel-bg, #fff);
+}
+/* Status glyph: the SAMRAS analog of the Resource per-type icon. */
+.v2-dendro__status {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.v2-dendro__status--defined {
+  background: var(--accent, #2f6f3e);
+}
+.v2-dendro__status--empty {
+  background: var(--ide-panel-bg, #fff);
+  border: 2px solid #6e7781; /* darker + thicker than --ink2 so the hollow ring reads on white */
 }
 .v2-dendro__addr {
   flex: 0 0 auto;
-  margin-right: 4px;
   color: var(--accent);
   font-variant-numeric: tabular-nums;
 }
 .v2-dendro__empty { color: var(--ink2); font-style: italic; }
 .v2-dendro__view--static.is-empty .v2-dendro__addr { color: var(--ink2); }
+/* Empty (undefined) chips dim their address; a child-count pill on such a node
+   must follow suit rather than being the one full-strength element. */
+.v2-dendro__view--static.is-empty .v2-dendro__count { color: var(--ink2); background: transparent; }
 .v2-dendro__editIcon {
   flex: 0 0 auto;
   width: 18px;

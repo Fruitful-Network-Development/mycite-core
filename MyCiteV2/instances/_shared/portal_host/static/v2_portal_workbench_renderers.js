@@ -1519,15 +1519,32 @@
   // Hybrid render: SVG <path>s draw the links; absolutely-positioned HTML draws
   // the nodes (so renderTypeIcon + real buttons + CSS ellipsis are reused). Each
   // node carries an expand/collapse toggle and a [data-open-type] "view" button.
-  function renderDendrogram(nodes, p, collapsed) {
-    var lay = clusterLayout(nodes, collapsed);
+  // Shared dendrogram scaffold so the Resource type tree (renderDendrogram) and
+  // the SAMRAS structure tree (_samrasDendroBody) keep identical link geometry,
+  // SVG viewBox, and Expand/Collapse-all toolbar — only the per-node body differs.
+  function _dendroLinks(lay) {
     var paths = lay.links.map(function (l) {
       var mx = (l.sx + l.tx) / 2;
       return '<path class="v2-dendro__link" d="M' + l.sx + "," + l.sy +
         "C" + mx + "," + l.sy + " " + mx + "," + l.ty + " " + l.tx + "," + l.ty + '" />';
     }).join("");
-    var svg = '<svg class="v2-dendro__links" width="' + lay.width + '" height="' + lay.height +
+    return '<svg class="v2-dendro__links" width="' + lay.width + '" height="' + lay.height +
       '" viewBox="0 0 ' + lay.width + " " + lay.height + '" aria-hidden="true">' + paths + "</svg>";
+  }
+  function _dendroWrap(lay, svg, nodeHtml) {
+    return (
+      '<div class="v2-dendro__toolbar">' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="expand">Expand all</button>' +
+      '<button type="button" class="v2-dendro__all" data-dendro-all="collapse">Collapse all</button>' +
+      "</div>" +
+      '<div class="v2-dendro" style="width:' + lay.width + "px;height:" + lay.height + 'px">' +
+      svg + nodeHtml + "</div>"
+    );
+  }
+
+  function renderDendrogram(nodes, p, collapsed) {
+    var lay = clusterLayout(nodes, collapsed);
+    var svg = _dendroLinks(lay);
     var nodeHtml = lay.placed.map(function (pl) {
       var n = pl.node;
       var full = asText(n.full_slug);
@@ -1549,30 +1566,17 @@
       return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
         "px;top:" + pl.y + 'px">' + toggle + view + edit + "</div>";
     }).join("");
-    return (
-      '<div class="v2-dendro__toolbar">' +
-      '<button type="button" class="v2-dendro__all" data-dendro-all="expand">Expand all</button>' +
-      '<button type="button" class="v2-dendro__all" data-dendro-all="collapse">Collapse all</button>' +
-      "</div>" +
-      '<div class="v2-dendro" style="width:' + lay.width + "px;height:" + lay.height + 'px">' +
-      svg + nodeHtml + "</div>"
-    );
+    return _dendroWrap(lay, svg, nodeHtml);
   }
 
   // ── SAMRAS structure dendrogram (txa / msn / lcl id-space) ────────────────
   // The SAMRAS id-space rendered with the SAME cluster diagram as the Resource type
   // browser — reuses clusterLayout + DENDRO + the .v2-dendro markup/links — but the
-  // nodes are browse-only (address + label, defined vs empty; no icon/count/edit) and a
-  // structure <select> reloads the shell. Lives in IIFE#1 so clusterLayout is in scope.
+  // nodes are browse-only (address + label + status glyph + child-count pill; no edit)
+  // and a structure <select> reloads the shell. Lives in IIFE#1 so clusterLayout is in scope.
   function _samrasDendroBody(nodes, collapsed) {
     var lay = clusterLayout(nodes, collapsed);
-    var paths = lay.links.map(function (l) {
-      var mx = (l.sx + l.tx) / 2;
-      return '<path class="v2-dendro__link" d="M' + l.sx + "," + l.sy +
-        "C" + mx + "," + l.sy + " " + mx + "," + l.ty + " " + l.tx + "," + l.ty + '" />';
-    }).join("");
-    var svg = '<svg class="v2-dendro__links" width="' + lay.width + '" height="' + lay.height +
-      '" viewBox="0 0 ' + lay.width + " " + lay.height + '" aria-hidden="true">' + paths + "</svg>";
+    var svg = _dendroLinks(lay);
     var nodeHtml = lay.placed.map(function (pl) {
       var n = pl.node;
       var full = asText(n.full_slug);
@@ -1582,23 +1586,29 @@
           '" aria-label="' + (pl.collapsed ? "Expand" : "Collapse") + '" title="' +
           (pl.collapsed ? "Expand" : "Collapse") + '">' + (pl.collapsed ? "▸" : "▾") + "</button>"
         : '<span class="v2-dendro__toggle v2-dendro__toggle--leaf" aria-hidden="true"></span>';
+      // Status glyph stands in for the Resource browser's per-type icon (SAMRAS nodes
+      // carry no icon_ref): ● filled = DEFINED, ○ ring = EMPTY (denoted-but-undefined).
+      var status = '<span class="v2-dendro__status v2-dendro__status--' +
+        (isEmpty ? "empty" : "defined") + '" aria-hidden="true"></span>';
       var label = isEmpty
-        ? '<span class="v2-dendro__empty">(undefined — denoted by magnitude)</span>'
+        ? '<span class="v2-dendro__empty">(undefined)</span>'
         : '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>";
+      // Direct child-count pill — the SAMRAS analog of the type-instance count badge.
+      // Hidden on leaves (count 0) so the structure tree isn't littered with "0" badges.
+      var count = n.count > 0
+        ? '<span class="v2-dendro__count">' + escapeHtml(String(n.count)) + "</span>"
+        : "";
+      var title = isEmpty
+        ? "Denoted by the magnitude but undefined in the title document"
+        : asText(n.label) || full;
       var body = '<span class="v2-dendro__view v2-dendro__view--static' +
-        (isEmpty ? " is-empty" : " is-defined") + '"><span class="v2-dendro__addr">' +
-        escapeHtml(full) + "</span>" + label + "</span>";
+        (isEmpty ? " is-empty" : " is-defined") + '" title="' + escapeHtml(title) + '">' +
+        status + '<span class="v2-dendro__addr">' + escapeHtml(full) + "</span>" +
+        label + count + "</span>";
       return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
         "px;top:" + pl.y + 'px">' + toggle + body + "</div>";
     }).join("");
-    return (
-      '<div class="v2-dendro__toolbar">' +
-      '<button type="button" class="v2-dendro__all" data-dendro-all="expand">Expand all</button>' +
-      '<button type="button" class="v2-dendro__all" data-dendro-all="collapse">Collapse all</button>' +
-      "</div>" +
-      '<div class="v2-dendro" style="width:' + lay.width + "px;height:" + lay.height + 'px">' +
-      svg + nodeHtml + "</div>"
-    );
+    return _dendroWrap(lay, svg, nodeHtml);
   }
 
   function _samrasCollapsedInit(nodes) {

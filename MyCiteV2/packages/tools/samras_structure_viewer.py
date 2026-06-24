@@ -149,6 +149,10 @@ def build_magnitude_tree(
                 "parent_slug": parent if parent in denoted else "",
                 "depth": len(parse_node_addr(addr)) - 1,
                 "has_children": bool(children_by_parent.get(addr)),
+                # Direct child count — the SAMRAS analog of the Resource browser's
+                # per-type instance count; rendered as the node's pill badge. Reuses
+                # the children_by_parent bucket built above (no extra pass).
+                "count": len(children_by_parent.get(addr, ())),
                 "label": (labels.resolve(addr) if labels is not None else "") or "",
                 "status": "defined" if addr in defined else "empty",
             }
