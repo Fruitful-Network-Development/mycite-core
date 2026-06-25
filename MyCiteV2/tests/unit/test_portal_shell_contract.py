@@ -172,7 +172,7 @@ class PortalShellContractTests(unittest.TestCase):
         self.assertTrue(composition["interface_panel_collapsed"])
         self.assertEqual(composition["foreground_shell_region"], "center-workbench")
         self.assertTrue(composition["regions"]["workbench"]["visible"])
-        self.assertFalse(composition["regions"]["interface_panel"]["visible"])
+        self.assertNotIn("interface_panel", composition["regions"])
 
     def test_file_key_taxonomy_is_datum_only_operational_keys_separate(self) -> None:
         # Phase B: sandbox_id_for_file_key parses DATUM ids only; operational

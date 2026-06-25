@@ -453,8 +453,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertFalse(tool_composition["workbench_collapsed"])
         self.assertTrue(tool_composition["interface_panel_collapsed"])
         self.assertEqual(tool_composition["foreground_shell_region"], "center-workbench")
-        self.assertFalse(tool_composition["regions"]["interface_panel"]["primary_surface"])
-        self.assertEqual(tool_composition["regions"]["interface_panel"]["layout_mode"], "sidebar")
+        self.assertNotIn("interface_panel", tool_composition["regions"])
         self.assertNotIn("inspector", tool_composition["regions"])
 
     def test_unknown_removed_surface_falls_back_to_system_workspace(self) -> None:
@@ -541,12 +540,11 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 envelope["shell_composition"]["regions"]["workbench"]["kind"],
                 "network_system_log_workbench",
             )
-            # Phase 13a: the bespoke network interface_panel (kind=summary_panel)
-            # was deleted; the empty placeholder still emits a region for schema
-            # continuity but no longer carries the summary_panel kind.
+            # portal-tool-overlay-restructure: the interface_panel region was removed (tools
+            # render in the menubar-search overlay); interface_panel_collapsed stays True.
             self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-            self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+            self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
             self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
             record_id = envelope["surface_payload"]["workspace"]["records"][0]["datum_address"]
@@ -575,7 +573,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             # opens the panel; the workbench remains foreground.
             self.assertTrue(focused_envelope["shell_composition"]["interface_panel_collapsed"])
             self.assertFalse(focused_envelope["shell_composition"]["workbench_collapsed"])
-            self.assertFalse(focused_envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+            self.assertNotIn("interface_panel", focused_envelope["shell_composition"]["regions"])
             self.assertNotIn("inspector", focused_envelope["shell_composition"]["regions"])
             self.assertEqual(
                 focused_envelope["shell_state"],
@@ -624,7 +622,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         # the menubar-search overlay), so the composition reports it collapsed. Workbench stays.
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
         self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
     def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
@@ -662,7 +660,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         )
         self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
         self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
     def test_runtime_owned_surface_does_not_emit_client_supplied_shell_state(self) -> None:

@@ -115,17 +115,13 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
             composition = envelope["shell_composition"]
-            # portal-tool-overlay-restructure: the interface_panel sidebar is DORMANT now
-            # (visible False — tools render in the menubar-search overlay), so the composition
-            # reports it collapsed. The workbench stays visible; the region still carries the
-            # tool_search context (the menubar search reads it) + an empty panels list.
+            # portal-tool-overlay-restructure: the interface_panel region was REMOVED (tools
+            # render in the menubar-search overlay). The workbench stays visible; the composition
+            # reports interface_panel_collapsed True with no interface_panel (or visualization) region.
             self.assertFalse(composition["workbench_collapsed"])
             self.assertTrue(composition["interface_panel_collapsed"])
             self.assertTrue(composition["regions"]["workbench"]["visible"])
-            self.assertFalse(composition["regions"]["interface_panel"]["visible"])
-            # tool surface still carries the search context + an (empty) panels list by default
-            self.assertEqual(composition["regions"]["interface_panel"]["panels"], [])
-            self.assertIn("tool_search", composition["regions"]["interface_panel"])
+            self.assertNotIn("interface_panel", composition["regions"])
             self.assertNotIn("visualization_panel", composition["regions"])
             # Operator directive (2026-06-16): the control panel exposes ONLY the
             # sandbox selector. Lens toggles + the doc/datum tab strip are removed.
