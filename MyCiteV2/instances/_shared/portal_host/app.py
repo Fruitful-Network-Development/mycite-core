@@ -2588,6 +2588,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # grantee.{fnd_msn}.{grantee_msn}.json; we match by the suffix.
         grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
         candidates = sorted(
+            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))
+        ) or sorted(
             _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
         )
         if len(candidates) == 0:
@@ -2659,7 +2661,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
 
         try:
-            save_grantee_profile(target_path, next_profile)
+            save_grantee_profile(target_path.with_suffix(".yaml"), next_profile)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -3618,7 +3620,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
         grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
+        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))) or sorted(
+            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
+        )
         if len(candidates) == 0:
             return jsonify({"ok": False, "error": "grantee_not_found"}), 404
         if len(candidates) > 1:
@@ -3655,7 +3659,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         del AwsSesConfig, PaypalConfig
 
         try:
-            save_grantee_profile(target_path, next_profile)
+            save_grantee_profile(target_path.with_suffix(".yaml"), next_profile)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -4986,7 +4990,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if host_config.private_dir is None:
             return None, (jsonify({"ok": False, "error": "private_dir_not_configured"}), 500)
         grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
+        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))) or sorted(
+            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
+        )
         if not candidates:
             return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
         if len(candidates) > 1:
@@ -5189,7 +5195,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
 
         try:
-            save_grantee_profile(path, next_profile)
+            save_grantee_profile(path.with_suffix(".yaml"), next_profile)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -5231,7 +5237,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     merged2["webhook_id"] = wid
                     merged2["webhook_url"] = wurl
                     next_profile = _dc_replace(next_profile, paypal=PaypalConfig.from_dict(merged2))
-                    save_grantee_profile(path, next_profile)
+                    save_grantee_profile(path.with_suffix(".yaml"), next_profile)
                 except Exception as exc:
                     webhook_warning = "provisioning_failed"
                     _log.warning(

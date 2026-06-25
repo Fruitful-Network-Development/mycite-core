@@ -36,7 +36,9 @@ from MyCiteV2.packages.core.grantee import load_grantee_profile
 # Grantee profile location (operator-managed JSON, never MOS):
 #   {private_dir}/utilities/tools/fnd-csm/grantee.{fnd_msn}.{grantee_msn}.json
 #   Schema: mycite.v2.grantee.profile.v1
-_GRANTEE_GLOB_RELATIVE = ("utilities", "tools", "fnd-csm", "grantee.*.json")
+_GRANTEE_DIR_RELATIVE = ("utilities", "tools", "fnd-csm")
+# Prefer the .yaml leaflet (post-cutover); .json is the pre-cutover format, read as a fallback.
+_GRANTEE_GLOB_EXTS = ("yaml", "json")
 
 # In-process cache keyed by (resolved private_dir, glob fingerprint). The
 # fingerprint is (max mtime, file count), so any add/delete/edit invalidates
@@ -45,12 +47,18 @@ _GRANTEE_GLOB_RELATIVE = ("utilities", "tools", "fnd-csm", "grantee.*.json")
 _GRANTEE_PROFILES_CACHE: dict[str, tuple[tuple[float, int], list[dict[str, Any]]]] = {}
 
 
-def _grantee_glob_pattern(base: Path) -> str:
-    return str(base.joinpath(*_GRANTEE_GLOB_RELATIVE))
+def _grantee_paths(base: Path) -> list[str]:
+    """All grantee profile files, preferring the .yaml leaflet over a same-stem .json."""
+    base_dir = base.joinpath(*_GRANTEE_DIR_RELATIVE)
+    by_stem: dict[str, str] = {}
+    for ext in _GRANTEE_GLOB_EXTS:  # yaml first -> wins the stem over a stale .json
+        for path in glob.glob(str(base_dir / f"grantee.*.{ext}")):
+            by_stem.setdefault(Path(path).stem, path)
+    return sorted(by_stem.values())
 
 
 def _grantee_glob_fingerprint(base: Path) -> tuple[float, int]:
-    paths = glob.glob(_grantee_glob_pattern(base))
+    paths = _grantee_paths(base)
     if not paths:
         return (0.0, 0)
     max_mtime = 0.0
@@ -84,7 +92,7 @@ def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]
         return list(cached[1])
 
     profiles: list[dict[str, Any]] = []
-    for path in sorted(glob.glob(_grantee_glob_pattern(base))):
+    for path in _grantee_paths(base):
         try:
             profile = load_grantee_profile(path)
         except (FileNotFoundError, ValueError):

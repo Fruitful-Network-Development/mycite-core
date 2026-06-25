@@ -25,6 +25,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -49,7 +51,7 @@ from MyCiteV2.packages.state_machine.portal_shell import (
 
 def _seed_grantee(grantee_dir: Path, msn_id: str, *, label: str = "Test Grantee") -> Path:
     grantee_dir.mkdir(parents=True, exist_ok=True)
-    path = grantee_dir / f"grantee.fnd-msn.{msn_id}.json"
+    path = grantee_dir / f"grantee.fnd-msn.{msn_id}.yaml"
     path.write_text(
         json.dumps(
             {
@@ -154,7 +156,7 @@ class GranteeProfileSaveRouteTests(unittest.TestCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["profile"]["label"], "Updated")
         # Confirm the on-disk file reflects the change.
-        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        on_disk = yaml.safe_load(path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["label"], "Updated")
 
     def test_save_dotted_keys_build_paypal_subconfig(self) -> None:
@@ -173,7 +175,7 @@ class GranteeProfileSaveRouteTests(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        on_disk = yaml.safe_load(path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["paypal"]["webhook_url"], "https://example.org/hook")
         self.assertEqual(on_disk["paypal"]["client_id"], "CID")
         self.assertEqual(on_disk["paypal"]["environment"], "live")
@@ -194,7 +196,7 @@ class GranteeProfileSaveRouteTests(unittest.TestCase):
             },
         )
         self.assertEqual(resp.status_code, 200)
-        on_disk = json.loads(path.read_text(encoding="utf-8"))
+        on_disk = yaml.safe_load(path.read_text(encoding="utf-8"))
         self.assertEqual(on_disk["receipt"]["legal_name"], "Alpha Org, Inc.")
         self.assertEqual(on_disk["receipt"]["ein"], "12-3456789")
         self.assertEqual(on_disk["receipt"]["tax_status"], "501(c)(3)")
