@@ -3535,17 +3535,57 @@
       }
     });
   }
+  function _icon(name) { return window.iconImg ? window.iconImg(name) : ""; }
+  // A magnitude cell is "refracted" when interpreted mode resolved a non-identity lens for the
+  // row's primary token (so _ideRowCells decoded it to the human-readable display_value). The
+  // refracted magnitude + its adjacent reference are consolidated into ONE white cell prefixed by
+  // the │ℹ│︙│ controls; sibling rows keep their separate ref/mag cells (the per-VG grid isolates).
+  function _refractedMagIndex(cell, columns, values, lens) {
+    if (lens === "raw" || !cell) return -1;
+    var resolved = cell.resolved_lens;
+    if (!resolved || resolved === "identity" || !cell.display_value) return -1;
+    for (var i = 0; i < columns.length; i++) {
+      if (columns[i].role === "magnitude" && asText(values[i]) === asText(cell.display_value)) return i;
+    }
+    return -1;
+  }
+  function _refractedCellHtml(cell, value, span) {
+    var addr = escapeHtml(asText(cell.datum_address));
+    return "<td" + (span ? ' colspan="2"' : "") +
+      ' class="v2-ide__cell v2-ide__cell--refracted" data-datum-refracted="1" data-datum-address="' + addr + '">' +
+      '<span class="v2-ide__refractCtl">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__refractBtn" data-datum-info data-datum-address="' +
+      addr + '" aria-label="Datum information">' + _icon("info") + "</button>" +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__refractBtn" data-datum-kebab data-datum-address="' +
+      addr + '" aria-label="Datum menu">' + _icon("kebab") + "</button></span>" +
+      '<span class="v2-ide__refractValue" title="' + escapeHtml(asText(value)) + '">' +
+      escapeHtml(_ideTruncate(value, 40)) + "</span></td>";
+  }
+  function _plainCellHtml(col, full) {
+    var shown = _ideTruncate(full, 28);
+    return '<td class="v2-ide__cell v2-ide__cell--' + escapeHtml(col.role) + '" title="' +
+      escapeHtml(full) + '">' +
+      (shown ? escapeHtml(shown) : '<span class="v2-ide__blank">·</span>') + "</td>";
+  }
   function renderDatumIdeGridRow(cell, columns, lens) {
     var values = _ideRowCells(cell, columns, lens);
-    var tds = columns.map(function (col, i) {
-      var full = values[i];
-      var shown = _ideTruncate(full, 28);
-      return '<td class="v2-ide__cell v2-ide__cell--' + escapeHtml(col.role) + '" title="' +
-        escapeHtml(full) + '">' +
-        (shown ? escapeHtml(shown) : '<span class="v2-ide__blank">·</span>') + "</td>";
-    }).join("");
+    var magIdx = _refractedMagIndex(cell, columns, values, lens);
+    var refIdx = (magIdx > 0 && columns[magIdx - 1] && columns[magIdx - 1].role === "reference") ? magIdx - 1 : -1;
+    var tds = [];
+    for (var i = 0; i < columns.length; i++) {
+      if (i === refIdx && magIdx === i + 1) {
+        tds.push(_refractedCellHtml(cell, values[magIdx], true));  // merged reference+magnitude
+        i = magIdx;
+        continue;
+      }
+      if (i === magIdx && refIdx === -1) {
+        tds.push(_refractedCellHtml(cell, values[magIdx], false)); // lone refracted magnitude
+        continue;
+      }
+      tds.push(_plainCellHtml(columns[i], values[i]));
+    }
     return '<tr class="v2-ide__row' + (cell.selected ? " is-selected" : "") +
-      '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds + "</tr>";
+      '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds.join("") + "</tr>";
   }
   // The repeated "Datum / Ref n / Mag n" column-label row is replaced by a compact color-key
   // box. Each value group's grid is self-contained (its own column_template), so cells are read

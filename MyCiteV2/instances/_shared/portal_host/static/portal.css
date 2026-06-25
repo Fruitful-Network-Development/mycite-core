@@ -8653,6 +8653,40 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-ide__keyChip--relation .v2-ide__keySwatch {
   background: transparent;
 }
+/* Refracted cell: a lens recognized the magnitude, so the reference+magnitude tuple reads as
+   one white, human-readable cell prefixed by │ℹ│︙│ controls. Hovering indents it as one button
+   (it opens the datum overlay). The │ bars are borders on the control span + its first button. */
+.v2-ide__cell--refracted {
+  background: #ffffff;
+  color: var(--coal, #2f2f2f);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.v2-ide__cell--refracted:hover {
+  box-shadow: inset 0 0 0 2px var(--accent, #1e6c93);
+}
+.v2-ide__refractCtl {
+  display: inline-flex;
+  align-items: center;
+  border-left: 1px solid var(--line, #afafaa);
+  border-right: 1px solid var(--line, #afafaa);
+  margin-right: 6px;
+}
+.v2-ide__refractBtn {
+  color: var(--ink2, #888);
+  font-size: 0.82em;
+  padding: 0 4px;
+}
+.v2-ide__refractBtn:hover {
+  background: transparent;
+  transform: translateY(0.5px);
+}
+.v2-ide__refractBtn:first-child {
+  border-right: 1px solid var(--line, #afafaa);
+}
+.v2-ide__refractValue {
+  font-weight: 500;
+}
 .v2-ide__row.is-selected {
   background: rgba(46, 116, 181, 0.08);
 }
