@@ -128,28 +128,6 @@ def _build_paypal_extension_payload(
     }
 
 
-def _render_ext_paypal(ctx: dict[str, Any]) -> dict[str, Any]:
-    from ._global import build_overall_roster, is_global
-
-    if is_global(ctx):
-        def _summary(g: dict[str, Any]) -> str:
-            paypal = g.get("paypal") or {}
-            if not paypal:
-                return "not configured"
-            mode = _as_text(paypal.get("mode")) if isinstance(paypal, dict) else ""
-            return f"configured ({mode})" if mode else "configured"
-
-        return build_overall_roster(ctx, extension_label="PayPal", summarize=_summary)
-    return _build_paypal_extension_payload(
-        grantee=_as_dict(ctx.get("grantee")),
-        domain=_as_text(ctx.get("domain")),
-        private_dir=ctx.get("private_dir"),
-        authority_db_file=ctx.get("authority_db_file"),
-        portal_instance_id=ctx.get("portal_instance_id"),
-    )
-
-
 __all__ = [
     "_build_paypal_extension_payload",
-    "_render_ext_paypal",
 ]

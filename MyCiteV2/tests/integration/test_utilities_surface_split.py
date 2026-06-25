@@ -29,8 +29,6 @@ from MyCiteV2.instances._shared.runtime.portal_shell_runtime import run_portal_s
 from MyCiteV2.packages.core.grantee import GRANTEE_PROFILE_SCHEMA
 from MyCiteV2.packages.state_machine.portal_shell import (
     PORTAL_SHELL_REQUEST_SCHEMA,
-    UTILITIES_EXTENSIONS_SURFACE_ID,
-    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_TOOLS_SURFACE_ID,
 )
@@ -83,74 +81,6 @@ def _surface_payload(surface_id: str) -> dict:
         webapps_root=webapps_root,
     )
     return response.get("surface_payload", {})
-
-
-class UtilitiesExtensionsSurfaceTests(unittest.TestCase):
-    def test_extensions_surface_subtab_lists_operational_extensions(self) -> None:
-        # Phase 15a: extensions surface exposes the operational
-        # extensions via the subtab selector (tabs list), and renders
-        # only the active tab's card in payload.extensions.
-        # Phase 17b: ext_connect joins as the 5th operational tab.
-        # Wave 2: ext_resources joins as the 6th (retired resources.root surface).
-        payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
-        self.assertEqual(payload.get("kind"), "extensions")
-        selector = payload.get("extension_subtab_selector") or {}
-        tab_ids = {tab.get("tool_id") for tab in selector.get("tabs") or []}
-        self.assertEqual(
-            tab_ids,
-            {
-                "ext_aws_email",
-                "ext_analytics",
-                "ext_newsletter",
-                "ext_paypal",
-                "ext_connect",
-                "ext_resources",
-            },
-            f"subtab tab_ids={tab_ids!r}",
-        )
-        active_card_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
-        self.assertEqual(active_card_ids, {"ext_aws_email"})
-
-    def test_extensions_surface_excludes_grantee_profile(self) -> None:
-        payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
-        # Grantee profile appears in neither the cards list nor the tab list.
-        card_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
-        self.assertNotIn("ext_grantee_profile", card_ids)
-        tab_ids = {
-            tab.get("tool_id")
-            for tab in (payload.get("extension_subtab_selector") or {}).get("tabs") or []
-        }
-        self.assertNotIn("ext_grantee_profile", tab_ids)
-
-    def test_extensions_surface_has_no_top_grantee_selector(self) -> None:
-        # The surface-level grantee selector is RETIRED for the Extensions surface:
-        # per-grantee is reached via each extension's "Per-grantee" inner subtab
-        # (which hosts the grantee picker). The active extension carries the inner
-        # subtab strip instead, defaulting to Overall.
-        payload = _surface_payload(UTILITIES_EXTENSIONS_SURFACE_ID)
-        self.assertIsNone(payload.get("grantee_selector"))
-        active = payload.get("extensions") or []
-        self.assertTrue(active)
-        sel = (active[0].get("payload") or {}).get("inner_subtab_selector") or {}
-        ids = [t.get("id") for t in sel.get("tabs") or []]
-        self.assertIn("overall", ids)
-        self.assertIn("per_grantee", ids)
-
-
-class UtilitiesGranteeProfileSurfaceTests(unittest.TestCase):
-    def test_grantee_profile_surface_contains_only_ext_grantee_profile(self) -> None:
-        payload = _surface_payload(UTILITIES_GRANTEE_PROFILE_SURFACE_ID)
-        self.assertEqual(payload.get("kind"), "grantee_profile")
-        tool_ids = {ext.get("tool_id") for ext in payload.get("extensions") or []}
-        self.assertEqual(tool_ids, {"ext_grantee_profile"})
-
-    def test_grantee_profile_surface_renders_form_frame(self) -> None:
-        payload = _surface_payload(UTILITIES_GRANTEE_PROFILE_SURFACE_ID)
-        extensions = payload.get("extensions") or []
-        self.assertEqual(len(extensions), 1)
-        form_frame = (extensions[0].get("payload") or {}).get("form_frame")
-        self.assertIsNotNone(form_frame)
-        self.assertEqual(form_frame.get("component_type"), "form")
 
 
 class UtilitiesToolsSurfaceTests(unittest.TestCase):

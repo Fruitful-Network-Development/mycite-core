@@ -415,23 +415,6 @@ class PaypalManagementTests(unittest.TestCase):
         self.assertTrue(cap_rows)
         self.assertEqual(cap_rows[0].get("contact_email"), "donor@example.test")
 
-    # ---- grantee/save scope ----------------------------------------------
-
-    def test_grantee_save_blocks_foreign_grantee(self) -> None:
-        client, _ = self._build_client(paypal=None)
-        # grantee/save is OPERATOR-only (config is operator-managed): any grantee
-        # caller is rejected by the before_request gate with operator_only —
-        # before the handler's own grantee_not_owned guard — so a dashboard-cred
-        # client can edit no grantee config (its own OR a foreign one).
-        resp = client.post(
-            "/__fnd/grantee/save",
-            data=json.dumps({"msn_id": "beta", "fields": {"label": "Hijacked"}}),
-            content_type="application/json",
-            headers={"X-Auth-Request-Grantee": "alpha"},
-        )
-        self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.get_json()["error"], "operator_only")
-
     # ---- single-store export ---------------------------------------------
 
     def test_export_reads_order_log(self) -> None:

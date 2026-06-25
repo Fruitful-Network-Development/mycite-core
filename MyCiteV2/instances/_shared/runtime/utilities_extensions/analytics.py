@@ -196,20 +196,4 @@ def _build_analytics_extension_payload(
     }
 
 
-def _render_ext_analytics(ctx: dict[str, Any]) -> dict[str, Any]:
-    from ._global import build_overall_roster, is_global
-
-    if is_global(ctx):
-        return build_overall_roster(
-            ctx,
-            extension_label="Analytics",
-            summarize=lambda g: f"{len(g.get('domains') or [])} domain(s)",
-        )
-    return _build_analytics_extension_payload(
-        domain=_as_text(ctx.get("domain")),
-        private_dir=ctx.get("private_dir"),
-        webapps_root=ctx.get("webapps_root"),
-    )
-
-
-__all__ = ["_build_analytics_extension_payload", "_render_ext_analytics"]
+__all__ = ["_build_analytics_extension_payload"]

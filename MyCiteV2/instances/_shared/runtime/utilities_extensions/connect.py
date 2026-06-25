@@ -109,24 +109,4 @@ def _build_connect_extension_payload(
     }
 
 
-def _render_ext_connect(ctx: dict[str, Any]) -> dict[str, Any]:
-    from ._global import build_overall_roster, is_global
-
-    if is_global(ctx):
-        return build_overall_roster(
-            ctx,
-            extension_label="Connect",
-            summarize=lambda g: (
-                "connect configured" if g.get("connect") else "not configured"
-            ),
-        )
-    return _build_connect_extension_payload(
-        grantee=_as_dict(ctx.get("grantee")),
-        domain=_as_text(ctx.get("domain")),
-        private_dir=ctx.get("private_dir"),
-        authority_db_file=ctx.get("authority_db_file"),
-        portal_instance_id=ctx.get("portal_instance_id"),
-    )
-
-
-__all__ = ["_build_connect_extension_payload", "_render_ext_connect"]
+__all__ = ["_build_connect_extension_payload"]

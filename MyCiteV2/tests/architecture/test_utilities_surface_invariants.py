@@ -78,39 +78,6 @@ class CatalogInvariants(unittest.TestCase):
         self.assertIsNotNone(entry, "utilities.peripherals must remain registered")
 
 
-class ExtensionRegistryInvariants(unittest.TestCase):
-    """The four operational extensions live on
-    ``utilities.extensions``; ext_grantee_profile lives on
-    ``utilities.grantee_profile``. No extension is permitted on the
-    legacy ``utilities.tool_exposure`` surface in new code, but the
-    registry guard accepts it for transitional bookmarks.
-    """
-
-    def test_operational_extensions_on_extensions_surface(self) -> None:
-        entries = {
-            e.tool_id: e
-            for e in build_portal_tool_registry_entries()
-            if e.is_extension and e.tool_id in OPERATIONAL_EXTENSION_IDS
-        }
-        # All four operational extensions must be registered.
-        self.assertEqual(set(entries.keys()), set(OPERATIONAL_EXTENSION_IDS))
-        for tool_id, entry in entries.items():
-            self.assertEqual(
-                entry.surface_id,
-                UTILITIES_EXTENSIONS_SURFACE_ID,
-                f"{tool_id} must register under utilities.extensions",
-            )
-
-    def test_grantee_profile_on_its_own_surface(self) -> None:
-        entry = next(
-            (e for e in build_portal_tool_registry_entries() if e.tool_id == "ext_grantee_profile"),
-            None,
-        )
-        self.assertIsNotNone(entry, "ext_grantee_profile must remain registered")
-        self.assertTrue(entry.is_extension)
-        self.assertEqual(entry.surface_id, UTILITIES_GRANTEE_PROFILE_SURFACE_ID)
-
-
 class ToolsSurfaceContentInvariants(unittest.TestCase):
     """The Tools surface payload must never re-introduce extensions or
     ``workbench_ui``. Bundle builder is exercised in-process so the

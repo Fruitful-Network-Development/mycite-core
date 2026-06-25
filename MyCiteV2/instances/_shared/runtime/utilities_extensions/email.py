@@ -604,28 +604,6 @@ def _lazy_overlay_adapter() -> Any:
     return _LAZY_OVERLAY_ADAPTER
 
 
-def _render_ext_aws_email(ctx: dict[str, Any]) -> dict[str, Any]:
-    from ._global import build_overall_roster, is_global
-
-    if is_global(ctx):
-        return build_overall_roster(
-            ctx,
-            extension_label="Email",
-            summarize=lambda g: (
-                ("SES configured" if g.get("aws_ses") else "SES not configured")
-                + f" · {len(g.get('users') or [])} mailbox user(s)"
-            ),
-        )
-    return _build_email_extension_payload(
-        grantee=_as_dict(ctx.get("grantee")),
-        domain=_as_text(ctx.get("domain")),
-        private_dir=ctx.get("private_dir"),
-        authority_db_file=ctx.get("authority_db_file"),
-        portal_instance_id=ctx.get("portal_instance_id"),
-        aws_adapter=_resolve_overlay_adapter(ctx),
-    )
-
-
 __all__ = [
     "_OVERLAY_PROBE_CACHE",
     "_build_email_extension_payload",
@@ -635,7 +613,6 @@ __all__ = [
     "_onboarding_progress",
     "_reminder_cooldown_remaining",
     "_remove_action_for_profile",
-    "_render_ext_aws_email",
     "_resend_handoff_action_for_profile",
     "_send_reminder_action_for_profile",
 ]

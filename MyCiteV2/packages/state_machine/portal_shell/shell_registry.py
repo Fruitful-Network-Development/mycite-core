@@ -21,7 +21,6 @@ from .shell_schemas import (
     SYSTEM_ROOT_ROUTE,
     SYSTEM_ROOT_SURFACE_ID,
     TOOL_KIND_GENERAL,
-    TOOL_KIND_SERVICE,
     TOOL_SURFACE_IDS,
     UTILITIES_EXTENSIONS_ROUTE,
     UTILITIES_EXTENSIONS_SURFACE_ID,
@@ -178,121 +177,12 @@ def build_portal_tool_registry_entries() -> tuple[PortalToolRegistryEntry, ...]:
             applies_to_source_kind=("sandbox_source", "system_anthology"),
             summary="Read-only SQL datum grid with additive directive-overlay inspection.",
         ),
-        # Utilities extensions — Phase 2 migration of former FND-CSM tabs.
-        # Renderers live in utilities_extensions.EXTENSION_RENDERERS; see
-        # portal_tool_surface_contract.md.
-        PortalToolRegistryEntry(
-            tool_id="ext_aws_email",
-            label="Email",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_aws_email",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="AWS-CSM mailbox profiles and domain configuration for a grantee.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="ext_analytics",
-            label="Analytics",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_analytics",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="read-only",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="Webapp NDJSON event aggregates for a domain.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="ext_newsletter",
-            label="Newsletter",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_newsletter",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="Newsletter contact log and sender assignment for a domain.",
-        ),
-        PortalToolRegistryEntry(
-            tool_id="ext_paypal",
-            label="PayPal",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_paypal",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="PayPal webhook configuration and donation orders log.",
-        ),
-        # Phase 17b: the Connect extension surfaces website-visitor
-        # messages forwarded to a configured grantee email address.
-        # Lead-collection sibling to the newsletter extension —
-        # submissions land as unsubscribed contacts tagged
-        # source=connect_form so the operator builds a leads list.
-        PortalToolRegistryEntry(
-            tool_id="ext_connect",
-            label="Connect",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_connect",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="Connect-form visitor messages forwarded to the grantee inbox via SES.",
-        ),
-        # Phase 9 (grantee_profile_contract.md): editable form over the
-        # grantee JSON file. This is the single home for per-grantee
-        # configuration that the other extensions read (paypal, aws_ses,
-        # newsletter sub-configs). Phase 14b: hosted by its own dedicated
-        # Utilities/Grantee Profile surface — not bundled with the
-        # operational extensions.
-        PortalToolRegistryEntry(
-            tool_id="ext_grantee_profile",
-            label="Grantee Profile",
-            surface_id=UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_grantee_profile",
-            route=UTILITIES_GRANTEE_PROFILE_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary="Editable form for grantee identity + credentials (paypal, aws_ses, newsletter).",
-        ),
-        # Wave 2 (resources extension): the shared site-core asset library —
-        # profiles (a viewer/editor "contact app"), images, icons, documents,
-        # events, contacts. RETIRES the Wave-1 ``resources.root`` top-level
-        # surface; resources is a proper Utilities → Extensions extension, the
-        # same as every other operator feature here. Renderer lives in
-        # utilities_extensions.EXTENSION_RENDERERS["ext_resources"].
-        PortalToolRegistryEntry(
-            tool_id="ext_resources",
-            label="Resources",
-            surface_id=UTILITIES_EXTENSIONS_SURFACE_ID,
-            entrypoint_id="portal.utilities.ext_resources",
-            route=UTILITIES_EXTENSIONS_ROUTE,
-            tool_kind=TOOL_KIND_SERVICE,
-            surface_posture=SURFACE_POSTURE_PALETTE_TARGET,
-            read_write_posture="write",
-            required_capabilities=("fnd_peripheral_routing",),
-            is_extension=True,
-            summary=(
-                "Shared site-core leaflet library: search, view and edit every "
-                "resource by naming convention; allocate resources to a grantee's "
-                "site from a grantee view."
-            ),
-        ),
+        # portal-tool-overlay-restructure: the 7 operator-facing FND-CSM
+        # extension tools (ext_aws_email / ext_analytics / ext_newsletter /
+        # ext_paypal / ext_connect / ext_grantee_profile / ext_resources) were
+        # dissolved. Their public /__fnd/* ingest + admin routes and the
+        # _build_* payload builders they used remain; only the portal-shell
+        # extension surface + renderers were removed.
     )
 
 
