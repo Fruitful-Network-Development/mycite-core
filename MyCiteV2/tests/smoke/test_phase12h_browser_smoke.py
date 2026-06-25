@@ -116,6 +116,7 @@ class Phase12hBrowserSmokeTests(unittest.TestCase):
         time.sleep(0.4)
         return server, thread, f"http://127.0.0.1:{port}"
 
+    @unittest.skip("Phase 3: operator extensions surface obsoleted (302 -> /portal/utilities); analytics/newsletter/connect/resources management moved to the FND website dashboard.")
     def test_grantee_selector_renders_dispatches_and_pivots_extension_payloads(self) -> None:
         from playwright.sync_api import sync_playwright
 

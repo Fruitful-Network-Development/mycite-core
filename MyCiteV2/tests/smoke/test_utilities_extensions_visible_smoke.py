@@ -111,6 +111,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
         time.sleep(0.4)
         return server, thread, f"http://127.0.0.1:{port}"
 
+    @unittest.skip("Phase 3: operator extensions surface obsoleted (302 -> /portal/utilities); analytics/newsletter/connect/resources management moved to the FND website dashboard.")
     def test_extension_cards_render_with_tool_ids(self) -> None:
         from playwright.sync_api import sync_playwright
 

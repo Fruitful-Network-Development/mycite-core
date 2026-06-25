@@ -54,7 +54,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
-    UTILITIES_EXTENSIONS_SURFACE_ID,
     UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
@@ -1866,7 +1865,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # The FND-CSM tool surface is removed; its functionality moved to the
         # Utilities extensions. Keep a literal bookmark redirect.
         if tool_slug == "fnd-csm":
-            return redirect("/portal/utilities/extensions", code=302)
+            return redirect("/portal/utilities", code=302)
         # Plan v2: the dedicated tool surfaces collapse into the unified
         # workbench at /portal/system. Old bookmarks 302 to the new shape,
         # PRESERVING + canonicalizing the incoming workbench query (document,
@@ -1910,9 +1909,14 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # Phase 14b: four dedicated surfaces under Utilities. The old
     # /tool-exposure and /integrations routes 302-redirect for one
     # transition cycle so external bookmarks keep resolving.
+    # portal-tool-overlay-restructure Phase 3: the operator extension surface is obsoleted —
+    # analytics/newsletter/connect/resources management moved to the FND website admin
+    # dashboard; paypal/aws config stays on the Grantee Profile surface. The PUBLIC /__fnd/*
+    # ingest endpoints (analytics beacon, connect form, newsletter, paypal webhook) are
+    # unaffected. 302 for one cycle so existing bookmarks resolve.
     @app.get("/portal/utilities/extensions")
-    def portal_utilities_extensions() -> str:
-        return _render_surface(UTILITIES_EXTENSIONS_SURFACE_ID, host_config)
+    def portal_utilities_extensions() -> Any:
+        return redirect("/portal/utilities", code=302)
 
     @app.get("/portal/utilities/grantee-profile")
     def portal_utilities_grantee_profile() -> str:
@@ -1932,7 +1936,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # profile + workbench_ui into one confusing table. Operators are now
         # routed to the dedicated extensions surface. Kept as a redirect for
         # one cycle so external bookmarks still resolve.
-        return redirect("/portal/utilities/extensions", code=302)
+        return redirect("/portal/utilities", code=302)
 
     @app.get("/portal/utilities/integrations")
     def portal_utilities_integrations_legacy() -> Any:

@@ -373,11 +373,6 @@ def _utilities_control_panel(
     # operator-facing nav.
     entries = [
         {
-            "label": "Extensions",
-            "href": "/portal/utilities/extensions",
-            "active": active_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID,
-        },
-        {
             "label": "Grantee Profile",
             "href": "/portal/utilities/grantee-profile",
             "active": active_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
@@ -595,9 +590,8 @@ def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict
         "schema": surface_schema_for_surface(UTILITIES_ROOT_SURFACE_ID),
         "kind": "utilities_overview",
         "title": "Utilities",
-        "subtitle": "Extensions, grantee profile, tools, peripherals.",
+        "subtitle": "Grantee profile, tools, peripherals.",
         "cards": [
-            _metric_card("extensions", 4),
             _metric_card("grantees configured", "managed via Grantee Profile"),
             _metric_card("tools", "1 (CTS-GIS)"),
         ],
@@ -605,7 +599,6 @@ def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict
             {
                 "title": "Utilities children",
                 "rows": [
-                    {"label": "Extensions", "status": "available", "detail": "/portal/utilities/extensions"},
                     {"label": "Grantee Profile", "status": "available", "detail": "/portal/utilities/grantee-profile"},
                     {"label": "Tools", "status": "available", "detail": "/portal/utilities/tools"},
                     {"label": "Peripherals", "status": "available", "detail": "/portal/utilities/peripherals"},

@@ -197,11 +197,11 @@ class UtilitiesLegacyRedirectsTests(unittest.TestCase):
         )
         return create_app(config).test_client()
 
-    def test_tool_exposure_route_redirects_to_extensions(self) -> None:
+    def test_tool_exposure_route_redirects_to_utilities(self) -> None:
         client = self._build_app()
         resp = client.get("/portal/utilities/tool-exposure", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
+        self.assertEqual(resp.headers["Location"], "/portal/utilities")
 
     def test_integrations_route_redirects_to_peripherals(self) -> None:
         client = self._build_app()

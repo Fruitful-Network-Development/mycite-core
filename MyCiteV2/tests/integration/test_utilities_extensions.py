@@ -185,7 +185,7 @@ class TestUtilitiesToolExposureSurface(unittest.TestCase):
         resp = client.get("/portal/system/tools/fnd-csm", follow_redirects=False)
         self.assertEqual(resp.status_code, 302)
         # FND-CSM surface removed; functionality moved to Utilities extensions.
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
+        self.assertEqual(resp.headers["Location"], "/portal/utilities")
 
 
 if __name__ == "__main__":
