@@ -159,6 +159,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
             server.shutdown()
             thread.join(timeout=3)
 
+    @unittest.skip("FND-CSM dissolved: the operator grantee-profile editor surface was removed (302 -> /portal/utilities); grantee/payment config is managed in the website dashboard.")
     def test_grantee_profile_form_renders_via_extension_card(self) -> None:
         from playwright.sync_api import sync_playwright
 
