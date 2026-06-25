@@ -8,9 +8,8 @@ PORTAL_SHELL_COMPOSITION_SCHEMA = "mycite.v2.portal.shell.composition.v1"
 PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA = "mycite.v2.portal.shell.region.activity_bar.v1"
 PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA = "mycite.v2.portal.shell.region.control_panel.v1"
 PORTAL_SHELL_REGION_WORKBENCH_SCHEMA = "mycite.v2.portal.shell.region.workbench.v1"
-PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA = "mycite.v2.portal.shell.region.interface_panel.v1"
-# (The visualization_panel region was retired 2026-06-02 — tools render in the
-# interface_panel now; its schema constant is gone. See TASK-interface-panel-migration.)
+# (The visualization_panel and interface_panel regions were retired — tools render
+# in the menubar-search → full-screen overlay; their schema constants are gone.)
 PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA = "mycite.v2.portal.surface_catalog.entry.v1"
 PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 

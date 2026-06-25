@@ -117,9 +117,9 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             composition = envelope["shell_composition"]
             # portal-tool-overlay-restructure: the interface_panel region was REMOVED (tools
             # render in the menubar-search overlay). The workbench stays visible; the composition
-            # reports interface_panel_collapsed True with no interface_panel (or visualization) region.
+            # carries no interface_panel (or visualization) region.
             self.assertFalse(composition["workbench_collapsed"])
-            self.assertTrue(composition["interface_panel_collapsed"])
+            self.assertNotIn("interface_panel_collapsed", composition)
             self.assertTrue(composition["regions"]["workbench"]["visible"])
             self.assertNotIn("interface_panel", composition["regions"])
             self.assertNotIn("visualization_panel", composition["regions"])

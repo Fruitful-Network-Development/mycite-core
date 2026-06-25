@@ -1529,15 +1529,11 @@ def build_shell_composition_payload(
     activity_items: list[dict[str, Any]],
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
-    interface_panel: dict[str, Any] | None = None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
     # portal-tool-overlay-restructure: the interface_panel region was removed — tools render in
-    # the menubar-search → full-screen overlay, not a sidebar region. The ``interface_panel``
-    # kwarg is retained as a deprecated NO-OP so existing callers don't break (it is ignored);
-    # ``interface_panel_collapsed`` stays True (there is no panel) for any older reader.
-    _ = interface_panel
+    # the menubar-search → full-screen overlay, not a sidebar region.
     state = shell_state if isinstance(shell_state, PortalShellState) else (
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
@@ -1563,7 +1559,6 @@ def build_shell_composition_payload(
         "active_tool_surface_id": _as_text(active_surface_id) if is_tool_surface(active_surface_id) else None,
         "foreground_shell_region": foreground_region_for_surface(active_surface_id),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "interface_panel_collapsed": True,
         "workbench_collapsed": workbench_collapsed,
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
@@ -1610,7 +1605,6 @@ __all__ = [
     "PORTAL_SHELL_ENTRYPOINT_ID",
     "PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
     "PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA",
-    "PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_WORKBENCH_SCHEMA",
     "PORTAL_SHELL_REQUEST_SCHEMA",
     "PORTAL_SHELL_STATE_SCHEMA",

@@ -142,8 +142,8 @@ class CompositionPostconditionTests(unittest.TestCase):
     def test_interface_panel_region_is_removed(self) -> None:
         # portal-tool-overlay-restructure: the interface_panel region was removed (tools render
         # in the menubar-search → full-screen overlay). The composition never emits it on any
-        # surface; the ``interface_panel`` kwarg is a deprecated no-op and interface_panel_collapsed
-        # stays True. The workbench is the only foreground region.
+        # surface and no longer accepts an interface_panel kwarg or emits an
+        # interface_panel_collapsed flag. The workbench is the only foreground region.
         for surface_id in (
             "system.root",
             "network.root",
@@ -160,11 +160,10 @@ class CompositionPostconditionTests(unittest.TestCase):
                 activity_items=[],
                 control_panel={},
                 workbench={"visible": True},
-                interface_panel={"visible": True},  # deprecated no-op
                 shell_state=None,
             )
             self.assertNotIn("interface_panel", composition["regions"], surface_id)
-            self.assertTrue(composition["interface_panel_collapsed"], surface_id)
+            self.assertNotIn("interface_panel_collapsed", composition, surface_id)
             self.assertEqual(composition["foreground_shell_region"], "center-workbench", surface_id)
 
 
@@ -210,7 +209,7 @@ class VestigialInterfacePanelReferencesTests(unittest.TestCase):
         "packages/tools/workbench_ui/service.py",
         "packages/modules/cross_domain/cts_gis/compiled_artifact.py",
     }
-    ALLOWED_TOTAL_CEILING = 320  # vestigial references — cleanup follow-up
+    ALLOWED_TOTAL_CEILING = 29  # interface_panel: comments + surface-posture constant + component-frame contract refs
 
     def test_interface_panel_references_are_bounded(self) -> None:
         repo_mycite = REPO_ROOT / "MyCiteV2"

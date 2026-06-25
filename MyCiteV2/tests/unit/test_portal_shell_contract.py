@@ -155,8 +155,8 @@ class PortalShellContractTests(unittest.TestCase):
 
     def test_workbench_ui_tool_composition_keeps_default_visible_workbench(self) -> None:
         # Phase 3 (portal_tool_surface_contract.md): interface_panel is retired;
-        # build_shell_composition_payload forces it hidden/collapsed across all
-        # surfaces. Workbench remains the foreground for tool surfaces.
+        # build_shell_composition_payload no longer emits the region or its
+        # collapsed flag. Workbench remains the foreground for tool surfaces.
         composition = build_shell_composition_payload(
             active_surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
             portal_instance_id="fnd",
@@ -165,11 +165,10 @@ class PortalShellContractTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={"visible": True},
-            interface_panel={},
             shell_state=None,
         )
         self.assertFalse(composition["workbench_collapsed"])
-        self.assertTrue(composition["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", composition)
         self.assertEqual(composition["foreground_shell_region"], "center-workbench")
         self.assertTrue(composition["regions"]["workbench"]["visible"])
         self.assertNotIn("interface_panel", composition["regions"])

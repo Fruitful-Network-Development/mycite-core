@@ -425,14 +425,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={},
-            interface_panel={},
             shell_state=initial_portal_shell_state(
                 surface_id=SYSTEM_ROOT_SURFACE_ID,
                 portal_scope={"scope_id": "fnd", "capabilities": []},
             ),
         )
         self.assertFalse(root_composition["workbench_collapsed"])
-        self.assertTrue(root_composition["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", root_composition)
         self.assertNotIn("inspector", root_composition["regions"])
 
         # cts_gis retired in Stage C; use workbench_ui as the canonical tool
@@ -445,11 +444,10 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             activity_items=[],
             control_panel={},
             workbench={"visible": True},
-            interface_panel={},
             shell_state=None,
         )
         self.assertFalse(tool_composition["workbench_collapsed"])
-        self.assertTrue(tool_composition["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", tool_composition)
         self.assertEqual(tool_composition["foreground_shell_region"], "center-workbench")
         self.assertNotIn("interface_panel", tool_composition["regions"])
         self.assertNotIn("inspector", tool_composition["regions"])
@@ -539,8 +537,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 "network_system_log_workbench",
             )
             # portal-tool-overlay-restructure: the interface_panel region was removed (tools
-            # render in the menubar-search overlay); interface_panel_collapsed stays True.
-            self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
+            # render in the menubar-search overlay).
             self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
             self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
             self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
@@ -566,10 +563,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                 focused_envelope["canonical_query"],
                 {"view": "system_logs", "record": record_id},
             )
-            # Phase 3 (portal_tool_surface_contract.md): interface_panel is
-            # always hidden after retirement. Focused record selection no longer
-            # opens the panel; the workbench remains foreground.
-            self.assertTrue(focused_envelope["shell_composition"]["interface_panel_collapsed"])
+            # Focused record selection no longer opens a panel; the workbench stays foreground.
             self.assertFalse(focused_envelope["shell_composition"]["workbench_collapsed"])
             self.assertNotIn("interface_panel", focused_envelope["shell_composition"]["regions"])
             self.assertNotIn("inspector", focused_envelope["shell_composition"]["regions"])
@@ -616,14 +610,13 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         self.assertEqual(control_panel["kind"], "unified_directive_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
         # portal-tool-overlay-restructure: /portal/system delegates to the workbench-ui
-        # bundle, but the interface_panel sidebar is DORMANT (visible False — tools render in
-        # the menubar-search overlay), so the composition reports it collapsed. Workbench stays.
-        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
+        # bundle; the interface_panel region is gone (tools render in the menubar-search
+        # overlay). Workbench stays foreground.
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
         self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
         self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
-    def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
+    def test_utilities_root_uses_minimal_section_led_control_panel_without_interface_panel(self) -> None:
         envelope = run_portal_shell_entry(
             {
                 "schema": "mycite.v2.portal.shell.request.v1",
@@ -656,7 +649,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             [entry["label"] for entry in control_panel["groups"][0]["entries"]],
             ["Extensions", "Grantee Profile", "Tools", "Peripherals"],
         )
-        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
         self.assertNotIn("interface_panel", envelope["shell_composition"]["regions"])
         self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
@@ -675,7 +667,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
                     "focus_subject": {"level": FOCUS_LEVEL_SANDBOX, "id": "fnd"},
                     "mediation_subject": {"level": FOCUS_LEVEL_OBJECT, "id": "1-0-0"},
                     "verb": VERB_MEDIATE,
-                    "chrome": {"control_panel_collapsed": True, "interface_panel_open": True},
+                    "chrome": {"control_panel_collapsed": True},
                 },
             },
             portal_instance_id="fnd",
