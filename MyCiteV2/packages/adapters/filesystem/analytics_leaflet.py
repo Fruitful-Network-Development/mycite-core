@@ -29,7 +29,6 @@ from __future__ import annotations
 import fcntl
 import logging
 import os
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any

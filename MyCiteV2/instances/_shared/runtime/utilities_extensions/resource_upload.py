@@ -488,6 +488,7 @@ def handle_grantee_upload(
     manifest is auto-created. Returns ``{asset_id, asset_path, kind}``.
     """
     import fcntl
+
     import yaml
 
     if not isinstance(file_bytes, (bytes, bytearray)) or not bytes(file_bytes):
