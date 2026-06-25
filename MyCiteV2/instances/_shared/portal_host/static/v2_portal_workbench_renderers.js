@@ -5343,6 +5343,9 @@
           '<p class="ide-visualizationPanel__error">Pane render failed: ' +
           esc(err && err.message ? err.message : String(err)) + "</p>";
       }
+    } else if (sub.error) {
+      node.innerHTML =
+        '<p class="ide-visualizationPanel__error">' + esc(String(sub.error)) + "</p>";
     } else {
       node.innerHTML =
         '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
@@ -5362,7 +5365,12 @@
       content.innerHTML = '<p class="ide-visualizationPanel__empty">No tabs to display.</p>';
       return;
     }
-    var active = payload.active_tab || (tabs[0] && tabs[0].id) || "";
+    var requestedActive = payload.active_tab || (tabs[0] && tabs[0].id) || "";
+    var active = "";
+    for (var ai = 0; ai < tabs.length; ai++) {
+      if (tabs[ai] && tabs[ai].id === requestedActive) { active = requestedActive; break; }
+    }
+    if (!active) active = (tabs[0] && tabs[0].id) || "";
     content.innerHTML =
       '<div class="v2-tabbed">' +
       '<div class="v2-tabbed__strip" role="tablist">' +

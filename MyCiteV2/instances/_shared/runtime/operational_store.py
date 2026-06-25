@@ -23,6 +23,7 @@ shell file-key taxonomy.
 
 from __future__ import annotations
 
+import copy
 import glob
 from pathlib import Path
 from typing import Any
@@ -41,10 +42,11 @@ _GRANTEE_DIR_RELATIVE = ("utilities", "tools", "fnd-csm")
 _GRANTEE_GLOB_EXTS = ("yaml", "json")
 
 # In-process cache keyed by (resolved private_dir, glob fingerprint). The
-# fingerprint is (max mtime, file count), so any add/delete/edit invalidates
-# it without a per-file stat loop. Before this cache the utilities surface
-# re-globbed + re-parsed every grantee JSON on every page load.
-_GRANTEE_PROFILES_CACHE: dict[str, tuple[tuple[float, int], list[dict[str, Any]]]] = {}
+# fingerprint is a per-file (name, mtime, size) tuple, so any add/delete/edit
+# — including a same-stem .json->.yaml swap or an mtime-preserving restore that
+# a (max_mtime, count) fingerprint would miss — invalidates it. Before this
+# cache the utilities surface re-globbed + re-parsed every grantee on every load.
+_GRANTEE_PROFILES_CACHE: dict[str, tuple[tuple, list[dict[str, Any]]]] = {}
 
 
 def _grantee_paths(base: Path) -> list[str]:
@@ -57,19 +59,21 @@ def _grantee_paths(base: Path) -> list[str]:
     return sorted(by_stem.values())
 
 
-def _grantee_glob_fingerprint(base: Path) -> tuple[float, int]:
-    paths = _grantee_paths(base)
-    if not paths:
-        return (0.0, 0)
-    max_mtime = 0.0
-    for path in paths:
+def _grantee_glob_fingerprint(base: Path) -> tuple:
+    """Per-file (name, mtime, size) fingerprint over the resolved grantee paths.
+
+    Discriminates a same-stem ``.json``->``.yaml`` swap and an mtime-preserving
+    restore (both invisible to a ``(max_mtime, count)`` fingerprint), so the
+    cache can never serve a stale PayPal/SES credential set.
+    """
+    out: list[tuple[str, float, int]] = []
+    for path in _grantee_paths(base):
         try:
             stat = Path(path).stat()
-            if stat.st_mtime > max_mtime:
-                max_mtime = stat.st_mtime
         except OSError:
             continue
-    return (max_mtime, len(paths))
+        out.append((Path(path).name, stat.st_mtime, stat.st_size))
+    return tuple(out)
 
 
 def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]]:
@@ -89,7 +93,7 @@ def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]
     fingerprint = _grantee_glob_fingerprint(base)
     cached = _GRANTEE_PROFILES_CACHE.get(key)
     if cached is not None and cached[0] == fingerprint:
-        return list(cached[1])
+        return copy.deepcopy(cached[1])
 
     profiles: list[dict[str, Any]] = []
     for path in _grantee_paths(base):
@@ -100,7 +104,7 @@ def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]
         profiles.append(profile.to_dict())
     result = sorted(profiles, key=lambda p: _as_text(p.get("label")).lower())
     _GRANTEE_PROFILES_CACHE[key] = (fingerprint, result)
-    return list(result)
+    return copy.deepcopy(result)
 
 
 def resolve_selected_grantee(

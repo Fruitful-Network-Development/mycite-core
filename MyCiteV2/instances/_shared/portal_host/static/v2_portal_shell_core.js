@@ -395,6 +395,10 @@
           '<p class="ide-visualizationPanel__error">Tool render failed: ' +
           escapeHtml(err && err.message ? err.message : String(err)) + "</p>";
       }
+    } else if ((p.panel_payload || {}).error) {
+      bodyNode.innerHTML =
+        '<p class="ide-visualizationPanel__error">' +
+        escapeHtml(asText((p.panel_payload || {}).error)) + "</p>";
     } else {
       bodyNode.innerHTML =
         '<p class="ide-visualizationPanel__empty">No client renderer registered for tool <code>' +
@@ -478,9 +482,8 @@
       credentials: "same-origin",
       headers: { Accept: "application/json" },
     })
-      .then(function (resp) { if (!resp.ok) throw new Error("tool-panels: " + resp.status); return resp.json(); })
-      .then(function (json) { return json && Array.isArray(json.panels) ? json.panels : []; })
-      .catch(function () { return []; });
+      .then(function (resp) { if (!resp.ok) throw new Error("tool-panels HTTP " + resp.status); return resp.json(); })
+      .then(function (json) { return json && Array.isArray(json.panels) ? json.panels : []; });
   }
 
   // Paint fetched tool panel(s) into the overlay content node. The overlay shows one tool at
@@ -524,7 +527,11 @@
     if (document.body) document.body.classList.add("is-modal-open");
     // Push a history entry so browser Back closes the overlay (popstate handler in
     // bindToolOverlay) instead of navigating off the portal surface entirely.
-    try { window.history.pushState({ myciteToolOverlay: toolId }, "", window.location.href); } catch (e) {}
+    _overlayState.pushedHistory = false;
+    try {
+      window.history.pushState({ myciteToolOverlay: toolId }, "", window.location.href);
+      _overlayState.pushedHistory = true;
+    } catch (e) {}
     refetchOverlayPanels({});
     var closeBtn = overlay.querySelector("[data-tool-overlay-close]");
     if (closeBtn) closeBtn.focus();
@@ -556,6 +563,14 @@
     }).then(function (panels) {
       if (seq !== _overlayReqSeq) return;
       paintToolPanels(panels, contentNode);
+    }).catch(function (err) {
+      if (seq !== _overlayReqSeq) return;
+      if (contentNode) {
+        contentNode.innerHTML =
+          '<p class="ide-visualizationPanel__error">Could not load this tool — ' +
+          escapeHtml(err && err.message ? err.message : "request failed") + ".</p>";
+      }
+      if (window.console && console.warn) console.warn("tool-panels load failed", err);
     });
   }
 
@@ -567,7 +582,7 @@
     _overlayState.params[asText(key)] = value;
   }
 
-  function closeToolOverlay(restoreFocus) {
+  function closeToolOverlay(restoreFocus, popHistory) {
     var overlay = qs("#portalToolOverlay");
     if (!overlay || overlay.hidden) return;  // already closed — safe to call on every render
     overlay.hidden = true;
@@ -577,6 +592,13 @@
     if (contentNode) contentNode.innerHTML = "";
     _overlayState.params = {};
     _overlayReqSeq++;  // invalidate any in-flight refetch
+    // Pop the duplicate-URL entry we pushed on open, but ONLY on an explicit user close
+    // (× / Esc / backdrop). On a popstate the entry is already gone; on a shell re-render the
+    // forward navigation owns history, so rewinding it would fight the navigation.
+    if (popHistory && _overlayState.pushedHistory) {
+      _overlayState.pushedHistory = false;
+      try { window.history.back(); } catch (e) {}
+    }
     if (restoreFocus) {
       var input = document.querySelector("[data-menubar-tool-search-mount] [data-palette-input]");
       if (input) input.focus();
@@ -588,16 +610,17 @@
       var t = ev.target;
       if (!t || !t.closest) return;
       if (t.closest("[data-tool-overlay-close]") || t.closest("[data-tool-overlay-dismiss]")) {
-        closeToolOverlay(true);
+        closeToolOverlay(true, true);
       }
     });
     document.addEventListener("keydown", function (ev) {
-      if ((ev.key === "Escape" || ev.key === "Esc") && isToolOverlayOpen()) closeToolOverlay(true);
+      if ((ev.key === "Escape" || ev.key === "Esc") && isToolOverlayOpen()) closeToolOverlay(true, true);
     });
     // Browser Back (history pop) dismisses the open overlay rather than leaving the stale
-    // tool blurring an unrelated surface or navigating the user off the portal.
+    // tool blurring an unrelated surface. The Back already popped our entry, so pass
+    // popHistory=false to avoid rewinding a second time.
     window.addEventListener("popstate", function () {
-      if (isToolOverlayOpen()) closeToolOverlay();
+      if (isToolOverlayOpen()) closeToolOverlay(false, false);
     });
   }
 

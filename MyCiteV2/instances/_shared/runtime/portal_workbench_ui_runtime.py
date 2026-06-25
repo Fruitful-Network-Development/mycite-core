@@ -924,9 +924,9 @@ PORTAL_TOOL_PANELS_SCHEMA = "mycite.v2.portal.tool_panels.response.v1"
 def _parse_tool_ids(surface_query: dict[str, Any] | None) -> list[str]:
     """Parse ``surface_query.tools`` (comma-joined, ordered) → a de-duplicated tool-id list.
 
-    Legacy ``surface_query.tool`` (scalar) is coerced to a single tool. Shared by the
-    interface-panel region builder and the /portal/api/tool-panels endpoint so both agree on
-    the tool-id grammar.
+    Legacy ``surface_query.tool`` (scalar) is coerced to a single tool. Consumed by the
+    read-only /portal/api/tool-panels endpoint (the menubar-search → overlay path); the
+    interface-panel region builder that once shared it was removed in PR #124.
     """
     raw = ""
     if isinstance(surface_query, dict):
@@ -955,9 +955,9 @@ def build_tool_panels(
     The reusable core of the tool-render path: open the registry, call each tool's
     ``build_panel_payload`` (passing surface_query to tools that declare
     ``wants_surface_query`` — e.g. samras_structure's chosen structure, agronomics' active
-    tab), and wrap failures so one bad tool can never crash the caller. Consumed by both the
-    interface-panel region builder (legacy sidebar) and the read-only /portal/api/tool-panels
-    endpoint (the overlay) so they render byte-identical payloads.
+    tab), and wrap failures so one bad tool can never crash the caller. Sole consumer is the
+    read-only /portal/api/tool-panels endpoint (the menubar-search → overlay path); the
+    legacy interface-panel region builder that once shared it was removed in PR #124.
     """
     panels: list[dict[str, Any]] = []
     if not tool_ids:
