@@ -46,125 +46,6 @@
     "document_version_hash": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa",
     "document_version_hash_short": "sha256:04963",
     "group_mode": "flat",
-    "interface_panel_sections": [
-      {
-        "rows": [
-          {
-            "label": "document name",
-            "value": "txa"
-          },
-          {
-            "label": "document id",
-            "value": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          },
-          {
-            "label": "document version hash",
-            "value": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa"
-          },
-          {
-            "label": "datum address",
-            "value": "4-2-1"
-          },
-          {
-            "label": "semantic hash",
-            "value": "sha256:6c100485ff679e6361ed601a6dcb0072827aee9556bf1e82b754df573aaccc4e"
-          },
-          {
-            "label": "hyphae hash",
-            "value": "sha256:57bea2f4bca944d2363e02dd0285d48814253b41bb6078d6dc95cf74cbe50db4"
-          },
-          {
-            "label": "raw",
-            "value": "[[\"4-2-1\", \"rf.3-1-1\", \"1\", \"rf.3-1-2\", \"01100010011100100110000101110011011100110110100101100011011000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"], [\"brassica\"]]"
-          }
-        ],
-        "title": "Selection"
-      },
-      {
-        "rows": [
-          {
-            "label": "display value",
-            "value": "brassica"
-          },
-          {
-            "label": "display summary",
-            "value": "lens:binary_text \u00b7 rf.3-1-1 -> 1 \u00b7 unresolved_anchor"
-          },
-          {
-            "label": "recognized family",
-            "value": "\u2014"
-          },
-          {
-            "label": "recognized anchor",
-            "value": "\u2014"
-          },
-          {
-            "label": "primary value kind",
-            "value": "binary_string"
-          },
-          {
-            "label": "resolved lens",
-            "value": "binary_text"
-          }
-        ],
-        "title": "Lens Resolution"
-      },
-      {
-        "rows": [
-          {
-            "label": "policy",
-            "value": "mos.hyphae_chain_v1"
-          },
-          {
-            "label": "chain length",
-            "value": "1"
-          },
-          {
-            "label": "local references",
-            "value": "\u2014"
-          },
-          {
-            "label": "chain addresses",
-            "value": "4-2-1"
-          }
-        ],
-        "title": "Hyphae Identity"
-      },
-      {
-        "rows": [
-          {
-            "label": "source kind",
-            "value": "sandbox_source"
-          },
-          {
-            "label": "row count",
-            "value": "5"
-          }
-        ],
-        "title": "Source Metadata"
-      },
-      {
-        "rows": [
-          {
-            "label": "overlay",
-            "value": "missing"
-          },
-          {
-            "label": "context id",
-            "value": "\u2014"
-          },
-          {
-            "label": "subject version hash",
-            "value": "\u2014"
-          },
-          {
-            "label": "subject hyphae hash",
-            "value": "\u2014"
-          }
-        ],
-        "title": "Directive Overlay"
-      }
-    ],
     "navigation": {
       "next_document": {
         "id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -935,6 +816,125 @@
       "value_group": 2
     },
     "selected_row_hyphae_hash_short": "sha256:57bea",
+    "selection_summary_sections": [
+      {
+        "rows": [
+          {
+            "label": "document name",
+            "value": "txa"
+          },
+          {
+            "label": "document id",
+            "value": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "label": "document version hash",
+            "value": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa"
+          },
+          {
+            "label": "datum address",
+            "value": "4-2-1"
+          },
+          {
+            "label": "semantic hash",
+            "value": "sha256:6c100485ff679e6361ed601a6dcb0072827aee9556bf1e82b754df573aaccc4e"
+          },
+          {
+            "label": "hyphae hash",
+            "value": "sha256:57bea2f4bca944d2363e02dd0285d48814253b41bb6078d6dc95cf74cbe50db4"
+          },
+          {
+            "label": "raw",
+            "value": "[[\"4-2-1\", \"rf.3-1-1\", \"1\", \"rf.3-1-2\", \"01100010011100100110000101110011011100110110100101100011011000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"], [\"brassica\"]]"
+          }
+        ],
+        "title": "Selection"
+      },
+      {
+        "rows": [
+          {
+            "label": "display value",
+            "value": "brassica"
+          },
+          {
+            "label": "display summary",
+            "value": "lens:binary_text \u00b7 rf.3-1-1 -> 1 \u00b7 unresolved_anchor"
+          },
+          {
+            "label": "recognized family",
+            "value": "\u2014"
+          },
+          {
+            "label": "recognized anchor",
+            "value": "\u2014"
+          },
+          {
+            "label": "primary value kind",
+            "value": "binary_string"
+          },
+          {
+            "label": "resolved lens",
+            "value": "binary_text"
+          }
+        ],
+        "title": "Lens Resolution"
+      },
+      {
+        "rows": [
+          {
+            "label": "policy",
+            "value": "mos.hyphae_chain_v1"
+          },
+          {
+            "label": "chain length",
+            "value": "1"
+          },
+          {
+            "label": "local references",
+            "value": "\u2014"
+          },
+          {
+            "label": "chain addresses",
+            "value": "4-2-1"
+          }
+        ],
+        "title": "Hyphae Identity"
+      },
+      {
+        "rows": [
+          {
+            "label": "source kind",
+            "value": "sandbox_source"
+          },
+          {
+            "label": "row count",
+            "value": "5"
+          }
+        ],
+        "title": "Source Metadata"
+      },
+      {
+        "rows": [
+          {
+            "label": "overlay",
+            "value": "missing"
+          },
+          {
+            "label": "context id",
+            "value": "\u2014"
+          },
+          {
+            "label": "subject version hash",
+            "value": "\u2014"
+          },
+          {
+            "label": "subject hyphae hash",
+            "value": "\u2014"
+          }
+        ],
+        "title": "Directive Overlay"
+      }
+    ],
     "sort_direction": "asc",
     "sort_key": "datum_address",
     "source_visibility": "show",
@@ -2837,125 +2837,6 @@
     "document_version_hash": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa",
     "document_version_hash_short": "sha256:04963",
     "group_mode": "layer_value_group",
-    "interface_panel_sections": [
-      {
-        "rows": [
-          {
-            "label": "document name",
-            "value": "txa"
-          },
-          {
-            "label": "document id",
-            "value": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-          },
-          {
-            "label": "document version hash",
-            "value": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa"
-          },
-          {
-            "label": "datum address",
-            "value": "4-2-4"
-          },
-          {
-            "label": "semantic hash",
-            "value": "sha256:8dc92eae822f91395f92574164cd37c2c4a1ca3b0e4b7e32d141fff2ae95804d"
-          },
-          {
-            "label": "hyphae hash",
-            "value": "sha256:94c4ae8405e227a5dccf5e8c000fc2ce938c6bf75db5631a9515a0bcba0c38ab"
-          },
-          {
-            "label": "raw",
-            "value": "[[\"4-2-4\", \"rf.3-1-1\", \"2-1\", \"rf.3-1-2\", \"01100010011100100110000101110011011100110110100101100011011000010101111101100011011000010111001001101001011011100110000101110100011000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"], [\"brassica_carinata\"]]"
-          }
-        ],
-        "title": "Selection"
-      },
-      {
-        "rows": [
-          {
-            "label": "display value",
-            "value": "brassica_carinata"
-          },
-          {
-            "label": "display summary",
-            "value": "lens:binary_text \u00b7 rf.3-1-1 -> 2-1 \u00b7 unresolved_anchor"
-          },
-          {
-            "label": "recognized family",
-            "value": "\u2014"
-          },
-          {
-            "label": "recognized anchor",
-            "value": "\u2014"
-          },
-          {
-            "label": "primary value kind",
-            "value": "binary_string"
-          },
-          {
-            "label": "resolved lens",
-            "value": "binary_text"
-          }
-        ],
-        "title": "Lens Resolution"
-      },
-      {
-        "rows": [
-          {
-            "label": "policy",
-            "value": "mos.hyphae_chain_v1"
-          },
-          {
-            "label": "chain length",
-            "value": "1"
-          },
-          {
-            "label": "local references",
-            "value": "\u2014"
-          },
-          {
-            "label": "chain addresses",
-            "value": "4-2-4"
-          }
-        ],
-        "title": "Hyphae Identity"
-      },
-      {
-        "rows": [
-          {
-            "label": "source kind",
-            "value": "sandbox_source"
-          },
-          {
-            "label": "row count",
-            "value": "5"
-          }
-        ],
-        "title": "Source Metadata"
-      },
-      {
-        "rows": [
-          {
-            "label": "overlay",
-            "value": "missing"
-          },
-          {
-            "label": "context id",
-            "value": "\u2014"
-          },
-          {
-            "label": "subject version hash",
-            "value": "\u2014"
-          },
-          {
-            "label": "subject hyphae hash",
-            "value": "\u2014"
-          }
-        ],
-        "title": "Directive Overlay"
-      }
-    ],
     "navigation": {
       "next_document": {
         "id": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.anchor.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
@@ -3771,6 +3652,125 @@
       "value_group": 2
     },
     "selected_row_hyphae_hash_short": "sha256:94c4a",
+    "selection_summary_sections": [
+      {
+        "rows": [
+          {
+            "label": "document name",
+            "value": "txa"
+          },
+          {
+            "label": "document id",
+            "value": "lv.3-2-3-17-77-1-6-4-1-4.agro_erp.txa.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "label": "document version hash",
+            "value": "sha256:0496319ca299f592eb04137734640c4ac13418f969554f035e1c260c4715f5aa"
+          },
+          {
+            "label": "datum address",
+            "value": "4-2-4"
+          },
+          {
+            "label": "semantic hash",
+            "value": "sha256:8dc92eae822f91395f92574164cd37c2c4a1ca3b0e4b7e32d141fff2ae95804d"
+          },
+          {
+            "label": "hyphae hash",
+            "value": "sha256:94c4ae8405e227a5dccf5e8c000fc2ce938c6bf75db5631a9515a0bcba0c38ab"
+          },
+          {
+            "label": "raw",
+            "value": "[[\"4-2-4\", \"rf.3-1-1\", \"2-1\", \"rf.3-1-2\", \"01100010011100100110000101110011011100110110100101100011011000010101111101100011011000010111001001101001011011100110000101110100011000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"], [\"brassica_carinata\"]]"
+          }
+        ],
+        "title": "Selection"
+      },
+      {
+        "rows": [
+          {
+            "label": "display value",
+            "value": "brassica_carinata"
+          },
+          {
+            "label": "display summary",
+            "value": "lens:binary_text \u00b7 rf.3-1-1 -> 2-1 \u00b7 unresolved_anchor"
+          },
+          {
+            "label": "recognized family",
+            "value": "\u2014"
+          },
+          {
+            "label": "recognized anchor",
+            "value": "\u2014"
+          },
+          {
+            "label": "primary value kind",
+            "value": "binary_string"
+          },
+          {
+            "label": "resolved lens",
+            "value": "binary_text"
+          }
+        ],
+        "title": "Lens Resolution"
+      },
+      {
+        "rows": [
+          {
+            "label": "policy",
+            "value": "mos.hyphae_chain_v1"
+          },
+          {
+            "label": "chain length",
+            "value": "1"
+          },
+          {
+            "label": "local references",
+            "value": "\u2014"
+          },
+          {
+            "label": "chain addresses",
+            "value": "4-2-4"
+          }
+        ],
+        "title": "Hyphae Identity"
+      },
+      {
+        "rows": [
+          {
+            "label": "source kind",
+            "value": "sandbox_source"
+          },
+          {
+            "label": "row count",
+            "value": "5"
+          }
+        ],
+        "title": "Source Metadata"
+      },
+      {
+        "rows": [
+          {
+            "label": "overlay",
+            "value": "missing"
+          },
+          {
+            "label": "context id",
+            "value": "\u2014"
+          },
+          {
+            "label": "subject version hash",
+            "value": "\u2014"
+          },
+          {
+            "label": "subject hyphae hash",
+            "value": "\u2014"
+          }
+        ],
+        "title": "Directive Overlay"
+      }
+    ],
     "sort_direction": "asc",
     "sort_key": "datum_address",
     "source_visibility": "show",
