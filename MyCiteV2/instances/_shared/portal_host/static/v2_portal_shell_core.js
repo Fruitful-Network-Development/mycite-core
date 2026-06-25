@@ -261,34 +261,26 @@
   function applyChrome(composition, options) {
     var shell = qs(".ide-shell");
     var workbench = qs(".ide-workbench");
-    var interfacePanel = qs("#portalInterfacePanel");
-    var interfacePanelContent = qs("#portalInterfacePanelContent");
     var menubarTitle = qs(".ide-menubar__pageTitle");
     var menubarSub = qs(".ide-menubar__pageSub");
-    var interfacePanelRegion = (composition.regions && composition.regions.interface_panel) || {};
     var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
     var routeKey = (options && options.routeKey) || routeKeyFromUrl((lastEnvelope && lastEnvelope.canonical_url) || "");
     var workbenchVisible = !(composition.workbench_collapsed === true || workbenchRegion.visible === false);
-    var interfacePanelVisible =
-      interfacePanelRegion.visible !== false && !(composition.interface_panel_collapsed === true);
     if (!shell) return;
 
     shell.setAttribute("data-active-service", composition.active_service || "system");
     shell.setAttribute("data-shell-composition", composition.composition_mode || "system");
     shell.setAttribute("data-foreground-shell-region", composition.foreground_shell_region || "center-workbench");
     shell.setAttribute("data-control-panel-collapsed", composition.control_panel_collapsed ? "true" : "false");
-    // Phase 4 follow-up — preserve the user's manual workbench /
-    // interface-panel layout across action dispatches. When the
-    // surface hasn't changed (action dispatch on the same tool — e.g.
-    // select_district_row, select_precinct_row, engage_component_frame),
-    // we trust the local state set by toggle handlers and skip the
-    // server-side default. Only the very first applyChrome for this
-    // surface (or a real surface switch) writes these attributes.
+    // Phase 4 follow-up — preserve the user's manual workbench layout across action
+    // dispatches. When the surface hasn't changed (action dispatch on the same tool — e.g.
+    // select_district_row, select_precinct_row, engage_component_frame), we trust the local
+    // state set by toggle handlers and skip the server-side default. Only the very first
+    // applyChrome for this surface (or a real surface switch) writes these attributes.
     var isInitialOrSurfaceChange = !shell.hasAttribute("data-shell-chrome-initialized")
       || shell.getAttribute("data-shell-chrome-initialized") !== routeKey;
     if (isInitialOrSurfaceChange) {
       shell.setAttribute("data-workbench-collapsed", workbenchVisible ? "false" : "true");
-      shell.setAttribute("data-interface-panel-collapsed", interfacePanelVisible ? "false" : "true");
       shell.setAttribute("data-shell-chrome-initialized", routeKey);
     }
 
@@ -308,16 +300,6 @@
 
     if (workbench) {
       workbench.setAttribute("data-active-service", composition.active_service || "system");
-    }
-    if (interfacePanel) {
-      interfacePanel.setAttribute("data-primary-surface", interfacePanelRegion.primary_surface ? "true" : "false");
-      interfacePanel.setAttribute("data-surface-layout", interfacePanelRegion.layout_mode || "sidebar");
-    }
-    if (interfacePanelContent) {
-      interfacePanelContent.setAttribute(
-        "data-interface-panel-active-root",
-        (composition.composition_mode || "system") === "tool" ? "tool" : "system"
-      );
     }
     if (window.PortalShell && typeof window.PortalShell.setShellComposition === "function") {
       window.PortalShell.setShellComposition(composition.composition_mode || "system", { routeKey: routeKey });
@@ -593,17 +575,6 @@
     });
   }
 
-  // surface_query.tools is a comma-joined, ordered, de-duplicated tool-id list.
-  function vizToolList(surfaceQuery) {
-    var raw = (surfaceQuery && (surfaceQuery.tools || surfaceQuery.tool)) || "";
-    var out = [];
-    String(raw).split(",").forEach(function (t) {
-      var id = t.trim();
-      if (id && out.indexOf(id) === -1) out.push(id);
-    });
-    return out;
-  }
-
   function syncHistory(envelope, historyPayload, options) {
     if (!envelope || !envelope.canonical_url) return;
     var state = cloneRequest(historyPayload || {});
@@ -776,22 +747,6 @@
       return true;
     }
 
-    function setWorkbenchOpenLocal(isOpen) {
-      withPortalShell(function (portalShell) {
-        if (typeof portalShell.setWorkbenchOpen === "function") {
-          portalShell.setWorkbenchOpen(!!isOpen, true);
-        }
-      });
-    }
-
-    function setInterfacePanelOpenLocal(isOpen) {
-      withPortalShell(function (portalShell) {
-        if (typeof portalShell.setInterfacePanelOpen === "function") {
-          portalShell.setInterfacePanelOpen(!!isOpen, true);
-        }
-      });
-    }
-
     function setControlPanelOpenLocal(isOpen) {
       withPortalShell(function (portalShell) {
         if (typeof portalShell.setControlPanelOpen === "function") {
@@ -800,87 +755,8 @@
       });
     }
 
-    function reassertAnchorFocusIfNeeded(envelope) {
-      if (!envelope || !envelope.reducer_owned) return;
-      var composition =
-        (envelope.shell_composition && envelope.shell_composition) ||
-        (envelope.composition && envelope.composition) ||
-        {};
-      var workbenchRegion = (composition.regions && composition.regions.workbench) || {};
-      var reflection = (workbenchRegion && workbenchRegion.state_reflection) || {};
-      var currentFile = (reflection && reflection.current_file) || "";
-      var collection = (workbenchRegion && workbenchRegion.document_collection) || {};
-      var anchorDocument = (collection && collection.anchor_document) || {};
-      var anchorId = (anchorDocument && anchorDocument.document_id) || "";
-      var anchorName = (anchorDocument && anchorDocument.canonical_name) || "";
-      if (!currentFile || currentFile === "anchor" || currentFile === "anthology" || currentFile === anchorId || currentFile === anchorName) return;
-      var sandbox = (workbenchRegion && workbenchRegion.sandbox) || {};
-      var sandboxId =
-        (sandbox && sandbox.id) ||
-        (workbenchRegion && workbenchRegion.sandbox_id) ||
-        (workbenchRegion.surface_payload && workbenchRegion.surface_payload.sandbox_id) ||
-        "";
-      if (!sandboxId) return;
-      dispatchTransition({ kind: "focus_sandbox", sandbox_id: sandboxId });
-    }
-
-    function isToolCompositionActive() {
-      var shell = qs(".ide-shell");
-      return shell ? shell.getAttribute("data-shell-composition") === "tool" : false;
-    }
-
-    function handleInterfacePanelToggle() {
-      var shell = qs(".ide-shell");
-      if (!shell) return;
-      if (isToolCompositionActive()) {
-        var isOpenOnTool = shell.getAttribute("data-interface-panel-collapsed") !== "true";
-        if (!isOpenOnTool) {
-          // opening interface panel on a tool surface closes the workbench
-          setWorkbenchOpenLocal(false);
-        }
-        setInterfacePanelOpenLocal(!isOpenOnTool);
-        return;
-      }
-      var envelope = lastEnvelope;
-      if (!envelope || !envelope.reducer_owned) {
-        var isOpenLocal = shell.getAttribute("data-interface-panel-collapsed") !== "true";
-        setInterfacePanelOpenLocal(!isOpenLocal);
-        return;
-      }
-      var isOpen = envelope.shell_state && envelope.shell_state.chrome && envelope.shell_state.chrome.interface_panel_open;
-      if (!isOpen) {
-        reassertAnchorFocusIfNeeded(envelope);
-      }
-      dispatchTransition({ kind: isOpen ? "close_interface_panel" : "open_interface_panel" });
-    }
-
-    function handleInterfacePanelDismiss() {
-      var shell = qs(".ide-shell");
-      if (!shell) return;
-      if (shell.getAttribute("data-shell-composition") === "tool") {
-        setInterfacePanelOpenLocal(false);
-        return;
-      }
-      var envelope = lastEnvelope;
-      if (!envelope || !envelope.reducer_owned) {
-        setInterfacePanelOpenLocal(false);
-        return;
-      }
-      dispatchTransition({ kind: "close_interface_panel" });
-    }
-
-    document.addEventListener("mycite:v2:interface-panel-toggle-request", handleInterfacePanelToggle);
-    document.addEventListener("mycite:v2:interface-panel-dismiss-request", handleInterfacePanelDismiss);
-    document.addEventListener("mycite:v2:workbench-toggle-request", function () {
-      var shell = qs(".ide-shell");
-      if (!shell) return;
-      var isOpenLocal = shell.getAttribute("data-workbench-collapsed") !== "true";
-      if (isToolCompositionActive() && !isOpenLocal) {
-        // opening workbench on a tool surface closes the interface panel
-        setInterfacePanelOpenLocal(false);
-      }
-      setWorkbenchOpenLocal(!isOpenLocal);
-    });
+    // portal-tool-overlay-restructure: only the control-panel toggle remains; the workbench +
+    // interface-panel toggle buttons (and the interface panel itself) were removed.
     document.addEventListener("mycite:v2:control-panel-toggle-request", function () {
       var shell = qs(".ide-shell");
       if (!shell) return;
@@ -929,38 +805,9 @@
 
   setBootState("core_loaded");
   bindShellChromeEvents();
-  bindVisualizationPanelClose();
   bindToolOverlay();
-  // Sandbox selection + tool search now live in the control panel + interface panel
-  // respectively; both are wired in mountControlPanelControls / renderInterfacePanel
-  // after each shell render (the menubar tool-search palette was removed).
+  // Sandbox selection lives in the control panel; tool search lives in the menubar (→ overlay).
   window.addEventListener("popstate", onPopState);
-
-  function bindVisualizationPanelClose() {
-    // Each tool box in the interface panel has an 'x' (data-viz-box-close) that removes
-    // only that tool from surface_query.tools; the panel empties when the last tool goes.
-    // (The legacy whole-panel close lived on the retired visualization_panel DOM — gone.)
-    document.addEventListener("click", function (event) {
-      var target = event.target;
-      if (!target || !target.closest) return;
-      var boxClose = target.closest("[data-viz-box-close]");
-      if (!boxClose) return;
-      var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
-      if (!request) return;
-      var next = cloneRequest(request);
-      next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
-      var tools = vizToolList(next.surface_query);
-      var removeId = boxClose.getAttribute("data-tool-id") || "";
-      tools = tools.filter(function (t) { return t !== removeId; });
-      delete next.surface_query.tool;
-      if (tools.length) {
-        next.surface_query.tools = tools.join(",");
-      } else {
-        delete next.surface_query.tools;
-      }
-      loadShell(next).catch(function () {});
-    });
-  }
 
   function bindSandboxSelector(activeSandbox) {
     var select = qs("[data-sandbox-selector]");
@@ -1008,35 +855,16 @@
       delete next.surface_query.document;
       delete next.surface_query.row;
       delete next.surface_query.mode;
-      // Clear the interface panel too: a tool widget is only valid where its datum docs
-      // exist, so switching sandbox empties the open tool containers (re-add per sandbox).
+      // Switching sandbox also clears any open tool selection.
       delete next.surface_query.tools;
       delete next.surface_query.tool;
       loadShell(next).catch(function () {});
     });
   }
 
-  function appendToolToShell(item, mount) {
-    var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
-    if (!request) return;
-    var next = cloneRequest(request);
-    next.surface_query = next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
-    var tools = vizToolList(next.surface_query);
-    var picked = item.tool_id || "";
-    if (picked && tools.indexOf(picked) === -1) tools.push(picked);
-    delete next.surface_query.tool;
-    next.surface_query.tools = tools.join(",");
-    loadShell(next).catch(function () {});
-    if (mount) {
-      var list = mount.querySelector("[data-palette-list]");
-      if (list) list.setAttribute("hidden", "hidden");
-    }
-  }
-
-  // TASK-interface-panel-migration: the CONTROL PANEL hosts only lens on/off toggles
-  // (PortalLensPanel) + the SANDBOX SELECTOR (the sole sandbox-switch affordance now).
-  // The Documents/Datums tab strip is presentational (emitted by the region renderer).
-  // Tool search moved to the interface panel. Runs after every control-panel render
+  // The CONTROL PANEL hosts only lens on/off toggles (PortalLensPanel) + the SANDBOX SELECTOR
+  // (the sole sandbox-switch affordance). The Documents/Datums tab strip is presentational.
+  // Tool search lives in the menubar (→ overlay). Runs after every control-panel render
   // (re-mount/re-bind is idempotent).
   function mountControlPanelControls(region) {
     var controls = region && region.control_panel_controls;
