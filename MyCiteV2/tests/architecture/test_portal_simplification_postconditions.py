@@ -309,7 +309,7 @@ class LegacyFndCsmRedirectTests(unittest.TestCase):
             "Preservation contract: legacy FND-CSM URL must redirect to Utilities",
         )
         # FND-CSM surface removed; functionality lives in Utilities extensions.
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
+        self.assertEqual(resp.headers["Location"], "/portal/utilities")
 
 
 if __name__ == "__main__":
