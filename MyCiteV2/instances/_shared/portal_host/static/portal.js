@@ -9,6 +9,44 @@
   function qs(sel, root) { return (root || document).querySelector(sel); }
   function qsa(sel, root) { return Array.from((root || document).querySelectorAll(sel)); }
 
+  // ===== Portal icon-leaflet registry (single source of truth) =====
+  // Every portal UI icon is referenced through iconImg(name) / window.__MYCITE_ICONS,
+  // mapping a LOGICAL name -> the mycite-ui leaflet token. A leaflet RENAME therefore
+  // touches only this map (scripts/portal_icon_manifest.py automates the file rename +
+  // this edit), mirroring the website asset manifests. Icons are nginx-served from
+  // /assets/icons/ in prod; the portal also serves them (app.py) so :6101 works.
+  const ICON_LEAFLET_PREFIX = "/assets/icons/0000-00-00.artifact-icon.mycite-ui.";
+  const MC_ICONS = {
+    up: "up",
+    down: "down",
+    info: "info",
+    exit: "exit",
+    edit: "edit",
+    add: "add",
+    kebab: "kebab",
+  };
+  function iconUrl(name) {
+    const leaf = MC_ICONS[name];
+    return leaf ? ICON_LEAFLET_PREFIX + leaf + ".svg" : "";
+  }
+  // Emit a CSS-mask span (not <img>) so the leaflet inherits currentColor and themes
+  // across paper/forest/ocean/midnight; the /assets/icons/ portal route prevents the 404
+  // case that a mask renders poorly. opts.cls adds classes; opts.alt sets an accessible label.
+  function iconImg(name, opts) {
+    const o = opts || {};
+    const url = iconUrl(name);
+    if (!url) return "";
+    const cls = "mc-icon" + (o.cls ? " " + o.cls : "");
+    const label = o.alt != null ? String(o.alt) : "";
+    const aria = label
+      ? ' role="img" aria-label="' + label.replace(/"/g, "&quot;") + '"'
+      : ' aria-hidden="true"';
+    return '<span class="' + cls + '" style="--mc-icon-url:url(\'' + url + '\')"' + aria + "></span>";
+  }
+  window.__MYCITE_ICONS = MC_ICONS;
+  window.iconUrl = iconUrl;
+  window.iconImg = iconImg;
+
   const THEME_STANDARD = {
     defaultTheme: "paper",
     themes: [

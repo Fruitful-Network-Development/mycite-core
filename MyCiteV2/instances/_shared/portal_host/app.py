@@ -4508,6 +4508,30 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         return _os.environ.get("MYCITE_WEBAPPS_ROOT") or None
 
+    @app.get("/assets/icons/<path:filename>")
+    def fnd_asset_icon(filename: str) -> Any:
+        # Serve shared icon leaflets so the portal renders icons on :6101 (direct, no nginx).
+        # In production nginx serves /assets/ from the shared tree before the request reaches
+        # the portal; this is the dev/test + fallback path. Path-traversal guarded: only a bare
+        # .svg basename under the shared icon dir is served.
+        safe = Path(filename).name
+        if safe != filename or not safe.endswith(".svg"):
+            abort(404)
+        root = _analytics_webapps_root()
+        candidates = ([Path(root)] if root else []) + [Path("/srv/webapps")]
+        for base in candidates:
+            icon_path = base / "clients" / "_shared" / "site-core" / "icon" / safe
+            if icon_path.exists():
+                try:
+                    body = icon_path.read_bytes()
+                except OSError:
+                    break
+                response = make_response(body, 200)
+                response.headers["Content-Type"] = "image/svg+xml; charset=utf-8"
+                response.headers["Cache-Control"] = "public, max-age=300"
+                return response
+        abort(404)
+
     def _campaign_tracked_url(domain: str, campaign: dict[str, Any]) -> str:
         """Public tracked URL for a campaign: the target page on the grantee's
         primary domain with the ``?fnd_c=<token>`` attribution param appended.

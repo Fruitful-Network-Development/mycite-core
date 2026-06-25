@@ -10336,6 +10336,37 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .ide-toolOverlay__panelBody + .ide-toolOverlay__panelBody { margin-top: 12px; }
 .ide-toolOverlay__empty,
 .ide-toolOverlay__loading { color: var(--ink2, #888); padding: 16px; }
+.ide-toolOverlay__error,
+.ide-visualizationPanel__error { color: #c0473a; padding: 12px 16px; }
+
+/* Portal icon-leaflet registry (portal.js iconImg) — CSS-mask spans so leaflets inherit
+   currentColor (themeable). Served from /assets/icons/ (nginx in prod; app.py on :6101). */
+.mc-icon {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.14em;
+  background-color: currentColor;
+  -webkit-mask: var(--mc-icon-url) no-repeat center / contain;
+  mask: var(--mc-icon-url) no-repeat center / contain;
+}
+.mc-iconBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  line-height: 0;
+  transition: background 0.12s ease, transform 0.06s ease;
+}
+.mc-iconBtn:hover { background: rgba(0, 0, 0, 0.08); }
+.mc-iconBtn:active { transform: translateY(0.5px); }
+.mc-iconBtn--sm { font-size: 0.85em; }
+.mc-iconBtn--light { color: var(--paper, #f0eedc); }
 
 /* portal-tool-overlay-restructure — tabbed container (agronomics FARM/PLAN/NETWORK).
    Client-side tab switching (no shell reload); sibling of .v2-composite. */
