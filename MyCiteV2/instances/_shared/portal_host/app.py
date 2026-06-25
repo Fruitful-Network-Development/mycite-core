@@ -2506,6 +2506,20 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
+    @app.get("/portal/api/v2/datum/info")
+    def portal_datum_info() -> tuple[Any, int]:
+        # Read-only INFORMATION surface for the datum-editing overlay: the datum's hyphae
+        # abstraction path (dependency closure) + computed hyphae value.
+        from MyCiteV2.instances._shared.runtime.portal_datum_info_runtime import run_datum_info
+
+        result = run_datum_info(
+            authority_db_file=host_config.authority_db_file,
+            portal_instance_id=host_config.portal_instance_id,
+            document_id=_as_text(request.args.get("document")),
+            datum_address=_as_text(request.args.get("address")),
+        )
+        return jsonify(result), int(result.get("status_code") or (200 if result.get("ok") else 400))
+
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (

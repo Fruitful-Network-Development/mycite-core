@@ -8687,6 +8687,27 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-ide__refractValue {
   font-weight: 500;
 }
+/* Datum add-rows (per value group + per layer) and the document edit icon — open the datum overlay. */
+.v2-ide__addRow td {
+  text-align: center;
+  padding: 2px;
+  background: transparent;
+  border-top: 1px dashed var(--line, #afafaa);
+}
+.v2-ide__addBtn { color: var(--ink2, #888); }
+.v2-ide__addLayer { padding: 4px 12px 10px; }
+.v2-ide__addLayer .v2-ide__addBtn {
+  display: inline-flex;
+  gap: 4px;
+  font-size: 11px;
+  align-items: center;
+}
+.v2-ide__addLayer .v2-ide__addBtn span { color: var(--ink2, #888); }
+.v2-workbenchUi__editDoc {
+  color: var(--accent, #1e6c93);
+  margin-right: 6px;
+  font-size: 1.1em;
+}
 .v2-ide__row.is-selected {
   background: rgba(46, 116, 181, 0.08);
 }
@@ -10442,6 +10463,137 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .mc-iconBtn:active { transform: translateY(0.5px); }
 .mc-iconBtn--sm { font-size: 0.85em; }
 .mc-iconBtn--light { color: var(--paper, #f0eedc); }
+
+/* Datum-editing overlay — a visually distinct sibling of the tool overlay (accent-bordered panel,
+   z-index just below it). Tabs DENOTATION/INFORMATION/MEDIATION + the denote/info forms. */
+.ide-datumOverlay { position: fixed; inset: 0; z-index: 195; }
+.ide-datumOverlay[hidden] { display: none !important; }
+.ide-datumOverlay__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 22, 28, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.ide-datumOverlay__panel {
+  position: relative;
+  z-index: 1;
+  margin: 5vh auto;
+  width: min(760px, 92vw);
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper, #f0eedc);
+  color: var(--ink, #464646);
+  border: 1px solid var(--line, #afafaa);
+  border-top: 4px solid var(--accent, #1e6c93);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+}
+.ide-datumOverlay__chrome {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--paper2, #e8e5d0);
+  border-bottom: 1px solid var(--line, #afafaa);
+}
+.ide-datumOverlay__close {
+  order: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink2, #888);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.ide-datumOverlay__close:hover { color: #d6604d; background: rgba(0, 0, 0, 0.06); }
+.ide-datumOverlay__title { font-weight: 600; font-size: 0.95rem; }
+.ide-datumOverlay__tabs {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  background: var(--paper2, #e8e5d0);
+  border-bottom: 1px solid var(--line, #afafaa);
+}
+.ide-datumOverlay__tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ink2, #888);
+  font: inherit;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  font-size: 11px;
+  padding: 8px 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.ide-datumOverlay__tab:hover:not([disabled]) { color: var(--ink, #464646); }
+.ide-datumOverlay__tab.is-active {
+  color: var(--ink, #464646);
+  border-bottom-color: var(--accent, #1e6c93);
+}
+.ide-datumOverlay__tab[disabled] { opacity: 0.4; cursor: default; }
+.ide-datumOverlay__content { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 14px; }
+/* DENOTATION form */
+.v2-denote__field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.v2-denote__field > label {
+  font-size: 11px;
+  color: var(--ink2, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.v2-denote__field input,
+.v2-denote__row input {
+  padding: 6px 8px;
+  border: 1px solid var(--line, #afafaa);
+  border-radius: 4px;
+  background: var(--paper, #fff);
+  color: var(--ink);
+  font: inherit;
+}
+.v2-denote__row { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.v2-denote__row input { flex: 1 1 auto; }
+.v2-denote__sectionLabel { font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: 0.04em; margin: 12px 0 6px; }
+.v2-denote__actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.v2-denote__status { margin-top: 10px; font-size: 12px; min-height: 1em; }
+.v2-denote__status[data-state="error"] { color: #c0473a; }
+.v2-denote__status[data-state="ok"] { color: #2d7a4c; }
+.v2-btn {
+  border: 1px solid var(--line);
+  background: var(--paper2);
+  color: var(--ink);
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  font: inherit;
+}
+.v2-btn:disabled { opacity: 0.5; cursor: default; }
+.v2-btn--primary { background: var(--accent, #1e6c93); color: #fff; border-color: var(--accent, #1e6c93); }
+.v2-btn--danger { color: #c0473a; }
+/* INFORMATION abstraction path graph */
+.v2-info__meta { font-size: 11px; color: var(--ink2); margin-bottom: 12px; }
+.v2-info__hyphae { font-family: ui-monospace, monospace; font-size: 11px; word-break: break-all; }
+.v2-info__path { display: flex; flex-direction: column; gap: 0; }
+.v2-info__node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper2);
+}
+.v2-info__node.is-target { border-color: var(--accent); border-width: 2px; font-weight: 600; }
+.v2-info__arrow { text-align: center; color: var(--ink2); font-size: 12px; line-height: 1.4; }
+.v2-info__hash { font-family: ui-monospace, monospace; font-size: 10px; color: var(--ink2); margin-left: auto; }
+.v2-mediation { color: var(--ink2); padding: 24px; text-align: center; font-style: italic; }
 
 /* portal-tool-overlay-restructure — tabbed container (agronomics FARM/PLAN/NETWORK).
    Client-side tab switching (no shell reload); sibling of .v2-composite. */

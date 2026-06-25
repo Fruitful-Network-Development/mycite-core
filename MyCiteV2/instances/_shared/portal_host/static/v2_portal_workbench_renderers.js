@@ -3615,18 +3615,26 @@
     });
     return '<div class="v2-ide__keybox" aria-label="column colour key">' + chips.join("") + "</div>";
   }
-  function renderDatumIdeValueGroup(group, lens) {
+  function _ideAddRow(layerId, valueGroup) {
+    return '<tr class="v2-ide__addRow"><td colspan="99"><button type="button" ' +
+      'class="mc-iconBtn v2-ide__addBtn" data-dov-add="vg" data-layer="' + escapeHtml(String(layerId)) +
+      '" data-value-group="' + escapeHtml(String(valueGroup)) + '" aria-label="Add datum to value group">' +
+      (window.iconImg ? window.iconImg("add") : "+") + "</button></td></tr>";
+  }
+  function renderDatumIdeValueGroup(group, lens, layerId) {
     var columns = asList(group.column_template);
     if (!columns.length) columns = [{ role: "address" }];
     var cells = asList(group.cells);
+    var vg = asObject(group).value_group;
     var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns, lens); }).join("");
     return '<section class="v2-ide__valueGroup" data-value-group-id="' +
-      escapeHtml(String(asObject(group).value_group)) + '">' +
+      escapeHtml(String(vg)) + '">' +
       '<header class="v2-ide__vgHeader"><h5>' +
-      escapeHtml(asText(group.title) || ("Value Group " + asObject(group).value_group)) +
+      escapeHtml(asText(group.title) || ("Value Group " + vg)) +
       "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small>" +
       _ideKeyBox(columns) + "</header>" +
       '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><tbody>' + bodyRows +
+      _ideAddRow(layerId, vg) +
       "</tbody></table></div></section>";
   }
   function renderDatumIdeGrid(datumGrid) {
@@ -3638,10 +3646,14 @@
     var lens = asText(datumGrid.lens) || "interpreted";
     var sections = layers.map(function (layer) {
       var layerId = String(asObject(layer).layer);
-      var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens); }).join("");
+      var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens, layerId); }).join("");
       return '<section class="v2-ide__layer" data-layer-id="' + escapeHtml(layerId) + '">' +
         '<header class="v2-ide__layerHeader"><h4>' +
-        escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs + "</section>";
+        escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs +
+        '<div class="v2-ide__addLayer"><button type="button" class="mc-iconBtn v2-ide__addBtn" ' +
+        'data-dov-add="layer" data-layer="' + escapeHtml(layerId) + '" aria-label="Add datum to layer">' +
+        (window.iconImg ? window.iconImg("add") : "+") + "<span> add to layer " + escapeHtml(layerId) + "</span></button></div>" +
+        "</section>";
     }).join("");
     return '<div class="v2-ide" data-region="datum-ide">' + sections + "</div>";
   }
@@ -3661,7 +3673,6 @@
       return (
         '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
         '<header class="v2-workbenchUi__editorHeader"><h3>Editor</h3></header>' +
-        renderDatumComposer(workspace, surfacePayload) +
         '<p class="v2-workbenchUi__empty">Select a datum document on the left to begin editing.</p>' +
         "</main>"
       );
@@ -3691,13 +3702,14 @@
     return (
       '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
       '<header class="v2-workbenchUi__editorHeader">' +
+      '<button type="button" class="mc-iconBtn v2-workbenchUi__editDoc" data-dov-edit-doc aria-label="New datum">' +
+      (window.iconImg ? window.iconImg("edit") : "✎") + "</button>" +
       "<h3>" +
       escapeHtml(shortDocumentLabel(docLabel) || docLabel || docId) +
       "</h3>" +
       "<small>" +
       escapeHtml(docId) +
       "</small></header>" +
-      renderDatumComposer(workspace, surfacePayload) +
       bodyHtml +
       "</main>"
     );
@@ -4302,10 +4314,325 @@
     }
   }
 
+  // ===== Datum-editing overlay (#portalDatumOverlay) =====
+  // A non-tool overlay opened from a refracted cell (ℹ / kebab / merged cell) or a value-group /
+  // layer add-row. DENOTATION denotes/edits a datum (insert_datum / update_row_raw / delete_datum
+  // via the existing mutation endpoints); INFORMATION shows the hyphae abstraction path; MEDIATION
+  // is reserved. New datum → DENOTATION default (INFORMATION/MEDIATION greyed); existing → INFORMATION.
+  var _dov = { ctx: null, documentId: "", sandboxId: "agro_erp", address: "", layer: null,
+    valueGroup: null, mode: "create", raw: null, activeTab: "denotation", bound: false };
+  function _dovEl() { return document.getElementById("portalDatumOverlay"); }
+  function _dovExisting() { return _dov.mode !== "create"; }
+
+  function openDatumOverlay(opts) {
+    opts = opts || {};
+    var ov = _dovEl();
+    if (!ov) return;
+    _dov.ctx = opts.ctx || _dov.ctx;
+    _dov.workspaceRef = opts.workspace || _dov.workspaceRef;
+    _dov.documentId = asText(opts.documentId) || _dov.documentId;
+    _dov.sandboxId = asText(opts.sandboxId) || _dov.sandboxId || "agro_erp";
+    _dov.address = asText(opts.address);
+    _dov.layer = opts.layer != null ? opts.layer : null;
+    _dov.valueGroup = opts.valueGroup != null ? opts.valueGroup : null;
+    _dov.raw = opts.raw || null;
+    _dov.mode = opts.mode || (_dov.address ? "edit" : "create");
+    _dov.activeTab = opts.activeTab || (_dov.mode === "create" ? "denotation" : "information");
+    _bindDatumOverlayOnce();
+    _renderDatumOverlay();
+    ov.hidden = false;
+    ov.setAttribute("aria-hidden", "false");
+    if (document.body) document.body.classList.add("is-modal-open");
+    try { window.history.pushState({ myciteDatumOverlay: _dov.address || "new" }, "", window.location.href); _dov.pushed = true; } catch (e) { _dov.pushed = false; }
+  }
+  function closeDatumOverlay(popHistory) {
+    var ov = _dovEl();
+    if (!ov || ov.hidden) return;
+    ov.hidden = true;
+    ov.setAttribute("aria-hidden", "true");
+    if (document.body && !document.body.querySelector(".ide-toolOverlay:not([hidden])")) {
+      document.body.classList.remove("is-modal-open");
+    }
+    var c = ov.querySelector("[data-datum-overlay-content]");
+    if (c) c.innerHTML = "";
+    if (popHistory && _dov.pushed) { _dov.pushed = false; try { window.history.back(); } catch (e) {} }
+  }
+  function _bindDatumOverlayOnce() {
+    if (_dov.bound) return;
+    _dov.bound = true;
+    document.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("[data-datum-overlay-close]") || t.closest("[data-datum-overlay-dismiss]")) {
+        closeDatumOverlay(true);
+      }
+    });
+    document.addEventListener("keydown", function (ev) {
+      var ov = _dovEl();
+      if ((ev.key === "Escape" || ev.key === "Esc") && ov && !ov.hidden) closeDatumOverlay(true);
+    });
+    window.addEventListener("popstate", function () {
+      var ov = _dovEl();
+      if (ov && !ov.hidden) closeDatumOverlay(false);
+    });
+  }
+  function _renderDatumOverlay() {
+    var ov = _dovEl();
+    if (!ov) return;
+    var titleNode = ov.querySelector("[data-datum-overlay-title]");
+    if (titleNode) {
+      titleNode.textContent = _dov.mode === "create"
+        ? ("New datum" + (_dov.layer != null ? " · L" + _dov.layer + (_dov.valueGroup != null ? "·VG" + _dov.valueGroup : "") : ""))
+        : ("Datum " + _dov.address);
+    }
+    var tabsNode = ov.querySelector("[data-datum-overlay-tabs]");
+    var TABS = [
+      { id: "denotation", label: "DENOTATION", enabled: true },
+      { id: "information", label: "INFORMATION", enabled: _dovExisting() },
+      { id: "mediation", label: "MEDIATION", enabled: _dovExisting() },
+    ];
+    if (tabsNode) {
+      tabsNode.innerHTML = TABS.map(function (tb) {
+        return '<button type="button" class="ide-datumOverlay__tab' + (tb.id === _dov.activeTab ? " is-active" : "") +
+          '" role="tab" data-datum-tab="' + tb.id + '"' + (tb.enabled ? "" : " disabled") + ">" + tb.label + "</button>";
+      }).join("");
+      tabsNode.onclick = function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest("[data-datum-tab]") : null;
+        if (!btn || btn.disabled) return;
+        _dov.activeTab = btn.getAttribute("data-datum-tab");
+        _renderDatumOverlay();
+      };
+    }
+    var content = ov.querySelector("[data-datum-overlay-content]");
+    if (!content) return;
+    if (_dov.activeTab === "information") { _dovRenderInformation(content); return; }
+    if (_dov.activeTab === "mediation") { content.innerHTML = '<div class="v2-mediation">Mediation — reserved for a later session.</div>'; return; }
+    _dovRenderDenotation(content);
+  }
+  function _dovTupleRowHtml(rel, obj) {
+    return '<div class="v2-denote__row v2-denote__tuple">' +
+      '<input type="text" data-dov-rel placeholder="rf.3-1-1 / ~" value="' + escapeHtml(asText(rel)) + '" />' +
+      '<input type="text" data-dov-obj placeholder="object ref" value="' + escapeHtml(asText(obj)) + '" />' +
+      '<button type="button" class="v2-btn" data-dov-tuple-remove title="Remove">×</button></div>';
+  }
+  function _dovMagRowHtml(name, val) {
+    return '<div class="v2-denote__row v2-denote__mag">' +
+      '<input type="text" data-dov-mag-name placeholder="name" value="' + escapeHtml(asText(name)) + '" />' +
+      '<input type="text" data-dov-mag-value placeholder="value" value="' + escapeHtml(asText(val)) + '" />' +
+      '<button type="button" class="v2-btn" data-dov-mag-remove title="Remove">×</button></div>';
+  }
+  function _dovSeedFromRaw(raw) {
+    var head = (raw && Array.isArray(raw) && Array.isArray(raw[0])) ? raw[0] : null;
+    var tail = (raw && Array.isArray(raw) && raw.length > 1) ? raw[1] : null;
+    var tuples = [];
+    if (head) {
+      for (var i = 1; i + 1 < head.length; i += 2) tuples.push([head[i], head[i + 1]]);
+    }
+    var mags = [];
+    var label = "";
+    if (tail && typeof tail === "object" && !Array.isArray(tail)) {
+      Object.keys(tail).forEach(function (k) { mags.push([k, tail[k]]); });
+    } else if (Array.isArray(tail) && tail.length) {
+      label = asText(tail[0]);
+    }
+    return { tuples: tuples, mags: mags, label: label };
+  }
+  function _dovSeedAddress() {
+    if (_dov.address) return _dov.address;
+    var grid = asObject(asObject(_dov.workspaceRef).datum_grid);
+    var existing = (typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [])
+      .map(function (r) { return asText(asObject(r).datum_address); }).filter(Boolean);
+    var layer = _dov.layer != null ? _dov.layer : 4;
+    var group = _dov.valueGroup != null ? _dov.valueGroup : 2;
+    if (typeof computeNextAddress === "function") return computeNextAddress(existing, layer, group);
+    return layer + "-" + group + "-1";
+  }
+  function _dovRenderDenotation(content) {
+    var seed = _dov.raw ? _dovSeedFromRaw(_dov.raw) : { tuples: [["", ""]], mags: [], label: "" };
+    if (!seed.tuples.length) seed.tuples = [["", ""]];
+    var addr = _dovExisting() ? _dov.address : _dovSeedAddress();
+    var html =
+      '<div class="v2-denote__field"><label>Datum address (layer-group-iteration)</label>' +
+      '<input type="text" data-dov-address value="' + escapeHtml(addr) + '" placeholder="4-2-3" /></div>' +
+      '<div class="v2-denote__sectionLabel">References (relation · object)</div>' +
+      '<div data-dov-tuples>' + seed.tuples.map(function (p) { return _dovTupleRowHtml(p[0], p[1]); }).join("") + "</div>" +
+      '<button type="button" class="v2-btn" data-dov-tuple-add>+ reference</button>' +
+      '<div class="v2-denote__sectionLabel">Magnitudes (name · value)</div>' +
+      '<div data-dov-mags>' + seed.mags.map(function (m) { return _dovMagRowHtml(m[0], m[1]); }).join("") + "</div>" +
+      '<button type="button" class="v2-btn" data-dov-mag-add>+ magnitude</button>' +
+      '<div class="v2-denote__field" style="margin-top:10px"><label>Label (optional)</label>' +
+      '<input type="text" data-dov-label value="' + escapeHtml(seed.label) + '" placeholder="human label" /></div>' +
+      '<div class="v2-denote__actions">' +
+      (_dovExisting()
+        ? '<button type="button" class="v2-btn v2-btn--primary" data-dov-save>Save</button>' +
+          '<button type="button" class="v2-btn v2-btn--danger" data-dov-delete>Delete</button>'
+        : '<button type="button" class="v2-btn v2-btn--primary" data-dov-create>Create datum</button>') +
+      "</div><div class=\"v2-denote__status\" data-dov-status></div>";
+    content.innerHTML = html;
+    _bindDenotation(content);
+  }
+  function _bindDenotation(content) {
+    content.onclick = function (ev) {
+      var t = ev.target;
+      if (!t || !t.matches) return;
+      if (t.matches("[data-dov-tuple-add]")) { var tw = content.querySelector("[data-dov-tuples]"); tw.insertAdjacentHTML("beforeend", _dovTupleRowHtml("", "")); }
+      else if (t.matches("[data-dov-tuple-remove]")) { var tr = t.closest(".v2-denote__tuple"); if (tr) tr.parentNode.removeChild(tr); }
+      else if (t.matches("[data-dov-mag-add]")) { var mw = content.querySelector("[data-dov-mags]"); mw.insertAdjacentHTML("beforeend", _dovMagRowHtml("", "")); }
+      else if (t.matches("[data-dov-mag-remove]")) { var mr = t.closest(".v2-denote__mag"); if (mr) mr.parentNode.removeChild(mr); }
+      else if (t.matches("[data-dov-create]")) { _dovSubmit("insert_datum", content); }
+      else if (t.matches("[data-dov-save]")) { _dovSubmit("update_row_raw", content); }
+      else if (t.matches("[data-dov-delete]")) { _dovSubmit("delete_datum", content); }
+    };
+  }
+  function _dovStatus(content, text, state) {
+    var s = content.querySelector("[data-dov-status]");
+    if (!s) return;
+    s.textContent = text || "";
+    if (state) s.setAttribute("data-state", state); else s.removeAttribute("data-state");
+  }
+  function _dovSubmit(operation, content) {
+    var address = asText((content.querySelector("[data-dov-address]") || {}).value).trim();
+    if (!/^\d+-\d+-\d+$/.test(address)) { _dovStatus(content, "Address must be layer-group-iteration (e.g. 4-2-3).", "error"); return; }
+    var raw;
+    if (operation === "delete_datum") {
+      raw = _dov.raw || [[address], []];
+    } else {
+      var first = [address];
+      Array.prototype.forEach.call(content.querySelectorAll(".v2-denote__tuple"), function (row) {
+        var rel = asText((row.querySelector("[data-dov-rel]") || {}).value).trim();
+        var obj = asText((row.querySelector("[data-dov-obj]") || {}).value).trim();
+        if (rel || obj) first.push(rel, obj);
+      });
+      if (first.length < 2) { _dovStatus(content, "At least one reference is required.", "error"); return; }
+      var mags = {};
+      Array.prototype.forEach.call(content.querySelectorAll(".v2-denote__mag"), function (row) {
+        var n = asText((row.querySelector("[data-dov-mag-name]") || {}).value).trim();
+        var v = asText((row.querySelector("[data-dov-mag-value]") || {}).value).trim();
+        if (n) mags[n] = v;
+      });
+      var label = asText((content.querySelector("[data-dov-label]") || {}).value).trim();
+      var second = Object.keys(mags).length ? mags : (label ? [label] : []);
+      raw = [first, second];
+    }
+    _dovStatus(content, (operation === "delete_datum" ? "Deleting " : "Saving ") + address + "…", "");
+    var body = {
+      schema: "mycite.v2.portal.mutations.stage.request.v1",
+      target_authority: "datum_workbench",
+      sandbox_id: _dov.sandboxId,
+      document_id: _dov.documentId,
+      datum_address: address,
+      target_address: address,
+      operation: operation,
+      payload_text: JSON.stringify(raw),
+    };
+    if (typeof stageThenApply !== "function") { _dovStatus(content, "Mutation pipeline unavailable.", "error"); return; }
+    stageThenApply(body, "/portal/api/v2/mutations/stage", "/portal/api/v2/mutations/apply")
+      .then(function () { closeDatumOverlay(true); _dovRefreshShell(); })
+      .catch(function (err) { _dovStatus(content, asText(err && err.message ? err.message : err), "error"); });
+  }
+  function _dovRefreshShell() {
+    var ctx = _dov.ctx;
+    if (!ctx || typeof ctx.loadShell !== "function") return;
+    var envelope = ctx.getEnvelope && ctx.getEnvelope();
+    if (!envelope) { ctx.loadShell({ schema: "mycite.v2.portal.shell.request.v1" }); return; }
+    var nextQuery = Object.assign({}, envelope.surface_query || {});
+    if (_dov.documentId) nextQuery.document = _dov.documentId;
+    ctx.loadShell({ schema: "mycite.v2.portal.shell.request.v1", requested_surface_id: envelope.surface_id, surface_query: nextQuery });
+  }
+  function _dovRenderInformation(content) {
+    content.innerHTML = '<div class="v2-info__meta">Loading abstraction path…</div>';
+    var url = "/portal/api/v2/datum/info?document=" + encodeURIComponent(_dov.documentId) +
+      "&address=" + encodeURIComponent(_dov.address);
+    fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) { content.innerHTML = '<div class="v2-info__meta">' + escapeHtml((j && j.error) || "No information.") + "</div>"; return; }
+        var path = j.path || [];
+        var nodes = path.map(function (n, i) {
+          return (i > 0 ? '<div class="v2-info__arrow">↓</div>' : "") +
+            '<div class="v2-info__node' + (n.is_target ? " is-target" : "") + '">' +
+            "<span>" + escapeHtml(n.datum_address) + "</span>" +
+            '<span class="v2-info__hash">' + escapeHtml(asText(n.semantic_hash).replace(/^sha256:/, "").slice(0, 12)) + "</span></div>";
+        }).join("");
+        content.innerHTML =
+          '<div class="v2-info__meta">Abstraction path — the datum’s minimum-but-complete dependency closure (' +
+          path.length + " node" + (path.length === 1 ? "" : "s") + ").</div>" +
+          '<div class="v2-info__path">' + (nodes || '<div class="v2-info__meta">No dependencies.</div>') + "</div>" +
+          '<div class="v2-denote__sectionLabel">Hyphae value</div>' +
+          '<div class="v2-info__hyphae" data-info-hyphae>' + escapeHtml(asText(j.hyphae_hash)) + "</div>" +
+          '<div class="v2-denote__actions"><button type="button" class="v2-btn" data-info-generate>Generate hyphae value</button></div>';
+        var gen = content.querySelector("[data-info-generate]");
+        if (gen) gen.onclick = function () { _dovRenderInformation(content); };
+      })
+      .catch(function () { content.innerHTML = '<div class="v2-info__meta">Could not load datum information.</div>'; });
+  }
+  window.openDatumOverlay = openDatumOverlay;
+  window.closeDatumOverlay = closeDatumOverlay;
+
+  // Datum-overlay open triggers (refracted cell ℹ / kebab / merged cell, the add-rows, the
+  // top-left edit icon). Bound ONCE on document; the per-render context (ctx/workspace/doc/sandbox)
+  // is refreshed in _dovTriggerCtx each render so the single listener never goes stale or duplicates.
+  var _dovTriggerCtx = null;
+  var _dovTriggersBound = false;
+  function _intAttr(el, name) { var v = parseInt(el.getAttribute(name), 10); return isNaN(v) ? null : v; }
+  function _bindDatumOverlayTriggers(ctx, workspace, surfacePayload) {
+    var sp = asObject(surfacePayload);
+    var ndf = asObject(sp.new_datum_form);
+    var selDoc = asObject(asObject(workspace).selected_document);
+    _dovTriggerCtx = {
+      ctx: ctx,
+      workspace: workspace,
+      documentId: asText(selDoc.document_id) || asText(ndf.document_id_default),
+      sandboxId: asText(ndf.sandbox_id) || "agro_erp",
+    };
+    if (_dovTriggersBound) return;
+    _dovTriggersBound = true;
+    document.addEventListener("click", function (ev) {
+      var c = _dovTriggerCtx;
+      if (!c) return;
+      var t = ev.target;
+      if (!t || !t.closest || !t.closest('[data-region="document-editor"]')) return;
+      function rawFor(address) {
+        var grid = asObject(asObject(c.workspace).datum_grid);
+        var rows = typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [];
+        for (var i = 0; i < rows.length; i++) {
+          if (asText(asObject(rows[i]).datum_address) === address) return asObject(rows[i]).raw;
+        }
+        return null;
+      }
+      function base() { return { ctx: c.ctx, workspace: c.workspace, documentId: c.documentId, sandboxId: c.sandboxId }; }
+      var editDoc = t.closest("[data-dov-edit-doc]");
+      var addBtn = t.closest("[data-dov-add]");
+      var infoBtn = t.closest("[data-datum-info]");
+      var kebabBtn = t.closest("[data-datum-kebab]");
+      var refracted = t.closest(".v2-ide__cell--refracted");
+      if (editDoc) {
+        ev.preventDefault();
+        openDatumOverlay(Object.assign(base(), { mode: "create", activeTab: "denotation" }));
+      } else if (addBtn) {
+        ev.preventDefault();
+        openDatumOverlay(Object.assign(base(), { mode: "create", activeTab: "denotation",
+          layer: _intAttr(addBtn, "data-layer"), valueGroup: _intAttr(addBtn, "data-value-group") }));
+      } else if (infoBtn) {
+        ev.preventDefault();
+        var ia = infoBtn.getAttribute("data-datum-address");
+        openDatumOverlay(Object.assign(base(), { address: ia, raw: rawFor(ia), mode: "edit", activeTab: "information" }));
+      } else if (kebabBtn) {
+        ev.preventDefault();
+        var ka = kebabBtn.getAttribute("data-datum-address");
+        openDatumOverlay(Object.assign(base(), { address: ka, raw: rawFor(ka), mode: "edit", activeTab: "denotation" }));
+      } else if (refracted) {
+        ev.preventDefault();
+        var ra = refracted.getAttribute("data-datum-address");
+        openDatumOverlay(Object.assign(base(), { address: ra, raw: rawFor(ra), mode: "edit", activeTab: "information" }));
+      }
+    });
+  }
   function bindWorkbenchNavigation(ctx, target, workspace, surfacePayload, region) {
     bindDocumentColumn(ctx, target, workspace, surfacePayload || {});
     bindDatumComposer(ctx, target, workspace, surfacePayload || {});
     bindDocumentEditor(ctx, target, workspace, surfacePayload || {});
+    _bindDatumOverlayTriggers(ctx, workspace, surfacePayload || {});
   }
 
   function renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec) {
@@ -5493,6 +5820,7 @@
     }
     paintTab(active);
   }
+
 
   window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;

@@ -150,6 +150,23 @@
         <div class="ide-toolOverlay__content" data-tool-overlay-content></div>
       </section>
     </div>
+
+    <!-- Datum-editing overlay (NOT a tool — a distinct visual variant of the overlay library).
+         Opened from a refracted cell's ℹ / kebab / the merged cell, or a value-group/layer add
+         row. Tabs: DENOTATION (denote/edit a datum), INFORMATION (hyphae abstraction path +
+         generate), MEDIATION (reserved). The tab strip + content are rendered by openDatumOverlay
+         (v2_portal_workbench_renderers.js). -->
+    <div id="portalDatumOverlay" class="ide-datumOverlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Datum">
+      <div class="ide-datumOverlay__backdrop" data-datum-overlay-dismiss></div>
+      <section class="ide-datumOverlay__panel" role="document">
+        <header class="ide-datumOverlay__chrome">
+          <button type="button" class="ide-datumOverlay__close" data-datum-overlay-close aria-label="Close datum editor">&times;</button>
+          <span class="ide-datumOverlay__title" data-datum-overlay-title>Datum</span>
+        </header>
+        <div class="ide-datumOverlay__tabs" data-datum-overlay-tabs role="tablist"></div>
+        <div class="ide-datumOverlay__content" data-datum-overlay-content></div>
+      </section>
+    </div>
   </div>
 
   <script>
