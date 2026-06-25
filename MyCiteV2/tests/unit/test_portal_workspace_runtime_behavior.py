@@ -379,7 +379,7 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
     # `test_no_sandbox_directory_helpers_in_runtime` now enforces the
     # absence of these helpers.
 
-    def test_mediation_transition_opens_interface_panel_and_back_out_clears_removed_subject(self) -> None:
+    def test_mediation_transition_sets_verb_subject_and_back_out_clears_them(self) -> None:
         scope = {"scope_id": "fnd", "capabilities": ["fnd_peripheral_routing"]}
         state = initial_portal_shell_state(surface_id=SYSTEM_ROOT_SURFACE_ID, portal_scope=scope)
         datum_state = reduce_portal_shell_state(
@@ -404,7 +404,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             seed_anchor_file=False,
         )
         self.assertEqual(mediation_state.verb, VERB_MEDIATE)
-        self.assertTrue(mediation_state.chrome.interface_panel_open)
         self.assertEqual(mediation_state.mediation_subject, {"level": FOCUS_LEVEL_OBJECT, "id": "1-0-0"})
 
         backed_out = reduce_portal_shell_state(
@@ -415,7 +414,6 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
             seed_anchor_file=False,
         )
         self.assertEqual(backed_out.verb, VERB_NAVIGATE)
-        self.assertFalse(backed_out.chrome.interface_panel_open)
         self.assertIsNone(backed_out.mediation_subject)
 
     def test_shell_composition_builder_owns_root_and_tool_visibility_defaults(self) -> None:

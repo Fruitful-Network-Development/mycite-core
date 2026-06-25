@@ -108,21 +108,14 @@ class PortalScope:
 @dataclass(frozen=True)
 class PortalShellChrome:
     control_panel_collapsed: bool = False
-    # Legacy: no longer drives interface_panel visibility (the region's own `visible`
-    # flag does, post TASK-interface-panel-migration). Retained for state-shape
-    # compatibility + the mediation foreground check in foreground_region_for_surface.
-    interface_panel_open: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.control_panel_collapsed, bool):
             raise ValueError("shell_chrome.control_panel_collapsed must be a bool")
-        if not isinstance(self.interface_panel_open, bool):
-            raise ValueError("shell_chrome.interface_panel_open must be a bool")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "control_panel_collapsed": self.control_panel_collapsed,
-            "interface_panel_open": self.interface_panel_open,
         }
 
     @classmethod
@@ -133,7 +126,6 @@ class PortalShellChrome:
             raise ValueError("shell_chrome must be a dict or null")
         return cls(
             control_panel_collapsed=payload.get("control_panel_collapsed") is True,
-            interface_panel_open=payload.get("interface_panel_open") is True,
         )
 
 
@@ -817,7 +809,7 @@ def initial_portal_shell_state(
         focus_subject=_subject_from_segment(focus_path[-1]),
         mediation_subject=None,
         verb=VERB_NAVIGATE,
-        chrome=PortalShellChrome(control_panel_collapsed=False, interface_panel_open=False),
+        chrome=PortalShellChrome(control_panel_collapsed=False),
     )
     return canonicalize_portal_shell_state(
         base_state,
@@ -919,29 +911,12 @@ def canonicalize_portal_shell_state(
     if is_tool_surface(active_surface_id):
         mediation_subject = mediation_subject or focus_subject
         verb = VERB_MEDIATE
-        chrome = PortalShellChrome(
-            control_panel_collapsed=chrome.control_panel_collapsed,
-            interface_panel_open=True,
-        )
     elif active_surface_id == SYSTEM_ROOT_SURFACE_ID:
         if verb == VERB_MEDIATE:
             if mediation_subject is None:
                 verb = VERB_NAVIGATE
-                chrome = PortalShellChrome(
-                    control_panel_collapsed=chrome.control_panel_collapsed,
-                    interface_panel_open=False,
-                )
-            else:
-                chrome = PortalShellChrome(
-                    control_panel_collapsed=chrome.control_panel_collapsed,
-                    interface_panel_open=True,
-                )
         else:
             mediation_subject = None
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=False,
-            )
 
     return PortalShellState(
         active_surface_id=active_surface_id,
@@ -1063,16 +1038,8 @@ def reduce_portal_shell_state(
         verb = normalized_transition.verb or VERB_NAVIGATE
         if verb == VERB_MEDIATE:
             mediation_subject = _subject_from_segment(focus_path[-1])
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=True,
-            )
         else:
             mediation_subject = None
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=False,
-            )
     # Phase 12c (drift remediation): TRANSITION_OPEN_INTERFACE_PANEL and
     # TRANSITION_CLOSE_INTERFACE_PANEL dispatch arms removed. The interface
     # panel is hidden unconditionally since Phase 3d, so toggling its
