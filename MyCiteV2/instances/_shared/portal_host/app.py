@@ -4601,19 +4601,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/__fnd/analytics.js")
     def fnd_analytics_js() -> Any:
-        # Phase 18a stub: serve an empty JS body so the existing
-        # <script src="/__fnd/analytics.js"> tags on every webdesign
-        # page stop returning 404. Phase 18b replaces this with the
-        # actual capture script from clients/_shared/site-core/.
-        site_core_path = Path(
-            "/srv/webapps/clients/_shared/site-core/js/extensions/analytics.js"
-        )
+        # Serve the browser capture script straight from the shared site-core library, so a
+        # deploy of the library propagates without restarting the portal (5-min browser cache).
+        # Prefer the configured webapps_root (keeps tests/CI hermetic — they pass a temp root)
+        # and fall back to the canonical deploy path so live serving is unchanged when
+        # webapps_root is unset/derived. A missing file serves an empty 200 (never a 404, so the
+        # existing <script src="/__fnd/analytics.js"> tags don't break).
+        rel = "clients/_shared/site-core/js/extensions/analytics.js"
+        root = _analytics_webapps_root()
+        candidates = ([Path(root) / rel] if root else []) + [Path("/srv/webapps") / rel]
         body = ""
-        if site_core_path.exists():
-            try:
-                body = site_core_path.read_text(encoding="utf-8")
-            except OSError:
-                body = ""
+        for site_core_path in candidates:
+            if site_core_path.exists():
+                try:
+                    body = site_core_path.read_text(encoding="utf-8")
+                except OSError:
+                    body = ""
+                if body:
+                    break
         response = make_response(body, 200)
         response.headers["Content-Type"] = "application/javascript; charset=utf-8"
         response.headers["Cache-Control"] = "public, max-age=300"
