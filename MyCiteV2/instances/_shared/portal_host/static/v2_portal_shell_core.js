@@ -15,6 +15,8 @@
   var _lastRegionRenderKeys = {};
   var _lastRenderedSurfaceId = "";
   var TOOL_STATE_SESSION_PREFIX = "mycite_v2_tool_state__";
+  // portal-tool-overlay-restructure: state for the menubar-search → full-screen tool overlay.
+  var _overlayState = { toolId: "", label: "", ctx: null, params: {} };
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -388,6 +390,7 @@
     mountControlPanelControls(composition.regions.control_panel);
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
     renderInterfacePanel(composition);
+    mountMenubarToolSearch(composition);
   }
 
   function renderInterfacePanel(composition) {
@@ -445,33 +448,40 @@
 
     mountInterfacePanelSearch(region.tool_search || {});
 
-    var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
     var boxes = content.querySelectorAll("[data-viz-box]");
     panels.forEach(function (p, i) {
       var box = boxes[i];
       var body = box && box.querySelector("[data-viz-box-content]");
-      if (!body) return;
-      // tool_id-keyed renderer wins; otherwise fall back to a declarative container
-      // renderer chosen by panel_payload.container (the consolidation-spine path).
-      var fn = renderers[p.tool_id];
-      if (typeof fn !== "function") {
-        var containers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
-        fn = containers[((p.panel_payload || {}).container) || ""];
-      }
-      if (typeof fn === "function") {
-        try {
-          fn(p.panel_payload || {}, body);
-        } catch (err) {
-          body.innerHTML =
-            '<p class="ide-visualizationPanel__error">Tool render failed: ' +
-            escapeHtml(err && err.message ? err.message : String(err)) + "</p>";
-        }
-      } else {
-        body.innerHTML =
-          '<p class="ide-visualizationPanel__empty">No client renderer registered for tool <code>' +
-          escapeHtml(p.tool_id) + "</code>.</p>";
-      }
+      if (body) renderToolPanelBody(p, body);
     });
+  }
+
+  // Dispatch one {tool_id, tool_label, panel_payload} panel into `bodyNode`: the tool_id-keyed
+  // renderer wins, else the declarative container renderer keyed by panel_payload.container
+  // (the consolidation-spine path). Shared by the (now-dormant) interface-panel sidebar and
+  // the tool overlay so both render byte-identical bodies.
+  function renderToolPanelBody(panel, bodyNode) {
+    if (!bodyNode) return;
+    var p = panel || {};
+    var renderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var fn = renderers[p.tool_id];
+    if (typeof fn !== "function") {
+      var containers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+      fn = containers[((p.panel_payload || {}).container) || ""];
+    }
+    if (typeof fn === "function") {
+      try {
+        fn(p.panel_payload || {}, bodyNode);
+      } catch (err) {
+        bodyNode.innerHTML =
+          '<p class="ide-visualizationPanel__error">Tool render failed: ' +
+          escapeHtml(err && err.message ? err.message : String(err)) + "</p>";
+      }
+    } else {
+      bodyNode.innerHTML =
+        '<p class="ide-visualizationPanel__empty">No client renderer registered for tool <code>' +
+        escapeHtml(p.tool_id) + "</code>.</p>";
+    }
   }
 
   // Mount the document-context tool search palette into the interface panel (the tool
@@ -516,6 +526,187 @@
       }
     };
     window.addEventListener("mycite:shell-module-ready", onModuleReady);
+  }
+
+  // ===== portal-tool-overlay-restructure: menubar search → full-screen tool overlay =====
+
+  // Mount the tool search into the MENU BAR (right side). Selecting a tool opens the overlay
+  // (openToolOverlay) instead of appending it to the interface-panel sidebar. Mounts once; its
+  // ctx (sandbox/document) is refreshed in place on each render. sandboxId defaults to
+  // "agro_erp" so the three live tools list on first load before a doc/sandbox is selected.
+  function mountMenubarToolSearch(composition) {
+    var mount = qs("[data-menubar-tool-search-mount]");
+    if (!mount) return;
+    var region = (composition && composition.regions && composition.regions.interface_panel) || {};
+    var search = region.tool_search || {};
+    var ctx = mount.__menubarCtx;
+    if (!ctx) {
+      ctx = {
+        tenantId: asText(search.tenant_id) || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
+        sandboxId: asText(search.sandbox_id) || "agro_erp",
+        documentId: asText(search.document_id),
+        datumAddress: asText(search.datum_address),
+        onDispatch: function (item) { openToolOverlay(item, ctx); },
+      };
+      mount.__menubarCtx = ctx;
+    } else {
+      ctx.tenantId = asText(search.tenant_id) || ctx.tenantId;
+      ctx.sandboxId = asText(search.sandbox_id) || ctx.sandboxId || "agro_erp";
+      ctx.documentId = asText(search.document_id);
+      ctx.datumAddress = asText(search.datum_address);
+    }
+    if (mount.__menubarSearchMounted) {
+      if (window.PortalToolPalette && typeof window.PortalToolPalette.refresh === "function") {
+        window.PortalToolPalette.refresh(mount, ctx);
+      }
+      return;
+    }
+    function doMount() {
+      if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return false;
+      window.PortalToolPalette.mount(mount, ctx);
+      var input = mount.querySelector("[data-palette-input]");
+      var list = mount.querySelector("[data-palette-list]");
+      if (input && list) {
+        input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
+        input.addEventListener("blur", function () {
+          setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
+        });
+      }
+      mount.__menubarSearchMounted = true;
+      return true;
+    }
+    if (doMount()) return;
+    // tool_palette can register AFTER shell_core's first render (sequential module loader) —
+    // mount as soon as it announces itself (one-shot).
+    if (mount.__awaitingPalette) return;
+    mount.__awaitingPalette = true;
+    var onModuleReady = function (ev) {
+      if (ev && ev.detail && ev.detail.module_id && ev.detail.module_id !== "tool_palette") return;
+      if (doMount()) {
+        mount.__awaitingPalette = false;
+        window.removeEventListener("mycite:shell-module-ready", onModuleReady);
+      }
+    };
+    window.addEventListener("mycite:shell-module-ready", onModuleReady);
+  }
+
+  function toolPanelsEndpoint(params) {
+    var qp = new URLSearchParams();
+    if (params.tool) qp.set("tool", params.tool);
+    if (params.sandbox) qp.set("sandbox", params.sandbox);
+    if (params.tenant) qp.set("tenant_id", params.tenant);
+    if (params.document) qp.set("document", params.document);
+    if (params.datum) qp.set("datum_address", params.datum);
+    var extra = params.extra || {};
+    Object.keys(extra).forEach(function (k) {
+      var v = extra[k];
+      if (v != null && v !== "") qp.set(k, v);
+    });
+    return "/portal/api/tool-panels?" + qp.toString();
+  }
+
+  function fetchToolPanels(params) {
+    return fetch(toolPanelsEndpoint(params), {
+      method: "GET",
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (resp) { if (!resp.ok) throw new Error("tool-panels: " + resp.status); return resp.json(); })
+      .then(function (json) { return json && Array.isArray(json.panels) ? json.panels : []; })
+      .catch(function () { return []; });
+  }
+
+  // Paint fetched tool panel(s) into the overlay content node. The overlay shows one tool at
+  // a time (no removable viz-box chrome — the overlay's top-left "x" closes it).
+  function paintToolPanels(panels, contentNode) {
+    if (!contentNode) return;
+    panels = Array.isArray(panels) ? panels : [];
+    if (!panels.length) {
+      contentNode.innerHTML = '<p class="ide-toolOverlay__empty">No tool to display.</p>';
+      return;
+    }
+    contentNode.innerHTML = panels
+      .map(function (p, i) { return '<div class="ide-toolOverlay__panelBody" data-overlay-panel="' + i + '"></div>'; })
+      .join("");
+    var bodies = contentNode.querySelectorAll("[data-overlay-panel]");
+    panels.forEach(function (p, i) {
+      if (bodies[i]) renderToolPanelBody(p, bodies[i]);
+    });
+  }
+
+  function isToolOverlayOpen() {
+    var overlay = qs("#portalToolOverlay");
+    return !!(overlay && !overlay.hidden);
+  }
+
+  function openToolOverlay(item, ctx) {
+    var overlay = qs("#portalToolOverlay");
+    if (!overlay) return;
+    var toolId = (item && item.tool_id) || "";
+    if (!toolId) return;
+    _overlayState.toolId = toolId;
+    _overlayState.label = (item && item.label) || toolId;
+    _overlayState.ctx = ctx || _overlayState.ctx || {};
+    _overlayState.params = {};
+    var titleNode = overlay.querySelector("[data-tool-overlay-title]");
+    var contentNode = overlay.querySelector("[data-tool-overlay-content]");
+    if (titleNode) titleNode.textContent = _overlayState.label;
+    if (contentNode) contentNode.innerHTML = '<p class="ide-toolOverlay__loading">Loading…</p>';
+    overlay.hidden = false;
+    overlay.setAttribute("aria-hidden", "false");
+    if (document.body) document.body.classList.add("is-modal-open");
+    refetchOverlayPanels({});
+    var closeBtn = overlay.querySelector("[data-tool-overlay-close]");
+    if (closeBtn) closeBtn.focus();
+    var list = document.querySelector("[data-menubar-tool-search-mount] [data-palette-list]");
+    if (list) list.setAttribute("hidden", "hidden");
+  }
+
+  // (Re)fetch the overlay tool's panels with accumulated per-tool params (e.g. a sub-tool's
+  // structure selector routed here via setSurfaceQuery) and repaint. Merges `extra` into the
+  // running param set so successive selector changes compose.
+  function refetchOverlayPanels(extra) {
+    var overlay = qs("#portalToolOverlay");
+    if (!overlay) return;
+    var contentNode = overlay.querySelector("[data-tool-overlay-content]");
+    var ctx = _overlayState.ctx || {};
+    if (extra) {
+      Object.keys(extra).forEach(function (k) { _overlayState.params[k] = extra[k]; });
+    }
+    fetchToolPanels({
+      tool: _overlayState.toolId,
+      sandbox: asText(ctx.sandboxId) || "agro_erp",
+      tenant: asText(ctx.tenantId),
+      document: asText(ctx.documentId),
+      datum: asText(ctx.datumAddress),
+      extra: _overlayState.params,
+    }).then(function (panels) { paintToolPanels(panels, contentNode); });
+  }
+
+  function closeToolOverlay() {
+    var overlay = qs("#portalToolOverlay");
+    if (!overlay) return;
+    overlay.hidden = true;
+    overlay.setAttribute("aria-hidden", "true");
+    if (document.body) document.body.classList.remove("is-modal-open");
+    var contentNode = overlay.querySelector("[data-tool-overlay-content]");
+    if (contentNode) contentNode.innerHTML = "";
+    _overlayState.params = {};
+    var input = document.querySelector("[data-menubar-tool-search-mount] [data-palette-input]");
+    if (input) input.focus();
+  }
+
+  function bindToolOverlay() {
+    document.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("[data-tool-overlay-close]") || t.closest("[data-tool-overlay-dismiss]")) {
+        closeToolOverlay();
+      }
+    });
+    document.addEventListener("keydown", function (ev) {
+      if ((ev.key === "Escape" || ev.key === "Esc") && isToolOverlayOpen()) closeToolOverlay();
+    });
   }
 
   // surface_query.tools is a comma-joined, ordered, de-duplicated tool-id list.
@@ -826,8 +1017,19 @@
     // sandbox, lens). Same clone-request+loadShell pattern as the sandbox selector and
     // the tool palette; reachable from tool renderers (separate IIFE) via this global.
     setSurfaceQuery: function (key, value) {
+      if (!key) return;
+      // portal-tool-overlay-restructure: when the tool overlay is open, a sub-tool param
+      // change (e.g. the SAMRAS structure selector inside the agronomics FARM tab) must
+      // re-render INSIDE the overlay, not reload the whole shell (which would tear the overlay
+      // down). Route it through the overlay refetch. Outside the overlay this path is unchanged.
+      if (isToolOverlayOpen()) {
+        var patch = {};
+        patch[key] = value;
+        refetchOverlayPanels(patch);
+        return;
+      }
       var request = canonicalShellRequestFromEnvelope(lastEnvelope) || lastShellRequest;
-      if (!request || !key) return;
+      if (!request) return;
       var next = cloneRequest(request);
       next.surface_query =
         next.surface_query && typeof next.surface_query === "object" ? next.surface_query : {};
@@ -844,6 +1046,7 @@
   setBootState("core_loaded");
   bindShellChromeEvents();
   bindVisualizationPanelClose();
+  bindToolOverlay();
   // Sandbox selection + tool search now live in the control panel + interface panel
   // respectively; both are wired in mountControlPanelControls / renderInterfacePanel
   // after each shell render (the menubar tool-search palette was removed).

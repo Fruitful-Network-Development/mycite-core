@@ -115,14 +115,15 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(envelope["canonical_query"]["document"], selected_document_id)
             self.assertEqual(workspace["query"]["document"], selected_document_id)
             composition = envelope["shell_composition"]
-            # TASK-interface-panel-migration: the interface_panel is the TOOL SURFACE now
-            # (search + tool render) and is visible on the workbench surface so the search
-            # bar is reachable; the workbench stays visible too.
+            # portal-tool-overlay-restructure: the interface_panel sidebar is DORMANT now
+            # (visible False — tools render in the menubar-search overlay), so the composition
+            # reports it collapsed. The workbench stays visible; the region still carries the
+            # tool_search context (the menubar search reads it) + an empty panels list.
             self.assertFalse(composition["workbench_collapsed"])
-            self.assertFalse(composition["interface_panel_collapsed"])
+            self.assertTrue(composition["interface_panel_collapsed"])
             self.assertTrue(composition["regions"]["workbench"]["visible"])
-            self.assertTrue(composition["regions"]["interface_panel"]["visible"])
-            # tool surface carries the search context + an (empty) panels list by default
+            self.assertFalse(composition["regions"]["interface_panel"]["visible"])
+            # tool surface still carries the search context + an (empty) panels list by default
             self.assertEqual(composition["regions"]["interface_panel"]["panels"], [])
             self.assertIn("tool_search", composition["regions"]["interface_panel"])
             self.assertNotIn("visualization_panel", composition["regions"])

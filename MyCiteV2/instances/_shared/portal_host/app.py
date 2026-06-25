@@ -1962,6 +1962,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             document_id=document_id,
             datum_address=datum_address,
             datum_store=datum_store,
+            # The menubar search dropdown lists only the live tools (allow-list).
+            live_only=True,
         )
         return jsonify(payload), 200
 
@@ -2015,8 +2017,41 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
             datum_store=datum_store,
+            # The menubar search dropdown lists only the live tools (allow-list).
+            live_only=True,
         )
         return jsonify(payload), 200
+
+    @app.get("/portal/api/tool-panels")
+    def portal_tool_panels() -> tuple[Any, int]:
+        # Overlay tool render (portal-tool-overlay-restructure): build the panel payload(s)
+        # for the selected tool(s) and return them READ-ONLY — no shell composition, no URL /
+        # history side-effects. The menubar search → full-screen overlay fetches this and
+        # paints the panels client-side via the same container/tool renderers the (retired)
+        # interface-panel sidebar used. Per-tool params (e.g. samras_structure, agronomics_tab)
+        # ride through as extra query args to tools that declare wants_surface_query.
+        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+            PORTAL_TOOL_PANELS_SCHEMA,
+            _parse_tool_ids,
+            build_tool_panels,
+        )
+
+        surface_query = {k: _as_text(v) for k, v in request.args.items()}
+        # Accept ?tool= (single) or ?tools= (comma list); normalize onto surface_query.tools.
+        tool_param = _as_text(request.args.get("tool")) or _as_text(request.args.get("tools"))
+        surface_query["tools"] = tool_param
+        sandbox_id = _as_text(request.args.get("sandbox")) or _as_text(request.args.get("sandbox_id"))
+        document_id = _as_text(request.args.get("document")) or _as_text(request.args.get("document_id"))
+        datum_address = _as_text(request.args.get("datum_address"))
+        panels = build_tool_panels(
+            tool_ids=_parse_tool_ids(surface_query),
+            surface_query=surface_query,
+            authority_db_file=host_config.authority_db_file,
+            sandbox_id=sandbox_id,
+            document_id=document_id,
+            datum_address=datum_address,
+        )
+        return jsonify({"schema": PORTAL_TOOL_PANELS_SCHEMA, "panels": panels}), 200
 
     @app.post("/portal/api/resources/upload")
     def portal_resources_upload() -> tuple[Any, int]:

@@ -5315,33 +5315,108 @@
         .join("") +
       "</div>";
     var bodies = content.querySelectorAll("[data-pane-body]");
-    var toolRenderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
-    var containerRenderers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
     panes.forEach(function (p, i) {
       p = p || {};
       var body = bodies[i];
-      if (!body) return;
-      var sub = p.panel_payload || {};
-      var fn = toolRenderers[p.tool_id];
-      if (typeof fn !== "function") fn = containerRenderers[(sub.container) || ""];
-      if (typeof fn === "function") {
-        try {
-          fn(sub, body);
-        } catch (err) {
-          body.innerHTML =
-            '<p class="ide-visualizationPanel__error">Pane render failed: ' +
-            esc(err && err.message ? err.message : String(err)) + "</p>";
-        }
-      } else {
-        body.innerHTML =
-          '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
-          esc(p.tool_id) + "</code>.</p>";
-      }
+      if (body) paintPanelInto(p.panel_payload, body, p.tool_id);
     });
+  }
+
+  // Shared pane/tab body dispatch: render a panel_payload into `node` using the tool_id
+  // renderer (the caller's hint, else the payload's own tool_id) first, otherwise the
+  // declarative container renderer keyed by panel_payload.container. Used by renderComposite
+  // (panes) and renderTabbed (tabs) so both delegate identically.
+  function paintPanelInto(panelPayload, node, toolIdHint) {
+    if (!node) return;
+    var sub = panelPayload || {};
+    var toolRenderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var containerRenderers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+    var fn =
+      (toolIdHint && toolRenderers[toolIdHint]) ||
+      (sub.tool_id && toolRenderers[sub.tool_id]) ||
+      containerRenderers[(sub.container) || ""];
+    if (typeof fn === "function") {
+      try {
+        fn(sub, node);
+      } catch (err) {
+        node.innerHTML =
+          '<p class="ide-visualizationPanel__error">Pane render failed: ' +
+          esc(err && err.message ? err.message : String(err)) + "</p>";
+      }
+    } else {
+      node.innerHTML =
+        '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
+        esc(sub.container || sub.tool_id || toolIdHint || "") + "</code>.</p>";
+    }
+  }
+
+  // Generic tabbed container: a tab strip + one body, switched CLIENT-SIDE (no shell reload —
+  // contrast renderExtensionTabs, which reloads via ctx.loadShell). Each tab carries an
+  // optional panel_payload delegated via paintPanelInto; a null payload renders a scaffold
+  // placeholder. Drives the agronomics FARM/PLAN/NETWORK tabs (tools/agronomics_viewer.py).
+  function renderTabbed(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+    if (!tabs.length) {
+      content.innerHTML = '<p class="ide-visualizationPanel__empty">No tabs to display.</p>';
+      return;
+    }
+    var active = payload.active_tab || (tabs[0] && tabs[0].id) || "";
+    content.innerHTML =
+      '<div class="v2-tabbed">' +
+      '<div class="v2-tabbed__strip" role="tablist">' +
+      tabs
+        .map(function (t) {
+          t = t || {};
+          var on = t.id === active;
+          return (
+            '<button type="button" class="v2-tabbed__tab' + (on ? " is-active" : "") +
+            '" role="tab" aria-selected="' + (on ? "true" : "false") +
+            '" data-tab-id="' + esc(t.id) + '">' + esc(t.label || t.id) + "</button>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<div class="v2-tabbed__body" data-tabbed-body></div>' +
+      "</div>";
+    var bodyNode = content.querySelector("[data-tabbed-body]");
+    var strip = content.querySelector(".v2-tabbed__strip");
+
+    function paintTab(tabId) {
+      var tab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i] && tabs[i].id === tabId) { tab = tabs[i]; break; }
+      }
+      if (!tab) tab = tabs[0] || {};
+      if (!bodyNode) return;
+      if (tab.panel_payload == null) {
+        bodyNode.innerHTML =
+          '<p class="v2-tabbed__placeholder">' +
+          esc((tab.label || tab.id || "This tab") + " — no sub-tools yet.") + "</p>";
+        return;
+      }
+      paintPanelInto(tab.panel_payload, bodyNode, tab.tool_id);
+    }
+
+    if (strip) {
+      strip.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest("[data-tab-id]") : null;
+        if (!btn) return;
+        Array.prototype.forEach.call(strip.querySelectorAll(".v2-tabbed__tab"), function (b) {
+          var on = b === btn;
+          b.classList.toggle("is-active", on);
+          b.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        paintTab(btn.getAttribute("data-tab-id"));
+      });
+    }
+    paintTab(active);
   }
 
   window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
   window.__MYCITE_V2_CONTAINER_RENDERERS["composite"] = renderComposite;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["tabbed"] = renderTabbed;
 })();

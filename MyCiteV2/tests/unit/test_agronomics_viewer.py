@@ -1,8 +1,9 @@
-"""Agronomics composite tool — composes farm_profile + the LCL structure viewer.
+"""Agronomics tool — FARM/PLAN/NETWORK tabs; FARM composes farm_profile + the LCL viewer.
 
-It renders nothing itself: build_panel_payload calls the two sub-viewers and returns their
-payloads as ``container:"composite"`` panes (farm_profile left, LCL right). Tests the
-composition + pane wiring (sub-viewers monkeypatched) and the live two-pane payload.
+It renders nothing itself: build_panel_payload returns a ``container:"tabbed"`` payload whose
+FARM tab is a ``container:"composite"`` of the two sub-viewers (farm_profile left, LCL right)
+and whose PLAN/NETWORK tabs are blank scaffolds. Tests the tab + composition wiring
+(sub-viewers monkeypatched) and the live payload.
 """
 
 from __future__ import annotations
@@ -46,11 +47,19 @@ class TestComposition(unittest.TestCase):
 
     def test_two_panes_in_order(self) -> None:
         payload, _fp, _ss = self._build(None)
-        self.assertEqual(payload["container"], "composite")
-        self.assertEqual([p["tool_id"] for p in payload["panes"]], ["farm_profile", "samras_structure"])
-        self.assertEqual([p["label"] for p in payload["panes"]], ["Farm Profile", "LCL ID Space"])
-        self.assertEqual(payload["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
-        self.assertEqual(payload["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
+        # FARM/PLAN/NETWORK tabs; FARM is the composite of the two sub-viewers.
+        self.assertEqual(payload["container"], "tabbed")
+        self.assertEqual([t["id"] for t in payload["tabs"]], ["farm", "plan", "network"])
+        self.assertEqual(payload["active_tab"], "farm")
+        farm = payload["tabs"][0]["panel_payload"]
+        self.assertEqual(farm["container"], "composite")
+        self.assertEqual([p["tool_id"] for p in farm["panes"]], ["farm_profile", "samras_structure"])
+        self.assertEqual([p["label"] for p in farm["panes"]], ["Farm Profile", "LCL ID Space"])
+        self.assertEqual(farm["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
+        self.assertEqual(farm["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
+        # PLAN / NETWORK are blank scaffolds for future sub-tools.
+        self.assertIsNone(payload["tabs"][1]["panel_payload"])
+        self.assertIsNone(payload["tabs"][2]["panel_payload"])
 
     def test_right_pane_defaults_to_lcl(self) -> None:
         _payload, _fp, ss = self._build(None)
@@ -67,10 +76,12 @@ class TestLive(unittest.TestCase):
         payload = av.AgronomicsViewer().build_panel_payload(
             authority_db_file=_LIVE_DB, sandbox_id="agro_erp", document_id="", datum_address="",
         )
-        self.assertEqual(payload["container"], "composite")
-        self.assertEqual([p["tool_id"] for p in payload["panes"]], ["farm_profile", "samras_structure"])
-        farm = payload["panes"][0]["panel_payload"]
-        lcl = payload["panes"][1]["panel_payload"]
+        self.assertEqual(payload["container"], "tabbed")
+        farm_tab = payload["tabs"][0]["panel_payload"]
+        self.assertEqual(farm_tab["container"], "composite")
+        self.assertEqual([p["tool_id"] for p in farm_tab["panes"]], ["farm_profile", "samras_structure"])
+        farm = farm_tab["panes"][0]["panel_payload"]
+        lcl = farm_tab["panes"][1]["panel_payload"]
         self.assertIsNone(farm.get("error"))
         self.assertIn("feature_collection", farm)
         self.assertIsNone(lcl.get("error"))

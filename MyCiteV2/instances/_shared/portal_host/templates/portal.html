@@ -62,13 +62,18 @@
     data-interface-panel-collapsed="true"
   >
     <header class="ide-menubar" aria-label="Menu bar">
-      <!-- Tool search moved to the interface panel (TASK-interface-panel-migration);
-           the menubar tool-search palette was removed. -->
+      <!-- portal-tool-overlay-restructure: the menubar tool search is back, right-aligned in
+           .ide-menubar__right; selecting a tool from its dropdown opens the full-screen tool
+           overlay (#portalToolOverlay, below). The interface panel is phased out. -->
       <div class="ide-menubar__center" aria-label="Page label">
         <span class="ide-menubar__pageTitle">MyCite</span>
         <span class="ide-menubar__pageSub">{{ host_shape }} · portal {{ portal_instance_id }} · {{ portal_domain }}</span>
       </div>
       <div class="ide-menubar__right">
+        <!-- portal-tool-overlay-restructure: the Workbench + Interface-Panel toggle buttons
+             were removed (interface panel phased out; tools open in #portalToolOverlay). The
+             Control-Panel toggle stays — it collapses the blurred background workbench. A
+             right-aligned tool SEARCH sits between it and the theme selector. -->
         <div class="ide-menubar__shellActions" aria-label="Shell layout controls">
           <button
             type="button"
@@ -86,41 +91,8 @@
             </span>
             <span class="u-visually-hidden">Control Panel</span>
           </button>
-          <button
-            type="button"
-            class="ide-sessionAction ide-sessionAction--icon"
-            data-shell-toggle="workbench"
-            data-shell-title="Workbench"
-            data-shell-lockable="tool-panel"
-            aria-label="Toggle Workbench"
-            title="Workbench"
-          >
-            <span class="ide-sessionAction__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
-                <path d="M4 11h16"></path>
-              </svg>
-            </span>
-            <span class="u-visually-hidden">Workbench</span>
-          </button>
-          <button
-            type="button"
-            class="ide-sessionAction ide-sessionAction--icon"
-            data-shell-toggle="interface-panel"
-            data-shell-title="Interface Panel"
-            data-shell-lockable="tool-panel"
-            aria-label="Toggle Interface Panel"
-            title="Interface Panel"
-          >
-            <span class="ide-sessionAction__icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="4" y="5" width="16" height="14" rx="2"></rect>
-                <path d="M10 5v14"></path>
-              </svg>
-            </span>
-            <span class="u-visually-hidden">Interface Panel</span>
-          </button>
         </div>
+        <nav class="ide-menubar__toolSearch portal-tool-palette" aria-label="Tool search" data-menubar-tool-search-mount></nav>
         <label class="themebar ide-menubar__theme" aria-label="Portal theme selector">
           <span class="themebar__label">Theme</span>
           <select class="themebar__select" data-theme-selector data-theme-scope="portal"></select>
@@ -203,6 +175,21 @@
 
       <!-- The separate visualization panel was retired (TASK-interface-panel-migration);
            tools now render inside the interface panel above (search + visualization). -->
+    </div>
+
+    <!-- portal-tool-overlay-restructure: full-screen tool overlay. Selecting a tool from the
+         menubar search opens this; it blurs the background and hosts the tool widget in a
+         standardized panel. The close "x" is top-left (first child of the chrome). The tool's
+         own tabs (FARM/PLAN/NETWORK for agronomics) live inside the content node, NOT here. -->
+    <div id="portalToolOverlay" class="ide-toolOverlay" hidden aria-hidden="true" role="dialog" aria-modal="true" aria-label="Tool">
+      <div class="ide-toolOverlay__backdrop" data-tool-overlay-dismiss></div>
+      <section class="ide-toolOverlay__panel" role="document">
+        <header class="ide-toolOverlay__chrome">
+          <button type="button" class="ide-toolOverlay__close" data-tool-overlay-close aria-label="Close tool">&times;</button>
+          <span class="ide-toolOverlay__title" data-tool-overlay-title></span>
+        </header>
+        <div class="ide-toolOverlay__content" data-tool-overlay-content></div>
+      </section>
     </div>
   </div>
 

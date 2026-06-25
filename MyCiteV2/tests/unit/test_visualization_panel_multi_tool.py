@@ -3,9 +3,10 @@
 The interface_panel is the unified tool surface (TASK-interface-panel-migration): it
 carries a ``tool_search`` context + one panel per tool in ``surface_query.tools`` (each
 renders as a removable box client-side), keeping the legacy single-tool fields (= first
-panel) for back-compat. The region is always returned (visible) so the search bar is
-reachable before a tool is picked. The canonical query round-trips ``tools`` (and folds
-the legacy scalar ``tool``).
+panel) for back-compat. Post portal-tool-overlay-restructure the region is always returned
+but DORMANT (visible False — tools render in the menubar-search overlay; the region's
+tool_search context is what the menubar search mounts with). The canonical query round-trips
+``tools`` (and folds the legacy scalar ``tool``).
 """
 
 from __future__ import annotations
@@ -36,10 +37,13 @@ def _panel(surface_query):
 
 
 class InterfaceToolPanelTests(unittest.TestCase):
-    def test_no_tool_yields_visible_panel_with_search_and_no_panels(self) -> None:
+    def test_no_tool_yields_dormant_panel_with_search_and_no_panels(self) -> None:
+        # portal-tool-overlay-restructure: the sidebar is now DORMANT (visible False — tools
+        # render in the menubar-search overlay), but the region still carries the tool_search
+        # context the menubar search reads, and no panels until a tool is requested.
         for sq in ({}, {"tools": ""}):
             region = _panel(sq)
-            self.assertTrue(region["visible"])  # search bar reachable before a tool is picked
+            self.assertFalse(region["visible"])  # sidebar dormant; search lives in the menubar
             self.assertEqual(region["panels"], [])
             self.assertEqual(region["tool_search"]["sandbox_id"], "agro_erp")
             self.assertEqual(region["tool_search"]["tenant_id"], "fnd")

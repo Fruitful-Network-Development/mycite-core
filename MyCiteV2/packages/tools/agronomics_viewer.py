@@ -1,17 +1,20 @@
-"""Agronomics — a COMPOSITE tool: farm_profile (left) + LCL structure (right).
+"""Agronomics — the portal's primary tool: FARM / PLAN / NETWORK tabs.
 
-The first multi-pane tool. It does not render anything itself; it composes two existing
-single-purpose viewers into one interface-panel section laid out side by side:
+Renders a ``container:"tabbed"`` payload. The FARM tab is a COMPOSITE of two existing
+single-purpose viewers laid out side by side; PLAN and NETWORK are blank scaffolds that
+future agronomics sub-component tools slot into:
 
-    ┌─ Agronomics ──────────────────────────────┐
-    │  Farm Profile (map)   │  LCL ID Space (tree) │
+    ┌─ Agronomics ──[ FARM ][ PLAN ][ NETWORK ]──┐
+    │  Farm Profile (map)   │  LCL ID Space (tree) │   ← FARM tab
     └────────────────────────────────────────────┘
 
 Each pane is just another tool's panel_payload, carried under a generic ``container:
 "composite"`` payload that the client's composite renderer lays out and delegates back to
-each pane's own renderer. This is the abstraction seam: a composite is a declaration of
-panes, so a section can be reworked (or new composites assembled) without touching the
-sub-tools. ``farm_profile`` and ``samras_structure`` remain available standalone.
+each pane's own renderer; the tabs are a ``container:"tabbed"`` wrapper switched client-side
+(no shell reload). This is the abstraction seam: a composite/tab is a declaration of panes,
+so a section can be reworked (or new sub-tools assembled) without touching the sub-tools.
+``farm_profile`` and ``samras_structure`` remain available standalone (still selectable in
+the menubar search).
 """
 
 from __future__ import annotations
@@ -74,7 +77,7 @@ class AgronomicsViewer:
             datum_address=datum_address,
             extra_query={"samras_structure": structure},
         )
-        return {
+        farm_composite = {
             "schema": _SCHEMA,
             "container": "composite",
             "title": "Agronomics",
@@ -82,6 +85,23 @@ class AgronomicsViewer:
             "panes": [
                 {"tool_id": "farm_profile", "label": "Farm Profile", "panel_payload": farm_payload},
                 {"tool_id": "samras_structure", "label": "LCL ID Space", "panel_payload": lcl_payload},
+            ],
+        }
+        # FARM / PLAN / NETWORK tabs (portal-tool-overlay-restructure). FARM carries today's
+        # farm-profile map + LCL-tree composite; PLAN and NETWORK are blank scaffolds for
+        # future agronomics sub-component tools. Tab switching is client-side in the ``tabbed``
+        # container renderer (no shell reload); ``active_tab`` lets an overlay/surface_query
+        # param (agronomics_tab) re-open on a chosen tab.
+        return {
+            "schema": _SCHEMA,
+            "container": "tabbed",
+            "title": "Agronomics",
+            "sandbox_id": sandbox_id or "agro_erp",
+            "active_tab": _as_text((extra_query or {}).get("agronomics_tab")) or "farm",
+            "tabs": [
+                {"id": "farm", "label": "FARM", "panel_payload": farm_composite},
+                {"id": "plan", "label": "PLAN", "panel_payload": None},
+                {"id": "network", "label": "NETWORK", "panel_payload": None},
             ],
         }
 

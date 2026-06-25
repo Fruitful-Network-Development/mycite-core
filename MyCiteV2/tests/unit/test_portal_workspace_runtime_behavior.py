@@ -619,11 +619,12 @@ class PortalWorkspaceRuntimeBehaviorTests(unittest.TestCase):
         control_panel = operational_envelope["shell_composition"]["regions"]["control_panel"]
         self.assertEqual(control_panel["kind"], "unified_directive_panel")
         self.assertEqual(control_panel["surface_label"], "SYSTEM")
-        # TASK-interface-panel-migration: /portal/system delegates to the workbench-ui
-        # bundle, so the interface_panel is the visible tool surface (search + tools).
-        self.assertFalse(envelope["shell_composition"]["interface_panel_collapsed"])
+        # portal-tool-overlay-restructure: /portal/system delegates to the workbench-ui
+        # bundle, but the interface_panel sidebar is DORMANT (visible False — tools render in
+        # the menubar-search overlay), so the composition reports it collapsed. Workbench stays.
+        self.assertTrue(envelope["shell_composition"]["interface_panel_collapsed"])
         self.assertFalse(envelope["shell_composition"]["workbench_collapsed"])
-        self.assertTrue(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
+        self.assertFalse(envelope["shell_composition"]["regions"]["interface_panel"]["visible"])
         self.assertNotIn("inspector", envelope["shell_composition"]["regions"])
 
     def test_utilities_root_uses_minimal_section_led_control_panel_and_collapsed_interface_panel(self) -> None:
