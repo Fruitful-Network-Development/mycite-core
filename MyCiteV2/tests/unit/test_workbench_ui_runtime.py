@@ -204,7 +204,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             # Operator directive (2026-06-16): the control panel is stripped to the
             # sandbox selector only — no Inspector/disclosure groups and no workbench
             # mode tabs. Datum inspection lives in the workbench region + surface_payload
-            # (interface_panel_sections still expose the selection summary for inspectors).
+            # (selection_summary_sections still expose the selection summary for inspectors).
             self.assertEqual(control_panel.get("disclosure_groups") or [], [])
             self.assertIsNone(control_panel.get("workbench_mode"))
 
@@ -638,7 +638,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
                 surface_query={"document": "system:anthology", "row": "1-1-2", "overlay": "show"},
             )
 
-            overlay_section = next(section for section in bundle["interface_panel_sections"] if section["title"] == "Directive Overlay")
+            overlay_section = next(section for section in bundle["selection_summary_sections"] if section["title"] == "Directive Overlay")
             self.assertEqual(overlay_section["rows"][0]["value"], "loaded")
             catalog = datum_store.read_authoritative_datum_documents({"tenant_id": "fnd"})
             document = next(item for item in catalog.documents if item.document_id == "system:anthology")
@@ -687,7 +687,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             document_table = workspace["document_table"]
             datum_grid = workspace["datum_grid"]
-            interface_panel_titles = [section["title"] for section in bundle["interface_panel_sections"]]
+            selection_summary_titles = [section["title"] for section in bundle["selection_summary_sections"]]
 
             self.assertEqual(workspace["query"]["group"], "layer_value_group")
             self.assertEqual(workspace["query"]["workbench_lens"], "raw")
@@ -705,7 +705,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertLessEqual(len(workspace["selected_row"]["hyphae_hash_short"]), 12)
             self.assertIn("raw_preview", [column["key"] for column in datum_grid["columns"]])
             self.assertNotIn("labels", [column["key"] for column in datum_grid["columns"]])
-            self.assertNotIn("Source Metadata", interface_panel_titles)
+            self.assertNotIn("Source Metadata", selection_summary_titles)
 
     def test_workbench_ui_supports_iteration_matrix_and_hyphae_identity_projection(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -748,7 +748,7 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             workspace = bundle["surface_payload"]["workspace"]
             datum_grid = workspace["datum_grid"]
             selected_row = workspace["selected_row"]
-            interface_panel_titles = [section["title"] for section in bundle["interface_panel_sections"]]
+            selection_summary_titles = [section["title"] for section in bundle["selection_summary_sections"]]
 
             self.assertEqual(datum_grid["group_mode"], "layer_value_group_iteration")
             self.assertEqual([layer["title"] for layer in datum_grid["layers"]], ["Layer 4"])
@@ -764,8 +764,8 @@ class WorkbenchUiRuntimeTests(unittest.TestCase):
             self.assertEqual(selected_row["display_value"], "BETA STREET")
             self.assertEqual(selected_row["hyphae_policy"], "mos.hyphae_chain_v1")
             self.assertIn("4-2-2", selected_row["hyphae_chain_addresses"])
-            self.assertIn("Lens Resolution", interface_panel_titles)
-            self.assertIn("Hyphae Identity", interface_panel_titles)
+            self.assertIn("Lens Resolution", selection_summary_titles)
+            self.assertIn("Hyphae Identity", selection_summary_titles)
 
     def test_workbench_ui_runtime_projects_navigation_requests_for_documents_and_rows(self) -> None:
         with TemporaryDirectory() as temp_dir:

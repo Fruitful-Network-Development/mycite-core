@@ -8,7 +8,6 @@ from MyCiteV2.instances._shared.runtime.portal_system_workspace_runtime import (
     build_unified_control_panel,
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
-    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
     PORTAL_REGION_FAMILY_REFLECTIVE_WORKSPACE,
     WORKBENCH_UI_TOOL_REQUEST_SCHEMA,
     WORKBENCH_UI_TOOL_SURFACE_SCHEMA,
@@ -18,7 +17,6 @@ from MyCiteV2.packages.adapters.sql import SqliteSystemDatumStoreAdapter
 from MyCiteV2.packages.core.datum_templates import TemplateRegistry
 from MyCiteV2.packages.state_machine.portal_shell import (
     AGRO_ERP_SANDBOX_TOKEN,
-    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     PORTAL_SHELL_REGION_WORKBENCH_SCHEMA,
     WORKBENCH_UI_SANDBOX_TOKEN,
     WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
@@ -381,7 +379,6 @@ def build_portal_workbench_ui_bundle(
         "selected_row": {},
         "selected_row_hyphae_hash_short": "",
         "navigation": {},
-        "interface_panel_sections": [],
     }
     authority_path = _path_or_none(authority_db_file)
     if authority_path is not None and runtime_error is None:
@@ -897,20 +894,9 @@ def build_portal_workbench_ui_bundle(
         sandbox=effective_sandbox,
         selected_document_id=_as_text(model.get("document_id")),
     )
-    # Interface panel = the TOOL SURFACE (TASK-interface-panel-migration, 2026-06-02):
-    # a tool search bar + the selected tools' visualization panels, in one right-side
-    # region. `panels` is built from surface_query.tools via the registry; `tool_search`
-    # carries the document/datum context the JS palette mounts with. The region is
-    # always visible on this workbench surface so the search bar is reachable before a
-    # tool is picked. (The separate visualization_panel region was retired.)
-    interface_panel = _build_interface_tool_panel(
-        surface_query=surface_query,
-        authority_db_file=authority_db_file,
-        sandbox_id=effective_sandbox,
-        document_id=selected_document_id,
-        datum_address=selected_row_address,
-        portal_scope=portal_scope,
-    )
+    # portal-tool-overlay-restructure: tools render in the menubar-search → full-screen overlay
+    # (which fetches /portal/api/tool-panels via build_tool_panels), so the workbench bundle no
+    # longer carries an interface_panel region.
     return {
         "entrypoint_id": WORKBENCH_UI_TOOL_ENTRYPOINT_ID,
         "read_write_posture": "write",
@@ -920,25 +906,15 @@ def build_portal_workbench_ui_bundle(
         "surface_payload": model["surface_payload"],
         "control_panel": control_panel,
         "workbench": workbench,
-        "interface_panel": interface_panel,
         # The selection-summary projection (document/version metadata, row semantics,
-        # lens/hyphae/overlay sections) is still computed; it is no longer shown in the
-        # interface_panel (now the tool surface) but is exposed here for inspectors/tests.
-        "interface_panel_sections": list(model.get("interface_panel_sections") or []),
+        # lens/hyphae/overlay sections) is computed by the read service and exposed here for
+        # inspectors/tests (it is no longer rendered in a panel — tools render in the overlay).
+        "selection_summary_sections": list(model.get("selection_summary_sections") or []),
         "route": WORKBENCH_UI_TOOL_ROUTE,
         "sandbox_id": effective_sandbox,
         "sandbox_label": sandbox_label,
     }
 
-
-# Reversible kill-switch for the legacy interface-panel sidebar. The portal now renders
-# tools in a menubar-search → full-screen overlay (portal-tool-overlay-restructure); the old
-# right-side sidebar is dormant. With this False the region reports visible:False and the
-# client (renderInterfacePanel) hides the aside + splitter, while the DOM, renderers and the
-# surface_query.tools render path stay intact and re-flippable. Phase 2 removes the sidebar
-# outright; until then this is the single reversible toggle. ``tool_search`` is emitted
-# regardless of this flag (the menubar search reads it for its sandbox/document context).
-_INTERFACE_PANEL_AS_SIDEBAR = False
 
 # Read-only tool-panel endpoint schema (GET /portal/api/tool-panels). The overlay fetches
 # this to render a tool without a shell-composition round-trip. See build_tool_panels.
@@ -1014,58 +990,6 @@ def build_tool_panels(
             "panel_payload": payload,
         })
     return panels
-
-
-def _build_interface_tool_panel(
-    *,
-    surface_query: dict[str, Any] | None,
-    authority_db_file: str | Path | None,
-    sandbox_id: str,
-    document_id: str,
-    datum_address: str,
-    portal_scope: PortalScope,
-) -> dict[str, Any]:
-    """Build the interface_panel region payload — the (now-dormant) sidebar TOOL SURFACE.
-
-    Carries ``tool_search`` (the document/datum context the menubar search palette mounts
-    with, emitted regardless of visibility) and ``panels`` (one {tool_id, tool_label,
-    panel_payload} per tool in surface_query.tools). Visibility is gated on
-    ``_INTERFACE_PANEL_AS_SIDEBAR`` — False now, since tools render in the overlay; the client
-    hides the aside when visible is False. The render loop is shared with the overlay via
-    ``build_tool_panels``.
-    """
-    tool_search = {
-        "tenant_id": portal_scope.scope_id,
-        "document_id": document_id,
-        "datum_address": datum_address,
-        "sandbox_id": sandbox_id,
-    }
-    panels = build_tool_panels(
-        tool_ids=_parse_tool_ids(surface_query),
-        surface_query=surface_query,
-        authority_db_file=authority_db_file,
-        sandbox_id=sandbox_id,
-        document_id=document_id,
-        datum_address=datum_address,
-    )
-
-    first = panels[0] if panels else {}
-    return attach_region_family_contract(
-        {
-            "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-            "kind": "tool_surface",
-            "title": "Tools",
-            "visible": _INTERFACE_PANEL_AS_SIDEBAR,
-            "tool_search": tool_search,
-            "panels": panels,
-            # Legacy single-tool mirrors (= first panel) for older readers/tests.
-            "tool_id": first.get("tool_id", ""),
-            "tool_label": first.get("tool_label", ""),
-            "panel_payload": first.get("panel_payload", {}),
-        },
-        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-        surface_id=WORKBENCH_UI_TOOL_SURFACE_ID,
-    )
 
 
 def run_portal_workbench_ui(

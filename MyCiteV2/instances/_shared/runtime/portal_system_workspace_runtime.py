@@ -11,7 +11,6 @@ from MyCiteV2.instances._shared.runtime.portal_workbench import (
 )
 from MyCiteV2.instances._shared.runtime.runtime_platform import (
     PORTAL_REGION_FAMILY_DIRECTIVE_PANEL,
-    PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
     SYSTEM_ROOT_SURFACE_SCHEMA,
     SYSTEM_WORKSPACE_PROFILE_BASICS_ACTION_REQUEST_SCHEMA,
     attach_region_family_contract,
@@ -37,7 +36,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     FOCUS_LEVEL_DATUM,
     FOCUS_LEVEL_FILE,
     FOCUS_LEVEL_OBJECT,
-    PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
     SYSTEM_ACTIVITY_FILE_KEY,
     SYSTEM_ANCHOR_FILE_KEY,
     SYSTEM_PROFILE_BASICS_FILE_KEY,
@@ -1558,9 +1556,6 @@ def build_system_workspace_bundle(
         if _is_system_anchor_document(active_document):
             document_payload["presentation"] = "anthology_layered_table"
             document_payload["summary"] = "Canonical system anchor file rendered as a layered datum table."
-            document_payload["interface_panel_hint"] = (
-                "Select a datum row to view its structural coordinates, bindings, and raw payload."
-            )
             document_payload["layer_groups"] = _anthology_layer_groups(
                 active_document,
                 selected_datum_id=selected_datum_id,
@@ -1644,44 +1639,8 @@ def build_system_workspace_bundle(
         actions=actions,
         workbench_state=system_workbench_state,
     )
-    interface_panel = attach_region_family_contract(
-        {
-        "schema": PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA,
-        "kind": "mediation_panel" if shell_state.verb == VERB_MEDIATE else "summary_panel",
-        "title": "Mediation" if shell_state.verb == VERB_MEDIATE else "Interface Panel",
-        "summary": "Mediation is bound to the current focus subject." if shell_state.verb == VERB_MEDIATE else "The interface panel stays collapsed during ordinary navigation.",
-        # The interface_panel is the TOOL SURFACE now (built by the workbench-ui bundle).
-        # This system-action/mediation path is not a tool surface, so it stays hidden —
-        # the next shell GET rebuilds the tool surface via build_portal_workbench_ui_bundle.
-        "visible": False,
-        "subject": dict(shell_state.mediation_subject or shell_state.focus_subject or {}),
-        "sections": [
-            {
-                "title": "Current focus",
-                "rows": [
-                    {"label": "verb", "value": shell_state.verb},
-                    {"label": "focus level", "value": focus_level},
-                    {"label": "focus subject", "value": as_text((shell_state.focus_subject or {}).get("id")) or portal_scope.scope_id},
-                ],
-            },
-            {
-                "title": "Compatible tool surfaces",
-                "rows": [
-                    {
-                        "label": row["label"],
-                        "value": "operational" if row["operational"] else "visible, non-operational",
-                        "detail": ", ".join(list(row.get("missing_integrations") or []) + list(row.get("missing_capabilities") or [])) or row["summary"],
-                    }
-                    for row in tool_rows
-                ],
-            },
-        ],
-        },
-        family=PORTAL_REGION_FAMILY_PRESENTATION_SURFACE,
-        surface_id=SYSTEM_ROOT_SURFACE_ID,
-    )
-    if directive_context is not None:
-        interface_panel["sections"].append(_directive_context_section(directive_context))
+    # portal-tool-overlay-restructure: the system-action/mediation path no longer builds an
+    # interface_panel region (the region was removed; tools render in the menubar-search overlay).
     workbench = build_datum_file_workbench(
         portal_scope=portal_scope,
         shell_state=shell_state,
@@ -1706,7 +1665,6 @@ def build_system_workspace_bundle(
         "surface_payload": surface_payload,
         "control_panel": control_panel,
         "workbench": workbench,
-        "interface_panel": interface_panel,
         "active_document": active_document,
         "selected_datum": selected_datum,
         "selected_object": selected_object,
