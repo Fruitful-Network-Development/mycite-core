@@ -98,6 +98,7 @@ class AgronomicsViewer:
             "title": "Agronomics",
             "sandbox_id": sandbox_id or "agro_erp",
             "active_tab": _as_text((extra_query or {}).get("agronomics_tab")) or "farm",
+            "tab_query_param": "agronomics_tab",
             "tabs": [
                 {"id": "farm", "label": "FARM", "panel_payload": farm_composite},
                 {"id": "plan", "label": "PLAN", "panel_payload": None},

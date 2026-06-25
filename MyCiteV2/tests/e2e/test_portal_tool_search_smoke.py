@@ -147,9 +147,12 @@ def test_tool_search_dropdown_and_mount(portal_server: str, page) -> None:
     # Items render as <li.portal-tool-palette__item data-tool-id=...>; the click
     # handler is bound on the <li> itself. Assert on DOM attachment (not CSS
     # visibility) and tolerate the data-dependent empty case.
+    # The menubar search dropdown reveals on focus (an empty input keeps it hidden by
+    # design), so focus it before locating/clicking the eligible-tool items.
+    page.locator("[data-menubar-tool-search-mount] [data-palette-input]").click()
     items = page.locator("[data-menubar-tool-search-mount] .portal-tool-palette__item")
     try:
-        items.first.wait_for(state="attached", timeout=8000)
+        items.first.wait_for(state="visible", timeout=8000)
         item_count = items.count()
     except PlaywrightTimeoutError:
         item_count = 0

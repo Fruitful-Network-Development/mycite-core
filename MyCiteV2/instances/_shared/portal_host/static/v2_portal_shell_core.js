@@ -17,6 +17,7 @@
   var TOOL_STATE_SESSION_PREFIX = "mycite_v2_tool_state__";
   // portal-tool-overlay-restructure: state for the menubar-search → full-screen tool overlay.
   var _overlayState = { toolId: "", label: "", ctx: null, params: {} };
+  var _overlayReqSeq = 0;
 
   function qs(sel, root) {
     return (root || document).querySelector(sel);
@@ -521,6 +522,9 @@
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
     if (document.body) document.body.classList.add("is-modal-open");
+    // Push a history entry so browser Back closes the overlay (popstate handler in
+    // bindToolOverlay) instead of navigating off the portal surface entirely.
+    try { window.history.pushState({ myciteToolOverlay: toolId }, "", window.location.href); } catch (e) {}
     refetchOverlayPanels({});
     var closeBtn = overlay.querySelector("[data-tool-overlay-close]");
     if (closeBtn) closeBtn.focus();
@@ -539,6 +543,9 @@
     if (extra) {
       Object.keys(extra).forEach(function (k) { _overlayState.params[k] = extra[k]; });
     }
+    // Sequence guard: a newer open/refetch supersedes an in-flight one, so a slow
+    // response for tool A can't paint into the overlay after tool B was opened.
+    var seq = ++_overlayReqSeq;
     fetchToolPanels({
       tool: _overlayState.toolId,
       sandbox: asText(ctx.sandboxId) || "agro_erp",
@@ -546,20 +553,34 @@
       document: asText(ctx.documentId),
       datum: asText(ctx.datumAddress),
       extra: _overlayState.params,
-    }).then(function (panels) { paintToolPanels(panels, contentNode); });
+    }).then(function (panels) {
+      if (seq !== _overlayReqSeq) return;
+      paintToolPanels(panels, contentNode);
+    });
   }
 
-  function closeToolOverlay() {
+  // Record a sub-tool/tab param into the overlay's running param set WITHOUT refetching
+  // (the agronomics tab switch is client-side, but a later refetch must preserve it so
+  // the tool re-opens on the chosen tab instead of snapping back to the first one).
+  function recordOverlayParam(key, value) {
+    if (!key) return;
+    _overlayState.params[asText(key)] = value;
+  }
+
+  function closeToolOverlay(restoreFocus) {
     var overlay = qs("#portalToolOverlay");
-    if (!overlay) return;
+    if (!overlay || overlay.hidden) return;  // already closed — safe to call on every render
     overlay.hidden = true;
     overlay.setAttribute("aria-hidden", "true");
     if (document.body) document.body.classList.remove("is-modal-open");
     var contentNode = overlay.querySelector("[data-tool-overlay-content]");
     if (contentNode) contentNode.innerHTML = "";
     _overlayState.params = {};
-    var input = document.querySelector("[data-menubar-tool-search-mount] [data-palette-input]");
-    if (input) input.focus();
+    _overlayReqSeq++;  // invalidate any in-flight refetch
+    if (restoreFocus) {
+      var input = document.querySelector("[data-menubar-tool-search-mount] [data-palette-input]");
+      if (input) input.focus();
+    }
   }
 
   function bindToolOverlay() {
@@ -567,11 +588,16 @@
       var t = ev.target;
       if (!t || !t.closest) return;
       if (t.closest("[data-tool-overlay-close]") || t.closest("[data-tool-overlay-dismiss]")) {
-        closeToolOverlay();
+        closeToolOverlay(true);
       }
     });
     document.addEventListener("keydown", function (ev) {
-      if ((ev.key === "Escape" || ev.key === "Esc") && isToolOverlayOpen()) closeToolOverlay();
+      if ((ev.key === "Escape" || ev.key === "Esc") && isToolOverlayOpen()) closeToolOverlay(true);
+    });
+    // Browser Back (history pop) dismisses the open overlay rather than leaving the stale
+    // tool blurring an unrelated surface or navigating the user off the portal.
+    window.addEventListener("popstate", function () {
+      if (isToolOverlayOpen()) closeToolOverlay();
     });
   }
 
@@ -598,6 +624,9 @@
     if (envelope.error && envelope.error.message) {
       console.warn("Portal runtime warning:", envelope.error.message);
     }
+    // A shell (re)render means the user navigated — dismiss any open tool overlay so it
+    // does not blur/cover the new surface (no-op when already closed; no focus-steal).
+    closeToolOverlay();
     var surfaceId = asText(envelope.surface_id);
     if (surfaceId !== _lastRenderedSurfaceId) {
       _lastRegionRenderKeys = {};
@@ -796,6 +825,9 @@
       next.surface_query[key] = value;
       loadShell(next).catch(function () {});
     },
+    // Let a client-side tab/sub-tool renderer (e.g. the agronomics tabbed container)
+    // record its selection into the overlay param set so a later refetch preserves it.
+    recordOverlayParam: function (key, value) { recordOverlayParam(key, value); },
   };
   if (typeof window.__MYCITE_V2_REGISTER_SHELL_MODULE === "function") {
     window.__MYCITE_V2_REGISTER_SHELL_MODULE("shell_core");

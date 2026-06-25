@@ -5408,7 +5408,14 @@
           b.classList.toggle("is-active", on);
           b.setAttribute("aria-selected", on ? "true" : "false");
         });
-        paintTab(btn.getAttribute("data-tab-id"));
+        var tabId = btn.getAttribute("data-tab-id");
+        paintTab(tabId);
+        // Persist the chosen tab into the overlay param set so a later sub-tool refetch
+        // (e.g. the SAMRAS structure selector) re-opens on this tab instead of resetting.
+        if (payload.tab_query_param && window.PortalShellCore &&
+            typeof window.PortalShellCore.recordOverlayParam === "function") {
+          window.PortalShellCore.recordOverlayParam(payload.tab_query_param, tabId);
+        }
       });
     }
     paintTab(active);
