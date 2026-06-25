@@ -4148,10 +4148,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     #   - the derived onboarding sequence still has a next_step
     #   - cooldown: no two reminders inside 24h
     #
-    # The same gates are enforced in
-    # ``utilities_extensions.email._send_reminder_action_for_profile`` so
-    # the button is hidden / disabled in the UI; this route re-checks
-    # server-side so a hand-rolled request cannot bypass the cooldown.
+    # The operator-facing reminder button was removed when the FND-CSM
+    # surface was dissolved; this route still re-checks the gates
+    # server-side (via ``utilities_extensions.email._onboarding_progress``
+    # + ``_reminder_cooldown_remaining``) so a hand-rolled request cannot
+    # bypass the cooldown.
 
     @app.post("/__fnd/email/admin/send-reminder")
     def fnd_email_admin_send_reminder() -> tuple[Any, int]:
