@@ -8586,12 +8586,29 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-ide__table {
   font-size: 12px;
 }
-.v2-ide__table th.v2-ide__col {
-  background: rgba(32, 56, 77, 0.04);
-  color: rgba(32, 56, 77, 0.75);
-  font-weight: 600;
-  text-align: left;
-  white-space: nowrap;
+/* Color-key box (replaces the per-column label row). Each chip's swatch matches the
+   role-shaded cells below, so a value group's columns are read by colour, not header text. */
+.v2-ide__keybox {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+}
+.v2-ide__keyChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  color: var(--ink2, #888);
+  text-transform: uppercase;
+}
+.v2-ide__keySwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid var(--line, #afafaa);
 }
 .v2-ide__cell {
   font-variant-numeric: tabular-nums;
@@ -8600,17 +8617,41 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.v2-ide__col--address,
-.v2-ide__cell--address {
+/* Role-shaded cells: datum address = medium theme accent; reference = darker grey;
+   magnitude = lighter grey. Theme tokens keep it correct across paper/forest/ocean/midnight. */
+.v2-ide__cell--address,
+.v2-ide__cell--record_key {
+  background: color-mix(in srgb, var(--accent, #1e6c93) 20%, var(--paper, #f0eedc));
   font-weight: 600;
-  color: var(--ide-layer);
-  white-space: nowrap;
 }
-.v2-ide__cell--reference {
-  color: #2e74b5;
+.v2-ide__cell--reference,
+.v2-ide__cell--references {
+  background: color-mix(in srgb, var(--coal, #2f2f2f) 16%, var(--paper, #f0eedc));
 }
-.v2-ide__cell--magnitude {
+.v2-ide__cell--magnitude,
+.v2-ide__cell--value {
+  background: color-mix(in srgb, var(--coal, #2f2f2f) 7%, var(--paper, #f0eedc));
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.v2-ide__cell--relation {
+  background: transparent;
+  color: var(--ink2, #888);
+  text-align: center;
+}
+.v2-ide__keyChip--address .v2-ide__keySwatch,
+.v2-ide__keyChip--record_key .v2-ide__keySwatch {
+  background: color-mix(in srgb, var(--accent, #1e6c93) 20%, var(--paper, #f0eedc));
+}
+.v2-ide__keyChip--reference .v2-ide__keySwatch,
+.v2-ide__keyChip--references .v2-ide__keySwatch {
+  background: color-mix(in srgb, var(--coal, #2f2f2f) 16%, var(--paper, #f0eedc));
+}
+.v2-ide__keyChip--magnitude .v2-ide__keySwatch,
+.v2-ide__keyChip--value .v2-ide__keySwatch {
+  background: color-mix(in srgb, var(--coal, #2f2f2f) 7%, var(--paper, #f0eedc));
+}
+.v2-ide__keyChip--relation .v2-ide__keySwatch {
+  background: transparent;
 }
 .v2-ide__row.is-selected {
   background: rgba(46, 116, 181, 0.08);

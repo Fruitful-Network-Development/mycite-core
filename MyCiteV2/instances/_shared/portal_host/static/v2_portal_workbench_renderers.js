@@ -3547,22 +3547,47 @@
     return '<tr class="v2-ide__row' + (cell.selected ? " is-selected" : "") +
       '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds + "</tr>";
   }
+  // The repeated "Datum / Ref n / Mag n" column-label row is replaced by a compact color-key
+  // box. Each value group's grid is self-contained (its own column_template), so cells are read
+  // by ROLE-COLOR — datum address = medium theme accent, reference = darker grey, magnitude =
+  // lighter grey — and the legend names those colors once per group instead of per column.
+  var _IDE_ROLE_KEY = {
+    address: "datum",
+    record_key: "field",
+    relation: "↳",
+    reference: "ref",
+    references: "refs",
+    magnitude: "mag",
+    value: "val",
+  };
+  function _ideKeyBox(columns) {
+    var seen = {};
+    var chips = [];
+    columns.forEach(function (col) {
+      var role = (col && col.role) || "";
+      if (!role || seen[role]) return;
+      seen[role] = true;
+      chips.push(
+        '<span class="v2-ide__keyChip v2-ide__keyChip--' + escapeHtml(role) +
+        '"><span class="v2-ide__keySwatch"></span>' +
+        escapeHtml(_IDE_ROLE_KEY[role] || role) + "</span>"
+      );
+    });
+    return '<div class="v2-ide__keybox" aria-label="column colour key">' + chips.join("") + "</div>";
+  }
   function renderDatumIdeValueGroup(group, lens) {
     var columns = asList(group.column_template);
     if (!columns.length) columns = [{ role: "address" }];
     var cells = asList(group.cells);
-    var headCells = columns.map(function (col) {
-      return '<th class="v2-ide__col v2-ide__col--' + escapeHtml(col.role) + '">' +
-        escapeHtml(_ideColumnLabel(col)) + "</th>";
-    }).join("");
     var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns, lens); }).join("");
     return '<section class="v2-ide__valueGroup" data-value-group-id="' +
       escapeHtml(String(asObject(group).value_group)) + '">' +
       '<header class="v2-ide__vgHeader"><h5>' +
       escapeHtml(asText(group.title) || ("Value Group " + asObject(group).value_group)) +
-      "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small></header>" +
-      '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><thead><tr>' + headCells +
-      "</tr></thead><tbody>" + bodyRows + "</tbody></table></div></section>";
+      "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small>" +
+      _ideKeyBox(columns) + "</header>" +
+      '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><tbody>' + bodyRows +
+      "</tbody></table></div></section>";
   }
   function renderDatumIdeGrid(datumGrid) {
     var layers = asList(datumGrid.layers);
