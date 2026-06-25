@@ -133,48 +133,8 @@
         </section>
       </main>
 
-      <button type="button" class="ide-splitter ide-splitter--interface-panel" data-splitter="interface-panel" aria-label="Resize interface panel"></button>
-
-      <aside
-        id="portalInterfacePanel"
-        class="ide-interfacePanel is-collapsed"
-        data-shell-region="interface-panel"
-        data-primary-surface="false"
-        data-surface-layout="sidebar"
-        aria-label="Interface panel"
-        aria-hidden="true"
-      >
-        <header class="ide-interfacePanel__header">
-          <div>
-            <div class="ide-interfacePanel__kicker">Interface Panel</div>
-            <div id="portalInterfacePanelTitle" class="ide-interfacePanel__title">Overview</div>
-          </div>
-          <button type="button" class="ide-interfacePanel__close" data-interface-panel-close>Close Panel</button>
-        </header>
-        <section
-          id="portalInterfacePanelContent"
-          class="ide-interfacePanel__content"
-          data-interface-panel-scroll-root="true"
-          data-interface-panel-active-root="system"
-        >
-          <div id="v2-interface-panel-dynamic">
-            <section class="v2-card">
-              <h3>Interface Panel</h3>
-              <p>Select an item to load interface panel content.</p>
-            </section>
-          </div>
-          <div
-            id="portalInterfacePanelTransientMount"
-            class="ide-interfacePanel__transient"
-            data-interface-panel-root="transient"
-            hidden
-            aria-hidden="true"
-          ></div>
-        </section>
-      </aside>
-
-      <!-- The separate visualization panel was retired (TASK-interface-panel-migration);
-           tools now render inside the interface panel above (search + visualization). -->
+      <!-- portal-tool-overlay-restructure: the interface-panel sidebar + its splitter were
+           removed; tools render in #portalToolOverlay (below), opened from the menubar search. -->
     </div>
 
     <!-- portal-tool-overlay-restructure: full-screen tool overlay. Selecting a tool from the

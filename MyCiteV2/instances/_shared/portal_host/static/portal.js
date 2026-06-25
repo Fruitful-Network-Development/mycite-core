@@ -177,7 +177,7 @@
     const interfacePanel = qs("#portalInterfacePanel");
     const workbench = qs(".ide-workbench");
     const ideBody = qs(".ide-body");
-    if (!shell || !controlPanel || !interfacePanel || !workbench) return null;
+    if (!shell || !controlPanel || !workbench) return null;
     const shellDriverV2 = document.body && document.body.getAttribute("data-portal-shell-driver") === "v2-composition";
 
     function clamp(value, min, max) {
@@ -276,11 +276,9 @@
     }
 
     function interfacePanelIsOpen() {
-      const aliasState = shell.getAttribute("data-interface-panel-collapsed");
-      if (aliasState === "true" || aliasState === "false") {
-        return aliasState !== "true";
-      }
-      return shell.getAttribute("data-interface-panel-collapsed") !== "true";
+      // The interface-panel sidebar was removed (portal-tool-overlay-restructure); it never
+      // occupies layout space. Tools render in the menubar-search overlay instead.
+      return false;
     }
 
     function applyControlPanelWidth(value) {
@@ -311,15 +309,18 @@
     }
 
     function applyInterfacePanelVisibility(isOpen) {
+      // The interface-panel sidebar DOM was removed; keep the shell flag for any readers but
+      // skip the (absent) panel element.
       shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
-      shell.setAttribute("data-interface-panel-collapsed", isOpen ? "false" : "true");
+      if (!interfacePanel) return;
       interfacePanel.classList.toggle("is-collapsed", !isOpen);
       interfacePanel.setAttribute("aria-hidden", isOpen ? "false" : "true");
       interfacePanel.style.display = isOpen ? "" : "none";
     }
 
     function canHideWorkbench() {
-      return interfacePanelIsOpen();
+      // No interface panel to swap to — the workbench is always the visible primary surface.
+      return false;
     }
 
     function canHideInterfacePanel() {
@@ -563,10 +564,10 @@
         workbench.setAttribute("data-foreground-visible", workbenchIsOpen() ? "true" : "false");
       }
       workbench.setAttribute("aria-hidden", workbenchIsOpen() ? "false" : "true");
-      if (!interfacePanel.getAttribute("data-primary-surface")) {
+      if (interfacePanel && !interfacePanel.getAttribute("data-primary-surface")) {
         interfacePanel.setAttribute("data-primary-surface", "false");
       }
-      if (!interfacePanel.getAttribute("data-surface-layout")) {
+      if (interfacePanel && !interfacePanel.getAttribute("data-surface-layout")) {
         interfacePanel.setAttribute("data-surface-layout", "sidebar");
       }
       document.dispatchEvent(new CustomEvent("mycite:shell:composition-changed", { detail: { composition } }));

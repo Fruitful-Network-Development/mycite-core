@@ -383,83 +383,18 @@
         "render"
       );
     }
-    // TASK-interface-panel-migration: the interface_panel is REVIVED as the tool surface
-    // (search + tool render), rendered by renderInterfacePanel below.
+    // portal-tool-overlay-restructure: tools render in the menubar-search → full-screen
+    // overlay (mountMenubarToolSearch); the interface-panel sidebar was removed.
     chromeRenderers.renderActivityBar(buildRendererContext(composition.regions.activity_bar, qs("#v2-activity-nav")));
     chromeRenderers.renderControlPanel(buildRendererContext(composition.regions.control_panel, qs("#portalControlPanel")));
     mountControlPanelControls(composition.regions.control_panel);
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
-    renderInterfacePanel(composition);
     mountMenubarToolSearch();
-  }
-
-  function renderInterfacePanel(composition) {
-    // TASK-interface-panel-migration: the interface_panel is the unified TOOL SURFACE —
-    // a tool SEARCH bar at the top + the selected tools' visualizations below, in one
-    // right-side panel. It is visible on workbench surfaces so search is reachable before
-    // a tool is picked. (The old separate visualization_panel region is gone.)
-    var region = (composition && composition.regions && composition.regions.interface_panel) || {};
-    var aside = qs("#portalInterfacePanel");
-    var splitter = document.querySelector(".ide-splitter--interface-panel");
-    var title = qs("#portalInterfacePanelTitle");
-    var content = qs("#portalInterfacePanelContent");
-    if (!aside || !content) return;
-    var visible = region.visible !== false && !!region.tool_search;
-    if (!visible) {
-      aside.setAttribute("hidden", "hidden");
-      aside.setAttribute("aria-hidden", "true");
-      aside.classList.add("is-collapsed");
-      if (splitter) splitter.setAttribute("hidden", "hidden");
-      content.innerHTML = "";
-      return;
-    }
-    aside.removeAttribute("hidden");
-    aside.setAttribute("aria-hidden", "false");
-    aside.classList.remove("is-collapsed");
-    if (splitter) splitter.removeAttribute("hidden");
-
-    var panels = Array.isArray(region.panels) ? region.panels : [];
-    if (!panels.length && region.tool_id) {
-      panels = [{ tool_id: region.tool_id, tool_label: region.tool_label, panel_payload: region.panel_payload }];
-    }
-    if (title) {
-      title.textContent = panels.length === 1 ? (panels[0].tool_label || panels[0].tool_id) : "Tools";
-    }
-    // Search bar (always present) + one removable box per selected tool.
-    var boxesHtml = panels
-      .map(function (p) {
-        return (
-          '<article class="ide-vizBox" data-viz-box="' + escapeHtml(p.tool_id) + '">' +
-          '<header class="ide-vizBox__header"><span class="ide-vizBox__title">' +
-          escapeHtml(p.tool_label || p.tool_id) + "</span>" +
-          '<button type="button" class="ide-vizBox__close" data-viz-box-close data-tool-id="' +
-          escapeHtml(p.tool_id) + '" aria-label="Remove ' + escapeHtml(p.tool_label || p.tool_id) +
-          '">×</button></header>' +
-          '<div class="ide-vizBox__content" data-viz-box-content></div>' +
-          "</article>"
-        );
-      })
-      .join("");
-    content.innerHTML =
-      '<nav class="ide-interfacePanel__toolSearch portal-tool-palette" aria-label="Tool search" data-ip-tool-search-mount></nav>' +
-      '<div class="ide-interfacePanel__tools" data-ip-tools>' +
-      (boxesHtml || '<p class="ide-interfacePanel__empty">Search for a tool above to open it here.</p>') +
-      "</div>";
-
-    mountInterfacePanelSearch(region.tool_search || {});
-
-    var boxes = content.querySelectorAll("[data-viz-box]");
-    panels.forEach(function (p, i) {
-      var box = boxes[i];
-      var body = box && box.querySelector("[data-viz-box-content]");
-      if (body) renderToolPanelBody(p, body);
-    });
   }
 
   // Dispatch one {tool_id, tool_label, panel_payload} panel into `bodyNode`: the tool_id-keyed
   // renderer wins, else the declarative container renderer keyed by panel_payload.container
-  // (the consolidation-spine path). Shared by the (now-dormant) interface-panel sidebar and
-  // the tool overlay so both render byte-identical bodies.
+  // (the consolidation-spine path). Used by the tool overlay (paintToolPanels).
   function renderToolPanelBody(panel, bodyNode) {
     if (!bodyNode) return;
     var p = panel || {};
@@ -482,50 +417,6 @@
         '<p class="ide-visualizationPanel__empty">No client renderer registered for tool <code>' +
         escapeHtml(p.tool_id) + "</code>.</p>";
     }
-  }
-
-  // Mount the document-context tool search palette into the interface panel (the tool
-  // surface). Selecting a tool appends it to surface_query.tools and reloads, so it
-  // renders as a box below the search bar in this same panel.
-  function mountInterfacePanelSearch(search) {
-    var mount = qs("[data-ip-tool-search-mount]");
-    if (!mount) return;
-    var ctx = {
-      tenantId: search.tenant_id || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
-      sandboxId: search.sandbox_id || "",
-      documentId: search.document_id || "",
-      datumAddress: search.datum_address || "",
-      onDispatch: function (item) { appendToolToShell(item, mount); },
-    };
-    function doMount() {
-      if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return false;
-      window.PortalToolPalette.mount(mount, ctx);
-      var input = mount.querySelector("[data-palette-input]");
-      var list = mount.querySelector("[data-palette-list]");
-      if (input && list) {
-        input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
-        input.addEventListener("blur", function () {
-          setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
-        });
-      }
-      return true;
-    }
-    if (doMount()) return;
-    // tool_palette is startup-critical but the sequential module loader can bring it
-    // up AFTER shell_core has already fired the bootstrap render — so on a fresh page
-    // load PortalToolPalette may not exist yet the first time this runs, which left the
-    // Tools panel permanently empty until some other interaction forced a re-render.
-    // Mount as soon as the module registers (one-shot; later renders mount above).
-    if (mount.__awaitingPalette) return;
-    mount.__awaitingPalette = true;
-    var onModuleReady = function (ev) {
-      if (ev && ev.detail && ev.detail.module_id && ev.detail.module_id !== "tool_palette") return;
-      if (doMount()) {
-        mount.__awaitingPalette = false;
-        window.removeEventListener("mycite:shell-module-ready", onModuleReady);
-      }
-    };
-    window.addEventListener("mycite:shell-module-ready", onModuleReady);
   }
 
   // ===== portal-tool-overlay-restructure: menubar search → full-screen tool overlay =====
