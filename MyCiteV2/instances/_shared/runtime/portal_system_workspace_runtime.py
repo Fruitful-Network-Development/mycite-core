@@ -265,11 +265,6 @@ def _directive_context_adapter(
     return SqliteDirectiveContextAdapter(authority_path)
 
 
-def _directive_state_summary(value: dict[str, Any]) -> str:
-    bits = [f"{as_text(key)}={as_text(item)}" for key, item in value.items() if as_text(key) and as_text(item)]
-    return ", ".join(bits[:4])
-
-
 def _workspace_directive_context(
     *,
     portal_scope: PortalScope,
@@ -347,36 +342,6 @@ def _workspace_directive_context(
         "warnings": warnings,
         "overlay": overlay,
     }
-
-
-def _directive_context_section(directive_context: dict[str, Any]) -> dict[str, Any]:
-    overlay = directive_context.get("overlay") if isinstance(directive_context.get("overlay"), dict) else None
-    rows = [
-        {"label": "subject level", "value": as_text(directive_context.get("subject_level")) or "document"},
-        {"label": "overlay", "value": "loaded" if overlay is not None else "missing"},
-        {"label": "version hash", "value": as_text(directive_context.get("subject_version_hash")) or "—"},
-        {"label": "hyphae hash", "value": as_text(directive_context.get("subject_hyphae_hash")) or "—"},
-    ]
-    if overlay is not None:
-        rows.append(
-            {
-                "label": "NIMM",
-                "value": _directive_state_summary(dict(overlay.get("nimm_state") or {})) or "configured",
-            }
-        )
-        rows.append(
-            {
-                "label": "AITAS",
-                "value": _directive_state_summary(dict(overlay.get("aitas_state") or {})) or "configured",
-            }
-        )
-        rows.append(
-            {
-                "label": "provenance",
-                "value": _directive_state_summary(dict(overlay.get("provenance") or {})) or as_text(overlay.get("context_id")),
-            }
-        )
-    return {"title": "Directive context", "rows": rows}
 
 
 def _document_label(document: Any) -> str:

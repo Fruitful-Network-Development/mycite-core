@@ -217,34 +217,6 @@
       return routeKeyFromValue(opts.routeKey);
     }
 
-    function toolPanelLockIsEnabled() {
-      return shell.getAttribute("data-tool-panel-lock") === "true";
-    }
-
-    function setToolPanelLock(enabled, options) {
-      const opts = options || {};
-      const next = currentShellComposition() === "tool" && enabled === true;
-      shell.setAttribute("data-tool-panel-lock", next ? "true" : "false");
-      if (next) {
-        shell.setAttribute("data-tool-panel-lock-route", currentRouteKey(opts));
-      } else {
-        shell.removeAttribute("data-tool-panel-lock-route");
-      }
-      shell.classList.toggle("ide-shell--tool-panel-lock", next);
-    }
-
-    function syncToolPanelLockScope(options) {
-      if (!toolPanelLockIsEnabled()) return;
-      if (currentShellComposition() !== "tool") {
-        setToolPanelLock(false);
-        return;
-      }
-      const lockRoute = shell.getAttribute("data-tool-panel-lock-route") || "";
-      if (lockRoute && lockRoute !== currentRouteKey(options)) {
-        setToolPanelLock(false);
-      }
-    }
-
     function currentLayoutPolicy() {
       if (hasSystemWorkbench()) {
         return {
@@ -286,11 +258,6 @@
       workbench.style.display = isOpen ? "" : "none";
     }
 
-    function canHideWorkbench() {
-      // No interface panel to swap to — the workbench is always the visible primary surface.
-      return false;
-    }
-
     function rebalanceWorkbench() {
       if (!ideBody || window.matchMedia("(max-width: 960px)").matches) return;
       const composition = currentShellComposition();
@@ -328,7 +295,6 @@
     }
 
     function syncShellToggleButtons(options) {
-      syncToolPanelLockScope(options);
       qsa("[data-shell-toggle]", shell).forEach(button => {
         const target = button.getAttribute("data-shell-toggle") || "";
         const baseTitle = button.getAttribute("data-shell-title") || button.getAttribute("aria-label") || "";
@@ -374,6 +340,8 @@
       return true;
     }
 
+    // Pinned by test_client_boot_prefers_server_shell_posture_on_first_v2_hydration as the
+    // first-v2-hydration marker (currently inert, but the wiring is a contract).
     let firstV2ShellCompositionApplied = false;
 
     function applyShellPostureFromDom(options) {
@@ -384,11 +352,6 @@
       applyControlPanelVisibility(controlPanelOpen);
       // The workbench is always visible (the interface-panel sidebar was removed).
       applyWorkbenchVisibility(true);
-      if (currentShellComposition() !== "tool") {
-        setToolPanelLock(false);
-      } else if (!shell.getAttribute("data-tool-panel-lock")) {
-        setToolPanelLock(false, { routeKey: routeKey });
-      }
       syncShellToggleButtons({ routeKey: routeKey });
       rebalanceWorkbench();
       if (fromShellComposition) {
@@ -400,11 +363,6 @@
       const routeKey = currentRouteKey(options);
       const composition = String(mode || "").trim().toLowerCase() === "tool" ? "tool" : "system";
       shell.setAttribute("data-shell-composition", composition);
-      if (composition !== "tool") {
-        setToolPanelLock(false);
-      } else {
-        syncToolPanelLockScope({ routeKey: routeKey });
-      }
       if (!shell.getAttribute("data-foreground-shell-region")) {
         shell.setAttribute("data-foreground-shell-region", "center-workbench");
       }

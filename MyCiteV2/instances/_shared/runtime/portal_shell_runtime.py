@@ -1991,18 +1991,9 @@ def run_system_profile_basics_action(
         except Exception:
             _log.warning("system_profile_basics_audit_append_failed", exc_info=True)
             pass
-    integration_flags = _integration_flags(
-        data_dir=data_dir,
-        webapps_root=None,
-    )
-    tool_rows = _tool_posture_rows(
-        portal_scope=portal_scope,
-        tool_exposure_policy=None,
-        integration_flags=integration_flags,
-        portal_instance_id=portal_scope.scope_id,
-        authority_db_file=authority_db_file,
-        authority_mode=authority_mode,
-    )
+    # The system-workspace bundle no longer consumes tool_rows (the interface panel that
+    # rendered them was removed), so the tool-posture + integration-flag computation (each an
+    # authority-DB read) is skipped on this profile-save write path.
     workspace_bundle = build_system_workspace_bundle(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
@@ -2010,7 +2001,7 @@ def run_system_profile_basics_action(
         data_dir=data_dir,
         public_dir=public_dir,
         audit_storage_file=audit_storage_file,
-        tool_rows=tool_rows,
+        tool_rows=[],
         profile_save_status="saved" if outcome is not None else "",
         authority_db_file=authority_db_file,
         authority_mode=authority_mode,
