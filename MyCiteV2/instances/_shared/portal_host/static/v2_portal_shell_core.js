@@ -390,7 +390,7 @@
     mountControlPanelControls(composition.regions.control_panel);
     workbenchRenderer.render(buildRendererContext(composition.regions.workbench, qs("#v2-workbench-body")));
     renderInterfacePanel(composition);
-    mountMenubarToolSearch(composition);
+    mountMenubarToolSearch();
   }
 
   function renderInterfacePanel(composition) {
@@ -534,33 +534,26 @@
   // (openToolOverlay) instead of appending it to the interface-panel sidebar. Mounts once; its
   // ctx (sandbox/document) is refreshed in place on each render. sandboxId defaults to
   // "agro_erp" so the three live tools list on first load before a doc/sandbox is selected.
-  function mountMenubarToolSearch(composition) {
+  function mountMenubarToolSearch() {
     var mount = qs("[data-menubar-tool-search-mount]");
     if (!mount) return;
-    var region = (composition && composition.regions && composition.regions.interface_panel) || {};
-    var search = region.tool_search || {};
+    // The portal's live tools (agronomics + the two viewers it consolidates) all live in the
+    // agro_erp sandbox and self-resolve their own docs there, so the search + overlay are
+    // PINNED to it — the tools are discoverable from ANY surface (the default /portal/system is
+    // the `system` sandbox, where they would NOT be eligible, leaving the dropdown empty). This
+    // also keeps the menubar search independent of the (legacy) interface_panel region.
     var ctx = mount.__menubarCtx;
     if (!ctx) {
       ctx = {
-        tenantId: asText(search.tenant_id) || ((BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd"),
-        sandboxId: asText(search.sandbox_id) || "agro_erp",
-        documentId: asText(search.document_id),
-        datumAddress: asText(search.datum_address),
+        tenantId: (BODY_DATA && BODY_DATA.getAttribute("data-portal-instance-id")) || "fnd",
+        sandboxId: "agro_erp",
+        documentId: "",
+        datumAddress: "",
         onDispatch: function (item) { openToolOverlay(item, ctx); },
       };
       mount.__menubarCtx = ctx;
-    } else {
-      ctx.tenantId = asText(search.tenant_id) || ctx.tenantId;
-      ctx.sandboxId = asText(search.sandbox_id) || ctx.sandboxId || "agro_erp";
-      ctx.documentId = asText(search.document_id);
-      ctx.datumAddress = asText(search.datum_address);
     }
-    if (mount.__menubarSearchMounted) {
-      if (window.PortalToolPalette && typeof window.PortalToolPalette.refresh === "function") {
-        window.PortalToolPalette.refresh(mount, ctx);
-      }
-      return;
-    }
+    if (mount.__menubarSearchMounted) return;  // ctx is static; mount once
     function doMount() {
       if (!window.PortalToolPalette || typeof window.PortalToolPalette.mount !== "function") return false;
       window.PortalToolPalette.mount(mount, ctx);
