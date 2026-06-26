@@ -5746,6 +5746,7 @@
 
     content.innerHTML =
       '<section class="v2-farm">' +
+      _profileCardHtml(payload.profile) +
       '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
       " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
       '<div class="v2-farm__map">' + svg + "</div>" +
@@ -5785,9 +5786,30 @@
       "</section>";
   }
 
+  // Profile-card base renderer — the standardized profile (visual + title + SAMRAS chip). Shared by
+  // the profile_card tool/container AND composed at the top of farm_profile (which builds on it).
+  function _profileCardHtml(profile) {
+    profile = profile || {};
+    var title = esc(profile.title || "—");
+    var samras = esc(profile.samras_node || "");
+    var visual = profile.has_visual && profile.visual_url
+      ? '<div class="v2-profileCard__visual"><img src="' + esc(profile.visual_url) + '" alt="" onerror="this.style.display=\'none\'" /></div>'
+      : '<div class="v2-profileCard__visual v2-profileCard__visual--placeholder">' + esc((profile.title || "?").slice(0, 1).toUpperCase()) + "</div>";
+    return '<div class="v2-profileCard">' + visual +
+      '<div class="v2-profileCard__body"><div class="v2-profileCard__title">' + title + "</div>" +
+      (samras ? '<div class="v2-profileCard__samras"><span class="v2-profileCard__chip">SAMRAS</span> ' + samras + "</div>" : "") +
+      "</div></div>";
+  }
+  function renderProfileCard(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    content.innerHTML = '<section class="v2-profile">' + _profileCardHtml(payload.profile) + "</section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
+  window.__MYCITE_V2_TOOL_RENDERERS["profile_card"] = renderProfileCard;
   window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
   // samras_structure renders via the cluster dendrogram (renderSamrasDendrogram), defined
   // and registered in IIFE#1 alongside clusterLayout (the Resource type-browser diagram).
@@ -6006,4 +6028,5 @@
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
   window.__MYCITE_V2_CONTAINER_RENDERERS["composite"] = renderComposite;
   window.__MYCITE_V2_CONTAINER_RENDERERS["tabbed"] = renderTabbed;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["profile_card"] = renderProfileCard;
 })();

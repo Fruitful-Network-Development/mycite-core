@@ -26,6 +26,7 @@ from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from ._shared.utilities import row_head as _row_head
 from ._shared.utilities import row_tail_label as _row_tail_label
+from .profile_projection import build_profile_projection
 
 _TENANT_DEFAULT = "fnd"
 _SCHEMA = "mycite.v2.portal.workbench.tool.farm_profile.v1"
@@ -170,10 +171,12 @@ class FarmProfileViewer:
             except Exception:
                 plots_source = "unavailable"
 
-        metadata = getattr(doc, "document_metadata", None) or {}
+        # Compose the base profile-card projection for the identity (title + SAMRAS id + visual),
+        # then EXTEND it with the filament's own fields — farm_profile is BUILT ON profile_card.
+        profile = build_profile_projection(doc)
         fields = [
-            {"label": "title", "value": _as_text(metadata.get("title")) or doc.canonical_name},
-            {"label": "samras_node", "value": _as_text(metadata.get("msn_node"))},
+            {"label": "title", "value": profile["title"] or doc.canonical_name},
+            {"label": "samras_node", "value": profile["samras_node"]},
             {"label": "fields", "value": str(len(field_polys))},
             {"label": "plots", "value": str(plot_count)},
             {"label": "plots_source", "value": plots_source},
@@ -186,6 +189,7 @@ class FarmProfileViewer:
             "sandbox_id": sandbox_id or "agro_erp",
             "document_id": _as_text(doc.document_id),
             "selected_row_address": _as_text(datum_address),
+            "profile": profile,
             "fields": fields,
             "feature_count": len(features),
             "plots_source": plots_source,
