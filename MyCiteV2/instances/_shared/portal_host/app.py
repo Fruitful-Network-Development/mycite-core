@@ -3472,16 +3472,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         validation + atomic write contract applies. Returns the updated
         newsletter sub-config on success.
         """
-        import glob as _glob
-        from pathlib import Path as _Path
-
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+            persist_grantee_profile,
+        )
         from MyCiteV2.packages.core.grantee import (
             AwsSesConfig,
             GranteeProfile,
             NewsletterConfig,
             PaypalConfig,
-            load_grantee_profile,
-            save_grantee_profile,
         )
         from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
 
@@ -3497,18 +3496,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
-        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))) or sorted(
-            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
-        )
-        if len(candidates) == 0:
-            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
-        if len(candidates) > 1:
-            return jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409
-        target_path = _Path(candidates[0])
+        target_path, _perr = _grantee_file_for_msn(msn_id)
+        if _perr:
+            return _perr
 
         try:
-            current = load_grantee_profile(target_path)
+            current = load_grantee_profile_resolved(msn_id, legacy_path=target_path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
@@ -3537,7 +3530,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         del AwsSesConfig, PaypalConfig
 
         try:
-            save_grantee_profile(target_path.with_suffix(".yaml"), next_profile)
+            persist_grantee_profile(next_profile, legacy_path=target_path)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -4885,14 +4878,34 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return response, 200
 
     def _grantee_file_for_msn(msn_id: str):
-        """Locate the single grantee JSON for an msn. Returns (path, None) or
-        (None, error_response)."""
+        """Resolve the legacy grantee-file path for an msn. Returns (path, None)
+        or (None, error_response).
+
+        Under the leaflet cutover the identity+secrets are read/written through
+        the shared leaflets, so the legacy ``fnd-csm`` file need NOT exist: we
+        only require the grantee to exist (a leaflet for this msn) and return the
+        canonical would-be legacy path — a harmless fallback that load/persist
+        ignore while the cutover is on, so deleting the fnd-csm backups can never
+        404 a save route. With the cutover off we keep the original glob.
+        """
         import glob as _glob
         from pathlib import Path as _Path
+
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_leaflets_if_enabled,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import OPERATOR_MSN_ID
 
         if host_config.private_dir is None:
             return None, (jsonify({"ok": False, "error": "private_dir_not_configured"}), 500)
         grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
+
+        shared = load_grantee_leaflets_if_enabled()
+        if shared is not None:
+            if any(_as_text(g.get("msn_id")) == _as_text(msn_id) for g in shared):
+                return grantee_dir / f"grantee.{OPERATOR_MSN_ID}.{msn_id}.yaml", None
+            return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
+
         candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))) or sorted(
             _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
         )
@@ -4944,7 +4957,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_paypal_admin_config() -> tuple[Any, int]:
         """Operator/grantee-scoped read of the caller grantee's PayPal config.
         The client_secret is masked (has_secret + last-4 only)."""
-        from MyCiteV2.packages.core.grantee import load_grantee_profile
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+        )
 
         msn, err = _resolve_grantee_scope()
         if err:
@@ -4953,7 +4968,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if perr:
             return perr
         try:
-            profile = load_grantee_profile(path)
+            profile = load_grantee_profile_resolved(msn, legacy_path=path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
         return jsonify({
@@ -5010,11 +5025,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """
         from dataclasses import replace as _dc_replace
 
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+            persist_grantee_profile,
+        )
         from MyCiteV2.packages.core.grantee import (
             PaypalConfig,
             ReceiptConfig,
-            load_grantee_profile,
-            save_grantee_profile,
         )
         from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
 
@@ -5035,7 +5052,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "invalid_mode"}), 400
 
         try:
-            profile = load_grantee_profile(path)
+            profile = load_grantee_profile_resolved(msn, legacy_path=path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
@@ -5098,7 +5115,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
 
         try:
-            save_grantee_profile(path.with_suffix(".yaml"), next_profile)
+            persist_grantee_profile(next_profile, legacy_path=path)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -5140,7 +5157,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     merged2["webhook_id"] = wid
                     merged2["webhook_url"] = wurl
                     next_profile = _dc_replace(next_profile, paypal=PaypalConfig.from_dict(merged2))
-                    save_grantee_profile(path.with_suffix(".yaml"), next_profile)
+                    persist_grantee_profile(next_profile, legacy_path=path)
                 except Exception as exc:
                     webhook_warning = "provisioning_failed"
                     _log.warning(
@@ -6854,9 +6871,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
         }), 200
 
+    def _caller_is_operator_via_header() -> bool:
+        """Cross-grantee management is unlocked ONLY for the FND operator, and
+        ONLY as asserted by the TRUSTED nginx-set X-Auth-Request-Grantee header
+        (the per-site dashboard-auth snippet hard-sets it, overriding any client
+        value). The Keycloak admin/operator-group step-up is deliberately NOT
+        honoured here yet: /dashboard/* is basic-auth and nginx does not strip a
+        client-supplied X-Auth-Request-Groups, so trusting that header would let
+        any dashboard user spoof `operator` and hijack another grantee. Re-add the
+        group claim only once /dashboard/* is behind oauth2-proxy AND nginx clears
+        inbound X-Auth-Request-*."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import OPERATOR_MSN_ID
+        return _as_text(request.headers.get("X-Auth-Request-Grantee")) == OPERATOR_MSN_ID
+
     def _resolve_grantee_scope() -> tuple[str, tuple[Any, int] | None]:
         """Resolve the requested grantee msn against the caller's scope.
         Returns (msn_id, None) on success, ("", error_response) otherwise.
+        The FND operator / a Keycloak admin-group session may target ANY grantee
+        (Phase-D cross-grantee management); a scoped client caller may not.
         """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             grantee_for_domain,
@@ -6870,13 +6902,36 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
         if caller is not None:
             caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
+            if requested_msn and requested_msn != caller_msn and not _caller_is_operator_via_header():
                 return "", (jsonify({"ok": False, "error": "scope_mismatch"}), 403)
             if not requested_msn:
                 requested_msn = caller_msn
         if not requested_msn:
             return "", (jsonify({"ok": False, "error": "missing_grantee"}), 400)
         return requested_msn, None
+
+    @app.get("/__fnd/grantees/list")
+    def fnd_grantees_list() -> tuple[Any, int]:
+        """Operator/admin only: every grantee's identity (no secrets) for the
+        FND dashboard 'Grantees' admin tab (Phase-D manage-all-grantees)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            load_grantee_directory,
+        )
+        if not _caller_is_operator_via_header():
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+        rows = [
+            {
+                "msn_id": _as_text(g.get("msn_id")),
+                "label": _as_text(g.get("label")),
+                "short_name": _as_text(g.get("short_name")),
+                "domains": [str(d) for d in g.get("domains") or []],
+                "users": [str(u) for u in g.get("users") or []],
+                "has_newsletter": _grantee_has_newsletter(g),
+            }
+            for g in load_grantee_directory(_configured_fnd_csm_root())
+        ]
+        rows.sort(key=lambda r: r["short_name"])
+        return jsonify({"ok": True, "grantees": rows}), 200
 
     def _parse_period_args() -> tuple[Any, Any, tuple[Any, int] | None]:
         """Parse ?from= / ?to= ISO dates, default to MTD.

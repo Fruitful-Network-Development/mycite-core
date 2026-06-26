@@ -35,8 +35,10 @@ from MyCiteV2.instances._shared.runtime.utilities_extensions._shared import (
     _as_list,
     _as_text,
 )
-from MyCiteV2.packages.core.grantee import load_grantee_profile
+from MyCiteV2.packages.adapters.filesystem.atomic_io import KEEP, atomic_write_yaml
+from MyCiteV2.packages.core.grantee import load_grantee_profile, save_grantee_profile
 from MyCiteV2.packages.core.grantee.schema import GranteeProfile
+from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
 
 # Grantee profile location (operator-managed JSON, never MOS):
 #   {private_dir}/utilities/tools/fnd-csm/grantee.{fnd_msn}.{grantee_msn}.json
@@ -89,6 +91,7 @@ def _grantee_glob_fingerprint(base: Path) -> tuple:
 # lands and the flip is made deliberately.
 # ---------------------------------------------------------------------
 _SECRET_SUBCONFIGS = ("paypal", "aws_ses")
+_GRANTEE_SECRETS_SCHEMA = "mycite.v2.grantee.secrets.v1"
 
 
 def _grantee_leaflets_enabled() -> bool:
@@ -235,6 +238,63 @@ def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]
     return copy.deepcopy(result)
 
 
+def load_grantee_profile_resolved(msn_id: str, *, legacy_path: str | Path) -> GranteeProfile:
+    """Load one grantee as a GranteeProfile for read-then-mutate-then-save.
+
+    Cutover ON: the merged identity+secrets leaflet for ``msn_id``. OFF (or no
+    leaflet for that msn): the legacy full-profile file at ``legacy_path``.
+    """
+    if _grantee_leaflets_enabled():
+        for profile in load_grantee_leaflets_if_enabled() or []:
+            if _as_text(profile.get("msn_id")) == _as_text(msn_id):
+                return GranteeProfile.from_dict(profile)
+    return load_grantee_profile(legacy_path)
+
+
+def persist_grantee_profile(profile: GranteeProfile, *, legacy_path: str | Path) -> None:
+    """Persist a mutated GranteeProfile.
+
+    Cutover ON: split — identity (no secrets) to the site-core leaflet (0644)
+    and the PayPal/AWS sub-configs to the admin-only secret sidecar (0600).
+    OFF: the legacy full-profile write at ``legacy_path`` (``.yaml``). Both go
+    through the shared atomic writer so a torn write never lands.
+    """
+    if _grantee_leaflets_enabled():
+        identity_dir, secrets_dir = _shared_grantee_dirs()
+        full = profile.to_dict()
+        short = _as_text(full.get("short_name")).lower()
+        if identity_dir is not None and secrets_dir is not None and short:
+            identity = {k: v for k, v in full.items() if k not in _SECRET_SUBCONFIGS}
+            secrets: dict[str, Any] = {
+                "schema": _GRANTEE_SECRETS_SCHEMA,
+                "msn_id": _as_text(full.get("msn_id")),
+                "short_name": full.get("short_name"),
+            }
+            for key in _SECRET_SUBCONFIGS:
+                if key in full:
+                    secrets[key] = full[key]
+            secrets_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(secrets_dir, 0o700)  # admin-only; nginx/other cannot traverse
+            try:
+                atomic_write_yaml(
+                    identity_dir / f"0000-00-00.artifact-grantee-profile.{short}.grantee_profile.yaml",
+                    identity,
+                    mode=0o644,
+                )
+                atomic_write_yaml(
+                    secrets_dir / f"grantee.{short}.secrets.yaml",
+                    secrets,
+                    mode=KEEP,  # secrets stay 0600
+                )
+            except OSError as exc:
+                raise GranteeProfileWriteError(
+                    f"failed to persist grantee leaflet for {short!r}: {exc}"
+                ) from exc
+            _GRANTEE_PROFILES_CACHE.clear()
+            return
+    save_grantee_profile(Path(legacy_path).with_suffix(".yaml"), profile)
+
+
 def resolve_selected_grantee(
     grantees: list[dict[str, Any]],
     tool_state: dict[str, Any],
@@ -260,7 +320,9 @@ def resolve_selected_domain(
 
 __all__ = [
     "load_grantee_leaflets_if_enabled",
+    "load_grantee_profile_resolved",
     "load_grantee_profiles",
+    "persist_grantee_profile",
     "resolve_selected_domain",
     "resolve_selected_grantee",
 ]

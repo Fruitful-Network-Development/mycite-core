@@ -110,5 +110,56 @@ class GranteeLeafletCutoverTest(unittest.TestCase):
         self.assertEqual(resolved["short_name"], "ACME")
 
 
+    def test_persist_splits_identity_and_secrets(self) -> None:
+        os.environ["MYCITE_GRANTEE_LEAFLETS"] = "1"
+        ostore._GRANTEE_PROFILES_CACHE.clear()
+        from MyCiteV2.packages.core.grantee.schema import AwsSesConfig, GranteeProfile, PaypalConfig
+
+        prof = GranteeProfile(
+            msn_id="7-7-7-new",
+            label="New Co",
+            short_name="NEW",
+            domains=("new.example",),
+            users=("ops@new.example",),
+            paypal=PaypalConfig(client_id="cid", client_secret="zzz", environment="live", mode="rest"),
+            aws_ses=AwsSesConfig(region="us-east-1", identity="ops@new.example", smtp_username="su", smtp_password="sp"),
+        )
+        root = Path(os.environ["MYCITE_WEBAPPS_ROOT"])
+        ostore.persist_grantee_profile(prof, legacy_path=root / "unused" / "grantee.x.7-7-7-new.yaml")
+
+        id_file = root / "clients" / "_shared" / "site-core" / "grantee" / "0000-00-00.artifact-grantee-profile.new.grantee_profile.yaml"
+        sec_file = root / "clients" / "_shared" / "dashboard-admin" / "grantee" / "grantee.new.secrets.yaml"
+        self.assertTrue(id_file.exists())
+        self.assertTrue(sec_file.exists())
+        on_id = yaml.safe_load(id_file.read_text(encoding="utf-8"))
+        on_sec = yaml.safe_load(sec_file.read_text(encoding="utf-8"))
+        # Identity leaflet carries NO secrets; the sidecar carries them.
+        self.assertNotIn("paypal", on_id)
+        self.assertNotIn("aws_ses", on_id)
+        self.assertEqual(on_sec["paypal"]["client_secret"], "zzz")
+        self.assertEqual(on_sec["aws_ses"]["smtp_password"], "sp")
+        # Secret sidecar stays 0600.
+        self.assertEqual(oct(os.stat(sec_file).st_mode & 0o777), "0o600")
+        # Round-trips through the resolved read with secrets merged back.
+        ostore._GRANTEE_PROFILES_CACHE.clear()
+        loaded = ostore.load_grantee_profile_resolved("7-7-7-new", legacy_path=root / "unused" / "x.yaml")
+        self.assertEqual(loaded.paypal.client_secret, "zzz")
+        self.assertEqual(loaded.aws_ses.smtp_password, "sp")
+        self.assertEqual(loaded.domains, ("new.example",))
+
+    def test_persist_legacy_when_flag_off(self) -> None:
+        os.environ.pop("MYCITE_GRANTEE_LEAFLETS", None)
+        from MyCiteV2.packages.core.grantee import load_grantee_profile
+        from MyCiteV2.packages.core.grantee.schema import GranteeProfile
+
+        prof = GranteeProfile(msn_id="5-5-5", label="Legacy", short_name="LEG", domains=("leg.example",), users=())
+        legacy = Path(self._tmp.name) / "legacy" / "grantee.op.5-5-5.json"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        ostore.persist_grantee_profile(prof, legacy_path=legacy)
+        written = legacy.with_suffix(".yaml")
+        self.assertTrue(written.exists())
+        self.assertEqual(load_grantee_profile(written).short_name, "LEG")
+
+
 if __name__ == "__main__":
     unittest.main()
