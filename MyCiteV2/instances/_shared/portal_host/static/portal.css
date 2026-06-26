@@ -10259,6 +10259,7 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   font-size: 0.85em;
   color: var(--muted, #888);
 }
+.portal-tool-palette__error { color: #c0473a; cursor: pointer; }
 /* Interface-panel tool search: results render as an OVERLAY dropdown anchored to the
    search box (hidden until focus/type) so they don't displace the tool boxes below.
    Mirrors .ide-menubar__toolSearchResults. */

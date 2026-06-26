@@ -60,7 +60,7 @@
         return payload;
       })
       .catch(function () {
-        return { schema: "", tools: [] };
+        return { schema: "", tools: [], _error: true };
       });
   }
 
@@ -99,7 +99,7 @@
         };
       })
       .catch(function () {
-        return { schema: "", tools: [], visualizers: [], sandboxes: [], documents: [] };
+        return { schema: "", tools: [], visualizers: [], sandboxes: [], documents: [], _error: true };
       });
   }
 
@@ -172,8 +172,17 @@
     return fetcher(ctx).then(function (payload) {
       var query = inputEl ? inputEl.value : "";
       var items = payload.tools || payload.visualizers || [];
-      renderList(listEl, filterTools(items, query), ctx);
       target.__paletteTools = items;
+      // Distinguish a genuine fetch failure from an empty result: a silent empty box left users
+      // staring at a dead search. On failure show a retry affordance (focus/typing re-fetches).
+      if (payload._error && !items.length) {
+        if (listEl) {
+          listEl.innerHTML =
+            '<p class="portal-tool-palette__empty portal-tool-palette__error">Couldn’t load tools — click here and retry.</p>';
+        }
+      } else {
+        renderList(listEl, filterTools(items, query), ctx);
+      }
       return payload;
     });
   }
@@ -191,10 +200,30 @@
     var inputEl = target.querySelector("[data-palette-input]");
     var listEl = target.querySelector("[data-palette-list]");
     if (inputEl) {
+      // Re-fetch on focus when the list is empty. The mount-time fetch runs at page load and can
+      // race or fail (auth/session not yet settled, a transient error) — and the palette otherwise
+      // never recovers (it fetches once and only filters the stored list). Fetching again when the
+      // user actively engages the search, well after load, reliably populates it.
+      inputEl.addEventListener("focus", function () {
+        var tools = target.__paletteTools || [];
+        if (!tools.length) {
+          refresh(target, ctx).then(function () { if (listEl) listEl.removeAttribute("hidden"); });
+        } else {
+          renderList(listEl, filterTools(tools, inputEl.value), ctx);
+          if (listEl) listEl.removeAttribute("hidden");
+        }
+      });
       inputEl.addEventListener("input", function () {
         var tools = target.__paletteTools || [];
+        if (!tools.length) {
+          // still empty (initial fetch failed/raced) — try again, then render what arrives
+          refresh(target, ctx).then(function () {
+            renderList(listEl, filterTools(target.__paletteTools || [], inputEl.value), ctx);
+            if (listEl) listEl.removeAttribute("hidden");
+          });
+        }
         renderList(listEl, filterTools(tools, inputEl.value), ctx);
-        if (listEl) listEl.toggleAttribute("hidden", !inputEl.value.trim());
+        if (listEl) listEl.removeAttribute("hidden");
       });
     }
     refresh(target, ctx);
