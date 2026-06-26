@@ -25,14 +25,18 @@ from __future__ import annotations
 
 import copy
 import glob
+import os
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 from MyCiteV2.instances._shared.runtime.utilities_extensions._shared import (
     _as_list,
     _as_text,
 )
 from MyCiteV2.packages.core.grantee import load_grantee_profile
+from MyCiteV2.packages.core.grantee.schema import GranteeProfile
 
 # Grantee profile location (operator-managed JSON, never MOS):
 #   {private_dir}/utilities/tools/fnd-csm/grantee.{fnd_msn}.{grantee_msn}.json
@@ -76,16 +80,140 @@ def _grantee_glob_fingerprint(base: Path) -> tuple:
     return tuple(out)
 
 
-def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]]:
-    """Glob + parse all grantee profile JSON files from the utility directory.
+# ---------------------------------------------------------------------
+# Leaflet cutover (split identity / secret). When MYCITE_GRANTEE_LEAFLETS is
+# enabled and identity leaflets exist, grantee identity is read from the shared
+# site-core tree and PayPal/AWS secrets are merged in from an admin-only dir;
+# otherwise the legacy per-instance fnd-csm read below is used unchanged. The
+# flag defaults OFF so production stays on the legacy path until the writer side
+# lands and the flip is made deliberately.
+# ---------------------------------------------------------------------
+_SECRET_SUBCONFIGS = ("paypal", "aws_ses")
 
-    Delegates parsing/validation to ``load_grantee_profile``. When a grantee
-    JSON lacks the inline ``paypal`` sub-config and a legacy sidecar exists,
-    hydrates the in-memory profile from the sidecar (the on-disk JSON is never
-    written back here). Returns plain dicts (call sites read
-    ``grantee.get("domains")`` etc.). Result is cached per (private_dir, glob
-    fingerprint).
+
+def _grantee_leaflets_enabled() -> bool:
+    return os.environ.get("MYCITE_GRANTEE_LEAFLETS", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _shared_grantee_dirs() -> tuple[Path | None, Path | None]:
+    """(identity_dir, secrets_dir) under the shared clients tree, or (None, None).
+
+    Resolved from MYCITE_WEBAPPS_ROOT so tests can point it at a tmp tree.
     """
+    root = os.environ.get("MYCITE_WEBAPPS_ROOT")
+    if not root:
+        return None, None
+    base = Path(root) / "clients" / "_shared"
+    return base / "site-core" / "grantee", base / "dashboard-admin" / "grantee"
+
+
+def _identity_leaflet_paths(identity_dir: Path) -> list[str]:
+    return sorted(glob.glob(str(identity_dir / "*.grantee_profile.yaml")))
+
+
+def _shared_grantee_fingerprint(identity_dir: Path, secrets_dir: Path | None) -> tuple:
+    """Per-file (path, mtime, size) fingerprint over both shared dirs."""
+    out: list[tuple[str, float, int]] = []
+    for directory in (identity_dir, secrets_dir):
+        if directory is None or not directory.is_dir():
+            continue
+        for path in sorted(glob.glob(str(directory / "*.yaml"))):
+            try:
+                stat = Path(path).stat()
+            except OSError:
+                continue
+            out.append((str(path), stat.st_mtime, stat.st_size))
+    return tuple(out)
+
+
+def _secrets_index(secrets_dir: Path | None) -> tuple[dict[str, dict], dict[str, dict]]:
+    """Index secret sidecars by msn_id and by short_name (lowercased)."""
+    by_msn: dict[str, dict] = {}
+    by_short: dict[str, dict] = {}
+    if secrets_dir is None or not secrets_dir.is_dir():
+        return by_msn, by_short
+    for path in glob.glob(str(secrets_dir / "grantee.*.secrets.yaml")):
+        try:
+            data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        msn = _as_text(data.get("msn_id"))
+        short = _as_text(data.get("short_name")).lower()
+        if msn:
+            by_msn[msn] = data
+        if short:
+            by_short[short] = data
+    return by_msn, by_short
+
+
+def _merge_grantee_leaflets(identity_dir: Path, secrets_dir: Path | None) -> list[dict[str, Any]]:
+    """Identity leaflets merged with their admin-only secret sidecars.
+
+    The PayPal/AWS sub-configs live only in the secrets dir; everything else is
+    in the public-tree identity leaflet. Validation goes through
+    ``GranteeProfile`` so the returned dicts match the legacy shape exactly.
+    Parse failures are skipped — this is a read surface, not a validator.
+    """
+    secrets_by_msn, secrets_by_short = _secrets_index(secrets_dir)
+    profiles: list[dict[str, Any]] = []
+    for path in _identity_leaflet_paths(identity_dir):
+        try:
+            identity = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if not isinstance(identity, dict):
+            continue
+        msn = _as_text(identity.get("msn_id"))
+        short = _as_text(identity.get("short_name")).lower()
+        secrets = secrets_by_msn.get(msn) or secrets_by_short.get(short) or {}
+        merged = dict(identity)
+        for key in _SECRET_SUBCONFIGS:
+            if isinstance(secrets.get(key), dict):
+                merged[key] = secrets[key]
+        try:
+            profile = GranteeProfile.from_dict(merged)
+        except (ValueError, TypeError):
+            continue
+        profiles.append(profile.to_dict())
+    return sorted(profiles, key=lambda p: _as_text(p.get("label")).lower())
+
+
+def load_grantee_leaflets_if_enabled() -> list[dict[str, Any]] | None:
+    """Merged grantee leaflets when the cutover is on and leaflets exist, else None.
+
+    Shared by both grantee read paths (this module and ``tolling``) so the merge
+    logic and its cache live in one place.
+    """
+    if not _grantee_leaflets_enabled():
+        return None
+    identity_dir, secrets_dir = _shared_grantee_dirs()
+    if identity_dir is None or not _identity_leaflet_paths(identity_dir):
+        return None
+    key = f"leaflets::{identity_dir}"
+    fingerprint = _shared_grantee_fingerprint(identity_dir, secrets_dir)
+    cached = _GRANTEE_PROFILES_CACHE.get(key)
+    if cached is not None and cached[0] == fingerprint:
+        return copy.deepcopy(cached[1])
+    result = _merge_grantee_leaflets(identity_dir, secrets_dir)
+    _GRANTEE_PROFILES_CACHE[key] = (fingerprint, result)
+    return copy.deepcopy(result)
+
+
+def load_grantee_profiles(private_dir: str | Path | None) -> list[dict[str, Any]]:
+    """Return all grantee profile dicts (identity + merged secrets).
+
+    Prefers the shared leaflet source when the cutover is enabled (identity from
+    ``site-core/grantee`` + secrets from ``dashboard-admin/grantee``); otherwise
+    falls back to the legacy per-instance ``fnd-csm`` read (``.yaml`` preferred
+    over ``.json``). Returns plain dicts (call sites read ``grantee.get(...)``);
+    cached per source fingerprint.
+    """
+    shared = load_grantee_leaflets_if_enabled()
+    if shared is not None:
+        return shared
+
     if private_dir is None:
         return []
     base = Path(private_dir).resolve()
@@ -131,6 +259,7 @@ def resolve_selected_domain(
 
 
 __all__ = [
+    "load_grantee_leaflets_if_enabled",
     "load_grantee_profiles",
     "resolve_selected_domain",
     "resolve_selected_grantee",

@@ -8708,6 +8708,58 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   margin-right: 6px;
   font-size: 1.1em;
 }
+/* Collapse (layer / value group) */
+.v2-ide__collapseBtn { color: var(--ink2, #888); margin-right: 4px; }
+.v2-ide__valueGroup.is-collapsed .v2-tableWrap { display: none; }
+.v2-ide__layer.is-collapsed .v2-ide__valueGroup,
+.v2-ide__layer.is-collapsed .v2-ide__addLayer { display: none; }
+/* Context menu (kebab on a refracted cell) */
+.v2-ctxMenu {
+  position: fixed;
+  z-index: 210;
+  min-width: 178px;
+  background: var(--paper, #fff);
+  color: var(--ink, #464646);
+  border: 1px solid var(--line, #afafaa);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  padding: 4px;
+}
+.v2-ctxMenu__item {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.v2-ctxMenu__item:hover { background: color-mix(in srgb, var(--accent, #1e6c93) 14%, transparent); }
+.v2-ctxMenu__item.is-danger { color: #c0473a; }
+.v2-ctxMenu__arrow { margin-left: auto; opacity: 0.6; padding-left: 12px; }
+.v2-ctxMenu__sep { height: 1px; background: var(--line, #afafaa); margin: 4px 2px; }
+/* Selection-collapse divider — a thick dark theme line, thinner than a row, with light controls */
+.v2-ide__row.is-sel-collapsed { display: none; }
+.v2-ide__row.is-sel-collapsed.is-revealed { display: table-row; background: rgba(0, 0, 0, 0.05); }
+.v2-ide__selDivider td {
+  padding: 1px 6px;
+  background: color-mix(in srgb, var(--accent, #1e6c93) 45%, var(--coal, #2f2f2f));
+  color: var(--paper, #f0eedc);
+  overflow: hidden;
+}
+.v2-ide__selExpand { float: left; }
+.v2-ide__selClear { float: right; }
+.v2-ide__selCount {
+  font-size: 10px;
+  opacity: 0.85;
+  display: block;
+  text-align: center;
+  line-height: 1.7;
+}
 .v2-ide__row.is-selected {
   background: rgba(46, 116, 181, 0.08);
 }

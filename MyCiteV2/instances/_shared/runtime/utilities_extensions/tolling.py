@@ -103,6 +103,14 @@ def load_grantee_directory(
     parsing failures are skipped silently — this is a read surface,
     not a validation surface.
     """
+    # Prefer the shared identity/secret leaflets when the cutover is enabled;
+    # otherwise fall back to the legacy per-instance fnd-csm read below.
+    from MyCiteV2.instances._shared.runtime.operational_store import (
+        load_grantee_leaflets_if_enabled,
+    )
+    shared = load_grantee_leaflets_if_enabled()
+    if shared is not None:
+        return shared
     root = Path(fnd_csm_root)
     key = str(root)
     now = time.monotonic()

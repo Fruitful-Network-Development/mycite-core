@@ -3629,7 +3629,10 @@
     var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns, lens); }).join("");
     return '<section class="v2-ide__valueGroup" data-value-group-id="' +
       escapeHtml(String(vg)) + '">' +
-      '<header class="v2-ide__vgHeader"><h5>' +
+      '<header class="v2-ide__vgHeader">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__collapseBtn" data-ide-collapse="vg" aria-label="Collapse value group">' +
+      (window.iconImg ? window.iconImg("up") : "▾") + "</button>" +
+      "<h5>" +
       escapeHtml(asText(group.title) || ("Value Group " + vg)) +
       "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small>" +
       _ideKeyBox(columns) + "</header>" +
@@ -3648,7 +3651,10 @@
       var layerId = String(asObject(layer).layer);
       var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens, layerId); }).join("");
       return '<section class="v2-ide__layer" data-layer-id="' + escapeHtml(layerId) + '">' +
-        '<header class="v2-ide__layerHeader"><h4>' +
+        '<header class="v2-ide__layerHeader">' +
+        '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__collapseBtn" data-ide-collapse="layer" aria-label="Collapse layer">' +
+        (window.iconImg ? window.iconImg("up") : "▾") + "</button>" +
+        "<h4>" +
         escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs +
         '<div class="v2-ide__addLayer"><button type="button" class="mc-iconBtn v2-ide__addBtn" ' +
         'data-dov-add="layer" data-layer="' + escapeHtml(layerId) + '" aria-label="Add datum to layer">' +
@@ -4569,6 +4575,146 @@
   window.openDatumOverlay = openDatumOverlay;
   window.closeDatumOverlay = closeDatumOverlay;
 
+  // ===== Context menu (kebab on a refracted cell) + SAMRAS collapse =====
+  function _rawForAddress(address) {
+    var c = _dovTriggerCtx;
+    if (!c) return null;
+    var grid = asObject(asObject(c.workspace).datum_grid);
+    var rows = typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [];
+    for (var i = 0; i < rows.length; i++) {
+      if (asText(asObject(rows[i]).datum_address) === address) return asObject(rows[i]).raw;
+    }
+    return null;
+  }
+  function _ctxOutside(ev) { if (!ev.target.closest || !ev.target.closest("#portalContextMenu")) _closeContextMenu(); }
+  function _ctxKey(ev) { if (ev.key === "Escape" || ev.key === "Esc") _closeContextMenu(); }
+  function _closeContextMenu() {
+    var m = document.getElementById("portalContextMenu");
+    if (m && m.parentNode) m.parentNode.removeChild(m);
+    document.removeEventListener("click", _ctxOutside, true);
+    document.removeEventListener("keydown", _ctxKey, true);
+  }
+  function showContextMenu(x, y, items) {
+    _closeContextMenu();
+    var menu = document.createElement("div");
+    menu.id = "portalContextMenu";
+    menu.className = "v2-ctxMenu";
+    menu.innerHTML = items.map(function (it, i) {
+      if (it.separator) return '<div class="v2-ctxMenu__sep"></div>';
+      return '<button type="button" class="v2-ctxMenu__item' + (it.danger ? " is-danger" : "") + '" data-ctx-index="' + i + '">' +
+        escapeHtml(it.label) + (it.submenu ? '<span class="v2-ctxMenu__arrow">▸</span>' : "") + "</button>";
+    }).join("");
+    document.body.appendChild(menu);
+    var w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 8)) + "px";
+    menu.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 8)) + "px";
+    menu.addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest("[data-ctx-index]") : null;
+      if (!btn) return;
+      var it = items[parseInt(btn.getAttribute("data-ctx-index"), 10)];
+      if (!it) return;
+      if (it.submenu) {
+        // drill-down: replace the menu with the submenu (+ a back item), same anchor
+        showContextMenu(x, y, [{ label: "‹ back", onClick: function () { showContextMenu(x, y, items); } }, { separator: true }].concat(it.submenu));
+        return;
+      }
+      _closeContextMenu();
+      if (it.onClick) it.onClick();
+    });
+    setTimeout(function () {
+      document.addEventListener("click", _ctxOutside, true);
+      document.addEventListener("keydown", _ctxKey, true);
+    }, 0);
+  }
+
+  function _samrasNodeKey(raw) {
+    var head = raw && Array.isArray(raw) && Array.isArray(raw[0]) ? raw[0] : null;
+    if (!head || head.length < 3) return null;
+    var marker = asText(head[1]);
+    if (marker !== "rf.3-1-1" && marker !== "rf.3-1-5") return null;  // NODE_ID / LCL_ID samras markers
+    return asText(head[2]);
+  }
+  function _samrasContext(address) {
+    var key = _samrasNodeKey(_rawForAddress(address));
+    if (!key) return null;
+    var row = document.querySelector('.v2-ide__row[data-datum-address="' + address + '"]');
+    var vg = row && row.closest ? row.closest(".v2-ide__valueGroup") : null;
+    if (!vg) return null;
+    var siblings = [];
+    Array.prototype.forEach.call(vg.querySelectorAll(".v2-ide__row[data-datum-address]"), function (tr) {
+      var a = tr.getAttribute("data-datum-address");
+      var k = _samrasNodeKey(_rawForAddress(a));
+      if (k) siblings.push({ address: a, key: k, tr: tr });
+    });
+    return siblings.length >= 2 ? { key: key, siblings: siblings, vg: vg } : null;
+  }
+  var _selCounter = 0;
+  function _collapseRows(trs) {
+    trs = (trs || []).filter(Boolean);
+    if (!trs.length) return;
+    var gid = "sel" + (++_selCounter);
+    trs.forEach(function (tr) { tr.classList.add("is-sel-collapsed"); tr.setAttribute("data-sel-group", gid); });
+    var first = trs[0];
+    var colspan = (first.children && first.children.length) || 3;
+    var divider = document.createElement("tr");
+    divider.className = "v2-ide__selDivider";
+    divider.setAttribute("data-sel-divider", gid);
+    divider.innerHTML = '<td colspan="' + colspan + '">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm mc-iconBtn--light v2-ide__selExpand" data-sel-expand="' + gid + '" aria-label="Expand">' +
+      (window.iconImg ? window.iconImg("down") : "▾") + "</button>" +
+      '<span class="v2-ide__selCount">' + trs.length + " collapsed</span>" +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm mc-iconBtn--light v2-ide__selClear" data-sel-clear="' + gid + '" aria-label="Expand and clear">' +
+      (window.iconImg ? window.iconImg("exit") : "×") + "</button></td>";
+    if (first.parentNode) first.parentNode.insertBefore(divider, first);
+  }
+  function _collapseSamrasDescendants(address) {
+    var sx = _samrasContext(address);
+    if (!sx) return;
+    var trs = sx.siblings.filter(function (s) { return s.key !== sx.key && s.key.indexOf(sx.key + "-") === 0; }).map(function (s) { return s.tr; });
+    _collapseRows(trs);
+  }
+  function _samrasSliceItems(address) {
+    var sx = _samrasContext(address);
+    if (!sx) return [{ label: "(no adjacent nodes)", onClick: function () {} }];
+    var sibs = sx.siblings;
+    var idx = -1;
+    for (var i = 0; i < sibs.length; i++) if (sibs[i].address === address) { idx = i; break; }
+    var items = [];
+    sibs.forEach(function (s, j) {
+      if (j === idx) return;
+      items.push({ label: (j < idx ? "↑ to " : "↓ to ") + s.key, onClick: function () {
+        var lo = Math.min(idx, j), hi = Math.max(idx, j);
+        _collapseRows(sibs.slice(lo, hi + 1).map(function (x) { return x.tr; }));
+      } });
+    });
+    return items.length ? items : [{ label: "(no adjacent nodes)", onClick: function () {} }];
+  }
+  function _deleteDatum(address, c) {
+    var body = { schema: "mycite.v2.portal.mutations.stage.request.v1", target_authority: "datum_workbench",
+      sandbox_id: c.sandboxId, document_id: c.documentId, datum_address: address, target_address: address,
+      operation: "delete_datum", payload_text: JSON.stringify(_rawForAddress(address) || [[address], []]) };
+    if (typeof stageThenApply !== "function") return;
+    _dov.ctx = c.ctx; _dov.documentId = c.documentId;
+    stageThenApply(body, "/portal/api/v2/mutations/stage", "/portal/api/v2/mutations/apply")
+      .then(function () { _dovRefreshShell(); })
+      .catch(function () {});
+  }
+  function _showDatumContextMenu(x, y, address, c) {
+    var items = [
+      { label: "Edit", onClick: function () { openDatumOverlay({ ctx: c.ctx, workspace: c.workspace, documentId: c.documentId, sandboxId: c.sandboxId, address: address, raw: _rawForAddress(address), mode: "edit", activeTab: "denotation" }); } },
+      { label: "Delete", danger: true, onClick: function () { _deleteDatum(address, c); } },
+    ];
+    if (_samrasContext(address)) {
+      items.push({ separator: true });
+      items.push({ label: "SAMRAS", submenu: [
+        { label: "Collapse descendants", onClick: function () { _collapseSamrasDescendants(address); } },
+        { label: "Collapse slice", submenu: _samrasSliceItems(address) },
+      ] });
+    }
+    showContextMenu(x, y, items);
+  }
+  window.showContextMenu = showContextMenu;
+
   // Datum-overlay open triggers (refracted cell ℹ / kebab / merged cell, the add-rows, the
   // top-left edit icon). Bound ONCE on document; the per-render context (ctx/workspace/doc/sandbox)
   // is refreshed in _dovTriggerCtx each render so the single listener never goes stale or duplicates.
@@ -4601,6 +4747,38 @@
         return null;
       }
       function base() { return { ctx: c.ctx, workspace: c.workspace, documentId: c.documentId, sandboxId: c.sandboxId }; }
+      // Collapse toggles (layer / value group) — pure client-side; the button swaps up/down.
+      var collapseBtn = t.closest("[data-ide-collapse]");
+      if (collapseBtn) {
+        ev.preventDefault();
+        var kind = collapseBtn.getAttribute("data-ide-collapse");
+        var sect = collapseBtn.closest(kind === "layer" ? ".v2-ide__layer" : ".v2-ide__valueGroup");
+        if (sect) {
+          var collapsed = sect.classList.toggle("is-collapsed");
+          collapseBtn.innerHTML = window.iconImg ? window.iconImg(collapsed ? "down" : "up") : (collapsed ? "▸" : "▾");
+        }
+        return;
+      }
+      // Selection-collapse divider: ui-down expands in place (toggles to ui-up); ui-exit expands + clears.
+      var selExpand = t.closest("[data-sel-expand]");
+      if (selExpand) {
+        ev.preventDefault();
+        var gid = selExpand.getAttribute("data-sel-expand");
+        var div = document.querySelector('[data-sel-divider="' + gid + '"]');
+        var revealed = div ? div.classList.toggle("is-expanded") : false;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-sel-group="' + gid + '"]'), function (tr) { tr.classList.toggle("is-revealed", revealed); });
+        selExpand.innerHTML = window.iconImg ? window.iconImg(revealed ? "up" : "down") : (revealed ? "▴" : "▾");
+        return;
+      }
+      var selClear = t.closest("[data-sel-clear]");
+      if (selClear) {
+        ev.preventDefault();
+        var gid2 = selClear.getAttribute("data-sel-clear");
+        Array.prototype.forEach.call(document.querySelectorAll('[data-sel-group="' + gid2 + '"]'), function (tr) { tr.classList.remove("is-sel-collapsed", "is-revealed"); tr.removeAttribute("data-sel-group"); });
+        var d2 = document.querySelector('[data-sel-divider="' + gid2 + '"]');
+        if (d2 && d2.parentNode) d2.parentNode.removeChild(d2);
+        return;
+      }
       var editDoc = t.closest("[data-dov-edit-doc]");
       var addBtn = t.closest("[data-dov-add]");
       var infoBtn = t.closest("[data-datum-info]");
@@ -4620,7 +4798,8 @@
       } else if (kebabBtn) {
         ev.preventDefault();
         var ka = kebabBtn.getAttribute("data-datum-address");
-        openDatumOverlay(Object.assign(base(), { address: ka, raw: rawFor(ka), mode: "edit", activeTab: "denotation" }));
+        var kr = kebabBtn.getBoundingClientRect();
+        _showDatumContextMenu(kr.left, kr.bottom + 2, ka, base());
       } else if (refracted) {
         ev.preventDefault();
         var ra = refracted.getAttribute("data-datum-address");
