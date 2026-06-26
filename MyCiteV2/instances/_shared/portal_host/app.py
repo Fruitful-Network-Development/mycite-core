@@ -810,6 +810,31 @@ def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
     return _as_text(payload.get("target_authority"))
 
 
+def _menubar_tool_seed() -> list[dict[str, Any]]:
+    """The live menubar-search tools, embedded in the authenticated page load so the search
+    dropdown never depends on a separate XHR (which can fail/race through the auth proxy and
+    left the dropdown permanently empty). These are the LIVE_TOOL_IDS allow-list — the exact
+    set the /portal/api/visualizers/for-sandbox endpoint filters to for the menubar."""
+    try:
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import LIVE_TOOL_IDS
+        from MyCiteV2.packages.tools import get as _tool_get
+
+        seed: list[dict[str, Any]] = []
+        for tool_id in LIVE_TOOL_IDS:
+            tool = _tool_get(tool_id)
+            if tool is None:
+                continue
+            seed.append({
+                "tool_id": tool.tool_id,
+                "label": _as_text(getattr(tool, "label", tool_id)),
+                "summary": _as_text(getattr(tool, "summary", "")),
+                "route": _as_text(getattr(tool, "route", "")),
+            })
+        return seed
+    except Exception:
+        return []
+
+
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
     from MyCiteV2.packages.state_machine.portal_shell import (
         SANDBOX_DISPLAY_NAMES,
@@ -840,6 +865,7 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
         shell_asset_manifest=shell_asset_manifest,
         logo_href="/portal/system",
         sandbox_display_names=sandbox_display_names,
+        menubar_tools=_menubar_tool_seed(),
     )
 
 

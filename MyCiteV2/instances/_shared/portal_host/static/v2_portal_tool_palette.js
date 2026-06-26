@@ -172,17 +172,20 @@
     return fetcher(ctx).then(function (payload) {
       var query = inputEl ? inputEl.value : "";
       var items = payload.tools || payload.visualizers || [];
-      target.__paletteTools = items;
-      // Distinguish a genuine fetch failure from an empty result: a silent empty box left users
-      // staring at a dead search. On failure show a retry affordance (focus/typing re-fetches).
       if (payload._error && !items.length) {
-        if (listEl) {
-          listEl.innerHTML =
-            '<p class="portal-tool-palette__empty portal-tool-palette__error">Couldn’t load tools — click here and retry.</p>';
+        // Fetch failed — KEEP whatever we already have (e.g. the server-embedded seed delivered
+        // with the authenticated page). Only show the retry message if we have nothing at all.
+        if (!(target.__paletteTools && target.__paletteTools.length)) {
+          target.__paletteTools = [];
+          if (listEl) {
+            listEl.innerHTML =
+              '<p class="portal-tool-palette__empty portal-tool-palette__error">Couldn’t load tools — click here and retry.</p>';
+          }
         }
-      } else {
-        renderList(listEl, filterTools(items, query), ctx);
+        return payload;
       }
+      target.__paletteTools = items;
+      renderList(listEl, filterTools(items, query), ctx);
       return payload;
     });
   }
@@ -199,6 +202,16 @@
       '<div data-palette-list class="portal-tool-palette__results" hidden></div>';
     var inputEl = target.querySelector("[data-palette-input]");
     var listEl = target.querySelector("[data-palette-list]");
+    // Seed from the server-embedded tool list (window.__MYCITE_V2_MENUBAR_TOOLS, delivered WITH the
+    // authenticated page load) so the dropdown populates with NO dependency on the background XHR —
+    // which can fail/race through the auth proxy and otherwise leaves the search permanently empty.
+    var seed = (typeof window !== "undefined" && Array.isArray(window.__MYCITE_V2_MENUBAR_TOOLS))
+      ? window.__MYCITE_V2_MENUBAR_TOOLS
+      : [];
+    if (seed.length) {
+      target.__paletteTools = seed.slice();
+      renderList(listEl, seed, ctx);
+    }
     if (inputEl) {
       // Re-fetch on focus when the list is empty. The mount-time fetch runs at page load and can
       // race or fail (auth/session not yet settled, a transient error) — and the palette otherwise

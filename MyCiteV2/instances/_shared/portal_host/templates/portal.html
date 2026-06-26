@@ -173,6 +173,9 @@
     // Plan v2 globals consumed by v2_portal_shell_core.js for the
     // sandbox selector + menubar tool palette.
     window.__MYCITE_V2_SANDBOXES = {{ sandbox_display_names | tojson }};
+    // Live menubar-search tools, embedded in the authenticated page load so the search dropdown
+    // populates without depending on a separate XHR (which can fail/race through the auth proxy).
+    window.__MYCITE_V2_MENUBAR_TOOLS = {{ menubar_tools | tojson }};
     window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   </script>
   <script src="{{ shell_asset_manifest['scripts']['portal_js']['url'] }}" defer></script>
