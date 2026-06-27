@@ -67,8 +67,9 @@ class TestFarmProfileViewerLive(unittest.TestCase):
         self.assertEqual(payload["schema"], "mycite.v2.portal.workbench.tool.farm_profile.v1")
         features = payload["feature_collection"]["features"]
         kinds = {f["properties"]["kind"] for f in features}
-        self.assertIn("field", kinds, "must project the property field polygons")
-        self.assertIn("plot", kinds, "must show plot squares (migrated or live preview)")
+        self.assertIn("parcel", kinds, "must project the parcels")
+        self.assertIn("field", kinds, "must project the field inside the largest parcel")
+        self.assertIn("plot", kinds, "must show plot squares tiling the field")
         self.assertEqual(payload["feature_count"], len(features))
         # Every projected polygon is a closed GeoJSON ring with >= 4 positions.
         for f in features:
@@ -76,7 +77,7 @@ class TestFarmProfileViewerLive(unittest.TestCase):
             self.assertGreaterEqual(len(ring), 4)
             self.assertEqual(ring[0], ring[-1])
         labels = {fld["label"] for fld in payload["fields"]}
-        self.assertTrue({"title", "fields", "plots", "plots_source"} <= labels)
+        self.assertTrue({"title", "parcels", "field", "plots", "plots_source"} <= labels)
 
 
 if __name__ == "__main__":
