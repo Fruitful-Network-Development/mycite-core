@@ -5726,9 +5726,14 @@
         var ring = (g.coordinates && g.coordinates[0]) || [];
         if (!ring.length) return "";
         var pointsAttr = ring.map(proj).join(" ");
-        var isPlot = p.kind === "plot";
-        var fill = isPlot ? "rgba(46,160,67,0.35)" : "rgba(31,111,235,0.12)";
-        var stroke = isPlot ? "#2ea043" : "#1f6feb";
+        // parcel = light blue outline; field = amber highlight (inside the largest parcel);
+        // plot = green square tiling the field. Render order (sorted addr) layers plots over the
+        // field over the parcels.
+        var fill, stroke;
+        if (p.kind === "plot") { fill = "rgba(46,160,67,0.42)"; stroke = "#2ea043"; }
+        else if (p.kind === "field") { fill = "rgba(214,158,46,0.20)"; stroke = "#d69e2e"; }
+        else if (p.kind === "parcel") { fill = "rgba(31,111,235,0.05)"; stroke = "#1f6feb"; }
+        else { fill = "rgba(31,111,235,0.10)"; stroke = "#1f6feb"; }
         return '<polygon points="' + pointsAttr + '" fill="' + fill +
           '" stroke="' + stroke + '" stroke-width="1"><title>' +
           esc(p.label || "") + " (" + esc(p.kind || "") + ")</title></polygon>";

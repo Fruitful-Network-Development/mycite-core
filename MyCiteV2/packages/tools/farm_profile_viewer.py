@@ -121,10 +121,13 @@ class FarmProfileViewer:
             if geom_addr:
                 feature_meta[geom_addr] = ("plot" if is_plot else "property", label or addr)
 
-        # Resolve each family-5 polygon → ring coords → GeoJSON feature.
+        # Resolve each family-5 polygon → ring coords → GeoJSON feature. Classify by the polygon's
+        # OWN tail label — the standardized farm filament shape extends profile_card: 3 PARCELS, one
+        # FIELD that lives inside the largest parcel, and PLOTS that tile only the field. (Legacy docs
+        # without parcel/field labels fall back to the feature-driven kind.)
         features: list[dict[str, Any]] = []
         field_polys: list[list[tuple[float, float]]] = []
-        plot_count = 0
+        parcel_count = field_count = plot_count = 0
         for addr, row in sorted(rows.items()):
             if not addr.startswith("5-"):
                 continue
@@ -134,12 +137,24 @@ class FarmProfileViewer:
             if ring_row is None:
                 continue
             coords = resolve_coordinate(_row_head(ring_row))
-            kind, label = feature_meta.get(addr, ("field", _row_tail_label(row) or addr))
-            if kind == "plot":
+            poly_label = _row_tail_label(row)
+            if poly_label.startswith("parcel"):
+                kind, label = "parcel", poly_label
+                parcel_count += 1
+            elif poly_label == "field":
+                kind, label = "field", "field"
+                field_count += 1
+                field_polys.append(coords)
+            elif poly_label.startswith("plot"):
+                kind, label = "plot", feature_meta.get(addr, ("plot", poly_label))[1]
                 plot_count += 1
             else:
-                kind = "field"
-                field_polys.append(coords)
+                kind, label = feature_meta.get(addr, ("field", poly_label or addr))
+                if kind == "plot":
+                    plot_count += 1
+                else:
+                    kind = "field"
+                    field_polys.append(coords)
             feat = _feature(coords, kind=kind, label=label, fid=f"{doc.canonical_name}:{addr}")
             if feat:
                 features.append(feat)
@@ -177,7 +192,8 @@ class FarmProfileViewer:
         fields = [
             {"label": "title", "value": profile["title"] or doc.canonical_name},
             {"label": "samras_node", "value": profile["samras_node"]},
-            {"label": "fields", "value": str(len(field_polys))},
+            {"label": "parcels", "value": str(parcel_count)},
+            {"label": "field", "value": str(field_count)},
             {"label": "plots", "value": str(plot_count)},
             {"label": "plots_source", "value": plots_source},
         ]
