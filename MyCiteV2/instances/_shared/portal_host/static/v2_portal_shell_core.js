@@ -437,11 +437,26 @@
       window.PortalToolPalette.mount(mount, ctx);
       var input = mount.querySelector("[data-palette-input]");
       var list = mount.querySelector("[data-palette-list]");
+      // The dropdown is position:fixed (CSS) so it ESCAPES the menubar's overflow:hidden — which was
+      // clipping it to zero visible height (the search "showed nothing"). Anchor it to the input via
+      // getBoundingClientRect, the same pattern the v2-ctxMenu context menu uses.
+      function positionMenubarList() {
+        if (!input || !list) return;
+        var r = input.getBoundingClientRect();
+        var width = Math.max(r.width, 260);
+        var left = Math.max(4, Math.min(r.left, window.innerWidth - width - 8));
+        list.style.top = r.bottom + 4 + "px";
+        list.style.left = left + "px";
+        list.style.width = width + "px";
+      }
       if (input && list) {
-        input.addEventListener("focus", function () { list.removeAttribute("hidden"); });
+        input.addEventListener("focus", function () { list.removeAttribute("hidden"); positionMenubarList(); });
+        input.addEventListener("input", positionMenubarList);
         input.addEventListener("blur", function () {
           setTimeout(function () { list.setAttribute("hidden", "hidden"); }, 200);
         });
+        window.addEventListener("resize", function () { if (!list.hasAttribute("hidden")) positionMenubarList(); });
+        window.addEventListener("scroll", function () { if (!list.hasAttribute("hidden")) positionMenubarList(); }, true);
       }
       mount.__menubarSearchMounted = true;
       return true;

@@ -10305,6 +10305,16 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 /* The dropdown renders on a light --paper panel, but the menu bar sets white text — force
    dark text so the tool labels (.portal-tool-palette__action strong = color:inherit) read. */
 .ide-menubar__toolSearch .portal-tool-palette__results { color: var(--ink, #464646); }
+/* The menubar (.ide-menubar / .ide-menubar__right) is overflow:hidden, which CLIPPED the absolutely
+   positioned dropdown to zero visible height. Use position:fixed (viewport-relative) so it escapes
+   the clip; v2_portal_shell_core.js positionMenubarList() sets top/left/width from the input rect. */
+.ide-menubar__toolSearch .portal-tool-palette__results {
+  position: fixed;
+  left: auto;
+  right: auto;
+  top: auto;
+  z-index: 210;
+}
 
 /* Plan v2 — sandbox selector in menubar center. */
 .ide-menubar__sandboxLabel {
