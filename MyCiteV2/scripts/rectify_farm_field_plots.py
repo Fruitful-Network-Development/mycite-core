@@ -11,8 +11,9 @@ the largest parcel, centered inside it — and re-packs plots into the FIELD onl
 plot_N_polygon; rings 4-4-N; features 7-N rf.3-1-5 → re-minted lcl plot nodes). The lcl-SAMRAS
 anchor magnitude is recomputed. Backed up + verified; dry-run by default.
 
-NOTE: the field geometry is SYNTHESIZED (a 0.6-scaled copy of the largest parcel) because the
-operator's original field was never persisted. Pass --field-scale to tune; supply a real field later.
+NOTE: the field geometry is the operator's REAL polygon (_REAL_FIELD_COORDS — a 24-point ring inside
+parcel_1, the largest parcel). Pass --field-json <path> to override it, or --synthesize to fall back to
+the old 0.6-scaled copy of the largest parcel.
 
 Usage::
 
@@ -70,6 +71,36 @@ _FIELD_RING = "4-5-1"
 _PLOTS_COLL = "6-0-2"
 _FIELD_COLL = "6-0-3"
 
+# The operator's REAL field polygon (lon, lat), a 24-point ring that sits inside parcel_1 (5-0-1),
+# the largest parcel — verified read-only (containment 1.000). This replaces the synthesized 0.6-scale
+# copy. Override with --field-json <path> ([[lon,lat],...]); --synthesize falls back to the scaled copy.
+_REAL_FIELD_COORDS: tuple[tuple[float, float], ...] = (
+    (-81.52656332227225, 41.23557837471115),
+    (-81.52590977635926, 41.23538503761906),
+    (-81.52581068075156, 41.23541790753577),
+    (-81.52568382163648, 41.23536763009513),
+    (-81.52445291028205, 41.23494564790477),
+    (-81.52435875940715, 41.23496977947267),
+    (-81.52416198646841, 41.23483960368717),
+    (-81.52374782851138, 41.23471175283589),
+    (-81.52364212171024, 41.23486920210374),
+    (-81.5235388062879, 41.23521391931826),
+    (-81.52350412006453, 41.23565298737125),
+    (-81.52367045468824, 41.23568573746464),
+    (-81.52378841332548, 41.23584933682286),
+    (-81.52427451689701, 41.23609651736726),
+    (-81.52492853259835, 41.23617053497404),
+    (-81.52535558116618, 41.23614368836691),
+    (-81.52572350120239, 41.23621821306675),
+    (-81.52576744040692, 41.23628399987388),
+    (-81.5263846849648, 41.23652423963335),
+    (-81.52674785876901, 41.23646518353768),
+    (-81.52682381395185, 41.23648028857871),
+    (-81.5272671789082, 41.23642694774269),
+    (-81.52732277939828, 41.23561665240299),
+    (-81.52656332227225, 41.23557837471115),
+)
+
 
 def _poly_for(rows_by_addr: dict, poly_addr: str) -> Polygon | None:
     raw = rows_by_addr.get(poly_addr)
@@ -97,7 +128,14 @@ def _ring_row(ring_addr: str, polygon: Polygon, label: str):
     return _row(ring_addr, [head, [label]])
 
 
-def build(store: SqliteSystemDatumStoreAdapter, *, edge_m: float, field_scale: float):
+def build(
+    store: SqliteSystemDatumStoreAdapter,
+    *,
+    edge_m: float,
+    field_coords: tuple[tuple[float, float], ...] | None = None,
+    field_scale: float = 0.6,
+    synthesize: bool = False,
+):
     catalog = store.read_authoritative_datum_documents(AuthoritativeDatumDocumentRequest(tenant_id=TENANT))
     live = {d.document_id.split(".")[3]: d for d in catalog.documents if f".{SANDBOX}." in d.document_id}
     for name in ("anchor", "lcl", "farm_profile"):
@@ -108,17 +146,30 @@ def build(store: SqliteSystemDatumStoreAdapter, *, edge_m: float, field_scale: f
     boundary = [r for r in fp_rows if not _is_plot_row(r.datum_address)]
     by_addr = {r.datum_address: r for r in boundary}
 
-    # The 3 parcels → polygons; pick the largest; synthesize the FIELD inside it.
+    # The 3 parcels → polygons; pick the largest. The FIELD is the operator's real polygon (default),
+    # validated to sit inside the largest parcel; --synthesize falls back to a scaled copy of it.
     parcels = {a: _poly_for(by_addr, a) for a in _PARCEL_ADDRS}
     if any(p is None for p in parcels.values()):
         raise SystemExit(f"could not decode all parcels: { {a: (p is not None) for a, p in parcels.items()} }")
     largest_addr = max(parcels, key=lambda a: parcels[a].area)
     largest = parcels[largest_addr]
-    field = scale(largest, xfact=field_scale, yfact=field_scale, origin="centroid")
-    if not largest.contains(field):
-        field = _largest_polygon(field.intersection(largest))
-    if field.is_empty or field.area <= 0:
-        raise SystemExit("synthesized field is empty after clipping to the parcel")
+    if synthesize or field_coords is None:
+        field = scale(largest, xfact=field_scale, yfact=field_scale, origin="centroid")
+        if not largest.contains(field):
+            field = _largest_polygon(field.intersection(largest))
+        if field.is_empty or field.area <= 0:
+            raise SystemExit("synthesized field is empty after clipping to the parcel")
+        field_origin = f"synthesized(scale={field_scale})"
+    else:
+        field = Polygon([(float(lon), float(lat)) for lon, lat in field_coords])
+        if not field.is_valid or field.area <= 0:
+            raise SystemExit("provided field polygon is invalid or zero-area")
+        if not largest.contains(field):
+            # The operator's field is authoritative — warn, do NOT clip it to the parcel.
+            ratio = field.intersection(largest).area / field.area if field.area else 0.0
+            print(f"[warn] provided field is NOT fully contained by the largest parcel {largest_addr} "
+                  f"(field∩largest/field={ratio:.3f}); keeping the operator geometry as-is")
+        field_origin = "operator_provided"
 
     squares = pack_squares(field, edge_m=edge_m)
     n_plots = len(squares)
@@ -168,7 +219,8 @@ def build(store: SqliteSystemDatumStoreAdapter, *, edge_m: float, field_scale: f
     new_fp, fp_hash = _finalize(dataclasses.replace(live["farm_profile"], rows=tuple(new_rows)), "farm_profile")
     report = {
         "largest_parcel": largest_addr,
-        "field_scale": field_scale,
+        "field_origin": field_origin,
+        "field_in_largest": largest.contains(field),
         "edge_m": edge_m,
         "plots_in_field": n_plots,
         "farm_profile_rows": len(new_rows),
@@ -180,9 +232,19 @@ def build(store: SqliteSystemDatumStoreAdapter, *, edge_m: float, field_scale: f
     return docs, prior, hashes, report
 
 
-def run(*, authority_db: Path, edge_m: float, field_scale: float, dry_run: bool) -> dict:
+def run(
+    *,
+    authority_db: Path,
+    edge_m: float,
+    field_coords: tuple[tuple[float, float], ...] | None,
+    field_scale: float,
+    synthesize: bool,
+    dry_run: bool,
+) -> dict:
     store = SqliteSystemDatumStoreAdapter(authority_db, allow_legacy_writes=False)
-    docs, prior, hashes, report = build(store, edge_m=edge_m, field_scale=field_scale)
+    docs, prior, hashes, report = build(
+        store, edge_m=edge_m, field_coords=field_coords, field_scale=field_scale, synthesize=synthesize
+    )
     print("== rectify farm field/plots ==")
     for k, v in report.items():
         print(f"  {k}: {v}")
@@ -206,14 +268,35 @@ def run(*, authority_db: Path, edge_m: float, field_scale: float, dry_run: bool)
     return report
 
 
+def _load_field_json(path: str) -> tuple[tuple[float, float], ...]:
+    import json
+
+    data = json.loads(Path(path).read_text())
+    return tuple((float(lon), float(lat)) for lon, lat in data)
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description="Put farm plots inside a field within the largest parcel.")
     ap.add_argument("--db", required=True)
-    ap.add_argument("--edge-m", type=float, default=60.0)
-    ap.add_argument("--field-scale", type=float, default=0.6)
+    ap.add_argument("--edge-m", type=float, default=30.0, help="plot square edge in metres (default 30 ≈ fine tiling)")
+    ap.add_argument("--field-json", help="override the embedded real field with a [[lon,lat],...] JSON file")
+    ap.add_argument("--field-scale", type=float, default=0.6, help="only with --synthesize: scale of the parcel copy")
+    ap.add_argument("--synthesize", action="store_true", help="fall back to a scaled copy of the largest parcel")
     ap.add_argument("--apply", action="store_true")
     args = ap.parse_args(argv)
-    run(authority_db=Path(args.db), edge_m=args.edge_m, field_scale=args.field_scale, dry_run=not args.apply)
+    field_coords = (
+        None if args.synthesize
+        else _load_field_json(args.field_json) if args.field_json
+        else _REAL_FIELD_COORDS
+    )
+    run(
+        authority_db=Path(args.db),
+        edge_m=args.edge_m,
+        field_coords=field_coords,
+        field_scale=args.field_scale,
+        synthesize=args.synthesize,
+        dry_run=not args.apply,
+    )
     return 0
 
 

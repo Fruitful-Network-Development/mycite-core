@@ -10442,6 +10442,46 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 }
 .v2-composite__paneBody { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 6px 8px; }
 
+/* farm_profile drill-down map — overall ⇄ field view. The map host is the positioning context for the
+   top-left back arrow and the top-right plot-label popup; hovering a polygon "indents" it (thicker
+   stroke); faint plots in the overall view are texture only (non-interactive). */
+.v2-farm__map { position: relative; }
+.v2-farm__svg { display: block; }
+.v2-farm__svg polygon { transition: stroke-width 80ms ease; }
+.v2-farm__svg polygon.is-hover { stroke-width: 2.5; }
+.v2-farm__svg polygon.is-faint { opacity: 0.22; pointer-events: none; }
+.v2-farm__svg polygon[data-fp-role="field"] { cursor: pointer; }
+.v2-farm__svg polygon[data-fp-plot] { cursor: pointer; }
+.v2-farm__back {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  padding: 2px 10px;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.v2-farm__back:hover { border-color: var(--ink); }
+.v2-farm__plotLabel {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  color: var(--ink);
+  background: var(--paper2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.v2-farm__plotLabel[hidden] { display: none; }
+
 /* portal-tool-overlay-restructure — full-screen tool overlay (menubar search → tool widget).
    Blurred backdrop + standardized centered panel + top-left close. z above the shell. */
 .ide-toolOverlay { position: fixed; inset: 0; z-index: 200; }

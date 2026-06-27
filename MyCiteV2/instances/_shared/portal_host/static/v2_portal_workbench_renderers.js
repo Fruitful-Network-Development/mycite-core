@@ -5691,6 +5691,18 @@
       "</section>";
   }
 
+  // Per-kind SVG fill/stroke for the farm map.
+  function _farmPolyStyle(kind) {
+    if (kind === "plot") return { fill: "rgba(46,160,67,0.42)", stroke: "#2ea043" };
+    if (kind === "field") return { fill: "rgba(214,158,46,0.20)", stroke: "#d69e2e" };
+    if (kind === "parcel") return { fill: "rgba(31,111,235,0.05)", stroke: "#1f6feb" };
+    return { fill: "rgba(31,111,235,0.10)", stroke: "#1f6feb" };
+  }
+
+  // Two-level geospatial projection window: OVERALL (parcels + the field with its plots faintly tiled)
+  // ⇄ FIELD (click the field to zoom into it; plots become individually hoverable with a top-right label
+  // popup; a top-left back arrow returns). Only the .v2-farm__map content changes — purely client-side,
+  // no refetch. Works standalone AND inside the Agronomics FARM tab (renderComposite delegates here).
   function renderFarmProfile(payload, content) {
     payload = payload || {};
     if (errorOr(payload, content)) return;
@@ -5698,16 +5710,19 @@
     var features = Array.isArray(fc.features) ? fc.features : [];
     var fields = Array.isArray(payload.fields) ? payload.fields : [];
 
-    // Collect all lon/lat for a shared projection (equirectangular fit-to-box).
-    var pts = [];
-    features.forEach(function (f) {
-      var g = (f && f.geometry) || {};
-      ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
-        if (Array.isArray(c) && c.length >= 2) pts.push(c);
+    var W = 460, H = 320, PAD = 12;
+
+    // Fit-to-box equirectangular projection over an arbitrary feature subset (overall = all features,
+    // field view = just the field + its plots, so the window zooms to the field's bounding box).
+    function makeProjection(subset) {
+      var pts = [];
+      subset.forEach(function (f) {
+        var g = (f && f.geometry) || {};
+        ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
+          if (Array.isArray(c) && c.length >= 2) pts.push(c);
+        });
       });
-    });
-    var W = 460, H = 320, PAD = 12, svg = "";
-    if (pts.length) {
+      if (!pts.length) return null;
       var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
       pts.forEach(function (c) {
         if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0];
@@ -5715,34 +5730,73 @@
       });
       var sx = (maxx - minx) || 1e-9, sy = (maxy - miny) || 1e-9;
       var scale = Math.min((W - 2 * PAD) / sx, (H - 2 * PAD) / sy);
-      var proj = function (c) {
+      return function (c) {
         var x = PAD + (c[0] - minx) * scale;
         var y = H - PAD - (c[1] - miny) * scale; // flip Y (north up)
         return x.toFixed(1) + "," + y.toFixed(1);
       };
-      var paths = features.map(function (f) {
-        var g = (f && f.geometry) || {};
-        var p = (f && f.properties) || {};
-        var ring = (g.coordinates && g.coordinates[0]) || [];
-        if (!ring.length) return "";
-        var pointsAttr = ring.map(proj).join(" ");
-        // parcel = light blue outline; field = amber highlight (inside the largest parcel);
-        // plot = green square tiling the field. Render order (sorted addr) layers plots over the
-        // field over the parcels.
-        var fill, stroke;
-        if (p.kind === "plot") { fill = "rgba(46,160,67,0.42)"; stroke = "#2ea043"; }
-        else if (p.kind === "field") { fill = "rgba(214,158,46,0.20)"; stroke = "#d69e2e"; }
-        else if (p.kind === "parcel") { fill = "rgba(31,111,235,0.05)"; stroke = "#1f6feb"; }
-        else { fill = "rgba(31,111,235,0.10)"; stroke = "#1f6feb"; }
-        return '<polygon points="' + pointsAttr + '" fill="' + fill +
-          '" stroke="' + stroke + '" stroke-width="1"><title>' +
-          esc(p.label || "") + " (" + esc(p.kind || "") + ")</title></polygon>";
-      }).join("");
-      svg = '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
+    }
+
+    function polySvg(f, proj, opts) {
+      opts = opts || {};
+      var g = (f && f.geometry) || {};
+      var p = (f && f.properties) || {};
+      var ring = (g.coordinates && g.coordinates[0]) || [];
+      if (!ring.length || !proj) return "";
+      var st = _farmPolyStyle(p.kind);
+      var cls = "v2-farm__poly" + (opts.faint ? " is-faint" : "");
+      var data = ' data-kind="' + esc(p.kind || "") + '" data-label="' + esc(p.label || "") + '"';
+      if (opts.fieldTarget) data += ' data-fp-role="field"';
+      if (opts.plotHit) data += ' data-fp-plot="1"';
+      return '<polygon class="' + cls + '" points="' + ring.map(proj).join(" ") +
+        '" fill="' + st.fill + '" stroke="' + st.stroke + '" stroke-width="1"' + data +
+        ' aria-label="' + esc((p.label || "") + " " + (p.kind || "")) + '"></polygon>';
+    }
+
+    function svgWrap(inner) {
+      return '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
         '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm map">' +
-        paths + "</svg>";
-    } else {
-      svg = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
+        inner + "</svg>";
+    }
+
+    var parcels = features.filter(function (f) { return (f.properties || {}).kind === "parcel"; });
+    var fieldFeats = features.filter(function (f) { return (f.properties || {}).kind === "field"; });
+    // Single-field model: every plot belongs to the one field, so the field view shows them all
+    // (no per-plot containment test needed — revisit if farm_profile ever carries multiple fields).
+    var plots = features.filter(function (f) { return (f.properties || {}).kind === "plot"; });
+
+    var mode = "overall";
+
+    function paintOverall(host) {
+      var proj = makeProjection(features);
+      if (!proj) {
+        host.innerHTML = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
+        return;
+      }
+      // Layer: parcels (bottom) → plots faint (texture, non-interactive) → field (amber, on top, the
+      // click target). The translucent field fill lets the faint plot tiling show through.
+      var inner =
+        parcels.map(function (f) { return polySvg(f, proj, {}); }).join("") +
+        plots.map(function (f) { return polySvg(f, proj, { faint: true }); }).join("") +
+        fieldFeats.map(function (f) { return polySvg(f, proj, { fieldTarget: true }); }).join("");
+      host.innerHTML = svgWrap(inner);
+    }
+
+    function paintField(host) {
+      var subset = fieldFeats.concat(plots);
+      var proj = makeProjection(subset.length ? subset : features);
+      if (!proj) { host.innerHTML = '<p class="v2-farm__empty">No field geometry.</p>'; return; }
+      var inner =
+        fieldFeats.map(function (f) { return polySvg(f, proj, {}); }).join("") +
+        plots.map(function (f) { return polySvg(f, proj, { plotHit: true }); }).join("");
+      host.innerHTML =
+        '<button type="button" class="v2-farm__back" data-fp-back aria-label="Back to farm view">&larr; Farm</button>' +
+        '<div class="v2-farm__plotLabel" data-fp-plotlabel hidden></div>' +
+        svgWrap(inner);
+    }
+
+    function paintMap(host) {
+      if (mode === "field" && fieldFeats.length) paintField(host); else paintOverall(host);
     }
 
     var fieldRows = fields.map(function (f) {
@@ -5754,11 +5808,40 @@
       _profileCardHtml(payload.profile) +
       '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
       " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
-      '<div class="v2-farm__map">' + svg + "</div>" +
+      '<div class="v2-farm__map" data-farm-map></div>' +
       (fieldRows
         ? '<table class="v2-farm__values"><tbody>' + fieldRows + "</tbody></table>"
         : "") +
       "</section>";
+
+    var host = content.querySelector("[data-farm-map]");
+    if (!host) return;
+    paintMap(host);
+
+    // Delegated listeners — attached ONCE to the stable map host; survive paintMap re-renders.
+    host.addEventListener("click", function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest("[data-fp-back]")) { mode = "overall"; paintMap(host); return; }
+      if (mode === "overall" && t.closest('[data-fp-role="field"]')) { mode = "field"; paintMap(host); }
+    });
+    host.addEventListener("mouseover", function (e) {
+      var poly = e.target && e.target.closest ? e.target.closest("polygon") : null;
+      if (!poly || !host.contains(poly)) return;
+      poly.classList.add("is-hover"); // hover "indent"
+      if (mode === "field" && poly.getAttribute("data-fp-plot")) {
+        var lbl = host.querySelector("[data-fp-plotlabel]");
+        if (lbl) { lbl.textContent = poly.getAttribute("data-label") || ""; lbl.hidden = false; }
+      }
+    });
+    host.addEventListener("mouseout", function (e) {
+      var poly = e.target && e.target.closest ? e.target.closest("polygon") : null;
+      if (poly) poly.classList.remove("is-hover");
+      if (mode === "field") {
+        var lbl = host.querySelector("[data-fp-plotlabel]");
+        if (lbl) { lbl.hidden = true; lbl.textContent = ""; }
+      }
+    });
   }
 
   function renderContracts(payload, content) {
