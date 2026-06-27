@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import glob
+import hmac
+import html
 import json
 import logging
 import os
@@ -2634,13 +2636,88 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             _legacy_deprecation_headers("newsletter_contact_log", "upsert_subscriber"),
         )
 
-    @app.post("/__fnd/newsletter/unsubscribe")
-    def fnd_newsletter_unsubscribe() -> tuple[Any, int]:
+    def _newsletter_unsub_page(title: str, message: str, form_action: str = "") -> str:
+        body = f"<h1>{html.escape(title)}</h1><p>{message}</p>"
+        if form_action:
+            body += (
+                f"<form method='post' action='{form_action}'>"
+                "<button type='submit'>Confirm unsubscribe</button></form>"
+            )
+        return (
+            "<!doctype html><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{html.escape(title)}</title>"
+            "<style>body{font-family:Georgia,serif;max-width:560px;margin:64px auto;"
+            "padding:0 24px;line-height:1.6;color:#222}strong{color:#000}"
+            "button{padding:10px 22px;font-size:1em;cursor:pointer;background:#444;"
+            "color:#fff;border:0;border-radius:4px}</style>" + body
+        )
+
+    def _newsletter_unsub_reply(*, ok: bool, status: int, email: str = "",
+                                error: str = "", headers=None):
+        """One-click (RFC 8058) and API callers get JSON, byte-identical to the
+        legacy behaviour. A browser confirm-form submit carries ``?via=web`` and
+        gets a friendly HTML page instead of raw JSON."""
+        if request.args.get("via") == "web":
+            if ok:
+                title = "You're unsubscribed"
+                msg = (f"<strong>{html.escape(email)}</strong> has been removed "
+                       "from this newsletter. You won't receive further messages.")
+            elif error == "contact_not_found":
+                title = "Not subscribed"
+                msg = (f"{html.escape(email) or 'That address'} isn't on this "
+                       "newsletter list — it may already have been removed.")
+            elif error in ("invalid_token", "invalid_email"):
+                title = "Link invalid or expired"
+                msg = ("This unsubscribe link is invalid. Use the link from a "
+                       "recent newsletter, or reply to the sender to be removed.")
+            else:
+                title = "Something went wrong"
+                msg = "We couldn't process this request. Please try again later."
+            return (_newsletter_unsub_page(title, msg), status,
+                    {"Content-Type": "text/html; charset=utf-8"})
+        payload: dict[str, Any] = {"ok": ok}
+        if ok:
+            payload["email"] = email
+            payload["subscribed"] = False
+        else:
+            payload["error"] = error
+        return (jsonify(payload), status, headers or {})
+
+    @app.route("/__fnd/newsletter/unsubscribe", methods=["GET", "POST"])
+    def fnd_newsletter_unsubscribe() -> Any:
         # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
         domain = _normalize_domain(request.host)
         known = _newsletter_known_domains(host_config.private_dir)
+        if request.method == "GET":
+            # Browser fallback for the in-body unsubscribe link. The mail client's
+            # one-click control POSTs (List-Unsubscribe-Post); a human who clicks
+            # the plain link issues a GET, which must NOT 405 and must NOT
+            # unsubscribe on load (mail scanners prefetch links). Render a no-JS
+            # confirm page whose form POSTs back with ?via=web.
+            html_headers = {"Content-Type": "text/html; charset=utf-8"}
+            if domain not in known:
+                return (_newsletter_unsub_page(
+                    "Unavailable", "This unsubscribe link is not valid for this site."),
+                    404, html_headers)
+            g_email = _validate_email(str(request.args.get("email") or ""))
+            g_token = str(request.args.get("token") or "").strip()
+            if not g_email or not g_token:
+                return (_newsletter_unsub_page(
+                    "Invalid link", "This unsubscribe link is incomplete. Please "
+                    "use the link from a recent newsletter."), 400, html_headers)
+            action = (
+                "/__fnd/newsletter/unsubscribe?email="
+                f"{urllib.parse.quote(g_email, safe='')}"
+                f"&amp;token={urllib.parse.quote(g_token, safe='')}&amp;via=web"
+            )
+            return (_newsletter_unsub_page(
+                "Unsubscribe?",
+                f"Stop sending the {html.escape(domain)} newsletter to "
+                f"<strong>{html.escape(g_email)}</strong>?",
+                form_action=action), 200, html_headers)
         if domain not in known:
-            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+            return _newsletter_unsub_reply(ok=False, status=404, error="domain_not_configured")
 
         # Accept token/email from query string or body
         raw_email = (
@@ -2653,23 +2730,32 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         email = _validate_email(raw_email)
         if not email:
-            return jsonify({"ok": False, "error": "invalid_email"}), 400
+            return _newsletter_unsub_reply(ok=False, status=400, error="invalid_email")
 
-        # Validate HMAC token via service layer
+        # Validate the HMAC against the SAME secret the SEND path signs with —
+        # the per-tenant AWS Secrets Manager value, resolved through
+        # NewsletterService.render_unsubscribe_token (which calls
+        # _ensure_secret_value -> cloud get_or_create_secret_value, exactly as
+        # send_composed_newsletter does). Validating against the local
+        # runtime_secret_seed was a critical bug: that seed is "" when
+        # runtime_secrets.json is absent (it is, live), so every real
+        # unsubscribe link 403'd while an attacker-computable empty-key HMAC was
+        # accepted. Fail closed if the resolved secret is empty.
         try:
-            from MyCiteV2.packages.adapters.filesystem.newsletter_state import (
-                FilesystemNewsletterStateAdapter,
+            from MyCiteV2.packages.adapters.event_transport import (
+                NewsletterCloudAdapter,
             )
-            from MyCiteV2.packages.modules.cross_domain.newsletter.payload_utils import (
-                render_unsubscribe_token as _render_unsubscribe_token,
+            from MyCiteV2.packages.modules.cross_domain.newsletter import (
+                NewsletterService,
             )
-            state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
-            signing_secret = state_adapter.runtime_secret_seed(secret_kind="signing_secret")
-            expected = _render_unsubscribe_token(signing_secret, domain=domain, email=email)
-            if token_value != expected:
-                return jsonify({"ok": False, "error": "invalid_token"}), 403
+            state = _newsletter_state_adapter(host_config)
+            tenant_id = _as_text(host_config.portal_instance_id) or "fnd"
+            service = NewsletterService(state, NewsletterCloudAdapter(), tenant_id=tenant_id)
+            expected = service.render_unsubscribe_token(domain=domain, email=email)
+            if not expected or not hmac.compare_digest(token_value, expected):
+                return _newsletter_unsub_reply(ok=False, status=403, error="invalid_token")
         except Exception:
-            return jsonify({"ok": False, "error": "token_validation_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="token_validation_error")
 
         try:
             from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
@@ -2689,18 +2775,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 private_dir=host_config.private_dir,
             )
         except Exception:
-            return jsonify({"ok": False, "error": "storage_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="storage_error")
 
         if not result.get("ok"):
-            return jsonify({"ok": False, "error": "storage_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="storage_error")
         if not (result.get("preview") or {}).get("matched"):
             # Email wasn't on the list (or no list yet) — say so instead of a
             # misleading 200 "unsubscribed".
-            return jsonify({"ok": False, "error": "contact_not_found"}), 404
-        return (
-            jsonify({"ok": True, "email": email, "subscribed": False}),
-            200,
-            _legacy_deprecation_headers("newsletter_contact_log", "mark_unsubscribed"),
+            return _newsletter_unsub_reply(ok=False, status=404, email=email, error="contact_not_found")
+        return _newsletter_unsub_reply(
+            ok=True, status=200, email=email,
+            headers=_legacy_deprecation_headers("newsletter_contact_log", "mark_unsubscribed"),
         )
 
     @app.post("/__fnd/newsletter/dispatch-result")
@@ -2734,7 +2819,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
             state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
             expected_token = state_adapter.runtime_secret_seed(secret_kind="dispatch_secret")
-            if callback_token != expected_token:
+            if not hmac.compare_digest(callback_token, expected_token):
                 return jsonify({"ok": False, "error": "invalid_callback_token"}), 403
         except Exception:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
@@ -6145,6 +6230,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         newsletter = store.load(entity, slug) if slug else {}
         if not newsletter:
             return jsonify({"ok": False, "error": "newsletter_not_found"}), 404
+        # Idempotency guard: /save refuses to overwrite a leaflet already marked
+        # "sent", but a direct or replayed POST to /send (double-click, proxy
+        # retry, a second tab, or an ses_direct timeout+retry) would otherwise
+        # re-dispatch to the ENTIRE subscriber list. A sent leaflet is terminal;
+        # compose a new draft to send again.
+        if _as_text(newsletter.get("status")) == "sent":
+            return jsonify({"ok": False, "error": "already_sent"}), 409
 
         known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
@@ -6221,6 +6313,28 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "sent_count": result.get("sent_count", 0),
             "failed_count": result.get("failed_count", 0),
             "newsletter": newsletter,
+        }), 200
+
+    @app.route("/__fnd/newsletter/grantee/signature", methods=["GET", "POST"])
+    def fnd_newsletter_grantee_signature() -> tuple[Any, int]:
+        """Grantee-scoped read/write of the newsletter signature/footer. The
+        unsubscribe link is always appended by the send path AFTER this text, so
+        editing the signature can never remove the unsubscribe affordance."""
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        _entity, domain, err = _grantee_newsletter_scope()
+        if err:
+            return err
+        state = _newsletter_state_adapter(host_config)
+        profile = state.load_profile(domain=domain) or {}
+        if request.method == "POST":
+            payload = _json_payload()
+            profile["signature"] = _as_text(payload.get("signature"))[:4000]
+            profile = state.save_profile(domain=domain, payload=profile)
+        return jsonify({
+            "ok": True,
+            "domain": domain,
+            "signature": _as_text(profile.get("signature")),
         }), 200
 
     @app.get("/__fnd/design/content")
@@ -6366,50 +6480,10 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "campaigns": campaigns,
         }), 200
 
-    @app.get("/__fnd/newsletter/contacts")
-    def fnd_newsletter_contacts() -> tuple[Any, int]:
-        """Read-only contact list for a grantee's first domain. Used
-        by the grantee dashboard's Contacts tab; scope-guarded so
-        only the owning grantee (or unauthenticated operator) sees it.
-        """
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
-            domains_for_grantee,
-        )
-
-        if host_config.private_dir is None:
-            return jsonify({"ok": False, "error": "no_private_dir"}), 500
-
-        requested_msn, err = _resolve_grantee_scope()
-        if err:
-            return err
-
-        domains = domains_for_grantee(requested_msn)
-        # The contact ROSTER lives in the per-entity YAML leaflet now, not the
-        # legacy JSON contact log (which holds dispatch history only). Read the
-        # COMPOSED view via the adapter so this list isn't empty/stale after the
-        # contacts cutover — same single-source-of-truth path the dashboard
-        # aggregator uses.
-        adapter = _newsletter_state_adapter(host_config)
-        contacts: list[dict[str, Any]] = []
-        for d in domains:
-            data = adapter.load_contact_log(domain=d) or {}
-            for c in data.get("contacts") or []:
-                contacts.append({**c, "_domain": d})
-        contacts.sort(key=lambda c: str(c.get("email", "")))
-        active = sum(1 for c in contacts if c.get("subscribed"))
-        return jsonify({
-            "ok": True,
-            "grantee": {
-                "msn_id": requested_msn,
-                "domains": domains,
-            },
-            "summary": {
-                "total": len(contacts),
-                "active": active,
-                "unsubscribed": len(contacts) - active,
-            },
-            "contacts": contacts,
-        }), 200
+    # NOTE: the legacy GET /__fnd/newsletter/contacts route was removed
+    # 2026-06-27 — it duplicated GET /__fnd/contacts/list but returned
+    # UN-PROJECTED contact rows (every field incl. visitor subject/message
+    # free-text). The dashboard uses the projected /__fnd/contacts/list.
 
     @app.post("/__fnd/newsletter/inbound-capture")
     def fnd_newsletter_inbound_capture() -> tuple[Any, int]:

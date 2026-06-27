@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import secrets
 from typing import Any
+from urllib.parse import quote
 
 from MyCiteV2.packages.modules.shared import as_text, dedupe_warnings, utc_now_iso
 from MyCiteV2.packages.ports.newsletter import (
@@ -48,6 +49,13 @@ from .payload_utils import (
 from .payload_utils import (
     render_unsubscribe_token as _render_unsubscribe_token,
 )
+
+# Synchronous SES fallback sends one message per recipient inside the HTTP
+# request; above this many subscribers a single request would block past the
+# gunicorn worker timeout, and a partial send has no resumption — a retry then
+# re-mails everyone already sent. Lists this large MUST use the SQS/Lambda
+# dispatch queue instead.
+_SES_DIRECT_MAX_RECIPIENTS = 200
 
 
 def _as_text(value: object) -> str:
@@ -519,6 +527,12 @@ class NewsletterService:
             dispatcher_callback_url=dispatcher_callback_url,
             inbound_callback_url=inbound_callback_url,
         )
+        # Grantee-editable signature/footer. Inserted between the message body
+        # and the (always server-appended) unsubscribe link, so a grantee can
+        # word their own footer but can never remove the unsubscribe affordance.
+        signature = _as_text(profile.get("signature"))
+        if signature:
+            body_text = f"{body_text}\n\n{signature}"
         selected_author = self._selected_author_for_domain(domain=domain_token, profile=profile)
         list_address = _optional_email(profile.get("list_address")) or f"news@{domain_token}"
         sender_address = _optional_email(profile.get("sender_address")) or list_address
@@ -551,6 +565,12 @@ class NewsletterService:
             and bool(item.get("subscribed"))
             and _optional_email(item.get("email"))
         ]
+        if transport == "ses_direct" and len(subscribers) > _SES_DIRECT_MAX_RECIPIENTS:
+            raise ValueError(
+                f"too many subscribers ({len(subscribers)}) for a synchronous SES "
+                f"send (limit {_SES_DIRECT_MAX_RECIPIENTS}); provision the newsletter "
+                "dispatch queue for a list this large"
+            )
         contacts_by_email = {
             _as_text(c.get("email")).lower(): dict(c)
             for c in list(contact_log.get("contacts") or [])
@@ -565,7 +585,7 @@ class NewsletterService:
             if not email:
                 continue
             unsubscribe_url = (
-                f"https://{domain_token}/__fnd/newsletter/unsubscribe?email={email}&token="
+                f"https://{domain_token}/__fnd/newsletter/unsubscribe?email={quote(email, safe='')}&token="
                 f"{_render_unsubscribe_token(unsubscribe_secret, domain=domain_token, email=email)}"
             )
             result_row = {"email": email, "status": "queued", "unsubscribe_url": unsubscribe_url}
@@ -749,6 +769,9 @@ class NewsletterService:
         body_text = _message_text_from_email(raw_bytes).strip()
         if not body_text:
             raise ValueError("captured inbound newsletter body is empty")
+        signature = _as_text(profile.get("signature"))
+        if signature:
+            body_text = f"{body_text}\n\n{signature}"
         effective_subject = _as_text(subject) or _message_subject_from_email(raw_bytes)
         if not effective_subject:
             raise ValueError("captured inbound newsletter subject is missing")
@@ -792,7 +815,7 @@ class NewsletterService:
             if not email:
                 continue
             unsubscribe_url = (
-                f"https://{domain_token}/__fnd/newsletter/unsubscribe?email={email}&token="
+                f"https://{domain_token}/__fnd/newsletter/unsubscribe?email={quote(email, safe='')}&token="
                 f"{_render_unsubscribe_token(unsubscribe_secret, domain=domain_token, email=email)}"
             )
             message_body = {

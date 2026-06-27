@@ -133,6 +133,12 @@ class TestPreservationRoutesRegistered(unittest.TestCase):
     def test_newsletter_unsubscribe_route_registered(self) -> None:
         self.assertIn("POST", _route_methods_for(self.app, "/__fnd/newsletter/unsubscribe"))
 
+    def test_newsletter_unsubscribe_get_route_registered(self) -> None:
+        # A human who clicks the in-body unsubscribe link issues a GET; before
+        # this fix the route was POST-only and a click 405'd. The GET now renders
+        # a confirm page (it must not unsubscribe on load — scanners prefetch).
+        self.assertIn("GET", _route_methods_for(self.app, "/__fnd/newsletter/unsubscribe"))
+
 
 @unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
 class TestPaypalApiHelpersAreMockable(unittest.TestCase):
