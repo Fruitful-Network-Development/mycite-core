@@ -79,9 +79,11 @@ def _invoice_table(db: Path | None, sandbox: str) -> dict[str, Any]:
     )
     if p.get("error"):
         return _table("Invoices", ["lcl_id"], [], noun="invoice")
-    # invoices already emits a record_table led by the resolved invoice identity.
-    cols = ["lcl_id", *[c for c in p.get("columns", []) if c != "invoice"]]
-    rows = [{"lcl_id": r.get("invoice", ""), **{c: r.get(c, "") for c in cols if c != "lcl_id"}}
+    # RecordViewerBase attaches the raw lcl node of the lead reference as r["lcl_id"]; the
+    # leading column is that node ADDRESS (the datum denotation), with the resolved display
+    # columns after it.
+    cols = ["lcl_id", *p.get("columns", [])]
+    rows = [{"lcl_id": _as_text(r.get("lcl_id")), **{c: r.get(c, "") for c in p.get("columns", [])}}
             for r in p.get("rows", [])]
     return _table("Invoices", cols, rows, noun="invoice line")
 
@@ -93,12 +95,10 @@ def _contract_table(db: Path | None, sandbox: str) -> dict[str, Any]:
     )
     if p.get("error"):
         return _table("Contracts", ["lcl_id"], [], noun="contract")
-    rows = [{
-        "lcl_id": _as_text(r.get("invoice")), "plot": _as_text(r.get("plot")),
-        "amount": _as_text(r.get("amount")), "cost": _as_text(r.get("cost")),
-        "event": _as_text(r.get("event")),
-    } for r in p.get("rows", [])]
-    return _table("Contracts", ["lcl_id", "plot", "amount", "cost", "event"], rows, noun="contract")
+    cols = ["lcl_id", *p.get("columns", [])]
+    rows = [{"lcl_id": _as_text(r.get("lcl_id")), **{c: r.get(c, "") for c in p.get("columns", [])}}
+            for r in p.get("rows", [])]
+    return _table("Contracts", cols, rows, noun="contract")
 
 
 def _contacts_table(db: Path | None, sandbox: str) -> dict[str, Any]:
@@ -110,12 +110,13 @@ def _contacts_table(db: Path | None, sandbox: str) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for it in p.get("items", []):
         flds = {f.get("label"): f.get("value") for f in it.get("fields", [])}
+        # contacts is a record_list; the supplier lcl node is the item subtitle, the name the title.
         rows.append({
-            "lcl_id": _as_text(it.get("title")),
+            "lcl_id": _as_text(it.get("subtitle")), "name": _as_text(it.get("title")),
             "email": _as_text(flds.get("email")), "phone": _as_text(flds.get("phone")),
             "website": _as_text(flds.get("website")),
         })
-    return _table("Contacts", ["lcl_id", "email", "phone", "website"], rows, noun="contact")
+    return _table("Contacts", ["lcl_id", "name", "email", "phone", "website"], rows, noun="contact")
 
 
 # VIEW token -> normalizer. Adding a record type = one entry here + one lcl VIEW marker.

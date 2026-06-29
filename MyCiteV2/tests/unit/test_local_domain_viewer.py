@@ -71,12 +71,15 @@ class TestLive(unittest.TestCase):
         self.assertEqual(tree_views, markers)
 
     def test_record_views_lead_with_lcl_id(self) -> None:
+        import re
+        node_addr = re.compile(r"^\d+(-\d+)+$")
         for token in ld.VIEW_DISPATCH:
             t = ld.build_record_view(token, authority_db_file=_LIVE_DB, sandbox_id="agro_erp")
             self.assertEqual(t["container"], "record_table")
             self.assertEqual(t["columns"][0], "lcl_id", f"{token} table must lead with lcl_id")
             if t["rows"]:
-                self.assertIn("lcl_id", t["rows"][0])
+                # the leading lcl_id must be a NODE ADDRESS (datum denotation), not a display name.
+                self.assertRegex(t["rows"][0]["lcl_id"], node_addr, f"{token} lcl_id must be a node address")
 
 
 if __name__ == "__main__":

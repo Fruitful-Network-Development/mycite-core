@@ -1757,14 +1757,35 @@
       return;
     }
     var nodes = asList(payload.nodes);
+    // Structure switcher (txa / msn / lcl) — same selector the SAMRAS viewer offers, so the
+    // Agronomics FARM pane keeps the ability to switch the structure (not locked to lcl).
+    var structures = asList(payload.structures);
+    var selectedStruct = asText(payload.structure || payload.magnitude || "lcl");
+    var options = structures.map(function (s) {
+      s = asObject(s);
+      var name = asText(s.name);
+      return '<option value="' + escapeHtml(name) + '"' + (name === selectedStruct ? " selected" : "") +
+        ">" + escapeHtml(name + (s.has_titles ? "" : " (no titles)")) + "</option>";
+    }).join("");
+    var selector = structures.length
+      ? '<div class="v2-samras__bar"><label class="v2-samras__label">Structure ' +
+        '<select class="v2-samras__select" data-samras-select>' + options + "</select></label></div>"
+      : "";
     content.innerHTML =
       '<section class="v2-clusterTree">' +
+      selector +
       '<header class="v2-clusterTree__header">' +
-      escapeHtml(asText(payload.structure || "lcl")) + " · " +
+      escapeHtml(selectedStruct) + " · " +
       escapeHtml(String(payload.denoted_count || 0)) + " denoted · " +
       escapeHtml(String(payload.defined_count || 0)) + " defined · " +
       "<span class=\"v2-clusterTree__hint\">⤢ = expand to records</span></header>" +
       '<div class="v2-dendro__host" data-local-host></div></section>';
+    var structSel = content.querySelector("[data-samras-select]");
+    if (structSel) structSel.addEventListener("change", function () {
+      if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+        window.PortalShellCore.setSurfaceQuery("samras_structure", structSel.value);
+      }
+    });
     var host = content.querySelector("[data-local-host]");
     if (!host) return;
     if (!nodes.length) {
@@ -5997,7 +6018,15 @@
   function renderProfileCard(payload, content) {
     payload = payload || {};
     if (errorOr(payload, content)) return;
-    content.innerHTML = '<section class="v2-profile">' + _profileCardHtml(payload.profile) + "</section>";
+    // Optional fields table (e.g. farm_profile's parcels/field/plots/plots_source counts) below
+    // the identity card — the consolidation routes those through this pane's `fields`.
+    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+    var rows = fields.map(function (f) {
+      f = f || {};
+      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
+    }).join("");
+    content.innerHTML = '<section class="v2-profile">' + _profileCardHtml(payload.profile) +
+      (rows ? '<table class="v2-profile__fields"><tbody>' + rows + "</tbody></table>" : "") + "</section>";
   }
 
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};

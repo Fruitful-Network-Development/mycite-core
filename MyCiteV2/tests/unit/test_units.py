@@ -41,9 +41,13 @@ class TestUnits(unittest.TestCase):
     def test_derive_unit_count(self) -> None:
         # count unit → the number is the count directly.
         self.assertEqual(derive_unit_count("500 slips", "5 g"), 500)
-        # mass unit → grams(qty) // grams(unit weight).
+        # mass unit → grams(qty) / grams(unit weight), floored.
         self.assertEqual(derive_unit_count("1 lb", "1 g"), 453)
-        self.assertEqual(derive_unit_count("25 lbs", "0.3 g"), int(25 * 453.59237 // 0.3))
+        # exact division that float represents as X.9999996 must not undercount (epsilon floor).
+        self.assertEqual(derive_unit_count("3 g", "0.1 g"), 30)
+        self.assertEqual(derive_unit_count("10 g", "0.1 g"), 100)
+        # genuine fractional remainder still floors down.
+        self.assertEqual(derive_unit_count("1 lb", "0.1 g"), 4535)
         # missing/zero unit weight for a mass purchase → None.
         self.assertIsNone(derive_unit_count("25 lbs", ""))
         self.assertIsNone(derive_unit_count("25 lbs", "0 g"))

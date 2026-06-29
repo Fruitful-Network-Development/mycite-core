@@ -440,6 +440,14 @@ def build(store: SqliteSystemDatumStoreAdapter, *, txa_mode: str, on_missing: st
     for name in ("anchor", "txa", "lcl", "product_profiles"):
         if name not in live:
             raise SystemExit(f"live agro_erp.{name} not found in catalog")
+    # GUARD: a vg-10 product_profiles (4-10-*) means add_product_unit_weight.py has run; this
+    # ingest writes vg-9 4-9- rows (no singular_unit_weight) and would create a second product
+    # block the viewers (which read only 4-10-) can't see. Refuse rather than silently fork.
+    if any(getattr(r, "datum_address", "").startswith("4-10-") for r in _as_rows(live["product_profiles"])):
+        raise SystemExit(
+            "product_profiles is at vg-10 (4-10-*, singular_unit_weight migration applied); "
+            "re-ingesting at vg-9 is SUPERSEDED — revert the unit-weight migration first."
+        )
 
     entries = _parse_yaml()
     report: dict = {"entries": len(entries)}

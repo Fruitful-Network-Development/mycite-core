@@ -78,4 +78,6 @@ def derive_unit_count(quantity_text: object, unit_weight_text: object) -> int | 
     uw_g = to_grams(uw_val, uw_unit)
     if not uw_g:
         return None
-    return int(grams // uw_g)
+    # Floor, but nudge by a tiny epsilon so an exact division that float represents as
+    # X.9999999996 (e.g. 3.0 / 0.1) counts as X+1, not X (IEEE-754 floor-division gotcha).
+    return int(grams / uw_g + 1e-9)

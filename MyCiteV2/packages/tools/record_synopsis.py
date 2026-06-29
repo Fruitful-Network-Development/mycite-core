@@ -19,6 +19,7 @@ from MyCiteV2.packages.core.datum_ops.datum_resolve import (
 )
 from MyCiteV2.packages.core.datum_ops.units import derive_unit_count
 
+from ._agro_events import EVENT_PROCUREMENT
 from ._archetype import find_named_document
 from ._contract import DatumDocTool
 from ._registry import register
@@ -26,7 +27,6 @@ from ._shared.utilities import as_text as _as_text
 from ._shared.utilities import row_head as _row_head
 from .product_document_view import build_product_rows
 
-EVENT_PROCUREMENT = "1-3-2-1"
 _INVOICES_PREFIX = "4-7-"
 
 

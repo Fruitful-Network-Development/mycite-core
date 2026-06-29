@@ -38,6 +38,7 @@ from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
     AuthoritativeDatumDocumentRequest,
 )
+from MyCiteV2.packages.tools._agro_events import EVENT_INVESTMENT, EVENT_PROCUREMENT
 from MyCiteV2.scripts.ingest_agro_erp_ledger import (
     RF_LCL_ID,
     SANDBOX,
@@ -47,9 +48,6 @@ from MyCiteV2.scripts.ingest_agro_erp_ledger import (
     _row,
     _upsert_documents_row,
 )
-
-EVENT_PROCUREMENT = "1-3-2-1"
-EVENT_INVESTMENT = "1-3-2-3"
 
 # (doc name, old data-row prefix, new data-row prefix, event lcl node)
 SPECS: tuple[tuple[str, str, str, str], ...] = (

@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from MyCiteV2.packages.core.datum_ops.datum_resolve import (
+    Markers,
     cached_index,
     decode_label,
     iter_marker_pairs,
@@ -61,15 +62,35 @@ class RecordViewerBase(DatumDocTool):
             return decode_label(value)
         return _as_text(value)
 
+    # column kind → the head marker it consumes (lcl and event share the lcl-id marker).
+    _KIND_MARKER = {LCL: Markers.LCL_ID, EVENT: Markers.LCL_ID, TXA: Markers.NODE_ID,
+                    NOMINAL: Markers.NOMINAL, DATE: Markers.UTC}
+
     def project_rows(self, *, doc: Any, lcl: Any, txa: Any) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         for row in getattr(doc, "rows", ()) or ():
             if not _as_text(row.datum_address).startswith(self.row_prefix):
                 continue
+            # Bucket head pairs BY MARKER (order-independent): a reordered or missing middle
+            # pair no longer shifts every following column the way a positional zip would.
+            buckets: dict[str, list[Any]] = {}
+            for marker, value in iter_marker_pairs(_row_head(row)):
+                buckets.setdefault(_as_text(marker).lower(), []).append(value)
+            cursor: dict[str, int] = {}
             rec: dict[str, Any] = {}
-            # strict=False: a short/malformed row simply yields fewer columns (no raise).
-            for (col, kind), (_marker, value) in zip(self.column_spec, iter_marker_pairs(_row_head(row)), strict=False):
+            lead_node = ""
+            for col, kind in self.column_spec:
+                mk = self._KIND_MARKER.get(kind, "")
+                bucket = buckets.get(mk, [])
+                i = cursor.get(mk, 0)
+                value = bucket[i] if i < len(bucket) else ""
+                cursor[mk] = i + 1
                 rec[col] = self._resolve(kind, value, lcl, txa)
+                if kind in (LCL, EVENT) and not lead_node:
+                    lead_node = _as_text(value)
+            # raw lcl node of the lead reference (the record's denotation) — the lcl-id local_domain
+            # surfaces as the leading column, distinct from the resolved display name.
+            rec["lcl_id"] = lead_node
             rows.append(rec)
         return rows
 

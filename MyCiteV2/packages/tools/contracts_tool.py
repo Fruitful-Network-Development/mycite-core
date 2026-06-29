@@ -13,6 +13,7 @@ from typing import Any
 
 from MyCiteV2.packages.core.datum_ops.datum_resolve import NameIndex, cached_index, decode_label
 
+from ._agro_events import EVENT_INVESTMENT
 from ._archetype import find_named_document
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
@@ -23,7 +24,6 @@ _RF_UTC = "rf.3-1-6"
 _RF_LCL_ID = "rf.3-1-5"
 _RF_NOMINAL = "rf.3-1-7"
 _NOMINAL_BITS = 136
-EVENT_INVESTMENT = "1-3-2-3"
 _INVOICES_PREFIX = "4-7-"  # post event-type append
 
 
@@ -91,7 +91,11 @@ def _invoice_weights(invoices: Any, lcl: NameIndex) -> dict[str, dict[str, Any]]
         nominals = [v for m, v in markers if m == _RF_NOMINAL]
         weight = decode_label(nominals[0]) if nominals else ""
         if invoice_node:
-            out[invoice_node] = {"label": lcl.resolve(invoice_node) or invoice_node, "weight": _parse_weight(weight)}
+            out[invoice_node] = {
+                "label": lcl.resolve(invoice_node) or invoice_node,
+                "weight": _parse_weight(weight),
+                "weight_text": weight,  # raw "25 lbs" — the unit-aware draw-down guard reads this
+            }
     return out
 
 

@@ -148,6 +148,15 @@ def build(store: SqliteSystemDatumStoreAdapter, *, gestation_min: int, deferred_
     for name in ("anchor", "txa", "lcl", "product_profiles"):
         if name not in live:
             raise SystemExit(f"live agro_erp.{name} not found")
+    # GUARD: product_profiles was migrated to vg-10 (4-10-*) by add_product_unit_weight.py. This
+    # script builds/drops at the OLD 4-9- prefix, so re-running it now would leave the migrated
+    # 4-10-* rows untouched and write a second 4-9- product block (the viewers read only 4-10-).
+    if any(r.datum_address.startswith("4-10-") for r in _as_rows(live["product_profiles"])):
+        raise SystemExit(
+            "product_profiles is at vg-10 (4-10-*, singular_unit_weight migration applied); "
+            "this 4-9- rectify is SUPERSEDED — revert the unit-weight migration before re-running, "
+            "or update this script to vg-10 first."
+        )
 
     txa_rows = _as_rows(live["txa"])
     lcl_rows = _as_rows(live["lcl"])
