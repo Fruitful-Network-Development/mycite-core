@@ -82,8 +82,12 @@ class InventorySynopsis(RecordSynopsisBase):
             fields = {f.get("field"): f for f in p.get("fields", [])}
             node = _as_text(fields.get("product_id", {}).get("magnitude"))
             if node:
+                # Show the product PROFILE's common name (its taxonomy/cultivar, resolved from the
+                # product's txa node), NOT the generic "product_N" lcl SAMRAS node label.
+                common = (_as_text(fields.get("taxonomy_id", {}).get("resolved"))
+                          or _as_text(p.get("product_name")) or node)
                 by_node[node] = {
-                    "name": p.get("product_name") or node,
+                    "name": common,
                     "uw": _as_text(fields.get("singular_unit_weight", {}).get("resolved")),
                 }
         tally: dict[str, int] = {}
