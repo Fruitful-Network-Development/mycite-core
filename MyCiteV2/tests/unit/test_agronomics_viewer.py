@@ -57,10 +57,15 @@ class TestComposition(unittest.TestCase):
         self.assertEqual([p["label"] for p in farm["panes"]], ["Farm Profile", "Local Domain"])
         self.assertEqual(farm["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
         self.assertEqual(farm["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
-        # PLAN is a composite of a planting scaffold + the far-right Inventory synopsis.
+        # PLAN is a COLUMN composite: a top row [Plot Manager | reserved slot | Inventory] over
+        # a Contract Editor bottom bar.
         plan = payload["tabs"][1]["panel_payload"]
         self.assertEqual(plan["container"], "composite")
-        self.assertEqual([p["tool_id"] for p in plan["panes"]], ["planting", "inventory_synopsis"])
+        self.assertEqual(plan.get("direction"), "column")
+        self.assertEqual([p["tool_id"] for p in plan["panes"]], ["plan_top", "contract_editor"])
+        top = plan["panes"][0]["panel_payload"]
+        self.assertEqual(top.get("direction"), "row")
+        self.assertEqual([p["tool_id"] for p in top["panes"]], ["plot_manager", "plan_slot", "inventory_synopsis"])
         # NETWORK stays a blank scaffold.
         self.assertIsNone(payload["tabs"][2]["panel_payload"])
 

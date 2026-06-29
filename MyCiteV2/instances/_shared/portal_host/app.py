@@ -2534,6 +2534,45 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
+    @app.post("/portal/api/v2/agro/<action>")
+    def portal_agro_write(action: str) -> tuple[Any, int]:
+        # Domain write actions for the agronomics PLAN tab (Plot Manager create-cluster, Contract
+        # Editor save). Proxy-authed like the generic mutation route; the encode-heavy transaction
+        # lives in agro_write_runtime. See MyCiteV2/instances/_shared/runtime/agro_write_runtime.py.
+        from pathlib import Path as _Path
+
+        from MyCiteV2.instances._shared.runtime.agro_write_runtime import (
+            create_cluster,
+            save_contract,
+        )
+        try:
+            payload = _json_payload()
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+        db = _Path(str(host_config.authority_db_file)) if host_config.authority_db_file else None
+        if db is None or not db.exists():
+            return _error_response("unavailable", "authority db not available", status_code=503)
+        sandbox = str(payload.get("sandbox_id") or "agro_erp")
+        try:
+            if action == "save_contract":
+                result = save_contract(
+                    db, sandbox_id=sandbox, date=str(payload.get("date", "")),
+                    invoice_node=str(payload.get("invoice_node", "")),
+                    referent_node=str(payload.get("referent_node", "")),
+                    amount=str(payload.get("amount", "")), cost=str(payload.get("cost", "")),
+                    datum_address=str(payload.get("datum_address", "")),
+                )
+            elif action == "create_cluster":
+                result = create_cluster(
+                    db, sandbox_id=sandbox, plot_nodes=list(payload.get("plot_nodes") or []),
+                    day=str(payload.get("day", "")),
+                )
+            else:
+                return _error_response("unknown_action", f"unknown agro action: {action!r}")
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(result), (200 if result.get("ok") else 400)
+
     @app.get("/portal/api/v2/datum/info")
     def portal_datum_info() -> tuple[Any, int]:
         # Read-only INFORMATION surface for the datum-editing overlay: the datum's hyphae

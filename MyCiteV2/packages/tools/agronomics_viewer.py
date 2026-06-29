@@ -30,6 +30,8 @@ from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from .farm_profile_viewer import FarmProfileViewer
 from .local_domain_viewer import LocalDomainViewer, build_record_view
+from .plot_manager_viewer import PlotManagerViewer
+from .record_studio import ContractEditor
 from .record_synopsis import InventorySynopsis
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.agronomics.v1"
@@ -103,26 +105,30 @@ class AgronomicsViewer:
                     {"tool_id": "local_domain", "label": "Local Domain", "panel_payload": lcl_payload},
                 ],
             }
-        # PLAN tab: a composite with a left planting-plan scaffold (future planting UI) and a
-        # far-right Inventory synopsis (per-product unit counts derived from procurement
-        # invoices). NETWORK stays a blank scaffold.
-        inventory_payload = InventorySynopsis().build_panel_payload(
-            authority_db_file=authority_db_file,
-            sandbox_id=sandbox_id,
-            document_id="",
-            datum_address="",
-        )
+        # PLAN tab layout (operator spec): a COLUMN composite — a top ROW of [Plot Manager |
+        # reserved slot | Inventory synopsis], then the Contract Editor as a thin widget across
+        # the bottom. NETWORK stays a blank scaffold.
+        _kw = {"authority_db_file": authority_db_file, "sandbox_id": sandbox_id,
+               "document_id": "", "datum_address": ""}
+        plot_payload = PlotManagerViewer().build_panel_payload(**_kw)
+        inventory_payload = InventorySynopsis().build_panel_payload(**_kw)
+        contract_payload = ContractEditor().build_panel_payload(**_kw, extra_query=eq)
+        plan_top = {
+            "schema": _SCHEMA, "container": "composite", "direction": "row", "sandbox_id": sandbox,
+            "panes": [
+                {"tool_id": "plot_manager", "label": "Plot Manager", "panel_payload": plot_payload},
+                {"tool_id": "plan_slot", "label": "", "panel_payload": {
+                    "schema": _SCHEMA, "container": "synopsis", "title": "",
+                    "items": [], "empty_text": "Reserved for a later tool."}},
+                {"tool_id": "inventory_synopsis", "label": "Inventory", "panel_payload": inventory_payload},
+            ],
+        }
         plan_panel = {
-            "schema": _SCHEMA,
-            "container": "composite",
-            "title": "Plan",
+            "schema": _SCHEMA, "container": "composite", "direction": "column", "title": "Plan",
             "sandbox_id": sandbox,
             "panes": [
-                {"tool_id": "planting", "label": "Planting plan", "panel_payload": {
-                    "schema": _SCHEMA, "container": "synopsis", "title": "Planting plan",
-                    "items": [], "empty_text": "Planting plan — coming soon.",
-                }},
-                {"tool_id": "inventory_synopsis", "label": "Inventory", "panel_payload": inventory_payload},
+                {"tool_id": "plan_top", "label": "", "panel_payload": plan_top},
+                {"tool_id": "contract_editor", "label": "Contract Editor", "panel_payload": contract_payload},
             ],
         }
         # FARM / PLAN / NETWORK tabs. Tab switching is client-side in the ``tabbed`` container

@@ -5844,6 +5844,11 @@
     if (errorOr(payload, content)) return;
     var fc = payload.feature_collection || {};
     var features = Array.isArray(fc.features) ? fc.features : [];
+    // Plot-selection mode (Plot Manager): when payload.selectable, field-view plots become
+    // click-selectable (single / ctrl / shift); the chosen lcl nodes live in payload._selected.
+    var selectable = !!payload.selectable;
+    var selected = payload._selected || (payload._selected = new Set());
+    var onSelect = typeof payload._onSelect === "function" ? payload._onSelect : function () {};
 
     var W = 460, H = 320, PAD = 12;
 
@@ -5879,10 +5884,14 @@
       var ring = (g.coordinates && g.coordinates[0]) || [];
       if (!ring.length || !proj) return "";
       var st = _farmPolyStyle(p.kind);
-      var cls = "v2-farm__poly" + (opts.faint ? " is-faint" : "");
+      var isSel = opts.plotHit && p.lcl_node && selected.has(p.lcl_node);
+      var cls = "v2-farm__poly" + (opts.faint ? " is-faint" : "") + (isSel ? " is-selected" : "");
       var data = ' data-kind="' + esc(p.kind || "") + '" data-label="' + esc(p.label || "") + '"';
       if (opts.fieldTarget) data += ' data-fp-role="field"';
-      if (opts.plotHit) data += ' data-fp-plot="1"';
+      if (opts.plotHit) {
+        data += ' data-fp-plot="1"';
+        if (p.lcl_node) data += ' data-lcl="' + esc(p.lcl_node) + '"';
+      }
       return '<polygon class="' + cls + '" points="' + ring.map(proj).join(" ") +
         '" fill="' + st.fill + '" stroke="' + st.stroke + '" stroke-width="1"' + data +
         ' aria-label="' + esc((p.label || "") + " " + (p.kind || "")) + '"></polygon>';
@@ -5950,6 +5959,20 @@
       var t = e.target;
       if (!t || !t.closest) return;
       if (t.closest("[data-fp-back]")) { mode = "overall"; paintMap(host); return; }
+      if (selectable && mode === "field") {
+        var plot = t.closest("[data-fp-plot]");
+        if (plot && host.contains(plot)) {
+          var ln = plot.getAttribute("data-lcl");
+          if (ln) {
+            if (e.ctrlKey || e.metaKey) { if (selected.has(ln)) selected.delete(ln); else selected.add(ln); }
+            else if (e.shiftKey) { selected.add(ln); }
+            else { selected.clear(); selected.add(ln); }  // single click = select just this one
+            onSelect(selected);
+            paintMap(host);
+          }
+          return;
+        }
+      }
       if (mode === "overall" && t.closest('[data-fp-role="field"]')) { mode = "field"; paintMap(host); }
     });
     host.addEventListener("mouseover", function (e) {
@@ -5970,6 +5993,120 @@
       }
     });
   }
+
+  // Plot Manager: the geospatial map (selectable) framed by a DATE widget above (inline-editable,
+  // calendar icon) and a CREATE-cluster bar below. Drill into the field to select plots
+  // (single/ctrl/shift), then ＋ records the union outline as a date-stamped cluster.
+  function renderPlotManager(payload, content) {
+    var asObject = function (x) { return x || {}; },
+        asText = function (x) { return x == null ? "" : String(x); },
+        escapeHtml = esc;
+    payload = asObject(payload);
+    if (errorOr(payload, content)) return;
+    var today = asText(payload.today);
+    var selected = new Set();
+    content.innerHTML =
+      '<section class="v2-plotmgr">' +
+      '<div class="v2-plotmgr__date" title="Click the date to edit">' +
+      '<span class="v2-plotmgr__cal" aria-hidden="true">📅</span>' +
+      '<span class="v2-plotmgr__day" data-pm-day contenteditable="true" spellcheck="false">' +
+      escapeHtml(today) + "</span></div>" +
+      '<div class="v2-farm__map v2-plotmgr__map" data-farm-map></div>' +
+      '<div class="v2-plotmgr__bar">' +
+      '<span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
+      '<button type="button" class="v2-plotmgr__create" data-pm-create>➕ create cluster</button>' +
+      "</div>" +
+      '<div class="v2-plotmgr__status" data-pm-status></div>' +
+      "</section>";
+    var host = content.querySelector("[data-farm-map]");
+    var countEl = content.querySelector("[data-pm-count]");
+    function onSel(set) {
+      if (countEl) countEl.textContent = set.size + " plot" + (set.size === 1 ? "" : "s") + " selected";
+    }
+    payload._selected = selected;
+    payload._onSelect = onSel;
+    payload.selectable = true;
+    if (host) renderGeospatialProjection(payload, host);
+    var createBtn = content.querySelector("[data-pm-create]");
+    var dayEl = content.querySelector("[data-pm-day]");
+    var statusEl = content.querySelector("[data-pm-status]");
+    if (createBtn) createBtn.addEventListener("click", function () {
+      if (!selected.size) { statusEl.textContent = "Drill into the field and select plots first."; return; }
+      statusEl.textContent = "Creating cluster…";
+      fetch(asText(payload.create_route), {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ sandbox_id: asText(payload.sandbox_id) || "agro_erp",
+          plot_nodes: Array.prototype.slice.call(selected), day: (dayEl.textContent || today).trim() }),
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (o) {
+          if (!o.ok) { statusEl.textContent = "Error: " + ((o.j && o.j.error) || "create failed"); return; }
+          statusEl.textContent = "Created " + ((o.j && (o.j.cluster_name || o.j.cluster)) || "cluster") + ".";
+          if (window.PortalShellCore && typeof window.PortalShellCore.refetchOverlayPanels === "function") {
+            window.PortalShellCore.refetchOverlayPanels({});
+          }
+        }).catch(function (e) { statusEl.textContent = "Error: " + e; });
+    });
+  }
+  window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  window.__MYCITE_V2_TOOL_RENDERERS["plot_manager"] = renderPlotManager;
+
+  // Record form (Record Studio / Contract Editor): a field spec → inline inputs + a submit that
+  // POSTs the field values to a domain write route, then refetches the overlay.
+  function renderRecordForm(payload, content) {
+    var asObject = function (x) { return x || {}; },
+        asList = function (x) { return Array.isArray(x) ? x : []; },
+        asText = function (x) { return x == null ? "" : String(x); },
+        escapeHtml = esc;
+    payload = asObject(payload);
+    if (errorOr(payload, content)) return;
+    var fields = asList(payload.fields);
+    var inner = fields.map(function (f) {
+      f = asObject(f);
+      var key = asText(f.key), label = asText(f.label), type = asText(f.type) || "text", val = asText(f.value);
+      var input;
+      if (type === "select") {
+        var opts = asList(f.options).map(function (o) {
+          o = asObject(o); var ov = asText(o.value);
+          return '<option value="' + escapeHtml(ov) + '"' + (ov === val ? " selected" : "") + ">" +
+            escapeHtml(asText(o.label) || ov) + "</option>";
+        }).join("");
+        input = '<select data-form-field="' + escapeHtml(key) + '"><option value="">—</option>' + opts + "</select>";
+      } else {
+        input = '<input type="text" data-form-field="' + escapeHtml(key) + '" value="' + escapeHtml(val) + '" />';
+      }
+      return '<label class="v2-recordForm__field"><span>' + escapeHtml(label) + "</span>" + input + "</label>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-recordForm"><header class="v2-recordForm__header">' +
+      escapeHtml(asText(payload.title)) + "</header>" +
+      '<div class="v2-recordForm__fields">' + inner + "</div>" +
+      '<button type="button" class="v2-recordForm__submit" data-form-submit>' +
+      escapeHtml(asText(payload.submit_label) || "Save") + "</button>" +
+      '<span class="v2-recordForm__status" data-form-status></span></section>';
+    var sub = asObject(payload.submit_action);
+    var btn = content.querySelector("[data-form-submit]");
+    var statusEl = content.querySelector("[data-form-status]");
+    if (btn) btn.addEventListener("click", function () {
+      var body = { sandbox_id: asText(sub.sandbox_id) || "agro_erp" };
+      if (asText(sub.datum_address)) body.datum_address = asText(sub.datum_address);
+      Array.prototype.forEach.call(content.querySelectorAll("[data-form-field]"), function (el) {
+        body[el.getAttribute("data-form-field")] = el.value;
+      });
+      statusEl.textContent = "Saving…";
+      fetch(asText(sub.route), {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify(body),
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (o) {
+          statusEl.textContent = o.ok ? ("Saved " + ((o.j && o.j.datum_address) || "")) : ("Error: " + ((o.j && o.j.error) || "save failed"));
+          if (o.ok && window.PortalShellCore && typeof window.PortalShellCore.refetchOverlayPanels === "function") {
+            window.PortalShellCore.refetchOverlayPanels({});
+          }
+        }).catch(function (e) { statusEl.textContent = "Error: " + e; });
+    });
+  }
+  window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+  window.__MYCITE_V2_CONTAINER_RENDERERS["record_form"] = renderRecordForm;
 
   function renderContracts(payload, content) {
     payload = payload || {};
@@ -6159,13 +6296,16 @@
       content.innerHTML = '<p class="ide-visualizationPanel__empty">No panes to display.</p>';
       return;
     }
+    // direction "column" stacks panes vertically (e.g. the PLAN tab: top row over a bottom bar).
+    var dirCls = payload.direction === "column" ? " v2-composite--column" : "";
     content.innerHTML =
-      '<div class="v2-composite">' +
+      '<div class="v2-composite' + dirCls + '">' +
       panes
         .map(function (p, i) {
           p = p || {};
-          return '<section class="v2-composite__pane" data-pane-index="' + i + '">' +
-            '<header class="v2-composite__paneHeader">' + esc(p.label || p.tool_id || "") + "</header>" +
+          var pcls = "v2-composite__pane" + (p.label ? "" : " v2-composite__pane--unlabeled");
+          return '<section class="' + pcls + '" data-pane-index="' + i + '">' +
+            (p.label ? '<header class="v2-composite__paneHeader">' + esc(p.label) + "</header>" : "") +
             '<div class="v2-composite__paneBody" data-pane-body></div></section>';
         })
         .join("") +

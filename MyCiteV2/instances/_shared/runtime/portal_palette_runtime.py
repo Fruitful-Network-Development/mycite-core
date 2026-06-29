@@ -43,7 +43,7 @@ PORTAL_PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.respon
 # are just no longer discoverable in the search.
 LIVE_TOOL_IDS: tuple[str, ...] = (
     "agronomics", "farm_profile", "samras_structure", "local_domain",
-    "invoices", "contracts", "inventory_synopsis",
+    "invoices", "contracts", "inventory_synopsis", "plot_manager", "contract_editor",
 )
 
 

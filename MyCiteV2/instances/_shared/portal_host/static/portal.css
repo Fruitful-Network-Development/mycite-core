@@ -9736,6 +9736,62 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   color: var(--ink2);
   font-size: 12px;
 }
+/* Composite column direction (PLAN tab: top row over a bottom Contract Editor bar). */
+.v2-composite--column { flex-direction: column; }
+.v2-composite--column > .v2-composite__pane { flex: 0 0 auto; }
+.v2-composite--column > .v2-composite__pane:first-child { flex: 1 1 auto; min-height: 0; }
+.v2-composite__pane--unlabeled { padding-top: 4px; }
+/* Plot Manager: date widget above the map, create bar below. */
+.v2-plotmgr { display: flex; flex-direction: column; gap: 6px; }
+.v2-plotmgr__date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  border-radius: 6px;
+  background: var(--ide-panel-bg, #fff);
+  font-variant-numeric: tabular-nums;
+  cursor: text;
+}
+.v2-plotmgr__date:hover { box-shadow: inset 0 -2px 0 var(--accent, #1e6c93); }  /* hover-indent */
+.v2-plotmgr__cal { color: var(--accent, #1e6c93); }
+.v2-plotmgr__day { outline: none; min-width: 6em; }
+.v2-plotmgr__day:focus { background: #eef6fb; border-radius: 3px; }
+.v2-plotmgr__bar { display: flex; align-items: center; gap: 10px; }
+.v2-plotmgr__count { color: var(--ink2); font-size: 12px; }
+.v2-plotmgr__create {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--accent, #1e6c93);
+  border-radius: 6px;
+  background: var(--accent, #1e6c93);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.v2-plotmgr__create:hover { filter: brightness(1.08); }
+.v2-plotmgr__status { font-size: 12px; color: var(--ink2); min-height: 1em; }
+.v2-farm__poly.is-selected { fill: rgba(30,108,147,0.55) !important; stroke: #1e6c93 !important; stroke-width: 2 !important; }
+/* Record form (Contract Editor) — inline thin widget for the PLAN bottom bar. */
+.v2-recordForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+.v2-recordForm__header { width: 100%; color: var(--ink2); font-size: 12px; margin-bottom: 2px; }
+.v2-recordForm__fields { display: flex; flex-wrap: wrap; gap: 8px 12px; flex: 1 1 auto; }
+.v2-recordForm__field { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--ink2); }
+.v2-recordForm__field input, .v2-recordForm__field select {
+  font: inherit; font-size: 13px; padding: 3px 6px;
+  border: 1px solid var(--ide-border, #d8dee4); border-radius: 5px; background: var(--ide-panel-bg, #fff);
+}
+.v2-recordForm__submit {
+  padding: 4px 14px; border: 1px solid var(--accent, #1e6c93); border-radius: 6px;
+  background: var(--accent, #1e6c93); color: #fff; font: inherit; font-size: 13px; cursor: pointer;
+}
+.v2-recordForm__submit:hover { filter: brightness(1.08); }
+.v2-recordForm__status { font-size: 12px; color: var(--ink2); }
 .v2-dendro__view {
   display: inline-flex;
   align-items: center;
