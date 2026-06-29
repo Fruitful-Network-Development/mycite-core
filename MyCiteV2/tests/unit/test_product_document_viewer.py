@@ -43,6 +43,8 @@ def _doc(name: str, rows, *, archetype: str = "", source_kind: str = "sandbox_so
 # shape-based NameIndex (the display label still comes from the row tail). Live docs
 # carry a real 512-bit ASCII title here.
 _BLOB = "0" * 512
+# A 136-bit ASCII nominal encoding "5 g" (the singular_unit_weight magnitude).
+_UW = "".join(format(b, "08b") for b in "5 g".encode("ascii")).ljust(136, "0")
 
 
 def _lcl():
@@ -61,7 +63,7 @@ def _txa():
 
 def _product_profiles():
     head = [
-        "4-9-1",
+        "4-10-1",
         "rf.3-1-5", "1-3-1-160",
         "rf.3-1-1", "1-1-3-3-5-8-21-4-4-4",
         "rf.3-1-1", "1-3-2-1-3",
@@ -71,10 +73,11 @@ def _product_profiles():
         "rf.3-1-1", "1-3-2-5-1",
         "2-1-1", "3542400",
         "2-1-3", "18",
+        "rf.3-1-7", _UW,
     ]
     return _doc("product_profiles", [
         ("0-0-1", "schema-marker"),
-        ("4-9-1", [head, ["brassica_oleracea-sidekick"]]),
+        ("4-10-1", [head, ["brassica_oleracea-sidekick"]]),
     ], archetype="agro_erp_product_profile_row")
 
 
@@ -102,11 +105,11 @@ class LclNameIndexTests(unittest.TestCase):
 
 
 class BuildProductRowsTests(unittest.TestCase):
-    def test_resolves_all_nine_fields(self) -> None:
+    def test_resolves_all_ten_fields(self) -> None:
         rows = build_product_rows(_product_profiles(), lcl_index=LclNameIndex(_lcl()), txa_index=LclNameIndex(_txa()))
         self.assertEqual(len(rows), 1)
         product = rows[0]
-        self.assertEqual(product["datum_address"], "4-9-1")
+        self.assertEqual(product["datum_address"], "4-10-1")
         self.assertEqual(product["product_name"], "brassica_oleracea-sidekick")
         by_field = {f["field"]: f for f in product["fields"]}
         self.assertEqual(by_field["taxonomy_id"]["resolved"], "brassica_oleracea")
@@ -115,8 +118,10 @@ class BuildProductRowsTests(unittest.TestCase):
         self.assertEqual(by_field["raunkiaerality"]["magnitude"], "1-3-2-5-1")
         self.assertEqual(by_field["gestation"]["magnitude"], "3542400")
         self.assertEqual(by_field["spacing"]["magnitude"], "18")
-        # header/non-4-9 rows are skipped
-        self.assertTrue(all(r["datum_address"].startswith("4-9-") for r in rows))
+        # the new singular_unit_weight nominal decodes to text.
+        self.assertEqual(by_field["singular_unit_weight"]["resolved"], "5 g")
+        # header/non-4-10 rows are skipped
+        self.assertTrue(all(r["datum_address"].startswith("4-10-") for r in rows))
 
 
 class SandboxDiscoveryTests(unittest.TestCase):

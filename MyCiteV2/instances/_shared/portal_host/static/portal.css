@@ -9689,6 +9689,53 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-recordTable__back:hover {
   background: #eef1f5;
 }
+/* Synopsis: compact derived-figure widget (PLAN tab far-right inventory). */
+.v2-synopsis {
+  max-width: 320px;
+  font-size: 13px;
+}
+.v2-synopsis__header {
+  color: var(--ink2);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+.v2-synopsis__colhead {
+  display: flex;
+  justify-content: space-between;
+  color: var(--ink2);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--ide-border, #d8dee4);
+  padding-bottom: 2px;
+}
+.v2-synopsis__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.v2-synopsis__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--ide-border, #d8dee4) 50%, transparent);
+}
+.v2-synopsis__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.v2-synopsis__figure {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--accent, #1e6c93);
+}
+.v2-synopsis__empty {
+  color: var(--ink2);
+  font-size: 12px;
+}
 .v2-dendro__view {
   display: inline-flex;
   align-items: center;

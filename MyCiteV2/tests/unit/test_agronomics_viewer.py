@@ -57,8 +57,11 @@ class TestComposition(unittest.TestCase):
         self.assertEqual([p["label"] for p in farm["panes"]], ["Farm Profile", "Local Domain"])
         self.assertEqual(farm["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
         self.assertEqual(farm["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
-        # PLAN / NETWORK are blank scaffolds for future sub-tools.
-        self.assertIsNone(payload["tabs"][1]["panel_payload"])
+        # PLAN is a composite of a planting scaffold + the far-right Inventory synopsis.
+        plan = payload["tabs"][1]["panel_payload"]
+        self.assertEqual(plan["container"], "composite")
+        self.assertEqual([p["tool_id"] for p in plan["panes"]], ["planting", "inventory_synopsis"])
+        # NETWORK stays a blank scaffold.
         self.assertIsNone(payload["tabs"][2]["panel_payload"])
 
     def test_right_pane_defaults_to_lcl(self) -> None:

@@ -6262,10 +6262,36 @@
   }
 
 
+  // Synopsis: a compact derived-figure widget (label · figure), e.g. the PLAN tab's
+  // far-right inventory (product → unit count). Not a full table — a short summary list.
+  function renderSynopsis(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var items = Array.isArray(payload.items) ? payload.items : [];
+    var rows = items.map(function (it) {
+      it = it || {};
+      return '<li class="v2-synopsis__row"><span class="v2-synopsis__label">' +
+        esc(it.label != null ? it.label : "") + '</span><span class="v2-synopsis__figure">' +
+        esc(it.figure != null ? it.figure : "") + "</span></li>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-synopsis">' +
+      '<header class="v2-synopsis__header">' + esc(payload.title || "") +
+      (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
+      (payload.value_label
+        ? '<div class="v2-synopsis__colhead"><span></span><span>' + esc(payload.value_label) + "</span></div>"
+        : "") +
+      (items.length
+        ? '<ul class="v2-synopsis__list">' + rows + "</ul>"
+        : '<p class="v2-synopsis__empty">' + esc(payload.empty_text || "Nothing to summarize.") + "</p>") +
+      "</section>";
+  }
+
   window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
   window.__MYCITE_V2_CONTAINER_RENDERERS["composite"] = renderComposite;
   window.__MYCITE_V2_CONTAINER_RENDERERS["tabbed"] = renderTabbed;
   window.__MYCITE_V2_CONTAINER_RENDERERS["profile_card"] = renderProfileCard;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["synopsis"] = renderSynopsis;
 })();

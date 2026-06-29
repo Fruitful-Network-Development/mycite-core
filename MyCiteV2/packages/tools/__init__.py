@@ -25,6 +25,7 @@ from . import (
     plots_viewer,  # noqa: F401
     product_document_view,  # noqa: F401
     profile_card_viewer,  # noqa: F401  (base profile contract; farm_profile builds on it)
+    record_synopsis,  # noqa: F401  (derived-figure summaries; InventorySynopsis)
     samras_structure_viewer,  # noqa: F401  (unified txa/msn/lcl structure viewer)
 )
 

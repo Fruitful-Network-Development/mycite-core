@@ -30,6 +30,7 @@ from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from .farm_profile_viewer import FarmProfileViewer
 from .local_domain_viewer import LocalDomainViewer, build_record_view
+from .record_synopsis import InventorySynopsis
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.agronomics.v1"
 # The LCL id-space is the agronomics structure of interest; default the right pane to it.
@@ -102,11 +103,31 @@ class AgronomicsViewer:
                     {"tool_id": "local_domain", "label": "Local Domain", "panel_payload": lcl_payload},
                 ],
             }
-        # FARM / PLAN / NETWORK tabs (portal-tool-overlay-restructure). FARM carries today's
-        # farm-profile map + LCL-tree composite; PLAN and NETWORK are blank scaffolds for
-        # future agronomics sub-component tools. Tab switching is client-side in the ``tabbed``
-        # container renderer (no shell reload); ``active_tab`` lets an overlay/surface_query
-        # param (agronomics_tab) re-open on a chosen tab.
+        # PLAN tab: a composite with a left planting-plan scaffold (future planting UI) and a
+        # far-right Inventory synopsis (per-product unit counts derived from procurement
+        # invoices). NETWORK stays a blank scaffold.
+        inventory_payload = InventorySynopsis().build_panel_payload(
+            authority_db_file=authority_db_file,
+            sandbox_id=sandbox_id,
+            document_id="",
+            datum_address="",
+        )
+        plan_panel = {
+            "schema": _SCHEMA,
+            "container": "composite",
+            "title": "Plan",
+            "sandbox_id": sandbox,
+            "panes": [
+                {"tool_id": "planting", "label": "Planting plan", "panel_payload": {
+                    "schema": _SCHEMA, "container": "synopsis", "title": "Planting plan",
+                    "items": [], "empty_text": "Planting plan — coming soon.",
+                }},
+                {"tool_id": "inventory_synopsis", "label": "Inventory", "panel_payload": inventory_payload},
+            ],
+        }
+        # FARM / PLAN / NETWORK tabs. Tab switching is client-side in the ``tabbed`` container
+        # renderer (no shell reload); ``active_tab`` lets an overlay/surface_query param
+        # (agronomics_tab) re-open on a chosen tab.
         return {
             "schema": _SCHEMA,
             "container": "tabbed",
@@ -116,7 +137,7 @@ class AgronomicsViewer:
             "tab_query_param": "agronomics_tab",
             "tabs": [
                 {"id": "farm", "label": "FARM", "panel_payload": farm_panel},
-                {"id": "plan", "label": "PLAN", "panel_payload": None},
+                {"id": "plan", "label": "PLAN", "panel_payload": plan_panel},
                 {"id": "network", "label": "NETWORK", "panel_payload": None},
             ],
         }
