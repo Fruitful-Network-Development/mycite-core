@@ -19,7 +19,8 @@ from . import (
     agronomics_viewer,  # noqa: F401  (composite: farm_profile + lcl structure)
     contacts_viewer,  # noqa: F401
     contracts_tool,  # noqa: F401
-    farm_profile_viewer,  # noqa: F401
+    farm_profile_viewer,  # noqa: F401  (consolidated: profile_card + geospatial_projection)
+    geospatial_projection_viewer,  # noqa: F401  (field/plots map base)
     invoices_viewer,  # noqa: F401
     local_domain_viewer,  # noqa: F401  (lcl tree + expand-to-table instance containers)
     plots_viewer,  # noqa: F401

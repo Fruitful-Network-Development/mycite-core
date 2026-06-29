@@ -123,8 +123,10 @@ class TestLiveResolutionRegression(unittest.TestCase):
             document_id=self._anchor_id(), datum_address="",
         )
         self.assertIsNone(payload.get("error"))
-        self.assertGreater(payload["feature_count"], 0)
-        self.assertEqual(payload["plots_source"], "migrated")
+        self.assertEqual(payload["container"], "composite")
+        geo = next(p["panel_payload"] for p in payload["panes"] if p["tool_id"] == "geospatial_projection")
+        self.assertGreater(geo["feature_count"], 0)
+        self.assertEqual(geo["plots_source"], "migrated")
         self.assertTrue(payload["document_id"].split(".")[3] == "farm_profile")
 
     def test_contracts_renders_with_anchor_selected(self) -> None:

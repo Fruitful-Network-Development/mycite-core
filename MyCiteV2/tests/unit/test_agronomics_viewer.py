@@ -112,7 +112,11 @@ class TestLive(unittest.TestCase):
         farm = farm_tab["panes"][0]["panel_payload"]
         lcl = farm_tab["panes"][1]["panel_payload"]
         self.assertIsNone(farm.get("error"))
-        self.assertIn("feature_collection", farm)
+        # farm_profile is now a composite (profile_card + geospatial_projection); the map's
+        # feature_collection lives in the geospatial pane.
+        self.assertEqual(farm["container"], "composite")
+        geo = next(p["panel_payload"] for p in farm["panes"] if p["tool_id"] == "geospatial_projection")
+        self.assertIn("feature_collection", geo)
         self.assertIsNone(lcl.get("error"))
         self.assertEqual(lcl["structure"], "lcl")
         self.assertEqual(lcl["container"], "local_tree")

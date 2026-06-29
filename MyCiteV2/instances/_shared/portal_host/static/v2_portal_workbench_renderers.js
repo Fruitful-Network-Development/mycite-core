@@ -5816,12 +5816,13 @@
   // ⇄ FIELD (click the field to zoom into it; plots become individually hoverable with a top-right label
   // popup; a top-left back arrow returns). Only the .v2-farm__map content changes — purely client-side,
   // no refetch. Works standalone AND inside the Agronomics FARM tab (renderComposite delegates here).
-  function renderFarmProfile(payload, content) {
+  // The field/plots map (geospatial_projection base, reused by plot_manager). Renders ONLY the
+  // map; identity (profile card) is a sibling pane in the farm_profile composite.
+  function renderGeospatialProjection(payload, content) {
     payload = payload || {};
     if (errorOr(payload, content)) return;
     var fc = payload.feature_collection || {};
     var features = Array.isArray(fc.features) ? fc.features : [];
-    var fields = Array.isArray(payload.fields) ? payload.fields : [];
 
     var W = 460, H = 320, PAD = 12;
 
@@ -5912,19 +5913,11 @@
       if (mode === "field" && fieldFeats.length) paintField(host); else paintOverall(host);
     }
 
-    var fieldRows = fields.map(function (f) {
-      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
-    }).join("");
-
     content.innerHTML =
       '<section class="v2-farm">' +
-      _profileCardHtml(payload.profile) +
       '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
       " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
       '<div class="v2-farm__map" data-farm-map></div>' +
-      (fieldRows
-        ? '<table class="v2-farm__values"><tbody>' + fieldRows + "</tbody></table>"
-        : "") +
       "</section>";
 
     var host = content.querySelector("[data-farm-map]");
@@ -6009,7 +6002,9 @@
 
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
-  window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
+  // farm_profile is a composite now (profile_card + geospatial_projection) → renderComposite;
+  // the map renderer is registered under geospatial_projection.
+  window.__MYCITE_V2_TOOL_RENDERERS["geospatial_projection"] = renderGeospatialProjection;
   window.__MYCITE_V2_TOOL_RENDERERS["profile_card"] = renderProfileCard;
   // contracts now renders via the shared record_table container (Contract Viewer extends
   // RecordViewerBase); its weight draw-down rides record_table's extra_tables. (renderContracts
