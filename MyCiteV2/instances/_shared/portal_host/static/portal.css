@@ -9643,6 +9643,52 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   background: none;
   cursor: default;
 }
+/* Local Domain: a node with a record_view shows a diagonal "expand view" button (⤢)
+   in the toggle's place — clicking it opens the node's records as a full-tab table. */
+.v2-dendro__expand {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  line-height: 1;
+  padding: 0;
+  border: 1px solid var(--accent, #1e6c93);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--accent, #1e6c93);
+  cursor: pointer;
+}
+.v2-dendro__expand:hover {
+  background: var(--accent, #1e6c93);
+  color: #fff;
+}
+.v2-dendro__view--static.is-expandable {
+  border-color: color-mix(in srgb, var(--accent, #1e6c93) 35%, transparent);
+}
+.v2-clusterTree__hint {
+  color: var(--ink2);
+  font-size: 11px;
+  margin-left: 6px;
+  opacity: 0.85;
+}
+/* Record table back bar (e.g. the agronomics FARM full-tab takeover exit). */
+.v2-recordTable__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 3px 10px;
+  border: 1px solid var(--ide-border, #d8dee4);
+  background: var(--ide-panel-bg, #fff);
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--accent, #1e6c93);
+  cursor: pointer;
+}
+.v2-recordTable__back:hover {
+  background: #eef1f5;
+}
 .v2-dendro__view {
   display: inline-flex;
   align-items: center;

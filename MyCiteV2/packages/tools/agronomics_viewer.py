@@ -29,7 +29,7 @@ from MyCiteV2.packages.state_machine.portal_shell.shell_schemas import (
 from ._registry import register
 from ._shared.utilities import as_text as _as_text
 from .farm_profile_viewer import FarmProfileViewer
-from .samras_structure_viewer import SamrasStructureViewer
+from .local_domain_viewer import LocalDomainViewer, build_record_view
 
 _SCHEMA = "mycite.v2.portal.workbench.tool.agronomics.v1"
 # The LCL id-space is the agronomics structure of interest; default the right pane to it.
@@ -59,34 +59,49 @@ class AgronomicsViewer:
         datum_address: str,
         extra_query: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        # Left pane: the farm-profile map (resolves its own doc by archetype).
-        farm_payload = FarmProfileViewer().build_panel_payload(
-            authority_db_file=authority_db_file,
-            sandbox_id=sandbox_id,
-            document_id=document_id,
-            datum_address=datum_address,
+        eq = extra_query or {}
+        sandbox = sandbox_id or "agro_erp"
+        # Full-tab takeover: an expand-view node (local_view = its record-view token) shifts
+        # the FARM tab from the map+tree composite into a full-width record table of that
+        # node's child instances, with a back affordance the renderer turns into a ← bar.
+        local_view = _as_text(eq.get("local_view"))
+        record_table = (
+            build_record_view(local_view, authority_db_file=authority_db_file, sandbox_id=sandbox)
+            if local_view else None
         )
-        # Right pane: the SAMRAS structure viewer, defaulted to the LCL id-space. The
-        # pane keeps its own structure selector (composition over a stripped variant);
-        # an explicit surface_query.samras_structure overrides the default.
-        structure = _as_text((extra_query or {}).get("samras_structure")) or _DEFAULT_STRUCTURE
-        lcl_payload = SamrasStructureViewer().build_panel_payload(
-            authority_db_file=authority_db_file,
-            sandbox_id=sandbox_id,
-            document_id=document_id,
-            datum_address=datum_address,
-            extra_query={"samras_structure": structure},
-        )
-        farm_composite = {
-            "schema": _SCHEMA,
-            "container": "composite",
-            "title": "Agronomics",
-            "sandbox_id": sandbox_id or "agro_erp",
-            "panes": [
-                {"tool_id": "farm_profile", "label": "Farm Profile", "panel_payload": farm_payload},
-                {"tool_id": "samras_structure", "label": "LCL ID Space", "panel_payload": lcl_payload},
-            ],
-        }
+        if record_table is not None:
+            farm_panel = {
+                **record_table,
+                "back": {"label": "Back to farm view", "param": "local_view", "value": ""},
+            }
+        else:
+            # Left pane: the farm-profile map (resolves its own doc by archetype).
+            farm_payload = FarmProfileViewer().build_panel_payload(
+                authority_db_file=authority_db_file,
+                sandbox_id=sandbox_id,
+                document_id=document_id,
+                datum_address=datum_address,
+            )
+            # Right pane: the LOCAL DOMAIN viewer (the SAMRAS lcl tree extended with
+            # expand-to-table instance containers), defaulted to the lcl id-space.
+            structure = _as_text(eq.get("samras_structure")) or _DEFAULT_STRUCTURE
+            lcl_payload = LocalDomainViewer().build_panel_payload(
+                authority_db_file=authority_db_file,
+                sandbox_id=sandbox_id,
+                document_id=document_id,
+                datum_address=datum_address,
+                extra_query={"samras_structure": structure},
+            )
+            farm_panel = {
+                "schema": _SCHEMA,
+                "container": "composite",
+                "title": "Agronomics",
+                "sandbox_id": sandbox,
+                "panes": [
+                    {"tool_id": "farm_profile", "label": "Farm Profile", "panel_payload": farm_payload},
+                    {"tool_id": "local_domain", "label": "Local Domain", "panel_payload": lcl_payload},
+                ],
+            }
         # FARM / PLAN / NETWORK tabs (portal-tool-overlay-restructure). FARM carries today's
         # farm-profile map + LCL-tree composite; PLAN and NETWORK are blank scaffolds for
         # future agronomics sub-component tools. Tab switching is client-side in the ``tabbed``
@@ -96,11 +111,11 @@ class AgronomicsViewer:
             "schema": _SCHEMA,
             "container": "tabbed",
             "title": "Agronomics",
-            "sandbox_id": sandbox_id or "agro_erp",
-            "active_tab": _as_text((extra_query or {}).get("agronomics_tab")) or "farm",
+            "sandbox_id": sandbox,
+            "active_tab": _as_text(eq.get("agronomics_tab")) or "farm",
             "tab_query_param": "agronomics_tab",
             "tabs": [
-                {"id": "farm", "label": "FARM", "panel_payload": farm_composite},
+                {"id": "farm", "label": "FARM", "panel_payload": farm_panel},
                 {"id": "plan", "label": "PLAN", "panel_payload": None},
                 {"id": "network", "label": "NETWORK", "panel_payload": None},
             ],

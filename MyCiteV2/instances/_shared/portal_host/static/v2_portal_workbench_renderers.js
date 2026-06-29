@@ -1702,6 +1702,107 @@
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["samras_structure"] = renderSamrasDendrogram;
 
+  // ── Local Domain dendrogram (lcl id-space + expand-to-table nodes) ─────────
+  // Same cluster diagram as the SAMRAS viewer, but a node carrying a record_view token
+  // renders a diagonal "expand view" button (⤢) INSTEAD of the child-dropdown: clicking it
+  // sets the local_view overlay param, which the agronomics tool turns into a full-tab
+  // record table (tools/agronomics_viewer.py). Expandable nodes are force-collapsed so their
+  // (instance) children never paint in the tree — they live in the table instead.
+  function _localDomainBody(nodes, collapsed) {
+    var lay = clusterLayout(nodes, collapsed);
+    var svg = _dendroLinks(lay);
+    var nodeHtml = lay.placed.map(function (pl) {
+      var n = pl.node;
+      var full = asText(n.full_slug);
+      var rv = asText(n.record_view);
+      var isEmpty = asText(n.status) === "empty";
+      var toggle;
+      if (rv) {
+        toggle = '<button type="button" class="v2-dendro__expand" data-local-expand="' +
+          escapeHtml(rv) + '" data-local-node="' + escapeHtml(full) + '" title="Open ' +
+          escapeHtml(asText(n.label) || full) + ' records" aria-label="Open records">⤢</button>';
+      } else if (pl.hasChildren) {
+        toggle = '<button type="button" class="v2-dendro__toggle" data-dendro-toggle="' + escapeHtml(full) +
+          '" aria-label="' + (pl.collapsed ? "Expand" : "Collapse") + '" title="' +
+          (pl.collapsed ? "Expand" : "Collapse") + '">' + (pl.collapsed ? "▸" : "▾") + "</button>";
+      } else {
+        toggle = '<span class="v2-dendro__toggle v2-dendro__toggle--leaf" aria-hidden="true"></span>';
+      }
+      var status = '<span class="v2-dendro__status v2-dendro__status--' +
+        (isEmpty ? "empty" : "defined") + '" aria-hidden="true"></span>';
+      var label = isEmpty
+        ? '<span class="v2-dendro__empty">(undefined)</span>'
+        : '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>";
+      var count = (n.count > 0 && !rv)
+        ? '<span class="v2-dendro__count">' + escapeHtml(String(n.count)) + "</span>"
+        : "";
+      var title = isEmpty ? "Denoted by the magnitude but undefined in the title document"
+        : (rv ? "Expand " + (asText(n.label) || full) + " into a record table" : (asText(n.label) || full));
+      var body = '<span class="v2-dendro__view v2-dendro__view--static' +
+        (isEmpty ? " is-empty" : " is-defined") + (rv ? " is-expandable" : "") +
+        '" title="' + escapeHtml(title) + '">' +
+        status + '<span class="v2-dendro__addr">' + escapeHtml(full) + "</span>" +
+        label + count + "</span>";
+      return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
+        "px;top:" + pl.y + 'px">' + toggle + body + "</div>";
+    }).join("");
+    return _dendroWrap(lay, svg, nodeHtml);
+  }
+
+  function renderLocalDomain(payload, content) {
+    payload = asObject(payload);
+    if (asText(payload.error)) {
+      content.innerHTML = '<p class="ide-visualizationPanel__error">' +
+        escapeHtml(asText(payload.error)) + "</p>";
+      return;
+    }
+    var nodes = asList(payload.nodes);
+    content.innerHTML =
+      '<section class="v2-clusterTree">' +
+      '<header class="v2-clusterTree__header">' +
+      escapeHtml(asText(payload.structure || "lcl")) + " · " +
+      escapeHtml(String(payload.denoted_count || 0)) + " denoted · " +
+      escapeHtml(String(payload.defined_count || 0)) + " defined · " +
+      "<span class=\"v2-clusterTree__hint\">⤢ = expand to records</span></header>" +
+      '<div class="v2-dendro__host" data-local-host></div></section>';
+    var host = content.querySelector("[data-local-host]");
+    if (!host) return;
+    if (!nodes.length) {
+      host.innerHTML = '<p class="v2-clusterTree__empty">No nodes denoted by the magnitude.</p>';
+      return;
+    }
+    // Collapse every branch by default; expand the root(s); ALWAYS keep expandable nodes
+    // collapsed so their instance children never paint in the tree.
+    var collapsed = _samrasCollapsedInit(nodes);
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (asText(o.record_view)) collapsed.add(asText(o.full_slug));
+    });
+    function rerender() { host.innerHTML = _localDomainBody(nodes, collapsed); }
+    rerender();
+    host.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var exp = el.closest("[data-local-expand]");
+      if (exp && host.contains(exp)) {
+        e.preventDefault();
+        if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+          window.PortalShellCore.setSurfaceQuery("local_view", exp.getAttribute("data-local-expand"));
+        }
+        return;
+      }
+      var tog = el.closest("[data-dendro-toggle]");
+      if (tog && host.contains(tog)) {
+        e.preventDefault();
+        var slug = tog.getAttribute("data-dendro-toggle");
+        if (collapsed.has(slug)) collapsed.delete(slug); else collapsed.add(slug);
+        rerender();
+      }
+    });
+  }
+
+  window.__MYCITE_V2_TOOL_RENDERERS["local_domain"] = renderLocalDomain;
+
   function renderGenericLeaflet(detail) {
     var d = asObject(detail);
     var fields = asList(d.fields).map(function (f) {
@@ -5924,8 +6025,18 @@
         return "<td>" + esc(r[c] != null ? r[c] : "") + "</td>";
       }).join("") + "</tr>";
     }).join("");
+    // Optional back affordance: payload.back = {label, param, value}. Renders a ← bar that
+    // clears the overlay param via setSurfaceQuery (drives the agronomics full-tab takeover
+    // exit). Generic — any record_table can opt in.
+    var back = payload.back && typeof payload.back === "object" ? payload.back : null;
+    var backBar = back
+      ? '<button type="button" class="v2-recordTable__back" data-record-back="' +
+        esc(back.param || "") + '" data-record-back-value="' + esc(back.value != null ? back.value : "") +
+        '">&larr; ' + esc(back.label || "Back") + "</button>"
+      : "";
     content.innerHTML =
       '<section class="v2-recordTable">' +
+      backBar +
       '<header class="v2-recordTable__header">' + esc(payload.title || "") +
       (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
       (rows.length
@@ -5933,6 +6044,16 @@
           head + "</thead><tbody>" + body + "</tbody></table></div>"
         : '<p class="v2-recordTable__empty">' + esc(payload.empty_text || "No records.") + "</p>") +
       "</section>";
+    if (back) {
+      var backBtn = content.querySelector("[data-record-back]");
+      if (backBtn) backBtn.addEventListener("click", function () {
+        if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+          window.PortalShellCore.setSurfaceQuery(
+            backBtn.getAttribute("data-record-back"),
+            backBtn.getAttribute("data-record-back-value") || "");
+        }
+      });
+    }
   }
 
   function renderRecordList(payload, content) {

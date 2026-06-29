@@ -41,7 +41,7 @@ PORTAL_PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.respon
 # (full eligibility) so the eligibility logic stays independently testable; only the search
 # opts in. Legacy tools stay registered + renderable via a direct surface_query.tools — they
 # are just no longer discoverable in the search.
-LIVE_TOOL_IDS: tuple[str, ...] = ("agronomics", "farm_profile", "samras_structure")
+LIVE_TOOL_IDS: tuple[str, ...] = ("agronomics", "farm_profile", "samras_structure", "local_domain")
 
 
 def _find_document(

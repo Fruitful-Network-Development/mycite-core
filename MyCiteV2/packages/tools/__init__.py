@@ -21,6 +21,7 @@ from . import (
     contracts_tool,  # noqa: F401
     farm_profile_viewer,  # noqa: F401
     invoices_viewer,  # noqa: F401
+    local_domain_viewer,  # noqa: F401  (lcl tree + expand-to-table instance containers)
     plots_viewer,  # noqa: F401
     product_document_view,  # noqa: F401
     profile_card_viewer,  # noqa: F401  (base profile contract; farm_profile builds on it)

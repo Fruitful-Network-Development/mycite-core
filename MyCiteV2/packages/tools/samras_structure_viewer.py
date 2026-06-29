@@ -21,7 +21,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.core.datum_ops.datum_resolve import cached_index
+from MyCiteV2.packages.core.datum_ops.datum_resolve import cached_index, view_token_index
 from MyCiteV2.packages.core.datum_ops.node_addrs import parent_of, parse_node_addr
 from MyCiteV2.packages.core.datum_ops.refs import defined_node_addrs
 from MyCiteV2.packages.core.structures.samras.codec import decode_canonical_bitstream
@@ -128,6 +128,10 @@ def build_magnitude_tree(
     denoted: set[str] = set(structure.addresses)
     defined: set[str] = defined_node_addrs(defining_doc) if defining_doc is not None else set()
     labels = cached_index(defining_doc) if defining_doc is not None else None
+    # Per-node record-view tokens (rf.3-1-8 VIEW markers): which nodes are instance
+    # containers the local_domain tool can expand into a record table. Empty for txa/msn
+    # and for any structure with no VIEW markers — so the samras viewer is unaffected.
+    views = view_token_index(defining_doc)
 
     # has_children in ONE O(N) parent-bucket pass (the old per-node direct_children scan
     # was O(N^2) — ~70s on the 4670-node lcl structure; this is ~0.06s).
@@ -155,6 +159,10 @@ def build_magnitude_tree(
                 "count": len(children_by_parent.get(addr, ())),
                 "label": (labels.resolve(addr) if labels is not None else "") or "",
                 "status": "defined" if addr in defined else "empty",
+                # Record-view token (e.g. "product"/"invoice") when this node is an
+                # instance container; "" otherwise. The samras renderer ignores it; the
+                # local_domain renderer turns it into an expand-to-table button.
+                "record_view": views.get(addr, ""),
             }
         )
     return {"denoted": denoted, "defined": defined, "nodes": nodes}
