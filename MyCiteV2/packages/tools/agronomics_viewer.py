@@ -114,7 +114,8 @@ class AgronomicsViewer:
         inventory_payload = InventorySynopsis().build_panel_payload(**_kw)
         contract_payload = ContractEditor().build_panel_payload(**_kw, extra_query=eq)
         plan_top = {
-            "schema": _SCHEMA, "container": "composite", "direction": "row", "sandbox_id": sandbox,
+            "schema": _SCHEMA, "container": "composite", "direction": "row", "widgets": True,
+            "sandbox_id": sandbox,
             "panes": [
                 {"tool_id": "plot_manager", "label": "Plot Manager", "panel_payload": plot_payload},
                 {"tool_id": "plan_slot", "label": "", "panel_payload": {

@@ -9713,6 +9713,10 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   list-style: none;
   margin: 0;
   padding: 0;
+  /* Self-contained widget: cap the height and scroll internally so a long inventory never
+     stretches the PLAN row / forces the whole tab to scroll. */
+  max-height: 300px;
+  overflow-y: auto;
 }
 .v2-synopsis__row {
   display: flex;
@@ -9736,11 +9740,13 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
   color: var(--ink2);
   font-size: 12px;
 }
-/* Composite column direction (PLAN tab: top row over a bottom Contract Editor bar). */
+/* Composite column direction (PLAN tab: top row over a bottom Contract Editor bar). Panes are
+   natural height (stacked at the top), not stretched to fill. */
 .v2-composite--column { flex-direction: column; }
-.v2-composite--column > .v2-composite__pane { flex: 0 0 auto; }
-.v2-composite--column > .v2-composite__pane:first-child { flex: 1 1 auto; min-height: 0; }
+.v2-composite--column > .v2-composite__pane { flex: 0 0 auto; min-height: 0; }
 .v2-composite__pane--unlabeled { padding-top: 4px; }
+/* Independent widgets: each pane keeps its own (content) height — no equal-height stretch. */
+.v2-composite--widgets { align-items: flex-start; }
 /* Plot Manager: date widget above the map, create bar below. */
 .v2-plotmgr { display: flex; flex-direction: column; gap: 6px; }
 .v2-plotmgr__date {

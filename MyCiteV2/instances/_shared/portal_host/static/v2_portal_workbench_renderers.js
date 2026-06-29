@@ -5909,7 +5909,9 @@
     // (no per-plot containment test needed — revisit if farm_profile ever carries multiple fields).
     var plots = features.filter(function (f) { return (f.properties || {}).kind === "plot"; });
 
-    var mode = "overall";
+    // Plot Manager (selectable) opens straight in the field view — only the field and the
+    // plots/clusters within it, no parcels/overall and no zoom-out.
+    var mode = selectable ? "field" : "overall";
 
     function paintOverall(host) {
       var proj = makeProjection(features);
@@ -5934,7 +5936,7 @@
         fieldFeats.map(function (f) { return polySvg(f, proj, {}); }).join("") +
         plots.map(function (f) { return polySvg(f, proj, { plotHit: true }); }).join("");
       host.innerHTML =
-        '<button type="button" class="v2-farm__back" data-fp-back aria-label="Back to farm view">&larr; Farm</button>' +
+        (selectable ? "" : '<button type="button" class="v2-farm__back" data-fp-back aria-label="Back to farm view">&larr; Farm</button>') +
         '<div class="v2-farm__plotLabel" data-fp-plotlabel hidden></div>' +
         svgWrap(inner);
     }
@@ -6296,8 +6298,10 @@
       content.innerHTML = '<p class="ide-visualizationPanel__empty">No panes to display.</p>';
       return;
     }
-    // direction "column" stacks panes vertically (e.g. the PLAN tab: top row over a bottom bar).
-    var dirCls = payload.direction === "column" ? " v2-composite--column" : "";
+    // direction "column" stacks panes vertically (e.g. the PLAN tab: top row over a bottom bar);
+    // "widgets" keeps each pane its natural size (no equal-height stretch) — independent widgets.
+    var dirCls = (payload.direction === "column" ? " v2-composite--column" : "") +
+                 (payload.widgets ? " v2-composite--widgets" : "");
     content.innerHTML =
       '<div class="v2-composite' + dirCls + '">' +
       panes
