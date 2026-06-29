@@ -49,6 +49,9 @@ class Markers:
     LCL_ID = _labels.RF_LCL_ID        # rf.3-1-5 — lcl node-id reference
     UTC = "rf.3-1-6"                  # HOPS-UTC date token
     NOMINAL = "rf.3-1-7"              # nominal-256-17 value (weight/cost/amount)
+    VIEW = "rf.3-1-8"                 # record-view token (ASCII): flags a node as an
+    #                                   instance-container the local_domain tool can
+    #                                   expand into a record table (product/invoice/…).
 
     # Markers whose magnitude is a node-address REFERENCE (not a literal).
     NODE_REF = frozenset({NODE_ID, LCL_ID})
@@ -212,6 +215,35 @@ def cached_index(document: Any | None) -> NameIndex:
     return cached
 
 
+def view_token_index(document: Any | None) -> dict[str, str]:
+    """node_address → record-view token, from a document's :data:`Markers.VIEW` pairs.
+
+    A node-definition row may carry a trailing ``rf.3-1-8`` pair whose magnitude is an
+    ASCII token (``product`` / ``invoice`` / ``contract`` / ``contacts``) declaring that
+    the node is an instance-container the ``local_domain`` tool can expand into a record
+    table. The token is read off the same definition rows :class:`NameIndex` walks, by the
+    canonical marker walk (so it is robust to extra head pairs and prefix family). Returns
+    only the nodes that carry a VIEW token (empty dict when none / ``document is None``).
+    """
+    out: dict[str, str] = {}
+    if document is None:
+        return out
+    for row in getattr(document, "rows", ()) or ():
+        head = _head(getattr(row, "raw", None))
+        if head is None or not _is_definition_head(head):
+            continue
+        node = as_text(head[2])
+        if not node:
+            continue
+        for marker, magnitude in iter_marker_pairs(head):
+            if marker == Markers.VIEW:
+                token = decode_label(magnitude).strip()
+                if token:
+                    out[node] = token
+                break
+    return out
+
+
 __all__ = [
     "Markers",
     "NameIndex",
@@ -221,4 +253,5 @@ __all__ = [
     "iter_marker_pairs",
     "resolve_coordinate",
     "rewrite_title",
+    "view_token_index",
 ]
