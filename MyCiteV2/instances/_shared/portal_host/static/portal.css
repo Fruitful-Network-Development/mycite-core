@@ -9783,6 +9783,51 @@ body.portal-tool-layer-active #systemShellSelectionSection .ide-controlpanel__ti
 .v2-plotmgr__create:hover { filter: brightness(1.08); }
 .v2-plotmgr__status { font-size: 12px; color: var(--ink2); min-height: 1em; }
 .v2-farm__poly.is-selected { fill: rgba(30,108,147,0.55) !important; stroke: #1e6c93 !important; stroke-width: 2 !important; }
+.v2-plotmgr__top { display: flex; align-items: center; }
+.v2-plotmgr__mapwrap { position: relative; }
+.v2-plotmgr__expand {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 26px; height: 26px; line-height: 1; padding: 0;
+  border: 1px solid var(--ide-border, #d8dee4); border-radius: 6px;
+  background: rgba(255, 255, 255, 0.9); color: var(--accent, #1e6c93);
+  font-size: 15px; cursor: pointer;
+}
+.v2-plotmgr__expand:hover { background: var(--accent, #1e6c93); color: #fff; }
+/* Enlarged Plot Manager — full-screen modal with stronger select/create controls. */
+.v2-pmModal {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(20, 28, 36, 0.55); backdrop-filter: blur(2px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.v2-pmModal__panel {
+  background: var(--ide-panel-bg, #fff); border-radius: 10px;
+  width: min(1100px, 96vw); height: min(86vh, 820px);
+  display: flex; flex-direction: column; overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+.v2-pmModal__head {
+  display: flex; align-items: center; gap: 14px;
+  padding: 10px 14px; border-bottom: 1px solid var(--ide-border, #d8dee4);
+}
+.v2-pmModal__title { font-weight: 600; flex: 1 1 auto; }
+.v2-pmModal__close {
+  width: 28px; height: 28px; border: none; background: none; font-size: 16px;
+  color: var(--ink2); cursor: pointer; border-radius: 6px;
+}
+.v2-pmModal__close:hover { background: #eef1f5; }
+.v2-pmModal__mapbox { flex: 1 1 auto; min-height: 0; padding: 8px 14px; overflow: hidden; }
+.v2-pmModal__mapbox .v2-farm { height: 100%; display: flex; flex-direction: column; }
+.v2-pmModal__mapbox .v2-farm__map { flex: 1 1 auto; min-height: 0; position: relative; }
+.v2-pmModal__mapbox .v2-farm__svg { width: 100%; height: 100%; }
+.v2-pmModal__bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; border-top: 1px solid var(--ide-border, #d8dee4);
+}
+.v2-pmModal__btn {
+  padding: 4px 12px; border: 1px solid var(--ide-border, #d8dee4); border-radius: 6px;
+  background: var(--ide-panel-bg, #fff); font: inherit; font-size: 13px; cursor: pointer;
+}
+.v2-pmModal__btn:hover { background: #eef1f5; }
 /* Record form (Contract Editor) — inline thin widget for the PLAN bottom bar. */
 .v2-recordForm { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
 .v2-recordForm__header { width: 100%; color: var(--ink2); font-size: 12px; margin-bottom: 2px; }

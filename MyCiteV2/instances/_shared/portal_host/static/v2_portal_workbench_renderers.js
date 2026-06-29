@@ -5955,6 +5955,9 @@
     var host = content.querySelector("[data-farm-map]");
     if (!host) return;
     paintMap(host);
+    // External re-paint hook so callers (Plot Manager select-all/clear) can refresh the map
+    // after mutating the shared selection WITHOUT re-attaching the delegated listeners below.
+    host.__repaint = function () { paintMap(host); };
 
     // Delegated listeners — attached ONCE to the stable map host; survive paintMap re-renders.
     host.addEventListener("click", function (e) {
@@ -6007,46 +6010,95 @@
     if (errorOr(payload, content)) return;
     var today = asText(payload.today);
     var selected = new Set();
-    content.innerHTML =
-      '<section class="v2-plotmgr">' +
-      '<div class="v2-plotmgr__date" title="Click the date to edit">' +
-      '<span class="v2-plotmgr__cal" aria-hidden="true">📅</span>' +
-      '<span class="v2-plotmgr__day" data-pm-day contenteditable="true" spellcheck="false">' +
-      escapeHtml(today) + "</span></div>" +
-      '<div class="v2-farm__map v2-plotmgr__map" data-farm-map></div>' +
-      '<div class="v2-plotmgr__bar">' +
-      '<span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
-      '<button type="button" class="v2-plotmgr__create" data-pm-create>➕ create cluster</button>' +
-      "</div>" +
-      '<div class="v2-plotmgr__status" data-pm-status></div>' +
-      "</section>";
-    var host = content.querySelector("[data-farm-map]");
-    var countEl = content.querySelector("[data-pm-count]");
-    function onSel(set) {
-      if (countEl) countEl.textContent = set.size + " plot" + (set.size === 1 ? "" : "s") + " selected";
-    }
     payload._selected = selected;
-    payload._onSelect = onSel;
     payload.selectable = true;
-    if (host) renderGeospatialProjection(payload, host);
-    var createBtn = content.querySelector("[data-pm-create]");
-    var dayEl = content.querySelector("[data-pm-day]");
-    var statusEl = content.querySelector("[data-pm-status]");
-    if (createBtn) createBtn.addEventListener("click", function () {
-      if (!selected.size) { statusEl.textContent = "Drill into the field and select plots first."; return; }
-      statusEl.textContent = "Creating cluster…";
+    // Every plot's lcl node (for "select all" in the enlarged view).
+    var allPlots = ((payload.feature_collection || {}).features || [])
+      .filter(function (f) { return (f.properties || {}).kind === "plot" && (f.properties || {}).lcl_node; })
+      .map(function (f) { return f.properties.lcl_node; });
+
+    function refreshCounts() {
+      var n = selected.size, txt = n + " plot" + (n === 1 ? "" : "s") + " selected";
+      Array.prototype.forEach.call(document.querySelectorAll("[data-pm-count]"), function (el) { el.textContent = txt; });
+    }
+    payload._onSelect = refreshCounts;
+
+    function doCreate(dayText, statusEl, onDone) {
+      if (!selected.size) { if (statusEl) statusEl.textContent = "Select plots in the field first."; return; }
+      if (statusEl) statusEl.textContent = "Creating cluster…";
       fetch(asText(payload.create_route), {
         method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
         body: JSON.stringify({ sandbox_id: asText(payload.sandbox_id) || "agro_erp",
-          plot_nodes: Array.prototype.slice.call(selected), day: (dayEl.textContent || today).trim() }),
+          plot_nodes: Array.prototype.slice.call(selected), day: (dayText || today).trim() }),
       }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(function (o) {
-          if (!o.ok) { statusEl.textContent = "Error: " + ((o.j && o.j.error) || "create failed"); return; }
-          statusEl.textContent = "Created " + ((o.j && (o.j.cluster_name || o.j.cluster)) || "cluster") + ".";
+          if (!o.ok) { if (statusEl) statusEl.textContent = "Error: " + ((o.j && o.j.error) || "create failed"); return; }
+          if (statusEl) statusEl.textContent = "Created " + ((o.j && (o.j.cluster_name || o.j.cluster)) || "cluster") + ".";
+          selected.clear(); refreshCounts();
+          if (onDone) onDone();
           if (window.PortalShellCore && typeof window.PortalShellCore.refetchOverlayPanels === "function") {
             window.PortalShellCore.refetchOverlayPanels({});
           }
-        }).catch(function (e) { statusEl.textContent = "Error: " + e; });
+        }).catch(function (e) { if (statusEl) statusEl.textContent = "Error: " + e; });
+    }
+
+    function dateWidget(attr) {
+      return '<span class="v2-plotmgr__date" title="Click the date to edit"><span class="v2-plotmgr__cal" aria-hidden="true">📅</span>' +
+        '<span class="v2-plotmgr__day" ' + attr + ' contenteditable="true" spellcheck="false">' + escapeHtml(today) + "</span></span>";
+    }
+
+    // Compact widget: date · map (with an ⤢ expand button) · create bar.
+    content.innerHTML =
+      '<section class="v2-plotmgr">' +
+      '<div class="v2-plotmgr__top">' + dateWidget("data-pm-day") + "</div>" +
+      '<div class="v2-plotmgr__mapwrap">' +
+      '<button type="button" class="v2-plotmgr__expand" data-pm-expand title="Enlarge — select and create clusters" aria-label="Enlarge">⤢</button>' +
+      '<div class="v2-plotmgr__mapbox"></div></div>' +
+      '<div class="v2-plotmgr__bar"><span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
+      '<button type="button" class="v2-plotmgr__create" data-pm-create>➕ create cluster</button></div>' +
+      '<div class="v2-plotmgr__status" data-pm-status></div></section>';
+    var box = content.querySelector(".v2-plotmgr__mapbox");
+    if (box) renderGeospatialProjection(payload, box);
+    var dayEl = content.querySelector("[data-pm-day]");
+    var statusEl = content.querySelector("[data-pm-status]");
+    content.querySelector("[data-pm-create]").addEventListener("click", function () { doCreate(dayEl.textContent, statusEl); });
+
+    // Expand → a full-screen enlarged view with stronger select/create controls.
+    content.querySelector("[data-pm-expand]").addEventListener("click", function () {
+      var m = document.createElement("div");
+      m.className = "v2-pmModal";
+      m.innerHTML =
+        '<div class="v2-pmModal__panel" role="dialog" aria-label="Plot Manager">' +
+        '<header class="v2-pmModal__head">' +
+        '<span class="v2-pmModal__title">Plot Manager — select plots &amp; create a cluster</span>' +
+        dateWidget("data-pm-mday") +
+        '<button type="button" class="v2-pmModal__close" data-pm-close aria-label="Close">✕</button></header>' +
+        '<div class="v2-pmModal__mapbox v2-pmModal__map"></div>' +
+        '<div class="v2-pmModal__bar">' +
+        '<button type="button" class="v2-pmModal__btn" data-pm-selall>Select all</button>' +
+        '<button type="button" class="v2-pmModal__btn" data-pm-clear>Clear</button>' +
+        '<span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
+        '<button type="button" class="v2-plotmgr__create" data-pm-create2>➕ create cluster</button>' +
+        '<span class="v2-plotmgr__status" data-pm-mstatus></span></div></div>';
+      document.body.appendChild(m);
+      var mbox = m.querySelector(".v2-pmModal__mapbox");
+      renderGeospatialProjection(payload, mbox);
+      var mMapHost = mbox.querySelector("[data-farm-map]");
+      refreshCounts();
+      var mday = m.querySelector("[data-pm-mday]");
+      var mstatus = m.querySelector("[data-pm-mstatus]");
+      function repaint() { if (mMapHost && mMapHost.__repaint) mMapHost.__repaint(); refreshCounts(); }
+      function close() {
+        if (m.parentNode) m.parentNode.removeChild(m);
+        var cMapHost = box && box.querySelector("[data-farm-map]");
+        if (cMapHost && cMapHost.__repaint) cMapHost.__repaint();
+        refreshCounts();
+      }
+      m.querySelector("[data-pm-close]").addEventListener("click", close);
+      m.addEventListener("click", function (e) { if (e.target === m) close(); });
+      m.querySelector("[data-pm-selall]").addEventListener("click", function () { allPlots.forEach(function (n) { selected.add(n); }); repaint(); });
+      m.querySelector("[data-pm-clear]").addEventListener("click", function () { selected.clear(); repaint(); });
+      m.querySelector("[data-pm-create2]").addEventListener("click", function () { doCreate(mday.textContent, mstatus, close); });
     });
   }
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
