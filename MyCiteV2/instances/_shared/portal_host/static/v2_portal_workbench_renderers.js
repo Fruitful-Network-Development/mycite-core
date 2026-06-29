@@ -6011,7 +6011,9 @@
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
   window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
   window.__MYCITE_V2_TOOL_RENDERERS["profile_card"] = renderProfileCard;
-  window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
+  // contracts now renders via the shared record_table container (Contract Viewer extends
+  // RecordViewerBase); its weight draw-down rides record_table's extra_tables. (renderContracts
+  // kept below for reference but no longer registered.)
   // samras_structure renders via the cluster dendrogram (renderSamrasDendrogram), defined
   // and registered in IIFE#1 alongside clusterLayout (the Resource type-browser diagram).
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
@@ -6046,6 +6048,21 @@
         esc(back.param || "") + '" data-record-back-value="' + esc(back.value != null ? back.value : "") +
         '">&larr; ' + esc(back.label || "Back") + "</button>"
       : "";
+    // Optional secondary tables (e.g. the contracts invoice draw-down) rendered below the main.
+    function tableHtml(c, r) {
+      var h = "<tr>" + c.map(function (x) { return "<th>" + esc(x) + "</th>"; }).join("") + "</tr>";
+      var b = (Array.isArray(r) ? r : []).map(function (row) {
+        row = row || {};
+        return "<tr>" + c.map(function (x) { return "<td>" + esc(row[x] != null ? row[x] : "") + "</td>"; }).join("") + "</tr>";
+      }).join("");
+      return '<div class="v2-recordTable__wrap"><table class="v2-recordTable__table"><thead>' +
+        h + "</thead><tbody>" + b + "</tbody></table></div>";
+    }
+    var extra = (Array.isArray(payload.extra_tables) ? payload.extra_tables : []).map(function (t) {
+      t = t || {};
+      return '<header class="v2-recordTable__header">' + esc(t.title || "") + "</header>" +
+        tableHtml(Array.isArray(t.columns) ? t.columns : [], t.rows);
+    }).join("");
     content.innerHTML =
       '<section class="v2-recordTable">' +
       backBar +
@@ -6055,6 +6072,7 @@
         ? '<div class="v2-recordTable__wrap"><table class="v2-recordTable__table"><thead>' +
           head + "</thead><tbody>" + body + "</tbody></table></div>"
         : '<p class="v2-recordTable__empty">' + esc(payload.empty_text || "No records.") + "</p>") +
+      extra +
       "</section>";
     if (back) {
       var backBtn = content.querySelector("[data-record-back]");

@@ -66,8 +66,11 @@ class TestRecordViewersLive(unittest.TestCase):
         self.assertIsNone(p.get("error"))
         self.assertEqual(p["container"], "record_table")
         self.assertGreater(p["row_count"], 0)
-        # invoice refs resolve to names now that 1-4-* exist (Phase 1b reconcile).
-        self.assertTrue(all(not r["invoice"].startswith("1-4-") for r in p["rows"]))
+        # invoice refs resolve to names (not raw lcl addresses).
+        self.assertTrue(all(not r["invoice"].startswith("1-") for r in p["rows"]))
+        # event-type appended (procurement) and surfaced as a resolved name.
+        self.assertIn("event", p["columns"])
+        self.assertTrue(all(r["event"] == "procurement" for r in p["rows"]))
 
     def test_contacts_resolves_suppliers(self) -> None:
         p = self._payload("contacts")

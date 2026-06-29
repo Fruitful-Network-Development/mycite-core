@@ -50,21 +50,23 @@ class TestContractsPure(unittest.TestCase):
 
     def test_build_contract_row_shape(self) -> None:
         row = build_contract_row(
-            "4-5-1", hops_date="2025-001-008", invoice_node="1-4-1", plot_node="1-2-4",
+            "4-6-1", hops_date="2025-001-008", invoice_node="1-1-6-1-1", plot_node="1-2-4-1",
             amount="10 lbs", cost="$50.00", label="contract_1",
         )
         head = row.raw[0]
-        self.assertEqual(head[0], "4-5-1")
-        # 5 pairs => head length 11; markers in order.
-        self.assertEqual(len(head), 11)
+        self.assertEqual(head[0], "4-6-1")
+        # 6 pairs (date, invoice, plot, amount, cost, event) => head length 13.
+        self.assertEqual(len(head), 13)
         self.assertEqual(head[1], "rf.3-1-6")  # date
         self.assertEqual(head[2], "2025-001-008")
         self.assertEqual(head[3], "rf.3-1-5")  # invoice_id
-        self.assertEqual(head[4], "1-4-1")
+        self.assertEqual(head[4], "1-1-6-1-1")
         self.assertEqual(head[5], "rf.3-1-5")  # plot_id
-        self.assertEqual(head[6], "1-2-4")
+        self.assertEqual(head[6], "1-2-4-1")
         self.assertEqual(head[7], "rf.3-1-7")  # amount
         self.assertEqual(head[9], "rf.3-1-7")  # cost
+        self.assertEqual(head[11], "rf.3-1-5")  # event-type ref
+        self.assertEqual(head[12], "1-3-2-3")   # investment (default)
         self.assertEqual(row.raw[1], ["contract_1"])
         # amount round-trips through the nominal decode.
         self.assertEqual(_BIN.decode(head[8]), "10 lbs")
@@ -103,8 +105,8 @@ class TestContractsPure(unittest.TestCase):
         # the decode is marker-driven, not positional, so the weight is still found.
         weight_bits = _encode_bits("40 lbs", bits=_NOMINAL_BITS)
         doc = _invoices_doc([
-            {"datum_address": "4-6-1",
-             "raw": [["4-6-1", _RF_NOMINAL, weight_bits, _RF_LCL_ID, "1-4-1"], ["invoice_1"]]},
+            {"datum_address": "4-7-1",  # invoices are vg-7 since the event-type append
+             "raw": [["4-7-1", _RF_NOMINAL, weight_bits, _RF_LCL_ID, "1-4-1"], ["invoice_1"]]},
         ])
         weights = _invoice_weights(doc, LclNameIndex(None))
         self.assertIn("1-4-1", weights)
@@ -113,19 +115,21 @@ class TestContractsPure(unittest.TestCase):
 
 @unittest.skipUnless(_LIVE_DB.exists(), "live MOS not present")
 class TestContractsLive(unittest.TestCase):
-    def test_contracts_drawdown_invariants(self) -> None:
-        # Robust to however many contracts the live doc holds (the contract builder may
-        # have committed some): assert the draw-down ARITHMETIC invariants rather than a
-        # pristine-empty baseline.
+    def test_contracts_record_table_and_drawdown(self) -> None:
+        # Contract Viewer now emits a record_table (date/invoice/plot/amount/cost/event) plus
+        # the invoice draw-down as an extra_tables entry. Assert the shape + draw-down arithmetic.
         payload = ContractsTool().build_panel_payload(
             authority_db_file=_LIVE_DB, sandbox_id="agro_erp", document_id="", datum_address=""
         )
         self.assertIsNone(payload.get("error"))
         self.assertEqual(payload["schema"], "mycite.v2.portal.workbench.tool.contracts.v1")
-        self.assertEqual(payload["contract_count"], len(payload["contracts"]))
-        self.assertGreaterEqual(payload["contract_count"], 0)
-        self.assertGreater(len(payload["draw_down"]), 0)
-        for d in payload["draw_down"]:
+        self.assertEqual(payload["container"], "record_table")
+        self.assertIn("event", payload["columns"])
+        self.assertEqual(payload["row_count"], len(payload["rows"]))
+        draw = next((t for t in payload.get("extra_tables", []) if t.get("title") == "Invoice draw-down"), None)
+        self.assertIsNotNone(draw)
+        self.assertGreater(len(draw["rows"]), 0)
+        for d in draw["rows"]:
             self.assertGreaterEqual(d["committed"], 0.0)
             self.assertAlmostEqual(d["remaining"], d["purchased_weight"] - d["committed"], places=6)
             self.assertEqual(d["over_committed"], d["committed"] > d["purchased_weight"])

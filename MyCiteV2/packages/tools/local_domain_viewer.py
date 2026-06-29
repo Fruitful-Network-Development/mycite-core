@@ -87,22 +87,18 @@ def _invoice_table(db: Path | None, sandbox: str) -> dict[str, Any]:
 
 
 def _contract_table(db: Path | None, sandbox: str) -> dict[str, Any]:
-    # contracts_tool emits a bespoke shape; import lazily (header-only today).
-    try:
-        from .contracts_tool import ContractsTool
-        p = ContractsTool().build_panel_payload(
-            authority_db_file=db, sandbox_id=sandbox, document_id="", datum_address="",
-        )
-    except Exception:  # pragma: no cover - defensive
-        p = {}
-    contracts = p.get("contracts") or p.get("rows") or []
-    cols = ["lcl_id", "plot", "date", "amount", "cost"]
+    from .contracts_tool import ContractsTool  # lazy: avoids any import-order surprises
+    p = ContractsTool().build_panel_payload(
+        authority_db_file=db, sandbox_id=sandbox, document_id="", datum_address="",
+    )
+    if p.get("error"):
+        return _table("Contracts", ["lcl_id"], [], noun="contract")
     rows = [{
-        "lcl_id": _as_text(c.get("contract") or c.get("invoice") or c.get("id")),
-        "plot": _as_text(c.get("plot")), "date": _as_text(c.get("date")),
-        "amount": _as_text(c.get("amount")), "cost": _as_text(c.get("cost")),
-    } for c in contracts]
-    return _table("Contracts", cols, rows, noun="contract")
+        "lcl_id": _as_text(r.get("invoice")), "plot": _as_text(r.get("plot")),
+        "amount": _as_text(r.get("amount")), "cost": _as_text(r.get("cost")),
+        "event": _as_text(r.get("event")),
+    } for r in p.get("rows", [])]
+    return _table("Contracts", ["lcl_id", "plot", "amount", "cost", "event"], rows, noun="contract")
 
 
 def _contacts_table(db: Path | None, sandbox: str) -> dict[str, Any]:
