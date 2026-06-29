@@ -1771,9 +1771,21 @@
       host.innerHTML = '<p class="v2-clusterTree__empty">No nodes denoted by the magnitude.</p>';
       return;
     }
-    // Collapse every branch by default; expand the root(s); ALWAYS keep expandable nodes
-    // collapsed so their instance children never paint in the tree.
+    // Collapse every branch by default; expand the root(s). Then default to 3 visible layers
+    // by also expanding the domain nodes (children of the root) — root → domains → domain
+    // children all show on open.
     var collapsed = _samrasCollapsedInit(nodes);
+    var rootSlugs = {};
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (!asText(o.parent_slug)) rootSlugs[asText(o.full_slug)] = true;
+    });
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (o.has_children && rootSlugs[asText(o.parent_slug)]) collapsed.delete(asText(o.full_slug));
+    });
+    // ALWAYS keep expandable (record_view) nodes collapsed so their instance children never
+    // paint in the tree (they live in the expand-to-table view instead).
     asList(nodes).forEach(function (n) {
       var o = asObject(n);
       if (asText(o.record_view)) collapsed.add(asText(o.full_slug));

@@ -65,7 +65,8 @@ from MyCiteV2.scripts.ingest_agro_erp_ledger import (
     _upsert_documents_row,
 )
 
-LAND_NODE = "1-2"  # lcl land branch (plots are minted here, reuse-by-title)
+LAND_NODE = "1-2-4"  # lcl plot container (post-restructure: land=1-2, plot=1-2-4); plots
+#                      are minted as 1-2-4-N here, reuse-by-title.
 _PARCEL_ADDRS = ("5-0-1", "5-0-2", "5-0-3")
 _FIELD_POLY = "5-0-4"
 _FIELD_RING = "4-5-1"
