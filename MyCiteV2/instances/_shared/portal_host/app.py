@@ -7514,6 +7514,97 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         view["domain"] = domain
         return jsonify({"ok": True, "contact": view}), 200
 
+    def _contacts_bulk_set_subscribed(*, subscribed: bool) -> tuple[Any, int]:
+        """Bulk-flip the ``subscribed`` flag across the caller grantee's
+        contacts (dashboard "Resubscribe all" / "Unsubscribe all").
+
+        Scope mirrors ``/__fnd/contacts/list``: every owned domain by
+        default, or a single owned domain when the body carries ``domain``
+        (so the action honours the dashboard's on-screen domain filter).
+        Newsletter-enabled grantees only — the subscribe flag is meaningless
+        without a newsletter, matching the column/buttons the UI hides for
+        contact-only sites. NO email is ever sent here; this only mutates
+        the flag + lifecycle stamps. Idempotent: rows already in the target
+        state are left untouched and excluded from the ``updated`` count.
+        """
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        if not _grantee_has_newsletter(grantee):
+            return jsonify({"ok": False, "error": "newsletter_not_enabled"}), 403
+        owned_domains = [
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        ]
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        requested_domain = _normalize_domain(_as_text(body.get("domain")))
+        if requested_domain:
+            if requested_domain not in owned_domains:
+                return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+            target_domains = [requested_domain]
+        else:
+            target_domains = owned_domains
+
+        adapter = _newsletter_state_adapter(host_config)
+        now_iso = _utc_now_iso()
+        updated = 0
+        for domain in target_domains:
+            log = adapter.load_contact_log(domain=domain) or {}
+            contacts = list(log.get("contacts") or [])
+            changed = False
+            for i, record in enumerate(contacts):
+                if not isinstance(record, dict):
+                    continue
+                if bool(record.get("subscribed")) == subscribed:
+                    continue
+                patch: dict[str, Any] = {"subscribed": subscribed}
+                if not subscribed:
+                    # Operator-initiated opt-out: stamp unsubscribed_at, keep
+                    # the original signup source so the table's Source column
+                    # stays meaningful.
+                    patch["unsubscribed_at"] = now_iso
+                row = canonical_contact_entry(existing=record, patch=patch, now=now_iso)
+                if subscribed:
+                    # Re-opt-in clears the stale opt-out stamp. canonical_
+                    # contact_entry can't clear it via the patch (an empty
+                    # string there means "leave unchanged"), so clear it here.
+                    row["unsubscribed_at"] = ""
+                contacts[i] = row
+                updated += 1
+                changed = True
+            if changed:
+                log["contacts"] = contacts
+                log["updated_at"] = now_iso
+                adapter.save_contact_log(domain=domain, payload=log)
+        return jsonify({
+            "ok": True,
+            "updated": updated,
+            "subscribed": subscribed,
+            "domain": requested_domain or "",
+            "domains": target_domains,
+        }), 200
+
+    @app.post("/__fnd/contacts/subscribe-all")
+    def fnd_contacts_subscribe_all() -> tuple[Any, int]:
+        """Dashboard bulk action — set subscribed=True for every contact in
+        scope (all owned domains, or one owned domain via body ``domain``).
+        No email is sent."""
+        return _contacts_bulk_set_subscribed(subscribed=True)
+
+    @app.post("/__fnd/contacts/unsubscribe-all")
+    def fnd_contacts_unsubscribe_all() -> tuple[Any, int]:
+        """Dashboard bulk action — set subscribed=False for every contact in
+        scope (all owned domains, or one owned domain via body ``domain``)."""
+        return _contacts_bulk_set_subscribed(subscribed=False)
+
     # ------------------------------------------------------------------
     # Grantee self-service email management — add / edit / remove a
     # client's own personal *user* aliases from the dashboard.
