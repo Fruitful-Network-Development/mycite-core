@@ -36,10 +36,11 @@ AGRO_ERP_TOOL_SURFACE_ID = "system.tools.agro_erp"
 # Sandbox Token"). These are the only authoritative spellings —
 # downstream code must import these constants rather than re-literal
 # the strings.
-CTS_GIS_SANDBOX_TOKEN = "cts_gis"
+CTS_GIS_SANDBOX_TOKEN = "cts_gis"  # retired 2026-07-01 (migrated → mycelium_network); token kept for dormant imports
 FND_CSM_SANDBOX_TOKEN = "fnd_csm"
 WORKBENCH_UI_SANDBOX_TOKEN = "system"  # Workbench-UI is a system-sandbox reflective view
 AGRO_ERP_SANDBOX_TOKEN = "agro_erp"
+MYCELIUM_NETWORK_SANDBOX_TOKEN = "mycelium_network"  # canonical identity/entity/geo sandbox (TASK-2026-07-01-001)
 
 # Display names rendered in the workbench chrome instead of raw tokens.
 # Add an entry here when registering a new sandbox; the workbench falls
@@ -49,6 +50,7 @@ SANDBOX_DISPLAY_NAMES: dict[str, str] = {
     AGRO_ERP_SANDBOX_TOKEN: "Agro-ERP",
     CTS_GIS_SANDBOX_TOKEN: "CTS-GIS",
     FND_CSM_SANDBOX_TOKEN: "FND-CSM",
+    MYCELIUM_NETWORK_SANDBOX_TOKEN: "Mycelium Network",
 }
 
 def sandbox_display_name(token: str) -> str:
