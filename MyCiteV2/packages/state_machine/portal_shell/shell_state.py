@@ -107,18 +107,14 @@ class PortalScope:
 @dataclass(frozen=True)
 class PortalShellChrome:
     control_panel_collapsed: bool = False
-    interface_panel_open: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.control_panel_collapsed, bool):
             raise ValueError("shell_chrome.control_panel_collapsed must be a bool")
-        if not isinstance(self.interface_panel_open, bool):
-            raise ValueError("shell_chrome.interface_panel_open must be a bool")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "control_panel_collapsed": self.control_panel_collapsed,
-            "interface_panel_open": self.interface_panel_open,
         }
 
     @classmethod
@@ -129,7 +125,6 @@ class PortalShellChrome:
             raise ValueError("shell_chrome must be a dict or null")
         return cls(
             control_panel_collapsed=payload.get("control_panel_collapsed") is True,
-            interface_panel_open=payload.get("interface_panel_open") is True,
         )
 
 

@@ -30,17 +30,33 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from MyCiteV2.instances._shared.runtime.utilities_extensions import (
-    EXTENSION_RENDERERS,
-    render_extension,
-)
-from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     resources_extension as rx,
-)
-from MyCiteV2.packages.state_machine.portal_shell.shell_registry import (
-    build_portal_tool_registry_entries,
 )
 
 _MANIFEST_KINDS = ("image", "icon", "audio", "document", "profile", "event", "custom")
+
+
+def render_extension(tool_id: str, ctx: dict) -> dict:
+    """Local stand-in for the dissolved ext_resources shell renderer.
+
+    The operator portal extension surface (``_render_ext_resources`` +
+    ``EXTENSION_RENDERERS``) was removed; this mirrors its trivial dispatch over
+    the RETAINED ``_resources_*`` payload helpers so the kept resources backend
+    stays covered.
+    """
+    assert tool_id == "ext_resources"
+    as_text = rx._as_text
+    if "extension_subtab" not in ctx:
+        grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
+        if as_text(ctx.get("mode")) == "grantee" and as_text(grantee.get("msn_id")):
+            return rx._resources_allocation_payload(ctx)
+        return rx._resources_library_payload(ctx.get("webapps_root"))
+    subtab = as_text(ctx.get("extension_subtab")) or "browse"
+    if subtab == "per_grantee":
+        return rx._resources_per_grantee_payload(ctx)
+    if subtab == "create":
+        return rx._resources_library_payload(ctx.get("webapps_root"))
+    return rx._resources_browse_payload(ctx)
 
 
 def _write_shared_manifest(assets: Path, entity: str, **sections) -> Path:
@@ -111,15 +127,6 @@ def _seed_profiles(webapps_root: Path) -> Path:
 
 
 class ExtResourcesRegistrationTests(unittest.TestCase):
-    def test_registered_as_extension_on_extensions_surface(self) -> None:
-        entries = {e.tool_id: e for e in build_portal_tool_registry_entries()}
-        self.assertIn("ext_resources", entries)
-        entry = entries["ext_resources"]
-        self.assertTrue(entry.is_extension)
-        self.assertEqual(entry.surface_id, "utilities.extensions")
-        self.assertEqual(entry.entrypoint_id, "portal.utilities.ext_resources")
-        self.assertIn("ext_resources", EXTENSION_RENDERERS)
-
     def test_renderer_produces_resources_app_payload(self) -> None:
         tmp = Path(tempfile.mkdtemp(prefix="ext_res_render_"))
         _seed_profiles(tmp)

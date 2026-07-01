@@ -111,6 +111,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
         time.sleep(0.4)
         return server, thread, f"http://127.0.0.1:{port}"
 
+    @unittest.skip("Phase 3: operator extensions surface obsoleted (302 -> /portal/utilities); analytics/newsletter/connect/resources management moved to the FND website dashboard.")
     def test_extension_cards_render_with_tool_ids(self) -> None:
         from playwright.sync_api import sync_playwright
 
@@ -158,6 +159,7 @@ class UtilitiesExtensionsVisibleSmokeTests(unittest.TestCase):
             server.shutdown()
             thread.join(timeout=3)
 
+    @unittest.skip("FND-CSM dissolved: the operator grantee-profile editor surface was removed (302 -> /portal/utilities); grantee/payment config is managed in the website dashboard.")
     def test_grantee_profile_form_renders_via_extension_card(self) -> None:
         from playwright.sync_api import sync_playwright
 

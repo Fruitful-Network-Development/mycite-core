@@ -12,6 +12,8 @@ from datetime import UTC, date, datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
@@ -80,6 +82,59 @@ class GranteeDirectoryTests(unittest.TestCase):
         (self.tmp / "grantee.broken.json").write_text("not valid json")
         profiles = load_grantee_directory(self.tmp)
         self.assertEqual(len(profiles), 2)  # the two good ones remain
+
+
+def _write_yaml_grantee_profiles(root: Path, profiles: list[dict]) -> None:
+    root.mkdir(parents=True, exist_ok=True)
+    for p in profiles:
+        # real on-disk shape: grantee.<sponsor>.<grantee>.yaml
+        (root / f"grantee.{p['msn_id']}.{p['msn_id']}.yaml").write_text(
+            yaml.safe_dump(p, sort_keys=False), encoding="utf-8"
+        )
+
+
+class GranteeYamlLeafletTests(unittest.TestCase):
+    """Regression for PR #124: grantee storage was cut over to .yaml leaflets.
+
+    tolling.py is the resolver behind every per-grantee dashboard; globbing
+    `grantee.*.json` only made `load_grantee_directory` return [], so whoami
+    resolved to null for every grantee and `_resolve_grantee_scope` failed
+    open. It must read the .yaml leaflet (preferring it over a stale .json).
+    """
+
+    def setUp(self) -> None:
+        self.tmp = Path(tempfile.mkdtemp(prefix="tolling_yaml_"))
+        _write_yaml_grantee_profiles(self.tmp, [
+            {"msn_id": "abc", "short_name": "FND",
+             "domains": ["fruitfulnetworkdevelopment.com"]},
+            {"msn_id": "def", "short_name": "CVCC",
+             "domains": ["cvccboard.org"]},
+        ])
+
+    def test_load_reads_yaml_leaflets(self) -> None:
+        profiles = load_grantee_directory(self.tmp)
+        self.assertEqual({p["msn_id"] for p in profiles}, {"abc", "def"})
+
+    def test_yaml_leaflet_wins_over_same_stem_json(self) -> None:
+        # a stale .json beside the .yaml of the same stem must be shadowed
+        (self.tmp / "grantee.abc.abc.json").write_text(
+            json.dumps({"msn_id": "abc", "short_name": "STALE",
+                        "domains": ["old.example"]}), encoding="utf-8"
+        )
+        profiles = load_grantee_directory(self.tmp)
+        abc = next(p for p in profiles if p["msn_id"] == "abc")
+        self.assertEqual(abc["short_name"], "FND")  # .yaml wins, not STALE
+
+    def test_resolution_works_against_yaml(self) -> None:
+        caller = resolve_grantee_from_headers(
+            {"X-Auth-Request-Grantee": "def"}, fnd_csm_root=self.tmp
+        )
+        self.assertIsNotNone(caller)
+        self.assertEqual(caller["msn_id"], "def")
+        self.assertEqual(
+            domains_for_grantee("abc", self.tmp),
+            ["fruitfulnetworkdevelopment.com"],
+        )
 
 
 class AccessLogBytesTests(unittest.TestCase):

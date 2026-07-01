@@ -1702,6 +1702,140 @@
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["samras_structure"] = renderSamrasDendrogram;
 
+  // ── Local Domain dendrogram (lcl id-space + expand-to-table nodes) ─────────
+  // Same cluster diagram as the SAMRAS viewer, but a node carrying a record_view token
+  // renders a diagonal "expand view" button (⤢) INSTEAD of the child-dropdown: clicking it
+  // sets the local_view overlay param, which the agronomics tool turns into a full-tab
+  // record table (tools/agronomics_viewer.py). Expandable nodes are force-collapsed so their
+  // (instance) children never paint in the tree — they live in the table instead.
+  function _localDomainBody(nodes, collapsed) {
+    var lay = clusterLayout(nodes, collapsed);
+    var svg = _dendroLinks(lay);
+    var nodeHtml = lay.placed.map(function (pl) {
+      var n = pl.node;
+      var full = asText(n.full_slug);
+      var rv = asText(n.record_view);
+      var isEmpty = asText(n.status) === "empty";
+      var toggle;
+      if (rv) {
+        toggle = '<button type="button" class="v2-dendro__expand" data-local-expand="' +
+          escapeHtml(rv) + '" data-local-node="' + escapeHtml(full) + '" title="Open ' +
+          escapeHtml(asText(n.label) || full) + ' records" aria-label="Open records">⤢</button>';
+      } else if (pl.hasChildren) {
+        toggle = '<button type="button" class="v2-dendro__toggle" data-dendro-toggle="' + escapeHtml(full) +
+          '" aria-label="' + (pl.collapsed ? "Expand" : "Collapse") + '" title="' +
+          (pl.collapsed ? "Expand" : "Collapse") + '">' + (pl.collapsed ? "▸" : "▾") + "</button>";
+      } else {
+        toggle = '<span class="v2-dendro__toggle v2-dendro__toggle--leaf" aria-hidden="true"></span>';
+      }
+      var status = '<span class="v2-dendro__status v2-dendro__status--' +
+        (isEmpty ? "empty" : "defined") + '" aria-hidden="true"></span>';
+      var label = isEmpty
+        ? '<span class="v2-dendro__empty">(undefined)</span>'
+        : '<span class="v2-dendro__label">' + escapeHtml(asText(n.label) || full) + "</span>";
+      var count = (n.count > 0 && !rv)
+        ? '<span class="v2-dendro__count">' + escapeHtml(String(n.count)) + "</span>"
+        : "";
+      var title = isEmpty ? "Denoted by the magnitude but undefined in the title document"
+        : (rv ? "Expand " + (asText(n.label) || full) + " into a record table" : (asText(n.label) || full));
+      var body = '<span class="v2-dendro__view v2-dendro__view--static' +
+        (isEmpty ? " is-empty" : " is-defined") + (rv ? " is-expandable" : "") +
+        '" title="' + escapeHtml(title) + '">' +
+        status + '<span class="v2-dendro__addr">' + escapeHtml(full) + "</span>" +
+        label + count + "</span>";
+      return '<div class="v2-dendro__node' + (pl.isLeaf ? " is-leaf" : "") + '" style="left:' + pl.x +
+        "px;top:" + pl.y + 'px">' + toggle + body + "</div>";
+    }).join("");
+    return _dendroWrap(lay, svg, nodeHtml);
+  }
+
+  function renderLocalDomain(payload, content) {
+    payload = asObject(payload);
+    if (asText(payload.error)) {
+      content.innerHTML = '<p class="ide-visualizationPanel__error">' +
+        escapeHtml(asText(payload.error)) + "</p>";
+      return;
+    }
+    var nodes = asList(payload.nodes);
+    // Structure switcher (txa / msn / lcl) — same selector the SAMRAS viewer offers, so the
+    // Agronomics FARM pane keeps the ability to switch the structure (not locked to lcl).
+    var structures = asList(payload.structures);
+    var selectedStruct = asText(payload.structure || payload.magnitude || "lcl");
+    var options = structures.map(function (s) {
+      s = asObject(s);
+      var name = asText(s.name);
+      return '<option value="' + escapeHtml(name) + '"' + (name === selectedStruct ? " selected" : "") +
+        ">" + escapeHtml(name + (s.has_titles ? "" : " (no titles)")) + "</option>";
+    }).join("");
+    var selector = structures.length
+      ? '<div class="v2-samras__bar"><label class="v2-samras__label">Structure ' +
+        '<select class="v2-samras__select" data-samras-select>' + options + "</select></label></div>"
+      : "";
+    content.innerHTML =
+      '<section class="v2-clusterTree">' +
+      selector +
+      '<header class="v2-clusterTree__header">' +
+      escapeHtml(selectedStruct) + " · " +
+      escapeHtml(String(payload.denoted_count || 0)) + " denoted · " +
+      escapeHtml(String(payload.defined_count || 0)) + " defined · " +
+      "<span class=\"v2-clusterTree__hint\">⤢ = expand to records</span></header>" +
+      '<div class="v2-dendro__host" data-local-host></div></section>';
+    var structSel = content.querySelector("[data-samras-select]");
+    if (structSel) structSel.addEventListener("change", function () {
+      if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+        window.PortalShellCore.setSurfaceQuery("samras_structure", structSel.value);
+      }
+    });
+    var host = content.querySelector("[data-local-host]");
+    if (!host) return;
+    if (!nodes.length) {
+      host.innerHTML = '<p class="v2-clusterTree__empty">No nodes denoted by the magnitude.</p>';
+      return;
+    }
+    // Collapse every branch by default; expand the root(s). Then default to 3 visible layers
+    // by also expanding the domain nodes (children of the root) — root → domains → domain
+    // children all show on open.
+    var collapsed = _samrasCollapsedInit(nodes);
+    var rootSlugs = {};
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (!asText(o.parent_slug)) rootSlugs[asText(o.full_slug)] = true;
+    });
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (o.has_children && rootSlugs[asText(o.parent_slug)]) collapsed.delete(asText(o.full_slug));
+    });
+    // ALWAYS keep expandable (record_view) nodes collapsed so their instance children never
+    // paint in the tree (they live in the expand-to-table view instead).
+    asList(nodes).forEach(function (n) {
+      var o = asObject(n);
+      if (asText(o.record_view)) collapsed.add(asText(o.full_slug));
+    });
+    function rerender() { host.innerHTML = _localDomainBody(nodes, collapsed); }
+    rerender();
+    host.addEventListener("click", function (e) {
+      var el = e.target;
+      if (!el || !el.closest) return;
+      var exp = el.closest("[data-local-expand]");
+      if (exp && host.contains(exp)) {
+        e.preventDefault();
+        if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+          window.PortalShellCore.setSurfaceQuery("local_view", exp.getAttribute("data-local-expand"));
+        }
+        return;
+      }
+      var tog = el.closest("[data-dendro-toggle]");
+      if (tog && host.contains(tog)) {
+        e.preventDefault();
+        var slug = tog.getAttribute("data-dendro-toggle");
+        if (collapsed.has(slug)) collapsed.delete(slug); else collapsed.add(slug);
+        rerender();
+      }
+    });
+  }
+
+  window.__MYCITE_V2_TOOL_RENDERERS["local_domain"] = renderLocalDomain;
+
   function renderGenericLeaflet(detail) {
     var d = asObject(detail);
     var fields = asList(d.fields).map(function (f) {
@@ -3535,34 +3669,110 @@
       }
     });
   }
+  function _icon(name) { return window.iconImg ? window.iconImg(name) : ""; }
+  // A magnitude cell is "refracted" when interpreted mode resolved a non-identity lens for the
+  // row's primary token (so _ideRowCells decoded it to the human-readable display_value). The
+  // refracted magnitude + its adjacent reference are consolidated into ONE white cell prefixed by
+  // the │ℹ│︙│ controls; sibling rows keep their separate ref/mag cells (the per-VG grid isolates).
+  function _refractedMagIndex(cell, columns, values, lens) {
+    if (lens === "raw" || !cell) return -1;
+    var resolved = cell.resolved_lens;
+    if (!resolved || resolved === "identity" || !cell.display_value) return -1;
+    for (var i = 0; i < columns.length; i++) {
+      if (columns[i].role === "magnitude" && asText(values[i]) === asText(cell.display_value)) return i;
+    }
+    return -1;
+  }
+  function _refractedCellHtml(cell, value, span) {
+    var addr = escapeHtml(asText(cell.datum_address));
+    return "<td" + (span ? ' colspan="2"' : "") +
+      ' class="v2-ide__cell v2-ide__cell--refracted" data-datum-refracted="1" data-datum-address="' + addr + '">' +
+      '<span class="v2-ide__refractCtl">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__refractBtn" data-datum-info data-datum-address="' +
+      addr + '" aria-label="Datum information">' + _icon("info") + "</button>" +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__refractBtn" data-datum-kebab data-datum-address="' +
+      addr + '" aria-label="Datum menu">' + _icon("kebab") + "</button></span>" +
+      '<span class="v2-ide__refractValue" title="' + escapeHtml(asText(value)) + '">' +
+      escapeHtml(_ideTruncate(value, 40)) + "</span></td>";
+  }
+  function _plainCellHtml(col, full) {
+    var shown = _ideTruncate(full, 28);
+    return '<td class="v2-ide__cell v2-ide__cell--' + escapeHtml(col.role) + '" title="' +
+      escapeHtml(full) + '">' +
+      (shown ? escapeHtml(shown) : '<span class="v2-ide__blank">·</span>') + "</td>";
+  }
   function renderDatumIdeGridRow(cell, columns, lens) {
     var values = _ideRowCells(cell, columns, lens);
-    var tds = columns.map(function (col, i) {
-      var full = values[i];
-      var shown = _ideTruncate(full, 28);
-      return '<td class="v2-ide__cell v2-ide__cell--' + escapeHtml(col.role) + '" title="' +
-        escapeHtml(full) + '">' +
-        (shown ? escapeHtml(shown) : '<span class="v2-ide__blank">·</span>') + "</td>";
-    }).join("");
+    var magIdx = _refractedMagIndex(cell, columns, values, lens);
+    var refIdx = (magIdx > 0 && columns[magIdx - 1] && columns[magIdx - 1].role === "reference") ? magIdx - 1 : -1;
+    var tds = [];
+    for (var i = 0; i < columns.length; i++) {
+      if (i === refIdx && magIdx === i + 1) {
+        tds.push(_refractedCellHtml(cell, values[magIdx], true));  // merged reference+magnitude
+        i = magIdx;
+        continue;
+      }
+      if (i === magIdx && refIdx === -1) {
+        tds.push(_refractedCellHtml(cell, values[magIdx], false)); // lone refracted magnitude
+        continue;
+      }
+      tds.push(_plainCellHtml(columns[i], values[i]));
+    }
     return '<tr class="v2-ide__row' + (cell.selected ? " is-selected" : "") +
-      '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds + "</tr>";
+      '" data-datum-address="' + escapeHtml(asText(cell.datum_address)) + '">' + tds.join("") + "</tr>";
   }
-  function renderDatumIdeValueGroup(group, lens) {
+  // The repeated "Datum / Ref n / Mag n" column-label row is replaced by a compact color-key
+  // box. Each value group's grid is self-contained (its own column_template), so cells are read
+  // by ROLE-COLOR — datum address = medium theme accent, reference = darker grey, magnitude =
+  // lighter grey — and the legend names those colors once per group instead of per column.
+  var _IDE_ROLE_KEY = {
+    address: "datum",
+    record_key: "field",
+    relation: "↳",
+    reference: "ref",
+    references: "refs",
+    magnitude: "mag",
+    value: "val",
+  };
+  function _ideKeyBox(columns) {
+    var seen = {};
+    var chips = [];
+    columns.forEach(function (col) {
+      var role = (col && col.role) || "";
+      if (!role || seen[role]) return;
+      seen[role] = true;
+      chips.push(
+        '<span class="v2-ide__keyChip v2-ide__keyChip--' + escapeHtml(role) +
+        '"><span class="v2-ide__keySwatch"></span>' +
+        escapeHtml(_IDE_ROLE_KEY[role] || role) + "</span>"
+      );
+    });
+    return '<div class="v2-ide__keybox" aria-label="column colour key">' + chips.join("") + "</div>";
+  }
+  function _ideAddRow(layerId, valueGroup) {
+    return '<tr class="v2-ide__addRow"><td colspan="99"><button type="button" ' +
+      'class="mc-iconBtn v2-ide__addBtn" data-dov-add="vg" data-layer="' + escapeHtml(String(layerId)) +
+      '" data-value-group="' + escapeHtml(String(valueGroup)) + '" aria-label="Add datum to value group">' +
+      (window.iconImg ? window.iconImg("add") : "+") + "</button></td></tr>";
+  }
+  function renderDatumIdeValueGroup(group, lens, layerId) {
     var columns = asList(group.column_template);
     if (!columns.length) columns = [{ role: "address" }];
     var cells = asList(group.cells);
-    var headCells = columns.map(function (col) {
-      return '<th class="v2-ide__col v2-ide__col--' + escapeHtml(col.role) + '">' +
-        escapeHtml(_ideColumnLabel(col)) + "</th>";
-    }).join("");
+    var vg = asObject(group).value_group;
     var bodyRows = cells.map(function (cell) { return renderDatumIdeGridRow(cell, columns, lens); }).join("");
     return '<section class="v2-ide__valueGroup" data-value-group-id="' +
-      escapeHtml(String(asObject(group).value_group)) + '">' +
-      '<header class="v2-ide__vgHeader"><h5>' +
-      escapeHtml(asText(group.title) || ("Value Group " + asObject(group).value_group)) +
-      "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small></header>" +
-      '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><thead><tr>' + headCells +
-      "</tr></thead><tbody>" + bodyRows + "</tbody></table></div></section>";
+      escapeHtml(String(vg)) + '">' +
+      '<header class="v2-ide__vgHeader">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__collapseBtn" data-ide-collapse="vg" aria-label="Collapse value group">' +
+      (window.iconImg ? window.iconImg("up") : "▾") + "</button>" +
+      "<h5>" +
+      escapeHtml(asText(group.title) || ("Value Group " + vg)) +
+      "</h5><small>" + cells.length + " datum" + (cells.length === 1 ? "" : "s") + "</small>" +
+      _ideKeyBox(columns) + "</header>" +
+      '<div class="v2-tableWrap"><table class="v2-table v2-ide__table"><tbody>' + bodyRows +
+      _ideAddRow(layerId, vg) +
+      "</tbody></table></div></section>";
   }
   function renderDatumIdeGrid(datumGrid) {
     var layers = asList(datumGrid.layers);
@@ -3573,10 +3783,17 @@
     var lens = asText(datumGrid.lens) || "interpreted";
     var sections = layers.map(function (layer) {
       var layerId = String(asObject(layer).layer);
-      var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens); }).join("");
+      var vgs = asList(layer.value_groups).map(function (vg) { return renderDatumIdeValueGroup(vg, lens, layerId); }).join("");
       return '<section class="v2-ide__layer" data-layer-id="' + escapeHtml(layerId) + '">' +
-        '<header class="v2-ide__layerHeader"><h4>' +
-        escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs + "</section>";
+        '<header class="v2-ide__layerHeader">' +
+        '<button type="button" class="mc-iconBtn mc-iconBtn--sm v2-ide__collapseBtn" data-ide-collapse="layer" aria-label="Collapse layer">' +
+        (window.iconImg ? window.iconImg("up") : "▾") + "</button>" +
+        "<h4>" +
+        escapeHtml(asText(layer.title) || ("Layer " + layerId)) + "</h4></header>" + vgs +
+        '<div class="v2-ide__addLayer"><button type="button" class="mc-iconBtn v2-ide__addBtn" ' +
+        'data-dov-add="layer" data-layer="' + escapeHtml(layerId) + '" aria-label="Add datum to layer">' +
+        (window.iconImg ? window.iconImg("add") : "+") + "<span> add to layer " + escapeHtml(layerId) + "</span></button></div>" +
+        "</section>";
     }).join("");
     return '<div class="v2-ide" data-region="datum-ide">' + sections + "</div>";
   }
@@ -3596,7 +3813,6 @@
       return (
         '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
         '<header class="v2-workbenchUi__editorHeader"><h3>Editor</h3></header>' +
-        renderDatumComposer(workspace, surfacePayload) +
         '<p class="v2-workbenchUi__empty">Select a datum document on the left to begin editing.</p>' +
         "</main>"
       );
@@ -3626,13 +3842,14 @@
     return (
       '<main class="v2-workbenchUi__editor" data-region="document-editor">' +
       '<header class="v2-workbenchUi__editorHeader">' +
+      '<button type="button" class="mc-iconBtn v2-workbenchUi__editDoc" data-dov-edit-doc aria-label="New datum">' +
+      (window.iconImg ? window.iconImg("edit") : "✎") + "</button>" +
       "<h3>" +
       escapeHtml(shortDocumentLabel(docLabel) || docLabel || docId) +
       "</h3>" +
       "<small>" +
       escapeHtml(docId) +
       "</small></header>" +
-      renderDatumComposer(workspace, surfacePayload) +
       bodyHtml +
       "</main>"
     );
@@ -4237,10 +4454,498 @@
     }
   }
 
+  // ===== Datum-editing overlay (#portalDatumOverlay) =====
+  // A non-tool overlay opened from a refracted cell (ℹ / kebab / merged cell) or a value-group /
+  // layer add-row. DENOTATION denotes/edits a datum (insert_datum / update_row_raw / delete_datum
+  // via the existing mutation endpoints); INFORMATION shows the hyphae abstraction path; MEDIATION
+  // is reserved. New datum → DENOTATION default (INFORMATION/MEDIATION greyed); existing → INFORMATION.
+  var _dov = { ctx: null, documentId: "", sandboxId: "agro_erp", address: "", layer: null,
+    valueGroup: null, mode: "create", raw: null, activeTab: "denotation", bound: false };
+  function _dovEl() { return document.getElementById("portalDatumOverlay"); }
+  function _dovExisting() { return _dov.mode !== "create"; }
+
+  function openDatumOverlay(opts) {
+    opts = opts || {};
+    var ov = _dovEl();
+    if (!ov) return;
+    _dov.ctx = opts.ctx || _dov.ctx;
+    _dov.workspaceRef = opts.workspace || _dov.workspaceRef;
+    _dov.documentId = asText(opts.documentId) || _dov.documentId;
+    _dov.sandboxId = asText(opts.sandboxId) || _dov.sandboxId || "agro_erp";
+    _dov.address = asText(opts.address);
+    _dov.layer = opts.layer != null ? opts.layer : null;
+    _dov.valueGroup = opts.valueGroup != null ? opts.valueGroup : null;
+    _dov.raw = opts.raw || null;
+    _dov.mode = opts.mode || (_dov.address ? "edit" : "create");
+    _dov.activeTab = opts.activeTab || (_dov.mode === "create" ? "denotation" : "information");
+    _bindDatumOverlayOnce();
+    _renderDatumOverlay();
+    ov.hidden = false;
+    ov.setAttribute("aria-hidden", "false");
+    if (document.body) document.body.classList.add("is-modal-open");
+    try { window.history.pushState({ myciteDatumOverlay: _dov.address || "new" }, "", window.location.href); _dov.pushed = true; } catch (e) { _dov.pushed = false; }
+  }
+  function closeDatumOverlay(popHistory) {
+    var ov = _dovEl();
+    if (!ov || ov.hidden) return;
+    ov.hidden = true;
+    ov.setAttribute("aria-hidden", "true");
+    if (document.body && !document.body.querySelector(".ide-toolOverlay:not([hidden])")) {
+      document.body.classList.remove("is-modal-open");
+    }
+    var c = ov.querySelector("[data-datum-overlay-content]");
+    if (c) c.innerHTML = "";
+    if (popHistory && _dov.pushed) { _dov.pushed = false; try { window.history.back(); } catch (e) {} }
+  }
+  function _bindDatumOverlayOnce() {
+    if (_dov.bound) return;
+    _dov.bound = true;
+    document.addEventListener("click", function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      if (t.closest("[data-datum-overlay-close]") || t.closest("[data-datum-overlay-dismiss]")) {
+        closeDatumOverlay(true);
+      }
+    });
+    document.addEventListener("keydown", function (ev) {
+      var ov = _dovEl();
+      if ((ev.key === "Escape" || ev.key === "Esc") && ov && !ov.hidden) closeDatumOverlay(true);
+    });
+    window.addEventListener("popstate", function () {
+      var ov = _dovEl();
+      if (ov && !ov.hidden) closeDatumOverlay(false);
+    });
+  }
+  function _renderDatumOverlay() {
+    var ov = _dovEl();
+    if (!ov) return;
+    var titleNode = ov.querySelector("[data-datum-overlay-title]");
+    if (titleNode) {
+      titleNode.textContent = _dov.mode === "create"
+        ? ("New datum" + (_dov.layer != null ? " · L" + _dov.layer + (_dov.valueGroup != null ? "·VG" + _dov.valueGroup : "") : ""))
+        : ("Datum " + _dov.address);
+    }
+    var tabsNode = ov.querySelector("[data-datum-overlay-tabs]");
+    var TABS = [
+      { id: "denotation", label: "DENOTATION", enabled: true },
+      { id: "information", label: "INFORMATION", enabled: _dovExisting() },
+      { id: "mediation", label: "MEDIATION", enabled: _dovExisting() },
+    ];
+    if (tabsNode) {
+      tabsNode.innerHTML = TABS.map(function (tb) {
+        return '<button type="button" class="ide-datumOverlay__tab' + (tb.id === _dov.activeTab ? " is-active" : "") +
+          '" role="tab" data-datum-tab="' + tb.id + '"' + (tb.enabled ? "" : " disabled") + ">" + tb.label + "</button>";
+      }).join("");
+      tabsNode.onclick = function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest("[data-datum-tab]") : null;
+        if (!btn || btn.disabled) return;
+        _dov.activeTab = btn.getAttribute("data-datum-tab");
+        _renderDatumOverlay();
+      };
+    }
+    var content = ov.querySelector("[data-datum-overlay-content]");
+    if (!content) return;
+    if (_dov.activeTab === "information") { _dovRenderInformation(content); return; }
+    if (_dov.activeTab === "mediation") { content.innerHTML = '<div class="v2-mediation">Mediation — reserved for a later session.</div>'; return; }
+    _dovRenderDenotation(content);
+  }
+  function _dovTupleRowHtml(rel, obj) {
+    return '<div class="v2-denote__row v2-denote__tuple">' +
+      '<input type="text" data-dov-rel placeholder="rf.3-1-1 / ~" value="' + escapeHtml(asText(rel)) + '" />' +
+      '<input type="text" data-dov-obj placeholder="object ref" value="' + escapeHtml(asText(obj)) + '" />' +
+      '<button type="button" class="v2-btn" data-dov-tuple-remove title="Remove">×</button></div>';
+  }
+  function _dovMagRowHtml(name, val) {
+    return '<div class="v2-denote__row v2-denote__mag">' +
+      '<input type="text" data-dov-mag-name placeholder="name" value="' + escapeHtml(asText(name)) + '" />' +
+      '<input type="text" data-dov-mag-value placeholder="value" value="' + escapeHtml(asText(val)) + '" />' +
+      '<button type="button" class="v2-btn" data-dov-mag-remove title="Remove">×</button></div>';
+  }
+  function _dovSeedFromRaw(raw) {
+    var head = (raw && Array.isArray(raw) && Array.isArray(raw[0])) ? raw[0] : null;
+    var tail = (raw && Array.isArray(raw) && raw.length > 1) ? raw[1] : null;
+    var tuples = [];
+    if (head) {
+      for (var i = 1; i + 1 < head.length; i += 2) tuples.push([head[i], head[i + 1]]);
+    }
+    var mags = [];
+    var label = "";
+    if (tail && typeof tail === "object" && !Array.isArray(tail)) {
+      Object.keys(tail).forEach(function (k) { mags.push([k, tail[k]]); });
+    } else if (Array.isArray(tail) && tail.length) {
+      label = asText(tail[0]);
+    }
+    return { tuples: tuples, mags: mags, label: label };
+  }
+  function _dovSeedAddress() {
+    if (_dov.address) return _dov.address;
+    var grid = asObject(asObject(_dov.workspaceRef).datum_grid);
+    var existing = (typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [])
+      .map(function (r) { return asText(asObject(r).datum_address); }).filter(Boolean);
+    var layer = _dov.layer != null ? _dov.layer : 4;
+    var group = _dov.valueGroup != null ? _dov.valueGroup : 2;
+    if (typeof computeNextAddress === "function") return computeNextAddress(existing, layer, group);
+    return layer + "-" + group + "-1";
+  }
+  function _dovRenderDenotation(content) {
+    var seed = _dov.raw ? _dovSeedFromRaw(_dov.raw) : { tuples: [["", ""]], mags: [], label: "" };
+    if (!seed.tuples.length) seed.tuples = [["", ""]];
+    var addr = _dovExisting() ? _dov.address : _dovSeedAddress();
+    var html =
+      '<div class="v2-denote__field"><label>Datum address (layer-group-iteration)</label>' +
+      '<input type="text" data-dov-address value="' + escapeHtml(addr) + '" placeholder="4-2-3" /></div>' +
+      '<div class="v2-denote__sectionLabel">References (relation · object)</div>' +
+      '<div data-dov-tuples>' + seed.tuples.map(function (p) { return _dovTupleRowHtml(p[0], p[1]); }).join("") + "</div>" +
+      '<button type="button" class="v2-btn" data-dov-tuple-add>+ reference</button>' +
+      '<div class="v2-denote__sectionLabel">Magnitudes (name · value)</div>' +
+      '<div data-dov-mags>' + seed.mags.map(function (m) { return _dovMagRowHtml(m[0], m[1]); }).join("") + "</div>" +
+      '<button type="button" class="v2-btn" data-dov-mag-add>+ magnitude</button>' +
+      '<div class="v2-denote__field" style="margin-top:10px"><label>Label (optional)</label>' +
+      '<input type="text" data-dov-label value="' + escapeHtml(seed.label) + '" placeholder="human label" /></div>' +
+      '<div class="v2-denote__actions">' +
+      (_dovExisting()
+        ? '<button type="button" class="v2-btn v2-btn--primary" data-dov-save>Save</button>' +
+          '<button type="button" class="v2-btn v2-btn--danger" data-dov-delete>Delete</button>'
+        : '<button type="button" class="v2-btn v2-btn--primary" data-dov-create>Create datum</button>') +
+      "</div><div class=\"v2-denote__status\" data-dov-status></div>";
+    content.innerHTML = html;
+    _bindDenotation(content);
+  }
+  function _bindDenotation(content) {
+    content.onclick = function (ev) {
+      var t = ev.target;
+      if (!t || !t.matches) return;
+      if (t.matches("[data-dov-tuple-add]")) { var tw = content.querySelector("[data-dov-tuples]"); tw.insertAdjacentHTML("beforeend", _dovTupleRowHtml("", "")); }
+      else if (t.matches("[data-dov-tuple-remove]")) { var tr = t.closest(".v2-denote__tuple"); if (tr) tr.parentNode.removeChild(tr); }
+      else if (t.matches("[data-dov-mag-add]")) { var mw = content.querySelector("[data-dov-mags]"); mw.insertAdjacentHTML("beforeend", _dovMagRowHtml("", "")); }
+      else if (t.matches("[data-dov-mag-remove]")) { var mr = t.closest(".v2-denote__mag"); if (mr) mr.parentNode.removeChild(mr); }
+      else if (t.matches("[data-dov-create]")) { _dovSubmit("insert_datum", content); }
+      else if (t.matches("[data-dov-save]")) { _dovSubmit("update_row_raw", content); }
+      else if (t.matches("[data-dov-delete]")) { _dovSubmit("delete_datum", content); }
+    };
+  }
+  function _dovStatus(content, text, state) {
+    var s = content.querySelector("[data-dov-status]");
+    if (!s) return;
+    s.textContent = text || "";
+    if (state) s.setAttribute("data-state", state); else s.removeAttribute("data-state");
+  }
+  function _dovSubmit(operation, content) {
+    var address = asText((content.querySelector("[data-dov-address]") || {}).value).trim();
+    if (!/^\d+-\d+-\d+$/.test(address)) { _dovStatus(content, "Address must be layer-group-iteration (e.g. 4-2-3).", "error"); return; }
+    var raw;
+    if (operation === "delete_datum") {
+      raw = _dov.raw || [[address], []];
+    } else {
+      var first = [address];
+      Array.prototype.forEach.call(content.querySelectorAll(".v2-denote__tuple"), function (row) {
+        var rel = asText((row.querySelector("[data-dov-rel]") || {}).value).trim();
+        var obj = asText((row.querySelector("[data-dov-obj]") || {}).value).trim();
+        if (rel || obj) first.push(rel, obj);
+      });
+      if (first.length < 2) { _dovStatus(content, "At least one reference is required.", "error"); return; }
+      var mags = {};
+      Array.prototype.forEach.call(content.querySelectorAll(".v2-denote__mag"), function (row) {
+        var n = asText((row.querySelector("[data-dov-mag-name]") || {}).value).trim();
+        var v = asText((row.querySelector("[data-dov-mag-value]") || {}).value).trim();
+        if (n) mags[n] = v;
+      });
+      var label = asText((content.querySelector("[data-dov-label]") || {}).value).trim();
+      var second = Object.keys(mags).length ? mags : (label ? [label] : []);
+      raw = [first, second];
+    }
+    _dovStatus(content, (operation === "delete_datum" ? "Deleting " : "Saving ") + address + "…", "");
+    var body = {
+      schema: "mycite.v2.portal.mutations.stage.request.v1",
+      target_authority: "datum_workbench",
+      sandbox_id: _dov.sandboxId,
+      document_id: _dov.documentId,
+      datum_address: address,
+      target_address: address,
+      operation: operation,
+      payload_text: JSON.stringify(raw),
+    };
+    if (typeof stageThenApply !== "function") { _dovStatus(content, "Mutation pipeline unavailable.", "error"); return; }
+    stageThenApply(body, "/portal/api/v2/mutations/stage", "/portal/api/v2/mutations/apply")
+      .then(function () { closeDatumOverlay(true); _dovRefreshShell(); })
+      .catch(function (err) { _dovStatus(content, asText(err && err.message ? err.message : err), "error"); });
+  }
+  function _dovRefreshShell() {
+    var ctx = _dov.ctx;
+    if (!ctx || typeof ctx.loadShell !== "function") return;
+    var envelope = ctx.getEnvelope && ctx.getEnvelope();
+    if (!envelope) { ctx.loadShell({ schema: "mycite.v2.portal.shell.request.v1" }); return; }
+    var nextQuery = Object.assign({}, envelope.surface_query || {});
+    if (_dov.documentId) nextQuery.document = _dov.documentId;
+    ctx.loadShell({ schema: "mycite.v2.portal.shell.request.v1", requested_surface_id: envelope.surface_id, surface_query: nextQuery });
+  }
+  function _dovRenderInformation(content) {
+    content.innerHTML = '<div class="v2-info__meta">Loading abstraction path…</div>';
+    var url = "/portal/api/v2/datum/info?document=" + encodeURIComponent(_dov.documentId) +
+      "&address=" + encodeURIComponent(_dov.address);
+    fetch(url, { credentials: "same-origin", headers: { Accept: "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || !j.ok) { content.innerHTML = '<div class="v2-info__meta">' + escapeHtml((j && j.error) || "No information.") + "</div>"; return; }
+        var path = j.path || [];
+        var nodes = path.map(function (n, i) {
+          return (i > 0 ? '<div class="v2-info__arrow">↓</div>' : "") +
+            '<div class="v2-info__node' + (n.is_target ? " is-target" : "") + '">' +
+            "<span>" + escapeHtml(n.datum_address) + "</span>" +
+            '<span class="v2-info__hash">' + escapeHtml(asText(n.semantic_hash).replace(/^sha256:/, "").slice(0, 12)) + "</span></div>";
+        }).join("");
+        content.innerHTML =
+          '<div class="v2-info__meta">Abstraction path — the datum’s minimum-but-complete dependency closure (' +
+          path.length + " node" + (path.length === 1 ? "" : "s") + ").</div>" +
+          '<div class="v2-info__path">' + (nodes || '<div class="v2-info__meta">No dependencies.</div>') + "</div>" +
+          '<div class="v2-denote__sectionLabel">Hyphae value</div>' +
+          '<div class="v2-info__hyphae" data-info-hyphae>' + escapeHtml(asText(j.hyphae_hash)) + "</div>" +
+          '<div class="v2-denote__actions"><button type="button" class="v2-btn" data-info-generate>Generate hyphae value</button></div>';
+        var gen = content.querySelector("[data-info-generate]");
+        if (gen) gen.onclick = function () { _dovRenderInformation(content); };
+      })
+      .catch(function () { content.innerHTML = '<div class="v2-info__meta">Could not load datum information.</div>'; });
+  }
+  window.openDatumOverlay = openDatumOverlay;
+  window.closeDatumOverlay = closeDatumOverlay;
+
+  // ===== Context menu (kebab on a refracted cell) + SAMRAS collapse =====
+  function _rawForAddress(address) {
+    var c = _dovTriggerCtx;
+    if (!c) return null;
+    var grid = asObject(asObject(c.workspace).datum_grid);
+    var rows = typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [];
+    for (var i = 0; i < rows.length; i++) {
+      if (asText(asObject(rows[i]).datum_address) === address) return asObject(rows[i]).raw;
+    }
+    return null;
+  }
+  function _ctxOutside(ev) { if (!ev.target.closest || !ev.target.closest("#portalContextMenu")) _closeContextMenu(); }
+  function _ctxKey(ev) { if (ev.key === "Escape" || ev.key === "Esc") _closeContextMenu(); }
+  function _closeContextMenu() {
+    var m = document.getElementById("portalContextMenu");
+    if (m && m.parentNode) m.parentNode.removeChild(m);
+    document.removeEventListener("click", _ctxOutside, true);
+    document.removeEventListener("keydown", _ctxKey, true);
+  }
+  function showContextMenu(x, y, items) {
+    _closeContextMenu();
+    var menu = document.createElement("div");
+    menu.id = "portalContextMenu";
+    menu.className = "v2-ctxMenu";
+    menu.innerHTML = items.map(function (it, i) {
+      if (it.separator) return '<div class="v2-ctxMenu__sep"></div>';
+      return '<button type="button" class="v2-ctxMenu__item' + (it.danger ? " is-danger" : "") + '" data-ctx-index="' + i + '">' +
+        escapeHtml(it.label) + (it.submenu ? '<span class="v2-ctxMenu__arrow">▸</span>' : "") + "</button>";
+    }).join("");
+    document.body.appendChild(menu);
+    var w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.max(4, Math.min(x, window.innerWidth - w - 8)) + "px";
+    menu.style.top = Math.max(4, Math.min(y, window.innerHeight - h - 8)) + "px";
+    menu.addEventListener("click", function (ev) {
+      var btn = ev.target.closest ? ev.target.closest("[data-ctx-index]") : null;
+      if (!btn) return;
+      var it = items[parseInt(btn.getAttribute("data-ctx-index"), 10)];
+      if (!it) return;
+      if (it.submenu) {
+        // drill-down: replace the menu with the submenu (+ a back item), same anchor
+        showContextMenu(x, y, [{ label: "‹ back", onClick: function () { showContextMenu(x, y, items); } }, { separator: true }].concat(it.submenu));
+        return;
+      }
+      _closeContextMenu();
+      if (it.onClick) it.onClick();
+    });
+    setTimeout(function () {
+      document.addEventListener("click", _ctxOutside, true);
+      document.addEventListener("keydown", _ctxKey, true);
+    }, 0);
+  }
+
+  function _samrasNodeKey(raw) {
+    var head = raw && Array.isArray(raw) && Array.isArray(raw[0]) ? raw[0] : null;
+    if (!head || head.length < 3) return null;
+    var marker = asText(head[1]);
+    if (marker !== "rf.3-1-1" && marker !== "rf.3-1-5") return null;  // NODE_ID / LCL_ID samras markers
+    return asText(head[2]);
+  }
+  function _samrasContext(address) {
+    var key = _samrasNodeKey(_rawForAddress(address));
+    if (!key) return null;
+    var row = document.querySelector('.v2-ide__row[data-datum-address="' + address + '"]');
+    var vg = row && row.closest ? row.closest(".v2-ide__valueGroup") : null;
+    if (!vg) return null;
+    var siblings = [];
+    Array.prototype.forEach.call(vg.querySelectorAll(".v2-ide__row[data-datum-address]"), function (tr) {
+      var a = tr.getAttribute("data-datum-address");
+      var k = _samrasNodeKey(_rawForAddress(a));
+      if (k) siblings.push({ address: a, key: k, tr: tr });
+    });
+    return siblings.length >= 2 ? { key: key, siblings: siblings, vg: vg } : null;
+  }
+  var _selCounter = 0;
+  function _collapseRows(trs) {
+    trs = (trs || []).filter(Boolean);
+    if (!trs.length) return;
+    var gid = "sel" + (++_selCounter);
+    trs.forEach(function (tr) { tr.classList.add("is-sel-collapsed"); tr.setAttribute("data-sel-group", gid); });
+    var first = trs[0];
+    var colspan = (first.children && first.children.length) || 3;
+    var divider = document.createElement("tr");
+    divider.className = "v2-ide__selDivider";
+    divider.setAttribute("data-sel-divider", gid);
+    divider.innerHTML = '<td colspan="' + colspan + '">' +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm mc-iconBtn--light v2-ide__selExpand" data-sel-expand="' + gid + '" aria-label="Expand">' +
+      (window.iconImg ? window.iconImg("down") : "▾") + "</button>" +
+      '<span class="v2-ide__selCount">' + trs.length + " collapsed</span>" +
+      '<button type="button" class="mc-iconBtn mc-iconBtn--sm mc-iconBtn--light v2-ide__selClear" data-sel-clear="' + gid + '" aria-label="Expand and clear">' +
+      (window.iconImg ? window.iconImg("exit") : "×") + "</button></td>";
+    if (first.parentNode) first.parentNode.insertBefore(divider, first);
+  }
+  function _collapseSamrasDescendants(address) {
+    var sx = _samrasContext(address);
+    if (!sx) return;
+    var trs = sx.siblings.filter(function (s) { return s.key !== sx.key && s.key.indexOf(sx.key + "-") === 0; }).map(function (s) { return s.tr; });
+    _collapseRows(trs);
+  }
+  function _samrasSliceItems(address) {
+    var sx = _samrasContext(address);
+    if (!sx) return [{ label: "(no adjacent nodes)", onClick: function () {} }];
+    var sibs = sx.siblings;
+    var idx = -1;
+    for (var i = 0; i < sibs.length; i++) if (sibs[i].address === address) { idx = i; break; }
+    var items = [];
+    sibs.forEach(function (s, j) {
+      if (j === idx) return;
+      items.push({ label: (j < idx ? "↑ to " : "↓ to ") + s.key, onClick: function () {
+        var lo = Math.min(idx, j), hi = Math.max(idx, j);
+        _collapseRows(sibs.slice(lo, hi + 1).map(function (x) { return x.tr; }));
+      } });
+    });
+    return items.length ? items : [{ label: "(no adjacent nodes)", onClick: function () {} }];
+  }
+  function _deleteDatum(address, c) {
+    var body = { schema: "mycite.v2.portal.mutations.stage.request.v1", target_authority: "datum_workbench",
+      sandbox_id: c.sandboxId, document_id: c.documentId, datum_address: address, target_address: address,
+      operation: "delete_datum", payload_text: JSON.stringify(_rawForAddress(address) || [[address], []]) };
+    if (typeof stageThenApply !== "function") return;
+    _dov.ctx = c.ctx; _dov.documentId = c.documentId;
+    stageThenApply(body, "/portal/api/v2/mutations/stage", "/portal/api/v2/mutations/apply")
+      .then(function () { _dovRefreshShell(); })
+      .catch(function () {});
+  }
+  function _showDatumContextMenu(x, y, address, c) {
+    var items = [
+      { label: "Edit", onClick: function () { openDatumOverlay({ ctx: c.ctx, workspace: c.workspace, documentId: c.documentId, sandboxId: c.sandboxId, address: address, raw: _rawForAddress(address), mode: "edit", activeTab: "denotation" }); } },
+      { label: "Delete", danger: true, onClick: function () { _deleteDatum(address, c); } },
+    ];
+    if (_samrasContext(address)) {
+      items.push({ separator: true });
+      items.push({ label: "SAMRAS", submenu: [
+        { label: "Collapse descendants", onClick: function () { _collapseSamrasDescendants(address); } },
+        { label: "Collapse slice", submenu: _samrasSliceItems(address) },
+      ] });
+    }
+    showContextMenu(x, y, items);
+  }
+  window.showContextMenu = showContextMenu;
+
+  // Datum-overlay open triggers (refracted cell ℹ / kebab / merged cell, the add-rows, the
+  // top-left edit icon). Bound ONCE on document; the per-render context (ctx/workspace/doc/sandbox)
+  // is refreshed in _dovTriggerCtx each render so the single listener never goes stale or duplicates.
+  var _dovTriggerCtx = null;
+  var _dovTriggersBound = false;
+  function _intAttr(el, name) { var v = parseInt(el.getAttribute(name), 10); return isNaN(v) ? null : v; }
+  function _bindDatumOverlayTriggers(ctx, workspace, surfacePayload) {
+    var sp = asObject(surfacePayload);
+    var ndf = asObject(sp.new_datum_form);
+    var selDoc = asObject(asObject(workspace).selected_document);
+    _dovTriggerCtx = {
+      ctx: ctx,
+      workspace: workspace,
+      documentId: asText(selDoc.document_id) || asText(ndf.document_id_default),
+      sandboxId: asText(ndf.sandbox_id) || "agro_erp",
+    };
+    if (_dovTriggersBound) return;
+    _dovTriggersBound = true;
+    document.addEventListener("click", function (ev) {
+      var c = _dovTriggerCtx;
+      if (!c) return;
+      var t = ev.target;
+      if (!t || !t.closest || !t.closest('[data-region="document-editor"]')) return;
+      function rawFor(address) {
+        var grid = asObject(asObject(c.workspace).datum_grid);
+        var rows = typeof flattenDatumGridForEditor === "function" ? flattenDatumGridForEditor(grid) : [];
+        for (var i = 0; i < rows.length; i++) {
+          if (asText(asObject(rows[i]).datum_address) === address) return asObject(rows[i]).raw;
+        }
+        return null;
+      }
+      function base() { return { ctx: c.ctx, workspace: c.workspace, documentId: c.documentId, sandboxId: c.sandboxId }; }
+      // Collapse toggles (layer / value group) — pure client-side; the button swaps up/down.
+      var collapseBtn = t.closest("[data-ide-collapse]");
+      if (collapseBtn) {
+        ev.preventDefault();
+        var kind = collapseBtn.getAttribute("data-ide-collapse");
+        var sect = collapseBtn.closest(kind === "layer" ? ".v2-ide__layer" : ".v2-ide__valueGroup");
+        if (sect) {
+          var collapsed = sect.classList.toggle("is-collapsed");
+          collapseBtn.innerHTML = window.iconImg ? window.iconImg(collapsed ? "down" : "up") : (collapsed ? "▸" : "▾");
+        }
+        return;
+      }
+      // Selection-collapse divider: ui-down expands in place (toggles to ui-up); ui-exit expands + clears.
+      var selExpand = t.closest("[data-sel-expand]");
+      if (selExpand) {
+        ev.preventDefault();
+        var gid = selExpand.getAttribute("data-sel-expand");
+        var div = document.querySelector('[data-sel-divider="' + gid + '"]');
+        var revealed = div ? div.classList.toggle("is-expanded") : false;
+        Array.prototype.forEach.call(document.querySelectorAll('[data-sel-group="' + gid + '"]'), function (tr) { tr.classList.toggle("is-revealed", revealed); });
+        selExpand.innerHTML = window.iconImg ? window.iconImg(revealed ? "up" : "down") : (revealed ? "▴" : "▾");
+        return;
+      }
+      var selClear = t.closest("[data-sel-clear]");
+      if (selClear) {
+        ev.preventDefault();
+        var gid2 = selClear.getAttribute("data-sel-clear");
+        Array.prototype.forEach.call(document.querySelectorAll('[data-sel-group="' + gid2 + '"]'), function (tr) { tr.classList.remove("is-sel-collapsed", "is-revealed"); tr.removeAttribute("data-sel-group"); });
+        var d2 = document.querySelector('[data-sel-divider="' + gid2 + '"]');
+        if (d2 && d2.parentNode) d2.parentNode.removeChild(d2);
+        return;
+      }
+      var editDoc = t.closest("[data-dov-edit-doc]");
+      var addBtn = t.closest("[data-dov-add]");
+      var infoBtn = t.closest("[data-datum-info]");
+      var kebabBtn = t.closest("[data-datum-kebab]");
+      var refracted = t.closest(".v2-ide__cell--refracted");
+      if (editDoc) {
+        ev.preventDefault();
+        openDatumOverlay(Object.assign(base(), { mode: "create", activeTab: "denotation" }));
+      } else if (addBtn) {
+        ev.preventDefault();
+        openDatumOverlay(Object.assign(base(), { mode: "create", activeTab: "denotation",
+          layer: _intAttr(addBtn, "data-layer"), valueGroup: _intAttr(addBtn, "data-value-group") }));
+      } else if (infoBtn) {
+        ev.preventDefault();
+        var ia = infoBtn.getAttribute("data-datum-address");
+        openDatumOverlay(Object.assign(base(), { address: ia, raw: rawFor(ia), mode: "edit", activeTab: "information" }));
+      } else if (kebabBtn) {
+        ev.preventDefault();
+        var ka = kebabBtn.getAttribute("data-datum-address");
+        var kr = kebabBtn.getBoundingClientRect();
+        _showDatumContextMenu(kr.left, kr.bottom + 2, ka, base());
+      } else if (refracted) {
+        ev.preventDefault();
+        var ra = refracted.getAttribute("data-datum-address");
+        openDatumOverlay(Object.assign(base(), { address: ra, raw: rawFor(ra), mode: "edit", activeTab: "information" }));
+      }
+    });
+  }
   function bindWorkbenchNavigation(ctx, target, workspace, surfacePayload, region) {
     bindDocumentColumn(ctx, target, workspace, surfacePayload || {});
     bindDatumComposer(ctx, target, workspace, surfacePayload || {});
     bindDocumentEditor(ctx, target, workspace, surfacePayload || {});
+    _bindDatumOverlayTriggers(ctx, workspace, surfacePayload || {});
   }
 
   function renderRegisteredWorkspaceSurface(ctx, target, region, surfacePayload, moduleSpec) {
@@ -5120,23 +5825,44 @@
       "</section>";
   }
 
-  function renderFarmProfile(payload, content) {
+  // Per-kind SVG fill/stroke for the farm map.
+  function _farmPolyStyle(kind) {
+    if (kind === "plot") return { fill: "rgba(46,160,67,0.42)", stroke: "#2ea043" };
+    if (kind === "field") return { fill: "rgba(214,158,46,0.20)", stroke: "#d69e2e" };
+    if (kind === "parcel") return { fill: "rgba(31,111,235,0.05)", stroke: "#1f6feb" };
+    return { fill: "rgba(31,111,235,0.10)", stroke: "#1f6feb" };
+  }
+
+  // Two-level geospatial projection window: OVERALL (parcels + the field with its plots faintly tiled)
+  // ⇄ FIELD (click the field to zoom into it; plots become individually hoverable with a top-right label
+  // popup; a top-left back arrow returns). Only the .v2-farm__map content changes — purely client-side,
+  // no refetch. Works standalone AND inside the Agronomics FARM tab (renderComposite delegates here).
+  // The field/plots map (geospatial_projection base, reused by plot_manager). Renders ONLY the
+  // map; identity (profile card) is a sibling pane in the farm_profile composite.
+  function renderGeospatialProjection(payload, content) {
     payload = payload || {};
     if (errorOr(payload, content)) return;
     var fc = payload.feature_collection || {};
     var features = Array.isArray(fc.features) ? fc.features : [];
-    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+    // Plot-selection mode (Plot Manager): when payload.selectable, field-view plots become
+    // click-selectable (single / ctrl / shift); the chosen lcl nodes live in payload._selected.
+    var selectable = !!payload.selectable;
+    var selected = payload._selected || (payload._selected = new Set());
+    var onSelect = typeof payload._onSelect === "function" ? payload._onSelect : function () {};
 
-    // Collect all lon/lat for a shared projection (equirectangular fit-to-box).
-    var pts = [];
-    features.forEach(function (f) {
-      var g = (f && f.geometry) || {};
-      ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
-        if (Array.isArray(c) && c.length >= 2) pts.push(c);
+    var W = 460, H = 320, PAD = 12;
+
+    // Fit-to-box equirectangular projection over an arbitrary feature subset (overall = all features,
+    // field view = just the field + its plots, so the window zooms to the field's bounding box).
+    function makeProjection(subset) {
+      var pts = [];
+      subset.forEach(function (f) {
+        var g = (f && f.geometry) || {};
+        ((g.coordinates && g.coordinates[0]) || []).forEach(function (c) {
+          if (Array.isArray(c) && c.length >= 2) pts.push(c);
+        });
       });
-    });
-    var W = 460, H = 320, PAD = 12, svg = "";
-    if (pts.length) {
+      if (!pts.length) return null;
       var minx = Infinity, miny = Infinity, maxx = -Infinity, maxy = -Infinity;
       pts.forEach(function (c) {
         if (c[0] < minx) minx = c[0]; if (c[0] > maxx) maxx = c[0];
@@ -5144,45 +5870,297 @@
       });
       var sx = (maxx - minx) || 1e-9, sy = (maxy - miny) || 1e-9;
       var scale = Math.min((W - 2 * PAD) / sx, (H - 2 * PAD) / sy);
-      var proj = function (c) {
+      return function (c) {
         var x = PAD + (c[0] - minx) * scale;
         var y = H - PAD - (c[1] - miny) * scale; // flip Y (north up)
         return x.toFixed(1) + "," + y.toFixed(1);
       };
-      var paths = features.map(function (f) {
-        var g = (f && f.geometry) || {};
-        var p = (f && f.properties) || {};
-        var ring = (g.coordinates && g.coordinates[0]) || [];
-        if (!ring.length) return "";
-        var pointsAttr = ring.map(proj).join(" ");
-        var isPlot = p.kind === "plot";
-        var fill = isPlot ? "rgba(46,160,67,0.35)" : "rgba(31,111,235,0.12)";
-        var stroke = isPlot ? "#2ea043" : "#1f6feb";
-        return '<polygon points="' + pointsAttr + '" fill="' + fill +
-          '" stroke="' + stroke + '" stroke-width="1"><title>' +
-          esc(p.label || "") + " (" + esc(p.kind || "") + ")</title></polygon>";
-      }).join("");
-      svg = '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
-        '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm map">' +
-        paths + "</svg>";
-    } else {
-      svg = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
     }
 
-    var fieldRows = fields.map(function (f) {
-      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
-    }).join("");
+    function polySvg(f, proj, opts) {
+      opts = opts || {};
+      var g = (f && f.geometry) || {};
+      var p = (f && f.properties) || {};
+      var ring = (g.coordinates && g.coordinates[0]) || [];
+      if (!ring.length || !proj) return "";
+      var st = _farmPolyStyle(p.kind);
+      var isSel = opts.plotHit && p.lcl_node && selected.has(p.lcl_node);
+      var cls = "v2-farm__poly" + (opts.faint ? " is-faint" : "") + (isSel ? " is-selected" : "");
+      var data = ' data-kind="' + esc(p.kind || "") + '" data-label="' + esc(p.label || "") + '"';
+      if (opts.fieldTarget) data += ' data-fp-role="field"';
+      if (opts.plotHit) {
+        data += ' data-fp-plot="1"';
+        if (p.lcl_node) data += ' data-lcl="' + esc(p.lcl_node) + '"';
+      }
+      return '<polygon class="' + cls + '" points="' + ring.map(proj).join(" ") +
+        '" fill="' + st.fill + '" stroke="' + st.stroke + '" stroke-width="1"' + data +
+        ' aria-label="' + esc((p.label || "") + " " + (p.kind || "")) + '"></polygon>';
+    }
+
+    function svgWrap(inner) {
+      return '<svg class="v2-farm__svg" viewBox="0 0 ' + W + " " + H +
+        '" width="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Farm map">' +
+        inner + "</svg>";
+    }
+
+    var parcels = features.filter(function (f) { return (f.properties || {}).kind === "parcel"; });
+    var fieldFeats = features.filter(function (f) { return (f.properties || {}).kind === "field"; });
+    // Single-field model: every plot belongs to the one field, so the field view shows them all
+    // (no per-plot containment test needed — revisit if farm_profile ever carries multiple fields).
+    var plots = features.filter(function (f) { return (f.properties || {}).kind === "plot"; });
+
+    // Plot Manager (selectable) opens straight in the field view — only the field and the
+    // plots/clusters within it, no parcels/overall and no zoom-out.
+    var mode = selectable ? "field" : "overall";
+
+    function paintOverall(host) {
+      var proj = makeProjection(features);
+      if (!proj) {
+        host.innerHTML = '<p class="v2-farm__empty">No projectable geometry in this farm_profile.</p>';
+        return;
+      }
+      // Layer: parcels (bottom) → plots faint (texture, non-interactive) → field (amber, on top, the
+      // click target). The translucent field fill lets the faint plot tiling show through.
+      var inner =
+        parcels.map(function (f) { return polySvg(f, proj, {}); }).join("") +
+        plots.map(function (f) { return polySvg(f, proj, { faint: true }); }).join("") +
+        fieldFeats.map(function (f) { return polySvg(f, proj, { fieldTarget: true }); }).join("");
+      host.innerHTML = svgWrap(inner);
+    }
+
+    function paintField(host) {
+      var subset = fieldFeats.concat(plots);
+      var proj = makeProjection(subset.length ? subset : features);
+      if (!proj) { host.innerHTML = '<p class="v2-farm__empty">No field geometry.</p>'; return; }
+      var inner =
+        fieldFeats.map(function (f) { return polySvg(f, proj, {}); }).join("") +
+        plots.map(function (f) { return polySvg(f, proj, { plotHit: true }); }).join("");
+      host.innerHTML =
+        (selectable ? "" : '<button type="button" class="v2-farm__back" data-fp-back aria-label="Back to farm view">&larr; Farm</button>') +
+        '<div class="v2-farm__plotLabel" data-fp-plotlabel hidden></div>' +
+        svgWrap(inner);
+    }
+
+    function paintMap(host) {
+      if (mode === "field" && fieldFeats.length) paintField(host); else paintOverall(host);
+    }
 
     content.innerHTML =
       '<section class="v2-farm">' +
       '<header class="v2-farm__header">' + esc(payload.feature_count || features.length) +
       " features · plots: " + esc(payload.plots_source || "—") + "</header>" +
-      '<div class="v2-farm__map">' + svg + "</div>" +
-      (fieldRows
-        ? '<table class="v2-farm__values"><tbody>' + fieldRows + "</tbody></table>"
-        : "") +
+      '<div class="v2-farm__map" data-farm-map></div>' +
       "</section>";
+
+    var host = content.querySelector("[data-farm-map]");
+    if (!host) return;
+    paintMap(host);
+    // External re-paint hook so callers (Plot Manager select-all/clear) can refresh the map
+    // after mutating the shared selection WITHOUT re-attaching the delegated listeners below.
+    host.__repaint = function () { paintMap(host); };
+
+    // Delegated listeners — attached ONCE to the stable map host; survive paintMap re-renders.
+    host.addEventListener("click", function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest("[data-fp-back]")) { mode = "overall"; paintMap(host); return; }
+      if (selectable && mode === "field") {
+        var plot = t.closest("[data-fp-plot]");
+        if (plot && host.contains(plot)) {
+          var ln = plot.getAttribute("data-lcl");
+          if (ln) {
+            if (e.ctrlKey || e.metaKey) { if (selected.has(ln)) selected.delete(ln); else selected.add(ln); }
+            else if (e.shiftKey) { selected.add(ln); }
+            else { selected.clear(); selected.add(ln); }  // single click = select just this one
+            onSelect(selected);
+            paintMap(host);
+          }
+          return;
+        }
+      }
+      if (mode === "overall" && t.closest('[data-fp-role="field"]')) { mode = "field"; paintMap(host); }
+    });
+    host.addEventListener("mouseover", function (e) {
+      var poly = e.target && e.target.closest ? e.target.closest("polygon") : null;
+      if (!poly || !host.contains(poly)) return;
+      poly.classList.add("is-hover"); // hover "indent"
+      if (mode === "field" && poly.getAttribute("data-fp-plot")) {
+        var lbl = host.querySelector("[data-fp-plotlabel]");
+        if (lbl) { lbl.textContent = poly.getAttribute("data-label") || ""; lbl.hidden = false; }
+      }
+    });
+    host.addEventListener("mouseout", function (e) {
+      var poly = e.target && e.target.closest ? e.target.closest("polygon") : null;
+      if (poly) poly.classList.remove("is-hover");
+      if (mode === "field") {
+        var lbl = host.querySelector("[data-fp-plotlabel]");
+        if (lbl) { lbl.hidden = true; lbl.textContent = ""; }
+      }
+    });
   }
+
+  // Plot Manager: the geospatial map (selectable) framed by a DATE widget above (inline-editable,
+  // calendar icon) and a CREATE-cluster bar below. Drill into the field to select plots
+  // (single/ctrl/shift), then ＋ records the union outline as a date-stamped cluster.
+  function renderPlotManager(payload, content) {
+    var asObject = function (x) { return x || {}; },
+        asText = function (x) { return x == null ? "" : String(x); },
+        escapeHtml = esc;
+    payload = asObject(payload);
+    if (errorOr(payload, content)) return;
+    var today = asText(payload.today);
+    var selected = new Set();
+    payload._selected = selected;
+    payload.selectable = true;
+    // Every plot's lcl node (for "select all" in the enlarged view).
+    var allPlots = ((payload.feature_collection || {}).features || [])
+      .filter(function (f) { return (f.properties || {}).kind === "plot" && (f.properties || {}).lcl_node; })
+      .map(function (f) { return f.properties.lcl_node; });
+
+    function refreshCounts() {
+      var n = selected.size, txt = n + " plot" + (n === 1 ? "" : "s") + " selected";
+      Array.prototype.forEach.call(document.querySelectorAll("[data-pm-count]"), function (el) { el.textContent = txt; });
+    }
+    payload._onSelect = refreshCounts;
+
+    function doCreate(dayText, statusEl, onDone) {
+      if (!selected.size) { if (statusEl) statusEl.textContent = "Select plots in the field first."; return; }
+      if (statusEl) statusEl.textContent = "Creating cluster…";
+      fetch(asText(payload.create_route), {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify({ sandbox_id: asText(payload.sandbox_id) || "agro_erp",
+          plot_nodes: Array.prototype.slice.call(selected), day: (dayText || today).trim() }),
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (o) {
+          if (!o.ok) { if (statusEl) statusEl.textContent = "Error: " + ((o.j && o.j.error) || "create failed"); return; }
+          if (statusEl) statusEl.textContent = "Created " + ((o.j && (o.j.cluster_name || o.j.cluster)) || "cluster") + ".";
+          selected.clear(); refreshCounts();
+          if (onDone) onDone();
+          if (window.PortalShellCore && typeof window.PortalShellCore.refetchOverlayPanels === "function") {
+            window.PortalShellCore.refetchOverlayPanels({});
+          }
+        }).catch(function (e) { if (statusEl) statusEl.textContent = "Error: " + e; });
+    }
+
+    function dateWidget(attr) {
+      return '<span class="v2-plotmgr__date" title="Click the date to edit"><span class="v2-plotmgr__cal" aria-hidden="true">📅</span>' +
+        '<span class="v2-plotmgr__day" ' + attr + ' contenteditable="true" spellcheck="false">' + escapeHtml(today) + "</span></span>";
+    }
+
+    // Compact widget: date · map (with an ⤢ expand button) · create bar.
+    content.innerHTML =
+      '<section class="v2-plotmgr">' +
+      '<div class="v2-plotmgr__top">' + dateWidget("data-pm-day") + "</div>" +
+      '<div class="v2-plotmgr__mapwrap">' +
+      '<button type="button" class="v2-plotmgr__expand" data-pm-expand title="Enlarge — select and create clusters" aria-label="Enlarge">⤢</button>' +
+      '<div class="v2-plotmgr__mapbox"></div></div>' +
+      '<div class="v2-plotmgr__bar"><span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
+      '<button type="button" class="v2-plotmgr__create" data-pm-create>➕ create cluster</button></div>' +
+      '<div class="v2-plotmgr__status" data-pm-status></div></section>';
+    var box = content.querySelector(".v2-plotmgr__mapbox");
+    if (box) renderGeospatialProjection(payload, box);
+    var dayEl = content.querySelector("[data-pm-day]");
+    var statusEl = content.querySelector("[data-pm-status]");
+    content.querySelector("[data-pm-create]").addEventListener("click", function () { doCreate(dayEl.textContent, statusEl); });
+
+    // Expand → a full-screen enlarged view with stronger select/create controls.
+    content.querySelector("[data-pm-expand]").addEventListener("click", function () {
+      var m = document.createElement("div");
+      m.className = "v2-pmModal";
+      m.innerHTML =
+        '<div class="v2-pmModal__panel" role="dialog" aria-label="Plot Manager">' +
+        '<header class="v2-pmModal__head">' +
+        '<span class="v2-pmModal__title">Plot Manager — select plots &amp; create a cluster</span>' +
+        dateWidget("data-pm-mday") +
+        '<button type="button" class="v2-pmModal__close" data-pm-close aria-label="Close">✕</button></header>' +
+        '<div class="v2-pmModal__mapbox v2-pmModal__map"></div>' +
+        '<div class="v2-pmModal__bar">' +
+        '<button type="button" class="v2-pmModal__btn" data-pm-selall>Select all</button>' +
+        '<button type="button" class="v2-pmModal__btn" data-pm-clear>Clear</button>' +
+        '<span class="v2-plotmgr__count" data-pm-count>0 plots selected</span>' +
+        '<button type="button" class="v2-plotmgr__create" data-pm-create2>➕ create cluster</button>' +
+        '<span class="v2-plotmgr__status" data-pm-mstatus></span></div></div>';
+      document.body.appendChild(m);
+      var mbox = m.querySelector(".v2-pmModal__mapbox");
+      renderGeospatialProjection(payload, mbox);
+      var mMapHost = mbox.querySelector("[data-farm-map]");
+      refreshCounts();
+      var mday = m.querySelector("[data-pm-mday]");
+      var mstatus = m.querySelector("[data-pm-mstatus]");
+      function repaint() { if (mMapHost && mMapHost.__repaint) mMapHost.__repaint(); refreshCounts(); }
+      function close() {
+        if (m.parentNode) m.parentNode.removeChild(m);
+        var cMapHost = box && box.querySelector("[data-farm-map]");
+        if (cMapHost && cMapHost.__repaint) cMapHost.__repaint();
+        refreshCounts();
+      }
+      m.querySelector("[data-pm-close]").addEventListener("click", close);
+      m.addEventListener("click", function (e) { if (e.target === m) close(); });
+      m.querySelector("[data-pm-selall]").addEventListener("click", function () { allPlots.forEach(function (n) { selected.add(n); }); repaint(); });
+      m.querySelector("[data-pm-clear]").addEventListener("click", function () { selected.clear(); repaint(); });
+      m.querySelector("[data-pm-create2]").addEventListener("click", function () { doCreate(mday.textContent, mstatus, close); });
+    });
+  }
+  window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
+  window.__MYCITE_V2_TOOL_RENDERERS["plot_manager"] = renderPlotManager;
+
+  // Record form (Record Studio / Contract Editor): a field spec → inline inputs + a submit that
+  // POSTs the field values to a domain write route, then refetches the overlay.
+  function renderRecordForm(payload, content) {
+    var asObject = function (x) { return x || {}; },
+        asList = function (x) { return Array.isArray(x) ? x : []; },
+        asText = function (x) { return x == null ? "" : String(x); },
+        escapeHtml = esc;
+    payload = asObject(payload);
+    if (errorOr(payload, content)) return;
+    var fields = asList(payload.fields);
+    var inner = fields.map(function (f) {
+      f = asObject(f);
+      var key = asText(f.key), label = asText(f.label), type = asText(f.type) || "text", val = asText(f.value);
+      var input;
+      if (type === "select") {
+        var opts = asList(f.options).map(function (o) {
+          o = asObject(o); var ov = asText(o.value);
+          return '<option value="' + escapeHtml(ov) + '"' + (ov === val ? " selected" : "") + ">" +
+            escapeHtml(asText(o.label) || ov) + "</option>";
+        }).join("");
+        input = '<select data-form-field="' + escapeHtml(key) + '"><option value="">—</option>' + opts + "</select>";
+      } else {
+        input = '<input type="text" data-form-field="' + escapeHtml(key) + '" value="' + escapeHtml(val) + '" />';
+      }
+      return '<label class="v2-recordForm__field"><span>' + escapeHtml(label) + "</span>" + input + "</label>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-recordForm"><header class="v2-recordForm__header">' +
+      escapeHtml(asText(payload.title)) + "</header>" +
+      '<div class="v2-recordForm__fields">' + inner + "</div>" +
+      '<button type="button" class="v2-recordForm__submit" data-form-submit>' +
+      escapeHtml(asText(payload.submit_label) || "Save") + "</button>" +
+      '<span class="v2-recordForm__status" data-form-status></span></section>';
+    var sub = asObject(payload.submit_action);
+    var btn = content.querySelector("[data-form-submit]");
+    var statusEl = content.querySelector("[data-form-status]");
+    if (btn) btn.addEventListener("click", function () {
+      var body = { sandbox_id: asText(sub.sandbox_id) || "agro_erp" };
+      if (asText(sub.datum_address)) body.datum_address = asText(sub.datum_address);
+      Array.prototype.forEach.call(content.querySelectorAll("[data-form-field]"), function (el) {
+        body[el.getAttribute("data-form-field")] = el.value;
+      });
+      statusEl.textContent = "Saving…";
+      fetch(asText(sub.route), {
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "same-origin",
+        body: JSON.stringify(body),
+      }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+        .then(function (o) {
+          statusEl.textContent = o.ok ? ("Saved " + ((o.j && o.j.datum_address) || "")) : ("Error: " + ((o.j && o.j.error) || "save failed"));
+          if (o.ok && window.PortalShellCore && typeof window.PortalShellCore.refetchOverlayPanels === "function") {
+            window.PortalShellCore.refetchOverlayPanels({});
+          }
+        }).catch(function (e) { statusEl.textContent = "Error: " + e; });
+    });
+  }
+  window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+  window.__MYCITE_V2_CONTAINER_RENDERERS["record_form"] = renderRecordForm;
 
   function renderContracts(payload, content) {
     payload = payload || {};
@@ -5214,10 +6192,43 @@
       "</section>";
   }
 
+  // Profile-card base renderer — the standardized profile (visual + title + SAMRAS chip). Shared by
+  // the profile_card tool/container AND composed at the top of farm_profile (which builds on it).
+  function _profileCardHtml(profile) {
+    profile = profile || {};
+    var title = esc(profile.title || "—");
+    var samras = esc(profile.samras_node || "");
+    var visual = profile.has_visual && profile.visual_url
+      ? '<div class="v2-profileCard__visual"><img src="' + esc(profile.visual_url) + '" alt="" onerror="this.style.display=\'none\'" /></div>'
+      : '<div class="v2-profileCard__visual v2-profileCard__visual--placeholder">' + esc((profile.title || "?").slice(0, 1).toUpperCase()) + "</div>";
+    return '<div class="v2-profileCard">' + visual +
+      '<div class="v2-profileCard__body"><div class="v2-profileCard__title">' + title + "</div>" +
+      (samras ? '<div class="v2-profileCard__samras"><span class="v2-profileCard__chip">SAMRAS</span> ' + samras + "</div>" : "") +
+      "</div></div>";
+  }
+  function renderProfileCard(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    // Optional fields table (e.g. farm_profile's parcels/field/plots/plots_source counts) below
+    // the identity card — the consolidation routes those through this pane's `fields`.
+    var fields = Array.isArray(payload.fields) ? payload.fields : [];
+    var rows = fields.map(function (f) {
+      f = f || {};
+      return "<tr><td>" + esc(f.label || "") + "</td><td>" + esc(f.value != null ? f.value : "") + "</td></tr>";
+    }).join("");
+    content.innerHTML = '<section class="v2-profile">' + _profileCardHtml(payload.profile) +
+      (rows ? '<table class="v2-profile__fields"><tbody>' + rows + "</tbody></table>" : "") + "</section>";
+  }
+
   window.__MYCITE_V2_TOOL_RENDERERS = window.__MYCITE_V2_TOOL_RENDERERS || {};
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis"] = renderCtsGisMap;
-  window.__MYCITE_V2_TOOL_RENDERERS["farm_profile"] = renderFarmProfile;
-  window.__MYCITE_V2_TOOL_RENDERERS["contracts"] = renderContracts;
+  // farm_profile is a composite now (profile_card + geospatial_projection) → renderComposite;
+  // the map renderer is registered under geospatial_projection.
+  window.__MYCITE_V2_TOOL_RENDERERS["geospatial_projection"] = renderGeospatialProjection;
+  window.__MYCITE_V2_TOOL_RENDERERS["profile_card"] = renderProfileCard;
+  // contracts now renders via the shared record_table container (Contract Viewer extends
+  // RecordViewerBase); its weight draw-down rides record_table's extra_tables. (renderContracts
+  // kept below for reference but no longer registered.)
   // samras_structure renders via the cluster dendrogram (renderSamrasDendrogram), defined
   // and registered in IIFE#1 alongside clusterLayout (the Resource type-browser diagram).
   window.__MYCITE_V2_TOOL_RENDERERS["cts_gis_district"] = renderCtsGisDistrict;
@@ -5243,15 +6254,51 @@
         return "<td>" + esc(r[c] != null ? r[c] : "") + "</td>";
       }).join("") + "</tr>";
     }).join("");
+    // Optional back affordance: payload.back = {label, param, value}. Renders a ← bar that
+    // clears the overlay param via setSurfaceQuery (drives the agronomics full-tab takeover
+    // exit). Generic — any record_table can opt in.
+    var back = payload.back && typeof payload.back === "object" ? payload.back : null;
+    var backBar = back
+      ? '<button type="button" class="v2-recordTable__back" data-record-back="' +
+        esc(back.param || "") + '" data-record-back-value="' + esc(back.value != null ? back.value : "") +
+        '">&larr; ' + esc(back.label || "Back") + "</button>"
+      : "";
+    // Optional secondary tables (e.g. the contracts invoice draw-down) rendered below the main.
+    function tableHtml(c, r) {
+      var h = "<tr>" + c.map(function (x) { return "<th>" + esc(x) + "</th>"; }).join("") + "</tr>";
+      var b = (Array.isArray(r) ? r : []).map(function (row) {
+        row = row || {};
+        return "<tr>" + c.map(function (x) { return "<td>" + esc(row[x] != null ? row[x] : "") + "</td>"; }).join("") + "</tr>";
+      }).join("");
+      return '<div class="v2-recordTable__wrap"><table class="v2-recordTable__table"><thead>' +
+        h + "</thead><tbody>" + b + "</tbody></table></div>";
+    }
+    var extra = (Array.isArray(payload.extra_tables) ? payload.extra_tables : []).map(function (t) {
+      t = t || {};
+      return '<header class="v2-recordTable__header">' + esc(t.title || "") + "</header>" +
+        tableHtml(Array.isArray(t.columns) ? t.columns : [], t.rows);
+    }).join("");
     content.innerHTML =
       '<section class="v2-recordTable">' +
+      backBar +
       '<header class="v2-recordTable__header">' + esc(payload.title || "") +
       (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
       (rows.length
         ? '<div class="v2-recordTable__wrap"><table class="v2-recordTable__table"><thead>' +
           head + "</thead><tbody>" + body + "</tbody></table></div>"
         : '<p class="v2-recordTable__empty">' + esc(payload.empty_text || "No records.") + "</p>") +
+      extra +
       "</section>";
+    if (back) {
+      var backBtn = content.querySelector("[data-record-back]");
+      if (backBtn) backBtn.addEventListener("click", function () {
+        if (window.PortalShellCore && typeof window.PortalShellCore.setSurfaceQuery === "function") {
+          window.PortalShellCore.setSurfaceQuery(
+            backBtn.getAttribute("data-record-back"),
+            backBtn.getAttribute("data-record-back-value") || "");
+        }
+      });
+    }
   }
 
   function renderRecordList(payload, content) {
@@ -5303,45 +6350,168 @@
       content.innerHTML = '<p class="ide-visualizationPanel__empty">No panes to display.</p>';
       return;
     }
+    // direction "column" stacks panes vertically (e.g. the PLAN tab: top row over a bottom bar);
+    // "widgets" keeps each pane its natural size (no equal-height stretch) — independent widgets.
+    var dirCls = (payload.direction === "column" ? " v2-composite--column" : "") +
+                 (payload.widgets ? " v2-composite--widgets" : "");
     content.innerHTML =
-      '<div class="v2-composite">' +
+      '<div class="v2-composite' + dirCls + '">' +
       panes
         .map(function (p, i) {
           p = p || {};
-          return '<section class="v2-composite__pane" data-pane-index="' + i + '">' +
-            '<header class="v2-composite__paneHeader">' + esc(p.label || p.tool_id || "") + "</header>" +
+          var pcls = "v2-composite__pane" + (p.label ? "" : " v2-composite__pane--unlabeled");
+          return '<section class="' + pcls + '" data-pane-index="' + i + '">' +
+            (p.label ? '<header class="v2-composite__paneHeader">' + esc(p.label) + "</header>" : "") +
             '<div class="v2-composite__paneBody" data-pane-body></div></section>';
         })
         .join("") +
       "</div>";
     var bodies = content.querySelectorAll("[data-pane-body]");
-    var toolRenderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
-    var containerRenderers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
     panes.forEach(function (p, i) {
       p = p || {};
       var body = bodies[i];
-      if (!body) return;
-      var sub = p.panel_payload || {};
-      var fn = toolRenderers[p.tool_id];
-      if (typeof fn !== "function") fn = containerRenderers[(sub.container) || ""];
-      if (typeof fn === "function") {
-        try {
-          fn(sub, body);
-        } catch (err) {
-          body.innerHTML =
-            '<p class="ide-visualizationPanel__error">Pane render failed: ' +
-            esc(err && err.message ? err.message : String(err)) + "</p>";
-        }
-      } else {
-        body.innerHTML =
-          '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
-          esc(p.tool_id) + "</code>.</p>";
-      }
+      if (body) paintPanelInto(p.panel_payload, body, p.tool_id);
     });
+  }
+
+  // Shared pane/tab body dispatch: render a panel_payload into `node` using the tool_id
+  // renderer (the caller's hint, else the payload's own tool_id) first, otherwise the
+  // declarative container renderer keyed by panel_payload.container. Used by renderComposite
+  // (panes) and renderTabbed (tabs) so both delegate identically.
+  function paintPanelInto(panelPayload, node, toolIdHint) {
+    if (!node) return;
+    var sub = panelPayload || {};
+    var toolRenderers = window.__MYCITE_V2_TOOL_RENDERERS || {};
+    var containerRenderers = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
+    var fn =
+      (toolIdHint && toolRenderers[toolIdHint]) ||
+      (sub.tool_id && toolRenderers[sub.tool_id]) ||
+      containerRenderers[(sub.container) || ""];
+    if (typeof fn === "function") {
+      try {
+        fn(sub, node);
+      } catch (err) {
+        node.innerHTML =
+          '<p class="ide-visualizationPanel__error">Pane render failed: ' +
+          esc(err && err.message ? err.message : String(err)) + "</p>";
+      }
+    } else if (sub.error) {
+      node.innerHTML =
+        '<p class="ide-visualizationPanel__error">' + esc(String(sub.error)) + "</p>";
+    } else {
+      node.innerHTML =
+        '<p class="ide-visualizationPanel__empty">No renderer for <code>' +
+        esc(sub.container || sub.tool_id || toolIdHint || "") + "</code>.</p>";
+    }
+  }
+
+  // Generic tabbed container: a tab strip + one body, switched CLIENT-SIDE (no shell reload —
+  // contrast renderExtensionTabs, which reloads via ctx.loadShell). Each tab carries an
+  // optional panel_payload delegated via paintPanelInto; a null payload renders a scaffold
+  // placeholder. Drives the agronomics FARM/PLAN/NETWORK tabs (tools/agronomics_viewer.py).
+  function renderTabbed(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var tabs = Array.isArray(payload.tabs) ? payload.tabs : [];
+    if (!tabs.length) {
+      content.innerHTML = '<p class="ide-visualizationPanel__empty">No tabs to display.</p>';
+      return;
+    }
+    var requestedActive = payload.active_tab || (tabs[0] && tabs[0].id) || "";
+    var active = "";
+    for (var ai = 0; ai < tabs.length; ai++) {
+      if (tabs[ai] && tabs[ai].id === requestedActive) { active = requestedActive; break; }
+    }
+    if (!active) active = (tabs[0] && tabs[0].id) || "";
+    content.innerHTML =
+      '<div class="v2-tabbed">' +
+      '<div class="v2-tabbed__strip" role="tablist">' +
+      tabs
+        .map(function (t) {
+          t = t || {};
+          var on = t.id === active;
+          return (
+            '<button type="button" class="v2-tabbed__tab' + (on ? " is-active" : "") +
+            '" role="tab" aria-selected="' + (on ? "true" : "false") +
+            '" data-tab-id="' + esc(t.id) + '">' + esc(t.label || t.id) + "</button>"
+          );
+        })
+        .join("") +
+      "</div>" +
+      '<div class="v2-tabbed__body" data-tabbed-body></div>' +
+      "</div>";
+    var bodyNode = content.querySelector("[data-tabbed-body]");
+    var strip = content.querySelector(".v2-tabbed__strip");
+
+    function paintTab(tabId) {
+      var tab = null;
+      for (var i = 0; i < tabs.length; i++) {
+        if (tabs[i] && tabs[i].id === tabId) { tab = tabs[i]; break; }
+      }
+      if (!tab) tab = tabs[0] || {};
+      if (!bodyNode) return;
+      if (tab.panel_payload == null) {
+        bodyNode.innerHTML =
+          '<p class="v2-tabbed__placeholder">' +
+          esc((tab.label || tab.id || "This tab") + " — no sub-tools yet.") + "</p>";
+        return;
+      }
+      paintPanelInto(tab.panel_payload, bodyNode, tab.tool_id);
+    }
+
+    if (strip) {
+      strip.addEventListener("click", function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest("[data-tab-id]") : null;
+        if (!btn) return;
+        Array.prototype.forEach.call(strip.querySelectorAll(".v2-tabbed__tab"), function (b) {
+          var on = b === btn;
+          b.classList.toggle("is-active", on);
+          b.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        var tabId = btn.getAttribute("data-tab-id");
+        paintTab(tabId);
+        // Persist the chosen tab into the overlay param set so a later sub-tool refetch
+        // (e.g. the SAMRAS structure selector) re-opens on this tab instead of resetting.
+        if (payload.tab_query_param && window.PortalShellCore &&
+            typeof window.PortalShellCore.recordOverlayParam === "function") {
+          window.PortalShellCore.recordOverlayParam(payload.tab_query_param, tabId);
+        }
+      });
+    }
+    paintTab(active);
+  }
+
+
+  // Synopsis: a compact derived-figure widget (label · figure), e.g. the PLAN tab's
+  // far-right inventory (product → unit count). Not a full table — a short summary list.
+  function renderSynopsis(payload, content) {
+    payload = payload || {};
+    if (errorOr(payload, content)) return;
+    var items = Array.isArray(payload.items) ? payload.items : [];
+    var rows = items.map(function (it) {
+      it = it || {};
+      return '<li class="v2-synopsis__row"><span class="v2-synopsis__label">' +
+        esc(it.label != null ? it.label : "") + '</span><span class="v2-synopsis__figure">' +
+        esc(it.figure != null ? it.figure : "") + "</span></li>";
+    }).join("");
+    content.innerHTML =
+      '<section class="v2-synopsis">' +
+      '<header class="v2-synopsis__header">' + esc(payload.title || "") +
+      (payload.count_label ? " · " + esc(payload.count_label) : "") + "</header>" +
+      (payload.value_label
+        ? '<div class="v2-synopsis__colhead"><span></span><span>' + esc(payload.value_label) + "</span></div>"
+        : "") +
+      (items.length
+        ? '<ul class="v2-synopsis__list">' + rows + "</ul>"
+        : '<p class="v2-synopsis__empty">' + esc(payload.empty_text || "Nothing to summarize.") + "</p>") +
+      "</section>";
   }
 
   window.__MYCITE_V2_CONTAINER_RENDERERS = window.__MYCITE_V2_CONTAINER_RENDERERS || {};
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_table"] = renderRecordTable;
   window.__MYCITE_V2_CONTAINER_RENDERERS["record_list"] = renderRecordList;
   window.__MYCITE_V2_CONTAINER_RENDERERS["composite"] = renderComposite;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["tabbed"] = renderTabbed;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["profile_card"] = renderProfileCard;
+  window.__MYCITE_V2_CONTAINER_RENDERERS["synopsis"] = renderSynopsis;
 })();

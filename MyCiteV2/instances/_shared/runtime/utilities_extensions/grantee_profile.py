@@ -183,61 +183,6 @@ def _build_grantee_profile_form_fields(grantee_dict: dict[str, Any]) -> list[dic
     ]
 
 
-def _render_ext_grantee_profile(ctx: dict[str, Any]) -> dict[str, Any]:
-    """Returns a payload containing one form_component_frame whose submit_action
-    points at POST ``/__fnd/grantee/save``. The frame carries the current
-    values of every grantee field; if no grantee is selected, the form is
-    omitted and the payload signals ``Select a grantee first``.
-    """
-    from MyCiteV2.packages.state_machine.nimm.mediate_handlers import (
-        build_form_component_frame,
-    )
-
-    from ._global import build_overall_roster, is_global
-
-    if is_global(ctx):
-        return build_overall_roster(
-            ctx,
-            extension_label="Grantee Profile",
-            summarize=lambda g: (
-                _as_text(g.get("short_name"))
-                or f"{len(g.get('domains') or [])} domain(s)"
-            ),
-        )
-
-    grantee = _as_dict(ctx.get("grantee"))
-    msn_id = _as_text(grantee.get("msn_id"))
-    if not msn_id:
-        return {
-            "grantee_msn_id": "",
-            "form_frame": None,
-            "empty_message": "Select a grantee to edit its profile.",
-        }
-
-    form_frame = build_form_component_frame(
-        frame_id="grantee_profile_form",
-        label=f"Grantee: {grantee.get('label') or msn_id}",
-        intro=(
-            "Edit identity, mailbox users, and per-grantee credentials. "
-            "Saved values land in the grantee JSON file on disk and are "
-            "consumed by the Email, Newsletter, and PayPal extensions."
-        ),
-        fields=_build_grantee_profile_form_fields(grantee),
-        submit_action={
-            "route": "/__fnd/grantee/save",
-            "schema": "mycite.v2.grantee.save.request.v1",
-            "payload": {"msn_id": msn_id},
-        },
-        submit_label="Save grantee profile",
-        target_authority="utilities",
-    )
-    return {
-        "grantee_msn_id": msn_id,
-        "form_frame": form_frame,
-    }
-
-
 __all__ = [
     "_build_grantee_profile_form_fields",
-    "_render_ext_grantee_profile",
 ]

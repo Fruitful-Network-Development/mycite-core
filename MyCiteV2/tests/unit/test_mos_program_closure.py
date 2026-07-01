@@ -41,10 +41,10 @@ class MosProgramClosureTests(unittest.TestCase):
         and every datum_document_semantics row has a corresponding documents
         index entry. No phantom docs, no orphan content.
 
-        Replaces the previous hard-coded counts test. Currently expected to
-        FAIL: agro_erp+fnd_ebi+system are clean, but cts_gis has ~287 phantom
-        index rows with no payload, and fnd_csm has ~25 orphan payloads with
-        no index. See audit_report.md §1.6.
+        agro_erp+fnd_ebi+system+cts_gis are clean (the cts_gis phantom rows and
+        the bulk of the fnd_csm orphans were cleaned up; precinct docs removed
+        2026-06-25). The only remaining catalog-without-index rows are the derived
+        fnd_analytics_summary_* aggregates, which are exempt below by design.
         """
         db_file = self._require_live_fnd_db()
         connection = sqlite3.connect(db_file)
@@ -63,7 +63,15 @@ class MosProgramClosureTests(unittest.TestCase):
                 )
             }
             phantoms = index_ids - semantic_ids
-            orphans = semantic_ids - index_ids
+            # Derived per-domain analytics aggregates (fnd_analytics_summary_*) live in the
+            # authoritative catalog only: they are recomputed with a fresh content-hash on
+            # every aggregation, so the stable `documents` index intentionally does not track
+            # them (they are reached via /__fnd/analytics/summary, never the canonical index).
+            # Exempt them from the orphan check; any OTHER orphan is still a real regression.
+            orphans = {
+                doc_id for doc_id in (semantic_ids - index_ids)
+                if "fnd_analytics_summary_" not in doc_id
+            }
             self.assertEqual(phantoms, set(), f"{len(phantoms)} phantom index rows")
             self.assertEqual(orphans, set(), f"{len(orphans)} orphan semantic payloads")
             # Structural shape: every sandbox has at least one anchor

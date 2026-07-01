@@ -45,35 +45,34 @@ class PortalShellStabilizationMatrixTests(unittest.TestCase):
                 activity_items=[],
                 control_panel={},
                 workbench={"visible": True},
-                interface_panel={},
                 shell_state=None,
             )
 
         # Phase 12d (drift remediation): the interface_panel region has
         # been retired (Phase 3d / 12c). build_shell_composition_payload
-        # forces interface_panel_collapsed=True on every surface. The
+        # removed the region entirely on every surface. The
         # original stabilization matrix expected per-surface posture
         # differences (FND-CSM "interface-panel-primary",
         # CTS-GIS "center-workbench" alongside an open panel, etc.);
         # those distinctions no longer exist. The matrix now asserts the
-        # uniform always-hidden state.
+        # uniform no-panel state.
         system = composition_for(SYSTEM_ROOT_SURFACE_ID)
         self.assertFalse(system["workbench_collapsed"])
-        self.assertTrue(system["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", system)
 
         # cts_gis retired in Stage C; workbench_ui is the canonical tool surface.
         workbench_ui = composition_for(WORKBENCH_UI_TOOL_SURFACE_ID)
         self.assertFalse(workbench_ui["workbench_collapsed"])
-        self.assertTrue(workbench_ui["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", workbench_ui)
         self.assertEqual(workbench_ui["foreground_shell_region"], "center-workbench")
 
         network = composition_for(NETWORK_ROOT_SURFACE_ID)
         self.assertFalse(network["workbench_collapsed"])
-        self.assertTrue(network["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", network)
 
         utilities = composition_for(UTILITIES_ROOT_SURFACE_ID)
         self.assertFalse(utilities["workbench_collapsed"])
-        self.assertTrue(utilities["interface_panel_collapsed"])
+        self.assertNotIn("interface_panel_collapsed", utilities)
 
 
 if __name__ == "__main__":

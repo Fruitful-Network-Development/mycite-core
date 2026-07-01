@@ -19,10 +19,16 @@ from . import (
     agronomics_viewer,  # noqa: F401  (composite: farm_profile + lcl structure)
     contacts_viewer,  # noqa: F401
     contracts_tool,  # noqa: F401
-    farm_profile_viewer,  # noqa: F401
+    farm_profile_viewer,  # noqa: F401  (consolidated: profile_card + geospatial_projection)
+    geospatial_projection_viewer,  # noqa: F401  (field/plots map base)
     invoices_viewer,  # noqa: F401
+    local_domain_viewer,  # noqa: F401  (lcl tree + expand-to-table instance containers)
+    plot_manager_viewer,  # noqa: F401  (geospatial + date + select + create-cluster)
     plots_viewer,  # noqa: F401
     product_document_view,  # noqa: F401
+    profile_card_viewer,  # noqa: F401  (base profile contract; farm_profile builds on it)
+    record_studio,  # noqa: F401  (write/form base; ContractEditor)
+    record_synopsis,  # noqa: F401  (derived-figure summaries; InventorySynopsis)
     samras_structure_viewer,  # noqa: F401  (unified txa/msn/lcl structure viewer)
 )
 

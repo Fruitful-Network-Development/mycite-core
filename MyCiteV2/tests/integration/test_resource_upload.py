@@ -337,6 +337,7 @@ class GranteeUploadTests(unittest.TestCase):
     @unittest.skipUnless(HAS_AVIFENC, "avifenc required")
     def test_image_upload_to_shared_gallery_and_registers(self):
         import yaml
+
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             handle_grantee_upload,
         )
@@ -356,8 +357,10 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_document_uses_singular_path_and_inert_only(self):
         import yaml
+
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
-            UploadError, handle_grantee_upload,
+            UploadError,
+            handle_grantee_upload,
         )
         root, man = self._clients_root()
         res = handle_grantee_upload(
@@ -376,6 +379,7 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_autocreates_manifest_when_absent(self):
         import yaml
+
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
             handle_grantee_upload,
         )
@@ -394,7 +398,8 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_rejects_non_select_kinds(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
-            UploadError, handle_grantee_upload,
+            UploadError,
+            handle_grantee_upload,
         )
         root, _ = self._clients_root()
         for kind in ("icon", "profile", "logo", "type"):
@@ -404,7 +409,8 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_rejects_traversal_slug(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
-            UploadError, handle_grantee_upload,
+            UploadError,
+            handle_grantee_upload,
         )
         root, _ = self._clients_root()
         with self.assertRaises(UploadError):
@@ -413,7 +419,8 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_rejects_oversized_file(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
-            UploadError, handle_grantee_upload,
+            UploadError,
+            handle_grantee_upload,
         )
         root, _ = self._clients_root()
         big = b"\x00" * (10 * 1024 * 1024 + 1)
@@ -423,7 +430,8 @@ class GranteeUploadTests(unittest.TestCase):
 
     def test_rejects_pixel_bomb_image(self):
         from MyCiteV2.instances._shared.runtime.utilities_extensions.resource_upload import (
-            UploadError, handle_grantee_upload,
+            UploadError,
+            handle_grantee_upload,
         )
         root, _ = self._clients_root()
         # A tiny PNG whose IHDR claims 50000x50000 (2.5e9 px) — rejected before avifenc.

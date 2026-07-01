@@ -82,7 +82,7 @@ SITES: tuple[Site, ...] = (
         brand_accent_soft="#d7ece4",
         # FND-only operator panel, lazy-loaded by tabs/tolling.js for FND's
         # grantee id; absent on other sites by design.
-        allowed_extra=("tabs/tolling_operator.js",),
+        allowed_extra=("tabs/tolling_operator.js", "tabs/grantees_operator.js"),
     ),
     Site(
         short_name="TFF",

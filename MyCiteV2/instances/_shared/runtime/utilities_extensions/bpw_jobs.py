@@ -21,9 +21,7 @@ This module is retained only as a thin compatibility shim:
 from __future__ import annotations
 
 import glob
-import os
 import re
-import tempfile
 from datetime import date as _date
 from datetime import datetime
 from pathlib import Path

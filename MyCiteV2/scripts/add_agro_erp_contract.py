@@ -3,7 +3,8 @@
 The write-path proof for the agronomics group: takes (invoice, plot, amount, cost, date),
 resolves the invoice/plot lcl nodes, ENFORCES the weight draw-down invariant (the sum of
 contract amounts against an invoice may not exceed that invoice's purchased weight), and
-appends a ``4-5-N`` contract row via the pure ``contracts_tool.build_contract_row`` unit.
+appends a ``4-6-N`` contract row (vg-6, with the event-type pair) via the pure
+``contracts_tool.build_contract_row`` unit.
 Writes only the contracts doc (anchor/lcl untouched — contracts reference existing nodes).
 
 Idempotent-ish: refuses to add a byte-identical duplicate contract. Discipline: dry-run →
@@ -126,7 +127,8 @@ def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) 
     if info is None:
         raise SystemExit(f"invoice node {invoice_node} has no purchased weight in invoices doc")
     committed = 0.0
-    existing = [r for r in _as_rows(live["contracts"]) if as_text(r.datum_address).startswith("4-5-")]
+    # contracts are vg-6 at 4-6-* since the event-type append (append_record_event_type.py).
+    existing = [r for r in _as_rows(live["contracts"]) if as_text(r.datum_address).startswith("4-6-")]
     for r in existing:
         head = r.raw[0] if isinstance(r.raw, list) and r.raw else []
         refs = [as_text(head[i + 1]) for i in range(1, len(head) - 1, 2) if as_text(head[i]) == _RF_LCL_ID]
@@ -193,7 +195,7 @@ def build(store, *, invoice: str, plot: str, amount: str, cost: str, date: str) 
                         version_hash="", report=report)
 
     next_n = 1 + max((int(as_text(r.datum_address).split("-")[2]) for r in existing), default=0)
-    addr = f"4-5-{next_n}"
+    addr = f"4-6-{next_n}"
     label = f"{lcl_idx.resolve(invoice_node) or invoice_node}__{lcl_idx.resolve(plot_node) or plot_node}"
     new_row = build_contract_row(
         addr, hops_date=hops_date, invoice_node=invoice_node, plot_node=plot_node,

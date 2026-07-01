@@ -32,6 +32,20 @@ from MyCiteV2.packages.tools._shared.utilities import as_text as _as_text
 
 PORTAL_PALETTE_RESPONSE_SCHEMA = "mycite.v2.portal.palette.eligible_tools.response.v1"
 
+# Operator decision (portal-tool-overlay-restructure): the portal collapses to a single live
+# tool — the agronomics workbench — plus the two viewers it consolidates. Every other
+# registered viz tool is legacy. The HTTP palette endpoints pass ``live_only=True`` so the
+# menubar search dropdown lists exactly {agronomics, farm_profile, samras_structure} (an
+# explicit allow-list — eligibility alone would still surface contacts/invoices/plots/
+# contracts/product for the agro_erp sandbox). The response builders default to UNFILTERED
+# (full eligibility) so the eligibility logic stays independently testable; only the search
+# opts in. Legacy tools stay registered + renderable via a direct surface_query.tools — they
+# are just no longer discoverable in the search.
+LIVE_TOOL_IDS: tuple[str, ...] = (
+    "agronomics", "farm_profile", "samras_structure", "local_domain",
+    "invoices", "contracts", "inventory_synopsis", "plot_manager", "contract_editor",
+)
+
 
 def _find_document(
     *, tenant_id: str, document_id: str, datum_store: Any
@@ -91,6 +105,7 @@ def build_eligible_tools_response(
     document_id: str,
     datum_address: str,
     datum_store: Any,
+    live_only: bool = False,
 ) -> dict[str, Any]:
     """Return ``{schema, tools: [...]}`` for the menubar palette.
 
@@ -99,6 +114,10 @@ def build_eligible_tools_response(
     applies_to_source_kind against the document's metadata. When no
     document is selected we return every registered tool so the
     menubar search input is useful immediately after page load.
+
+    ``live_only`` (set by the HTTP endpoint) further restricts the result to
+    :data:`LIVE_TOOL_IDS` so the search dropdown lists only the live tools;
+    the default (False) returns full eligibility for testing/inspection.
     """
     tenant_id = _as_text(tenant_id)
     document_id = _as_text(document_id)
@@ -118,7 +137,8 @@ def build_eligible_tools_response(
 
     matching = [
         tool for tool in _viz_all_tools()
-        if _viz_tool_matches(tool, archetypes=archetypes, source_kinds=source_kinds)
+        if (not live_only or tool.tool_id in LIVE_TOOL_IDS)
+        and _viz_tool_matches(tool, archetypes=archetypes, source_kinds=source_kinds)
     ]
     return {
         "schema": PORTAL_PALETTE_RESPONSE_SCHEMA,
@@ -166,7 +186,7 @@ def _doc_eligibility(doc: Any) -> tuple[set[str], set[str], str]:
 
 
 def build_sandbox_visualizers_response(
-    *, tenant_id: str, sandbox_id: str, datum_store: Any
+    *, tenant_id: str, sandbox_id: str, datum_store: Any, live_only: bool = False
 ) -> dict[str, Any]:
     """Return the visualizers eligible for the contents of one sandbox.
 
@@ -205,6 +225,8 @@ def build_sandbox_visualizers_response(
             "row_count": len(getattr(doc, "rows", ()) or ()),
         })
         for tool in _viz_all_tools():
+            if live_only and tool.tool_id not in LIVE_TOOL_IDS:
+                continue
             if _viz_tool_matches(tool, archetypes=archetypes, source_kinds=source_kinds):
                 entry = hits.setdefault(tool.tool_id, {"tool": tool, "documents": []})
                 entry["documents"].append(doc_id)
@@ -235,6 +257,7 @@ def build_sandbox_visualizers_response(
 
 
 __all__ = [
+    "LIVE_TOOL_IDS",
     "PORTAL_PALETTE_RESPONSE_SCHEMA",
     "PORTAL_SANDBOX_VISUALIZERS_SCHEMA",
     "build_eligible_tools_response",

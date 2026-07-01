@@ -123,8 +123,10 @@ class TestLiveResolutionRegression(unittest.TestCase):
             document_id=self._anchor_id(), datum_address="",
         )
         self.assertIsNone(payload.get("error"))
-        self.assertGreater(payload["feature_count"], 0)
-        self.assertEqual(payload["plots_source"], "migrated")
+        self.assertEqual(payload["container"], "composite")
+        geo = next(p["panel_payload"] for p in payload["panes"] if p["tool_id"] == "geospatial_projection")
+        self.assertGreater(geo["feature_count"], 0)
+        self.assertEqual(geo["plots_source"], "migrated")
         self.assertTrue(payload["document_id"].split(".")[3] == "farm_profile")
 
     def test_contracts_renders_with_anchor_selected(self) -> None:
@@ -134,7 +136,11 @@ class TestLiveResolutionRegression(unittest.TestCase):
         )
         self.assertIsNone(payload.get("error"))
         self.assertEqual(payload["document_id"].split(".")[3], "contracts")
-        self.assertGreater(len(payload["draw_down"]), 0)
+        # Contract Viewer is a record_table now; the draw-down rides extra_tables.
+        self.assertEqual(payload["container"], "record_table")
+        draw = next((t for t in payload.get("extra_tables", []) if t.get("title") == "Invoice draw-down"), None)
+        self.assertIsNotNone(draw)
+        self.assertGreater(len(draw["rows"]), 0)
 
 
 if __name__ == "__main__":

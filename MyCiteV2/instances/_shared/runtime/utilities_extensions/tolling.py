@@ -42,6 +42,8 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 _log = logging.getLogger("mycite.portal_host")
 
 
@@ -78,18 +80,37 @@ def clear_caches() -> None:
 
 
 # ---------------------------------------------------------------------
-# Grantee profile lookup (no MOS dependency — JSON files only)
+# Grantee profile lookup (no MOS dependency — YAML/JSON leaflets)
 # ---------------------------------------------------------------------
+
+
+def _grantee_profile_paths(root: Path) -> list[str]:
+    """Grantee profile files, preferring the .yaml leaflet over a stale .json (PR #124)."""
+    by_stem: dict[str, str] = {}
+    for ext in ("yaml", "json"):  # yaml wins the stem over a stale .json
+        for path in glob.glob(str(root / f"grantee.*.{ext}")):
+            by_stem.setdefault(Path(path).stem, path)
+    return sorted(by_stem.values())
 
 
 def load_grantee_directory(
     fnd_csm_root: str | Path = _DEFAULT_FND_CSM_ROOT,
 ) -> list[dict[str, Any]]:
-    """Return every grantee profile JSON under the fnd-csm tool dir.
+    """Return every grantee profile under the fnd-csm tool dir.
 
-    Each entry is the parsed JSON dict. Parsing failures are skipped
-    silently; this is a read surface, not a validation surface.
+    Profiles are YAML leaflets; JSON is a YAML subset, so any legacy
+    ``.json`` profile still parses. Each entry is the parsed dict;
+    parsing failures are skipped silently — this is a read surface,
+    not a validation surface.
     """
+    # Prefer the shared identity/secret leaflets when the cutover is enabled;
+    # otherwise fall back to the legacy per-instance fnd-csm read below.
+    from MyCiteV2.instances._shared.runtime.operational_store import (
+        load_grantee_leaflets_if_enabled,
+    )
+    shared = load_grantee_leaflets_if_enabled()
+    if shared is not None:
+        return shared
     root = Path(fnd_csm_root)
     key = str(root)
     now = time.monotonic()
@@ -97,10 +118,10 @@ def load_grantee_directory(
     if cached is not None and now - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1]
     out: list[dict[str, Any]] = []
-    for path in sorted(glob.glob(str(root / "grantee.*.json"))):
+    for path in _grantee_profile_paths(root):
         try:
-            data = json.loads(Path(path).read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError):
             continue
         if isinstance(data, dict):
             out.append(data)
@@ -475,12 +496,13 @@ def _tolling_path_for(
     sponsor msn for grantees that don't have one yet.
     """
     root = Path(fnd_csm_root)
-    for profile_path in sorted(root.glob(f"grantee.*.{msn_id}.json")):
-        # filename is `grantee.<sponsor>.<grantee>.json`
-        parts = profile_path.name.split(".")
-        if len(parts) >= 4 and parts[-2] == msn_id:
-            sponsor = parts[1]
-            return root / f"tolling.{sponsor}.{msn_id}.json"
+    for ext in ("yaml", "json"):  # prefer the .yaml leaflet, fall back to .json
+        for profile_path in sorted(root.glob(f"grantee.*.{msn_id}.{ext}")):
+            # filename is `grantee.<sponsor>.<grantee>.<ext>`
+            parts = profile_path.name.split(".")
+            if len(parts) >= 4 and parts[-2] == msn_id:
+                sponsor = parts[1]
+                return root / f"tolling.{sponsor}.{msn_id}.json"
     # No grantee profile found yet; use FND as the sponsor.
     return root / f"tolling.3-2-3-17-77-1-6-4-1-4.{msn_id}.json"
 

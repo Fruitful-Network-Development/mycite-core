@@ -17,159 +17,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from MyCiteV2.instances._shared.runtime.portal_shell_runtime import (
-    _build_extension_subtab_selector,
-    _build_inner_subtab_selector,
-    _resolve_inner_subtab,
-    _surface_payload_for_extensions,
-)
 from MyCiteV2.instances._shared.runtime.utilities_extensions import (
     resources_extension as rx,
 )
 from MyCiteV2.tests.unit.test_resource_types import _seed
-
-
-class InnerSubtabResolve(unittest.TestCase):
-    def test_default_valid_invalid_none(self) -> None:
-        # Manifest is folded into Browse — Browse is the unified default type tab.
-        self.assertEqual(_resolve_inner_subtab("ext_resources", ""), "browse")
-        self.assertEqual(_resolve_inner_subtab("ext_resources", "browse"), "browse")
-        self.assertEqual(_resolve_inner_subtab("ext_resources", "bogus"), "browse")
-        # Create (upload + library management) is a declared subtab.
-        self.assertEqual(_resolve_inner_subtab("ext_resources", "create"), "create")
-        # Every operational extension now declares subtabs, defaulting to Overall.
-        self.assertEqual(_resolve_inner_subtab("ext_aws_email", "x"), "overall")
-        self.assertEqual(_resolve_inner_subtab("ext_aws_email", "per_grantee"), "per_grantee")
-        # A tool with no subtab declaration (e.g. the grantee-profile surface tool).
-        self.assertEqual(_resolve_inner_subtab("ext_grantee_profile", "x"), "")
-
-
-class InnerSubtabSelector(unittest.TestCase):
-    def test_subtab_drives_mode(self) -> None:
-        # The subtab is the mode switch: per_grantee -> grantee, anything else -> global.
-        sel = _build_inner_subtab_selector(
-            "ext_resources", "browse", selected_grantee_msn="acme", utilities_mode="grantee"
-        )
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "create", "per_grantee"])
-        self.assertEqual(sel["selected_subtab"], "browse")
-        by_id = {t["id"]: t["select_action"]["payload"]["surface_query"] for t in sel["tabs"]}
-        self.assertEqual(by_id["browse"]["utilities_mode"], "global")
-        self.assertEqual(by_id["per_grantee"]["utilities_mode"], "grantee")
-        self.assertEqual(by_id["browse"]["extension_subtab"], "browse")
-        self.assertEqual(by_id["browse"]["selected_extension_tool_id"], "ext_resources")
-        self.assertEqual(by_id["browse"]["selected_grantee_msn"], "acme")
-
-    def test_operational_extension_has_overall_pergrantee(self) -> None:
-        sel = _build_inner_subtab_selector(
-            "ext_aws_email", "overall", selected_grantee_msn="", utilities_mode="global"
-        )
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["overall", "per_grantee"])
-        self.assertTrue(next(t for t in sel["tabs"] if t["id"] == "overall")["active"])
-
-
-class SurfaceAttachesInnerSelector(unittest.TestCase):
-    @staticmethod
-    def _ext(tool_id: str, payload: dict | None = None) -> dict:
-        return {"tool_id": tool_id, "label": tool_id, "summary": "", "payload": payload or {}}
-
-    def test_inner_selector_on_active_resources(self) -> None:
-        extensions = [self._ext("ext_aws_email"), self._ext("ext_resources", {"resources_app": True})]
-        payload = _surface_payload_for_extensions(
-            extensions=extensions,
-            grantee_selector=None,
-            selected_extension_tool_id="ext_resources",
-            extension_subtab="browse",
-            mode="global",
-        )
-        active = payload["extensions"]
-        self.assertEqual([e["tool_id"] for e in active], ["ext_resources"])
-        sel = active[0]["payload"]["inner_subtab_selector"]
-        self.assertEqual(sel["selected_subtab"], "browse")
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["browse", "create", "per_grantee"])
-
-    def test_operational_extension_gets_inner_selector_no_surface_selector(self) -> None:
-        # Every operational extension now carries the inner subtab strip, and the
-        # Extensions surface no longer hosts a top-level grantee selector.
-        extensions = [self._ext("ext_aws_email", {"overall_roster": True})]
-        payload = _surface_payload_for_extensions(
-            extensions=extensions,
-            grantee_selector={"selected_grantee_msn": "", "grantees": []},
-            selected_extension_tool_id="ext_aws_email",
-            extension_subtab="overall",
-            mode="global",
-        )
-        sel = payload["extensions"][0]["payload"]["inner_subtab_selector"]
-        self.assertEqual([t["id"] for t in sel["tabs"]], ["overall", "per_grantee"])
-        self.assertNotIn("grantee_selector", payload)
-
-    def test_per_grantee_subtab_no_grantee_shows_prompt_and_picker(self) -> None:
-        def _entry(msn, label, overall):
-            return {
-                "msn_id": msn, "label": label, "is_overall": overall,
-                "select_action": {
-                    "route": "/portal/api/v2/shell",
-                    "schema": "mycite.v2.portal.shell.request.v1",
-                    "payload": {
-                        "requested_surface_id": "utilities.extensions",
-                        "surface_query": {"selected_grantee_msn": msn, "utilities_mode": "grantee" if msn else "global"},
-                    },
-                },
-            }
-        gsel = {"label": "Grantee", "selected_grantee_msn": "", "mode": "global",
-                "grantees": [_entry("", "All — Overall", True), _entry("acme", "Acme", False)]}
-        extensions = [self._ext("ext_aws_email", {"overall_roster": True})]
-        payload = _surface_payload_for_extensions(
-            extensions=extensions, grantee_selector=gsel,
-            selected_extension_tool_id="ext_aws_email",
-            extension_subtab="per_grantee", mode="global",
-        )
-        ep = payload["extensions"][0]["payload"]
-        # no grantee chosen → the overall roster is replaced by a prompt
-        self.assertIn("per_grantee_prompt", ep)
-        self.assertNotIn("overall_roster", ep)
-        # the picker is hosted in-card, WITHOUT the synthetic "All — Overall" entry
-        self.assertIn("grantee_picker", ep)
-        self.assertTrue(all(not g.get("is_overall") for g in ep["grantee_picker"]["grantees"]))
-
-    def test_per_grantee_no_grantee_keeps_degraded_payload(self) -> None:
-        # A timed-out/errored extension payload (degraded) must NOT be masked by the
-        # generic prompt on the Per-grantee subtab — its `notice` is the only signal.
-        extensions = [self._ext("ext_paypal", {"degraded": True, "notice": "PayPal did not respond within 5s"})]
-        payload = _surface_payload_for_extensions(
-            extensions=extensions, grantee_selector=None,
-            selected_extension_tool_id="ext_paypal",
-            extension_subtab="per_grantee", mode="global",
-        )
-        ep = payload["extensions"][0]["payload"]
-        self.assertTrue(ep.get("degraded"))
-        self.assertIn("did not respond", ep.get("notice", ""))
-        self.assertNotIn("per_grantee_prompt", ep)
-
-    def test_zero_operational_extensions_emits_empty_state_not_blank(self) -> None:
-        # No operational extensions → emit a sections empty-state so the workbench
-        # content probe still recognizes the surface (instead of a blank page).
-        payload = _surface_payload_for_extensions(
-            extensions=[], grantee_selector=None,
-            selected_extension_tool_id="", mode="global",
-        )
-        self.assertNotIn("extensions", payload)
-        self.assertTrue(payload.get("sections"))
-
-    def test_between_extension_tab_preserves_active_subtab(self) -> None:
-        # Switching the active extension must carry extension_subtab so the inner
-        # Overall/Per-grantee highlight stays in sync with the content.
-        sel = _build_extension_subtab_selector(
-            [self._ext("ext_aws_email"), self._ext("ext_analytics")],
-            "ext_aws_email",
-            selected_grantee_msn="acme",
-            utilities_mode="grantee",
-            extension_subtab="per_grantee",
-        )
-        for tab in sel["tabs"]:
-            self.assertEqual(
-                tab["select_action"]["payload"]["surface_query"]["extension_subtab"],
-                "per_grantee",
-            )
 
 
 class TypeBrowserJsInvariants(unittest.TestCase):
@@ -328,19 +179,18 @@ class BrowsePayloadReviewFixes(unittest.TestCase):
         self.assertEqual(p["icon_options_route"], "/__fnd/resources/icon-options")
         self.assertIn("other_count", p)
 
-    def test_render_ext_resources_defaults_to_browse(self) -> None:
-        # Unknown / legacy 'manifest' subtab must resolve to the unified Browse tab,
-        # never a now-removed manifest payload.
+    def test_browse_payload_unknown_subtab_resolves_to_browse(self) -> None:
+        # The dissolved ext_resources renderer routed unknown / legacy 'manifest'
+        # subtabs to the unified Browse tab; the retained browse-payload helper
+        # always stamps resources_subtab == "browse".
         for sub in ("", "manifest", "bogus"):
             ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": sub}
-            self.assertEqual(rx._render_ext_resources(ctx)["resources_subtab"], "browse")
+            self.assertEqual(rx._resources_browse_payload(ctx)["resources_subtab"], "browse")
 
-    def test_render_ext_resources_create_routes_to_library(self) -> None:
-        # The Create subtab restores the two-pane LIBRARY payload (upload form +
-        # retitle/rename/delete) that folding Manifest into Browse had orphaned
-        # from the surface — the only path carrying upload_action.
-        ctx = {"webapps_root": self.root, "mode": "global", "extension_subtab": "create"}
-        p = rx._render_ext_resources(ctx)
+    def test_create_subtab_routes_to_library_payload(self) -> None:
+        # The Create subtab uses the two-pane LIBRARY payload (upload form +
+        # retitle/rename/delete) — the only path carrying upload_action.
+        p = rx._resources_library_payload(self.root)
         self.assertEqual(p["resources_mode"], "library")
         self.assertEqual(p["upload_action"]["route"], "/portal/api/resources/upload")
 

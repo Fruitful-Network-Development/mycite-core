@@ -4,8 +4,8 @@ Canonical vocabulary for shell/docs/runtime alignment after the AITAS/NIMM workb
 
 | Retired or Parallel Term | Canonical Term | Status | Replacement |
 |---|---|---|---|
-| public right-rail compatibility aliases | `Interface Panel` | Retired from emitted shell payloads | `regions.interface_panel` and `interface_panel_collapsed` |
-| Header text buttons for `Control Panel` / `Workbench` | Menubar icon-toggle trio: `Control Panel`, `Workbench`, `Interface Panel` | Canonical | N/A |
+| public right-rail compatibility aliases | `Interface Panel` | Removed — region deleted (tools render in the menubar-search → full-screen overlay) | None |
+| Header text buttons for `Control Panel` / `Workbench` | Menubar: `Control Panel` icon-toggle + right-aligned tool search (the `Workbench` and `Interface Panel` toggles were removed) | Canonical | N/A |
 | Tool free-form panel coexistence wording | Tool default single-click exclusivity + double-click route lock mode | Canonical | N/A |
 | `stacked_focus_panel` | `focus_selection_panel` | Legacy removed; canonical contract retained | Removed |
 | `operational-status` surface language | Unified shell/tool posture language | Legacy removed; canonical contract retained | Removed |

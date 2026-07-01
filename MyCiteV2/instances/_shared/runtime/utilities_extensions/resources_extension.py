@@ -4,11 +4,11 @@ Wave 2 RETIRES the Wave-1 ``resources.root`` top-level surface and re-homes
 resources where every comparable operator feature lives: under
 **Utilities → Extensions**, beside ext_aws_email / ext_paypal / etc.
 
-This module owns:
+The operator-facing portal extension surface (the ``_render_ext_resources``
+shell renderer + the ``_resources_*_payload`` view helpers) was dissolved in
+the portal-tool-overlay-restructure work. This module still owns the pure
+backend helpers the public ``/__fnd/resources/*`` routes call:
 
-  * ``_render_ext_resources(ctx)`` — the EXTENSION_RENDERERS entry. Builds the
-    payload the resources extension card renders from (gallery galleries +
-    the profiles "contact app" list + per-profile detail/edit form).
   * pure backend helpers used by the POST/GET routes in ``portal_host/app.py``:
       - ``list_profiles`` / ``profile_detail`` / ``resolve_profile_image``
       - ``save_profile`` (atomic canonical write)
@@ -32,7 +32,6 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -2826,36 +2825,8 @@ def _resources_per_grantee_payload(ctx: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _render_ext_resources(ctx: dict[str, Any]) -> dict[str, Any]:
-    """Render the resources extension card payload.
-
-    The Extensions surface threads an ``extension_subtab`` into ctx → dispatch to
-    the type-browser subtabs (Manifest default / Browse / Per-grantee). Legacy
-    direct callers (tests, non-surface paths) that DON'T thread the key keep the
-    original library/allocation behavior, so nothing regresses.
-    """
-    if "extension_subtab" not in ctx:
-        grantee = ctx.get("grantee") if isinstance(ctx.get("grantee"), dict) else {}
-        if _as_text(ctx.get("mode")) == "grantee" and _as_text(grantee.get("msn_id")):
-            return _resources_allocation_payload(ctx)
-        return _resources_library_payload(ctx.get("webapps_root"))
-    subtab = _as_text(ctx.get("extension_subtab")) or "browse"
-    if subtab == "per_grantee":
-        return _resources_per_grantee_payload(ctx)
-    if subtab == "create":
-        # The two-pane LIBRARY view: upload form (incl. the logo kind) + the
-        # flat searchable leaflet list with retitle / rename-slug / delete /
-        # icon-dedup. Folding Manifest into Browse had orphaned this payload
-        # from the surface (it set extension_subtab, so the legacy keyless
-        # path that reached it never fired); the Create subtab restores it.
-        return _resources_library_payload(ctx.get("webapps_root"))
-    # "browse" (and any legacy "manifest" link) → the UNIFIED type tab.
-    return _resources_browse_payload(ctx)
-
-
 __all__ = [
     "MANAGED_GALLERIES",
-    "_render_ext_resources",
     "add_asset_to_manifest",
     "asset_url_prefix_for",
     "build_grouped_gallery",

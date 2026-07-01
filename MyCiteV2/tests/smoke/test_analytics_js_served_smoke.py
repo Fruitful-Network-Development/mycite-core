@@ -1,9 +1,10 @@
 """Phase 18b — /__fnd/analytics.js is served + valid + non-empty.
 
-The route reads the analytics script straight from
-``/srv/webapps/clients/_shared/site-core/js/extensions/analytics.js``
-so a deploy of the shared library propagates without restarting the
-portal (5-minute browser cache, see app.py).
+The route reads the analytics script from
+``<webapps_root>/clients/_shared/site-core/js/extensions/analytics.js`` (falling back to the
+canonical ``/srv/webapps`` deploy path), so a deploy of the shared library propagates without
+restarting the portal (5-minute browser cache, see app.py). This test seeds the script into a
+temp webapps_root so it is hermetic (CI has no /srv/webapps).
 
 This smoke confirms the file lands, the Content-Type is right, and
 the body contains the canonical endpoint URL + the public mount
@@ -34,6 +35,19 @@ class AnalyticsJsServedSmokeTests(unittest.TestCase):
         tmp = Path(tempfile.mkdtemp(prefix="phase18b_analytics_js_"))
         for sub in ("public", "private", "data", "webapps"):
             (tmp / sub).mkdir()
+        # Seed the capture script the route serves from <webapps_root>/clients/_shared/
+        # site-core/js/extensions/analytics.js (hermetic — no dependency on a deployed /srv/webapps).
+        analytics_js = (
+            tmp / "webapps" / "clients" / "_shared" / "site-core" / "js" / "extensions" / "analytics.js"
+        )
+        analytics_js.parent.mkdir(parents=True)
+        analytics_js.write_text(
+            "// MyciteAnalytics browser capture script (test stub).\n"
+            "window.MyciteAnalytics = window.MyciteAnalytics || {};\n"
+            "var FND_ANALYTICS_ENDPOINT = '/__fnd/analytics/event';\n"
+            "var FND_ANALYTICS_SESSION_KEY = 'fnd_analytics_session';\n",
+            encoding="utf-8",
+        )
         config = V2PortalHostConfig(
             portal_instance_id="fnd",
             public_dir=tmp / "public",

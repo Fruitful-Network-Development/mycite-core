@@ -133,42 +133,5 @@ class PayPalExportRouteTests(unittest.TestCase):
         self.assertEqual(len(body.strip().splitlines()), 1)  # header only
 
 
-class PayPalExtensionPayloadExportActionTests(unittest.TestCase):
-    """The paypal extension payload must carry an ``export_action`` so
-    the JS renderer can wire the Export CSV download link.
-    """
-
-    def test_payload_has_export_action_when_domain_set(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.paypal import (
-            _build_paypal_extension_payload,
-        )
-
-        out = _build_paypal_extension_payload(
-            grantee={"paypal": {"webhook_url": "https://example.test/webhook"}},
-            domain="alpha.example.test",
-            private_dir=None,
-        )
-        action = out.get("export_action") or {}
-        self.assertEqual(
-            action.get("href"),
-            "/__fnd/paypal/admin/export?domain=alpha.example.test",
-        )
-        self.assertEqual(action.get("download"), "paypal-orders-alpha.example.test.csv")
-
-    def test_payload_drops_export_action_when_no_domain(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.paypal import (
-            _build_paypal_extension_payload,
-        )
-
-        out = _build_paypal_extension_payload(
-            grantee={"paypal": {"webhook_url": "https://example.test/webhook"}},
-            domain="",
-            private_dir=None,
-        )
-        # webhook_url is set, so the payload returns via the orders/webhook
-        # branch — but export_action should still be empty without a domain.
-        self.assertFalse(out.get("export_action") or {})
-
-
 if __name__ == "__main__":
     unittest.main()

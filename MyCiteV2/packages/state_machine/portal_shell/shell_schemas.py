@@ -8,9 +8,8 @@ PORTAL_SHELL_COMPOSITION_SCHEMA = "mycite.v2.portal.shell.composition.v1"
 PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA = "mycite.v2.portal.shell.region.activity_bar.v1"
 PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA = "mycite.v2.portal.shell.region.control_panel.v1"
 PORTAL_SHELL_REGION_WORKBENCH_SCHEMA = "mycite.v2.portal.shell.region.workbench.v1"
-PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA = "mycite.v2.portal.shell.region.interface_panel.v1"
-# (The visualization_panel region was retired 2026-06-02 — tools render in the
-# interface_panel now; its schema constant is gone. See TASK-interface-panel-migration.)
+# (The visualization_panel and interface_panel regions were retired — tools render
+# in the menubar-search → full-screen overlay; their schema constants are gone.)
 PORTAL_SURFACE_CATALOG_ENTRY_SCHEMA = "mycite.v2.portal.surface_catalog.entry.v1"
 PORTAL_TOOL_REGISTRY_ENTRY_SCHEMA = "mycite.v2.portal.tool_registry.entry.v1"
 
@@ -37,10 +36,11 @@ AGRO_ERP_TOOL_SURFACE_ID = "system.tools.agro_erp"
 # Sandbox Token"). These are the only authoritative spellings —
 # downstream code must import these constants rather than re-literal
 # the strings.
-CTS_GIS_SANDBOX_TOKEN = "cts_gis"
+CTS_GIS_SANDBOX_TOKEN = "cts_gis"  # retired 2026-07-01 (migrated → mycelium_network); token kept for dormant imports
 FND_CSM_SANDBOX_TOKEN = "fnd_csm"
 WORKBENCH_UI_SANDBOX_TOKEN = "system"  # Workbench-UI is a system-sandbox reflective view
 AGRO_ERP_SANDBOX_TOKEN = "agro_erp"
+MYCELIUM_NETWORK_SANDBOX_TOKEN = "mycelium_network"  # canonical identity/entity/geo sandbox (TASK-2026-07-01-001)
 
 # Display names rendered in the workbench chrome instead of raw tokens.
 # Add an entry here when registering a new sandbox; the workbench falls
@@ -50,6 +50,7 @@ SANDBOX_DISPLAY_NAMES: dict[str, str] = {
     AGRO_ERP_SANDBOX_TOKEN: "Agro-ERP",
     CTS_GIS_SANDBOX_TOKEN: "CTS-GIS",
     FND_CSM_SANDBOX_TOKEN: "FND-CSM",
+    MYCELIUM_NETWORK_SANDBOX_TOKEN: "Mycelium Network",
 }
 
 def sandbox_display_name(token: str) -> str:

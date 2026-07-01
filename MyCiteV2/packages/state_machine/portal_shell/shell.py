@@ -108,21 +108,14 @@ class PortalScope:
 @dataclass(frozen=True)
 class PortalShellChrome:
     control_panel_collapsed: bool = False
-    # Legacy: no longer drives interface_panel visibility (the region's own `visible`
-    # flag does, post TASK-interface-panel-migration). Retained for state-shape
-    # compatibility + the mediation foreground check in foreground_region_for_surface.
-    interface_panel_open: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.control_panel_collapsed, bool):
             raise ValueError("shell_chrome.control_panel_collapsed must be a bool")
-        if not isinstance(self.interface_panel_open, bool):
-            raise ValueError("shell_chrome.interface_panel_open must be a bool")
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "control_panel_collapsed": self.control_panel_collapsed,
-            "interface_panel_open": self.interface_panel_open,
         }
 
     @classmethod
@@ -133,7 +126,6 @@ class PortalShellChrome:
             raise ValueError("shell_chrome must be a dict or null")
         return cls(
             control_panel_collapsed=payload.get("control_panel_collapsed") is True,
-            interface_panel_open=payload.get("interface_panel_open") is True,
         )
 
 
@@ -817,7 +809,7 @@ def initial_portal_shell_state(
         focus_subject=_subject_from_segment(focus_path[-1]),
         mediation_subject=None,
         verb=VERB_NAVIGATE,
-        chrome=PortalShellChrome(control_panel_collapsed=False, interface_panel_open=False),
+        chrome=PortalShellChrome(control_panel_collapsed=False),
     )
     return canonicalize_portal_shell_state(
         base_state,
@@ -919,29 +911,12 @@ def canonicalize_portal_shell_state(
     if is_tool_surface(active_surface_id):
         mediation_subject = mediation_subject or focus_subject
         verb = VERB_MEDIATE
-        chrome = PortalShellChrome(
-            control_panel_collapsed=chrome.control_panel_collapsed,
-            interface_panel_open=True,
-        )
     elif active_surface_id == SYSTEM_ROOT_SURFACE_ID:
         if verb == VERB_MEDIATE:
             if mediation_subject is None:
                 verb = VERB_NAVIGATE
-                chrome = PortalShellChrome(
-                    control_panel_collapsed=chrome.control_panel_collapsed,
-                    interface_panel_open=False,
-                )
-            else:
-                chrome = PortalShellChrome(
-                    control_panel_collapsed=chrome.control_panel_collapsed,
-                    interface_panel_open=True,
-                )
         else:
             mediation_subject = None
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=False,
-            )
 
     return PortalShellState(
         active_surface_id=active_surface_id,
@@ -1063,16 +1038,8 @@ def reduce_portal_shell_state(
         verb = normalized_transition.verb or VERB_NAVIGATE
         if verb == VERB_MEDIATE:
             mediation_subject = _subject_from_segment(focus_path[-1])
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=True,
-            )
         else:
             mediation_subject = None
-            chrome = PortalShellChrome(
-                control_panel_collapsed=chrome.control_panel_collapsed,
-                interface_panel_open=False,
-            )
     # Phase 12c (drift remediation): TRANSITION_OPEN_INTERFACE_PANEL and
     # TRANSITION_CLOSE_INTERFACE_PANEL dispatch arms removed. The interface
     # panel is hidden unconditionally since Phase 3d, so toggling its
@@ -1527,22 +1494,11 @@ def default_workbench_visible_for_surface(active_surface_id: str) -> bool:
     return True
 
 
-def foreground_region_for_surface(
-    active_surface_id: str,
-    *,
-    shell_state: PortalShellState | dict[str, Any] | None = None,
-    workbench_visible: bool = True,
-) -> str:
-    if is_tool_surface(active_surface_id):
-        if workbench_visible and default_workbench_visible_for_surface(active_surface_id):
-            return "center-workbench"
-        return "interface-panel"
-    if active_surface_id == SYSTEM_ROOT_SURFACE_ID and isinstance(shell_state, (PortalShellState, dict)):
-        state = shell_state if isinstance(shell_state, PortalShellState) else PortalShellState.from_value(shell_state)
-        if state.verb == VERB_MEDIATE and state.chrome.interface_panel_open:
-            return "interface-panel"
-    if not workbench_visible:
-        return "interface-panel"
+def foreground_region_for_surface(active_surface_id: str) -> str:
+    # portal-tool-overlay-restructure: the interface-panel sidebar was removed; the workbench is
+    # the only foreground region (tools render in the menubar-search overlay). Kept as a function
+    # (rather than inlined) so callers/tests retain a single source for the foreground region.
+    _ = active_surface_id
     return "center-workbench"
 
 
@@ -1553,17 +1509,9 @@ def apply_surface_posture_to_composition(composition: dict[str, Any]) -> None:
     regions = composition.get("regions")
     if not isinstance(regions, dict):
         return
-    workbench = regions.get("workbench")
-    interface_panel = regions.get("interface_panel")
-    if not isinstance(workbench, dict) or not isinstance(interface_panel, dict):
+    if not isinstance(regions.get("workbench"), dict):
         return
-    workbench_visible = workbench.get("visible", True) is not False
-    shell_state = composition.get("shell_state") if isinstance(composition.get("shell_state"), dict) else None
-    composition["foreground_shell_region"] = foreground_region_for_surface(
-        active_surface_id,
-        shell_state=shell_state,
-        workbench_visible=workbench_visible,
-    )
+    composition["foreground_shell_region"] = foreground_region_for_surface(active_surface_id)
 
 
 def _region_visible(value: object, *, default: bool) -> bool:
@@ -1581,14 +1529,11 @@ def build_shell_composition_payload(
     activity_items: list[dict[str, Any]],
     control_panel: dict[str, Any],
     workbench: dict[str, Any],
-    interface_panel: dict[str, Any] | None = None,
     shell_state: PortalShellState | dict[str, Any] | None = None,
     control_panel_collapsed: bool = False,
 ) -> dict[str, Any]:
-    # `interface_panel` is optional. It is REVIVED (TASK-interface-panel-migration,
-    # 2026-06-02) as the tool surface: when a caller passes a payload marked
-    # visible=True (the workbench-ui bundle does) it renders the tool search + the
-    # selected tools' visualizations; otherwise it stays hidden. Pass None to omit it.
+    # portal-tool-overlay-restructure: the interface_panel region was removed — tools render in
+    # the menubar-search → full-screen overlay, not a sidebar region.
     state = shell_state if isinstance(shell_state, PortalShellState) else (
         PortalShellState.from_value(shell_state) if isinstance(shell_state, dict) else None
     )
@@ -1596,46 +1541,24 @@ def build_shell_composition_payload(
     surface_posture_for_surface(active_surface_id)
     workbench_region = dict(workbench or {})
     workbench_region.setdefault("schema", PORTAL_SHELL_REGION_WORKBENCH_SCHEMA)
-    interface_panel_region = dict(interface_panel or {})
-    interface_panel_region.setdefault("schema", PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA)
     workbench_visible = _region_visible(
         workbench_region.get("visible"),
         default=default_workbench_visible_for_surface(active_surface_id),
     )
     force_workbench_visible = workbench_region.get("forced_visible") is True
-    # 2026-06-02 (TASK-interface-panel-migration): the interface_panel is REVIVED as
-    # the unified tool surface — it carries the tool search bar + the selected tool's
-    # visualization panels (the retired Phase-3 placeholder + the separate
-    # `visualization_panel` region are both gone). It is visible only when the surface's
-    # bundle explicitly marks it visible (the workbench-ui builder does so), so non-tool
-    # surfaces stay unaffected. The workbench owns doc/datum lists; the control panel owns
-    # lenses + sandbox selection.
     if tool_surface:
         workbench_visible = bool(force_workbench_visible or default_workbench_visible_for_surface(active_surface_id))
-    interface_panel_visible = interface_panel_region.get("visible") is True
     workbench_region["visible"] = workbench_visible
-    interface_panel_region["visible"] = interface_panel_visible
-    interface_panel_region["primary_surface"] = False
-    interface_panel_region["layout_mode"] = (
-        _as_text(interface_panel_region.get("layout_mode")) or "sidebar"
-    )
-    interface_panel_collapsed = not interface_panel_visible
     workbench_collapsed = not bool(workbench_visible)
     workbench_region["collapsed"] = workbench_collapsed
-    interface_panel_region["collapsed"] = interface_panel_collapsed
     composition = {
         "schema": PORTAL_SHELL_COMPOSITION_SCHEMA,
         "composition_mode": shell_composition_mode_for_surface(active_surface_id),
         "active_service": map_surface_to_active_service(active_surface_id),
         "active_surface_id": _as_text(active_surface_id),
         "active_tool_surface_id": _as_text(active_surface_id) if is_tool_surface(active_surface_id) else None,
-        "foreground_shell_region": foreground_region_for_surface(
-            active_surface_id,
-            shell_state=state,
-            workbench_visible=workbench_visible,
-        ),
+        "foreground_shell_region": foreground_region_for_surface(active_surface_id),
         "control_panel_collapsed": bool(control_panel_collapsed),
-        "interface_panel_collapsed": interface_panel_collapsed,
         "workbench_collapsed": workbench_collapsed,
         "portal_instance_id": _as_text(portal_instance_id) or PORTAL_SCOPE_DEFAULT_ID,
         "page_title": _as_text(page_title) or "MyCite",
@@ -1649,10 +1572,6 @@ def build_shell_composition_payload(
             },
             "control_panel": dict(control_panel or {}),
             "workbench": workbench_region,
-            # The interface_panel is the tool surface (search + tool render). The
-            # separate visualization_panel region was retired 2026-06-02 — tools now
-            # render inside the interface_panel. See TASK-interface-panel-migration.
-            "interface_panel": interface_panel_region,
         },
     }
     apply_surface_posture_to_composition(composition)
@@ -1686,7 +1605,6 @@ __all__ = [
     "PORTAL_SHELL_ENTRYPOINT_ID",
     "PORTAL_SHELL_REGION_ACTIVITY_BAR_SCHEMA",
     "PORTAL_SHELL_REGION_CONTROL_PANEL_SCHEMA",
-    "PORTAL_SHELL_REGION_INTERFACE_PANEL_SCHEMA",
     "PORTAL_SHELL_REGION_WORKBENCH_SCHEMA",
     "PORTAL_SHELL_REQUEST_SCHEMA",
     "PORTAL_SHELL_STATE_SCHEMA",

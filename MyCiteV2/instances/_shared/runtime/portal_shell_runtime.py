@@ -37,11 +37,8 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     SYSTEM_ROOT_SURFACE_ID,
     SYSTEM_SURFACE_IDS,
     TRANSITION_FOCUS_FILE,
-    UTILITIES_EXTENSIONS_SURFACE_ID,
-    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
-    UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
     UTILITIES_TOOLS_SURFACE_ID,
     WORKBENCH_UI_TOOL_SURFACE_ID,
     PortalScope,
@@ -350,16 +347,10 @@ def _plain_control_panel(
 
 
 def _utilities_surface_label(surface_id: str) -> str:
-    if surface_id == UTILITIES_EXTENSIONS_SURFACE_ID:
-        return "Extensions"
-    if surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
-        return "Grantee Profile"
     if surface_id == UTILITIES_TOOLS_SURFACE_ID:
         return "Tools"
     if surface_id == UTILITIES_PERIPHERALS_SURFACE_ID:
         return "Peripherals"
-    if surface_id == UTILITIES_TOOL_EXPOSURE_SURFACE_ID:
-        return "Tool Exposure (legacy)"
     return "Overview"
 
 
@@ -367,21 +358,11 @@ def _utilities_control_panel(
     *,
     active_surface_id: str,
 ) -> dict[str, Any]:
-    # Phase 14b: control-panel navigation lists the 4 new dedicated
-    # surfaces. The legacy "Tool Exposure" + "Integrations" routes still
-    # work but 302-redirect; their entries are removed from the
-    # operator-facing nav.
+    # portal-tool-overlay-restructure: the operator Grantee-Profile +
+    # Extensions surfaces were dissolved; the control panel now lists only
+    # Tools + Peripherals. The legacy extension / tool-exposure /
+    # grantee-profile routes 302-redirect.
     entries = [
-        {
-            "label": "Extensions",
-            "href": "/portal/utilities/extensions",
-            "active": active_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID,
-        },
-        {
-            "label": "Grantee Profile",
-            "href": "/portal/utilities/grantee-profile",
-            "active": active_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
-        },
         {
             "label": "Tools",
             "href": "/portal/utilities/tools",
@@ -588,485 +569,27 @@ def _network_workbench(surface_payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _surface_payload_for_utilities_root(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    # Phase 14b: navigation links into the four dedicated Utilities surfaces.
-    # The old "Tool Exposure" + "Integrations" entries are removed from the
-    # cards (their routes 302-redirect to the new equivalents).
+    # portal-tool-overlay-restructure: the operator Grantee-Profile + Extensions
+    # surfaces were dissolved; the Utilities root now links only Tools +
+    # Peripherals.
     return {
         "schema": surface_schema_for_surface(UTILITIES_ROOT_SURFACE_ID),
         "kind": "utilities_overview",
         "title": "Utilities",
-        "subtitle": "Extensions, grantee profile, tools, peripherals.",
+        "subtitle": "Tools, peripherals.",
         "cards": [
-            _metric_card("extensions", 4),
-            _metric_card("grantees configured", "managed via Grantee Profile"),
             _metric_card("tools", "1 (CTS-GIS)"),
         ],
         "sections": [
             {
                 "title": "Utilities children",
                 "rows": [
-                    {"label": "Extensions", "status": "available", "detail": "/portal/utilities/extensions"},
-                    {"label": "Grantee Profile", "status": "available", "detail": "/portal/utilities/grantee-profile"},
                     {"label": "Tools", "status": "available", "detail": "/portal/utilities/tools"},
                     {"label": "Peripherals", "status": "available", "detail": "/portal/utilities/peripherals"},
                 ],
             }
         ],
     }
-
-
-def _resolve_utilities_mode(query: dict[str, str], *, default_to_global: bool) -> str:
-    """Resolve GLOBAL ("Overall") vs per-grantee mode from the surface query.
-
-    Precedence: an explicit ``utilities_mode`` wins; else any non-empty
-    ``selected_grantee_msn`` implies grantee mode; else the surface default
-    (the Extensions surface defaults to global, the Grantee-Profile surface to
-    grantee so its single-grantee editor behavior is preserved exactly).
-    """
-    mode_q = _as_text(query.get("utilities_mode"))
-    if mode_q in {"global", "grantee"}:
-        return mode_q
-    if _as_text(query.get("selected_grantee_msn")):
-        return "grantee"
-    return "global" if default_to_global else "grantee"
-
-
-def _build_utilities_surface_context(
-    *,
-    surface_query: dict[str, str] | None,
-    private_dir: str | Path | None,
-    webapps_root: str | Path | None,
-    authority_db_file: str | Path | None,
-    portal_instance_id: str,
-    default_to_global: bool = False,
-) -> dict[str, Any]:
-    """Resolve grantee/domain selection + grantee_selector list for the
-    utilities tool-exposure surface.
-
-    Returns a dict with:
-      - "ctx": the extension render context (grantee, domain, private_dir, ...)
-        plus ``mode`` ("global" | "grantee"); in global mode ``grantee`` is an
-        empty dict, ``domain`` is "", and the full roster rides in ``grantees``.
-      - "grantee_selector": Phase 12h surface-level selector payload listing
-        every available grantee with an `active` flag, prefixed by a synthetic
-        "All — Overall" entry that engages global mode.
-      - "mode": the resolved mode (so the surface payload builder can thread it
-        into the subtab strip).
-
-    ``default_to_global`` lets the Extensions surface default to the overall
-    view while the Grantee-Profile surface keeps its single-grantee default
-    (its ctx stays byte-identical to before, plus the additive ``mode`` key).
-    """
-    from MyCiteV2.instances._shared.runtime.operational_store import (
-        load_grantee_profiles,
-        resolve_selected_domain,
-        resolve_selected_grantee,
-    )
-
-    query = dict(surface_query or {})
-    mode = _resolve_utilities_mode(query, default_to_global=default_to_global)
-    # The active extension's INNER subtab is the mode switch on the Extensions
-    # surface: "per_grantee" → grantee mode (when a grantee is selected); any
-    # other subtab (Overall/Manifest/Browse) → global. This makes "Overall" the
-    # default per-extension view and routes per-grantee uniformly through the
-    # subtab. Surfaces that never set extension_subtab (Grantee-Profile, legacy)
-    # are unaffected.
-    _subtab = _as_text(query.get("extension_subtab"))
-    if _subtab:
-        mode = (
-            "grantee"
-            if (_subtab == "per_grantee" and _as_text(query.get("selected_grantee_msn")))
-            else "global"
-        )
-    tool_state = {
-        "selected_grantee_msn": query.get("selected_grantee_msn", ""),
-        "selected_domain": query.get("selected_domain", ""),
-    }
-    grantees = load_grantee_profiles(private_dir)
-
-    if mode == "global":
-        # Overall / no-grantee view: every extension aggregates across the
-        # whole roster instead of one grantee. grantee/domain are empty so a
-        # per-grantee renderer takes its global branch; the roster rides in
-        # ctx["grantees"] for aggregation.
-        selected_grantee: dict[str, Any] = {}
-        selected_msn = ""
-        domain = ""
-    else:
-        selected_grantee = resolve_selected_grantee(grantees, tool_state)
-        selected_msn = _as_text(selected_grantee.get("msn_id"))
-        domain = resolve_selected_domain(selected_grantee, tool_state)
-
-    ctx: dict[str, Any] = {
-        "grantee": selected_grantee,
-        "domain": domain,
-        "private_dir": private_dir,
-        "webapps_root": webapps_root,
-        "authority_db_file": authority_db_file,
-        "portal_instance_id": portal_instance_id,
-        "mode": mode,
-    }
-    if mode == "global":
-        ctx["grantees"] = grantees
-
-    # Per-extension inner-subtab + Browse drill-down state. Additive and verbatim
-    # from surface_query: an extension renderer branches on its active subtab and
-    # drill level without re-parsing the request; extensions that ignore these
-    # keys render exactly as before. (Reusable convention — see _EXTENSION_SUBTABS.)
-    ctx["surface_query"] = dict(query)
-    ctx["extension_subtab"] = _as_text(query.get("extension_subtab"))
-    ctx["browse_type"] = _as_text(query.get("browse_type"))
-    ctx["browse_view"] = _as_text(query.get("browse_view"))
-    ctx["browse_instance"] = _as_text(query.get("browse_instance"))
-
-    # Phase 12h: surface-level grantee selector. Each entry carries the
-    # transition payload the client posts to switch grantees. The shell-
-    # request layer normalizes `selected_grantee_msn` into surface_query.
-    # Each real entry also pins utilities_mode="grantee"; the synthetic first
-    # entry engages global mode.
-    overall_entry = {
-        "msn_id": "",
-        "label": "All — Overall",
-        "short_name": "",
-        "domains": [],
-        "is_overall": True,
-        "active": mode == "global",
-        "select_action": {
-            "route": "/portal/api/v2/shell",
-            "schema": "mycite.v2.portal.shell.request.v1",
-            "payload": {
-                "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-                "surface_query": {
-                    "selected_grantee_msn": "",
-                    "utilities_mode": "global",
-                },
-            },
-        },
-    }
-    real_entries = [
-        {
-            "msn_id": _as_text(g.get("msn_id")),
-            "label": _as_text(g.get("label")) or _as_text(g.get("msn_id")),
-            "short_name": _as_text(g.get("short_name")),
-            "domains": list(g.get("domains") or []),
-            "active": mode == "grantee" and _as_text(g.get("msn_id")) == selected_msn,
-            "select_action": {
-                "route": "/portal/api/v2/shell",
-                "schema": "mycite.v2.portal.shell.request.v1",
-                "payload": {
-                    "requested_surface_id": UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-                    "surface_query": {
-                        "selected_grantee_msn": _as_text(g.get("msn_id")),
-                        "utilities_mode": "grantee",
-                    },
-                },
-            },
-        }
-        for g in grantees
-    ]
-    # The synthetic "All — Overall" entry leads the list when there is at least
-    # one grantee; with no grantees configured the list stays empty (Overall is
-    # meaningless) so the empty-state help text shows.
-    grantee_selector = {
-        "label": "Grantee",
-        "selected_grantee_msn": selected_msn,
-        "mode": mode,
-        "grantees": [overall_entry, *real_entries] if real_entries else [],
-        "empty_message": "No grantees configured. Add a grantee JSON file under "
-        "{private_dir}/utilities/tools/fnd-csm/grantee.*.json.",
-    }
-    return {"ctx": ctx, "grantee_selector": grantee_selector, "mode": mode}
-
-
-def _build_utilities_extensions(
-    *,
-    tool_exposure_policy: dict[str, Any] | None,
-    ctx: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Phase 2 (portal_tool_surface_contract.md): render each enabled Utilities
-    extension by calling its renderer. Returns a list of
-    `{tool_id, label, summary, payload}` entries.
-
-    Phase 12h split the grantee context resolution into
-    `_build_utilities_surface_context` so the surface-level grantee selector
-    can share the resolved selection without duplicating the load.
-
-    Phase 14c: extensions read disjoint state (analytics → events dir,
-    paypal → orders.ndjson, email → AWS profile store, newsletter → MOS
-    contact log) so they can render in parallel. A ThreadPoolExecutor
-    cuts wall-clock latency on cold-cache request paths; a soft per-
-    extension timeout returns a ``degraded`` flag instead of blocking
-    the whole bundle.
-    """
-    from concurrent.futures import ThreadPoolExecutor
-    from concurrent.futures import TimeoutError as FuturesTimeoutError
-
-    from MyCiteV2.instances._shared.runtime.utilities_extensions import (
-        EXTENSION_RENDERERS,
-        render_extension,
-    )
-
-    extension_entries = [
-        entry for entry in build_portal_tool_registry_entries() if entry.is_extension
-    ]
-    eligible_entries = [
-        entry
-        for entry in extension_entries
-        if entry.tool_id in EXTENSION_RENDERERS
-        and _extension_enabled(tool_exposure_policy, entry.tool_id)
-    ]
-    if not eligible_entries:
-        return []
-
-    out: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=max(1, len(eligible_entries))) as pool:
-        futures = {
-            pool.submit(render_extension, entry.tool_id, ctx): entry
-            for entry in eligible_entries
-        }
-        for entry in eligible_entries:
-            future = next(f for f, e in futures.items() if e is entry)
-            try:
-                payload = future.result(timeout=5.0)
-                out.append(
-                    {
-                        "tool_id": entry.tool_id,
-                        "label": entry.label,
-                        "summary": entry.summary,
-                        "payload": payload,
-                    }
-                )
-            except FuturesTimeoutError:
-                out.append(
-                    {
-                        "tool_id": entry.tool_id,
-                        "label": entry.label,
-                        "summary": entry.summary,
-                        "payload": {
-                            "degraded": True,
-                            "notice": (
-                                f"{entry.label} did not respond within 5s; "
-                                "rendering a placeholder. Check the extension's "
-                                "data source."
-                            ),
-                        },
-                    }
-                )
-            except Exception as exc:  # pragma: no cover - resilience
-                out.append(
-                    {
-                        "tool_id": entry.tool_id,
-                        "label": entry.label,
-                        "summary": entry.summary,
-                        "payload": {
-                            "degraded": True,
-                            "notice": f"{entry.label} failed to render: {exc}",
-                        },
-                    }
-                )
-    return out
-
-
-def _extension_enabled(
-    tool_exposure_policy: dict[str, Any] | None, tool_id: str
-) -> bool:
-    """Honor an explicit per-tool enable flag in tool_exposure_policy; default to
-    enabled when no policy entry exists (legacy FND-CSM tabs were always shown)."""
-    if not isinstance(tool_exposure_policy, dict):
-        return True
-    entry = tool_exposure_policy.get(tool_id)
-    if isinstance(entry, dict) and "enabled" in entry:
-        return bool(entry["enabled"])
-    return True
-
-
-def _surface_payload_for_tool_exposure(
-    tool_rows: list[dict[str, Any]],
-    extensions: list[dict[str, Any]] | None = None,
-    grantee_selector: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "schema": surface_schema_for_surface(UTILITIES_TOOL_EXPOSURE_SURFACE_ID),
-        "kind": "tool_exposure",
-        "title": "Tool Exposure",
-        "subtitle": "Visibility, configuration, and enablement are managed under UTILITIES.",
-        "sections": [
-            {
-                "title": "Tool posture",
-                "columns": [
-                    {"key": "tool", "label": "Tool"},
-                    {"key": "configured", "label": "Configured"},
-                    {"key": "enabled", "label": "Enabled"},
-                    {"key": "operational", "label": "Operational"},
-                ],
-                "items": _rows_for_tool_table(tool_rows),
-            }
-        ],
-    }
-    # Phase 2 (portal_tool_surface_contract.md): per-extension structured payloads
-    # produced by render_extension. Phase 3 will consume these client-side
-    # via the palette UI.
-    if extensions:
-        payload["extensions"] = extensions
-    # Phase 12h: surface-level grantee selector. Lets operators switch the
-    # grantee context that drives every extension below without leaving the
-    # Utilities tab.
-    if grantee_selector is not None:
-        payload["grantee_selector"] = grantee_selector
-    return payload
-
-
-# Phase 14b: four dedicated surface payloads that replace the single
-# tool-exposure surface mixing tools + extensions + grantee profile.
-# Each one is scoped to one operator concern.
-
-
-def _surface_payload_for_extensions(
-    extensions: list[dict[str, Any]] | None = None,
-    grantee_selector: dict[str, Any] | None = None,
-    *,
-    selected_extension_tool_id: str = "",
-    extension_subtab: str = "",
-    mode: str = "grantee",
-) -> dict[str, Any]:
-    """Operational utilities-tab extensions only (Email, Analytics,
-    Newsletter, PayPal). Grantee Profile is hosted by its own surface.
-
-    Phase 15a: the surface now carries an ``extension_subtab_selector``
-    sitting below the grantee_selector. Only the active tab's
-    extension card lands in ``payload["extensions"]`` — the others are
-    available behind clicks that POST back to /portal/api/v2/shell.
-
-    ``mode`` ("global" | "grantee") is the resolved overall-vs-per-grantee
-    view; it is threaded into the subtab strip so switching extension tabs
-    stays in the current mode, and exposed in the payload for the client.
-    """
-    payload: dict[str, Any] = {
-        "schema": surface_schema_for_surface(UTILITIES_EXTENSIONS_SURFACE_ID),
-        "kind": "extensions",
-        "mode": mode,
-        "title": "Extensions",
-        "subtitle": (
-            "Each extension opens on its Overall view across all grantees; use "
-            "its Per-grantee subtab to manage one grantee. Switch extensions with "
-            "the tab strip below."
-        ),
-    }
-    operational = [
-        ext for ext in (extensions or []) if ext.get("tool_id") != "ext_grantee_profile"
-    ]
-    active_tool_id = _resolve_selected_extension_tool_id(
-        operational, _as_text(selected_extension_tool_id)
-    )
-    selected_grantee_msn = (
-        _as_text((grantee_selector or {}).get("selected_grantee_msn"))
-        if grantee_selector
-        else ""
-    )
-    # The surface-level grantee selector is RETIRED for the Extensions surface:
-    # per-grantee is reached via each extension's "Per-grantee" inner subtab, which
-    # hosts the grantee picker. "Overall" is the default view. (The Grantee-Profile
-    # surface keeps its own selector — it is a different surface payload builder.)
-    if operational:
-        payload["extension_subtab_selector"] = _build_extension_subtab_selector(
-            operational,
-            active_tool_id,
-            selected_grantee_msn=selected_grantee_msn,
-            utilities_mode=mode,
-            extension_subtab=_as_text(extension_subtab),
-        )
-        active_entries = [
-            ext for ext in operational if _as_text(ext.get("tool_id")) == active_tool_id
-        ]
-        if active_entries and active_tool_id in _EXTENSION_SUBTABS:
-            active_subtab = _resolve_inner_subtab(active_tool_id, _as_text(extension_subtab))
-            entry = active_entries[0]
-            # Per-grantee subtab with NO grantee chosen yet: show only the picker +
-            # a prompt, not the Overall payload render_extension produced under
-            # global mode. Resources returns its own prompt — don't clobber it.
-            if active_subtab == "per_grantee" and not selected_grantee_msn:
-                cur = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
-                # Keep a degraded/timeout payload (its ``notice`` is the only signal
-                # that the extension's data source is down) — never mask it with the
-                # generic prompt. Resources returns its own prompt — don't clobber.
-                if not cur.get("per_grantee_prompt") and not cur.get("degraded"):
-                    entry["payload"] = {
-                        "per_grantee_prompt": (
-                            f"Select a grantee to manage "
-                            f"{_as_text(entry.get('label')) or 'this extension'} for one grantee."
-                        )
-                    }
-            entry_payload = entry.get("payload")
-            if isinstance(entry_payload, dict):
-                entry_payload["inner_subtab_selector"] = _build_inner_subtab_selector(
-                    active_tool_id,
-                    active_subtab,
-                    selected_grantee_msn=selected_grantee_msn,
-                    utilities_mode=mode,
-                )
-                # Host the grantee picker in-card on the Per-grantee subtab. Drop
-                # the synthetic "All — Overall" entry — the Overall subtab is the
-                # way back to the global view.
-                if active_subtab == "per_grantee" and grantee_selector is not None:
-                    picker = _grantee_selector_for_target(
-                        grantee_selector,
-                        UTILITIES_EXTENSIONS_SURFACE_ID,
-                        preserved_query={
-                            "selected_extension_tool_id": active_tool_id,
-                            "extension_subtab": "per_grantee",
-                        },
-                    )
-                    picker["grantees"] = [
-                        g for g in (picker.get("grantees") or []) if not g.get("is_overall")
-                    ]
-                    entry_payload["grantee_picker"] = picker
-        payload["extensions"] = active_entries
-    else:
-        # No operational extensions enabled → emit an empty-state section so the
-        # workbench content-probe still recognizes the surface (the retired
-        # grantee_selector used to be that signal) and renders this message
-        # instead of blanking to "This tool does not provide a workbench view."
-        payload["sections"] = [
-            {
-                "title": "Extensions",
-                "rows": [
-                    {
-                        "label": "status",
-                        "detail": "No operational extensions are enabled for this portal.",
-                    }
-                ],
-            }
-        ]
-    return payload
-
-
-def _surface_payload_for_grantee_profile(
-    extensions: list[dict[str, Any]] | None = None,
-    grantee_selector: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """Grantee Profile editor surface. Hosts only the grantee selector +
-    the ext_grantee_profile form_frame — none of the operational
-    extensions live here.
-    """
-    payload: dict[str, Any] = {
-        "schema": surface_schema_for_surface(UTILITIES_GRANTEE_PROFILE_SURFACE_ID),
-        "kind": "grantee_profile",
-        "title": "Grantee Profile",
-        "subtitle": (
-            "The single source of truth for every extension's credentials, "
-            "domains, and operator mailbox list."
-        ),
-    }
-    if grantee_selector is not None:
-        payload["grantee_selector"] = _grantee_selector_for_target(
-            grantee_selector, UTILITIES_GRANTEE_PROFILE_SURFACE_ID
-        )
-    profile_only = [
-        ext for ext in (extensions or []) if ext.get("tool_id") == "ext_grantee_profile"
-    ]
-    if profile_only:
-        payload["extensions"] = profile_only
-    return payload
 
 
 def _surface_payload_for_tools(tool_rows: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1177,222 +700,6 @@ def _surface_payload_for_peripherals() -> dict[str, Any]:
         "cards": cards,
         "notes": notes,
     }
-
-
-def _grantee_selector_for_target(
-    grantee_selector: dict[str, Any],
-    target_surface_id: str,
-    *,
-    preserved_query: dict[str, str] | None = None,
-) -> dict[str, Any]:
-    """Rewrite a grantee selector built by `_build_utilities_surface_context`
-    so each option's ``select_action`` posts back to the given surface.
-    The base context builder hard-codes the tool-exposure surface (Phase
-    12h was authored when that was the only utilities surface); Phase 14b
-    needs the selector to navigate within its own surface.
-
-    Phase 15a: ``preserved_query`` carries extra ``surface_query`` keys
-    (e.g. the active ``selected_extension_tool_id``) that must survive a
-    grantee switch — without it, clicking a grantee would reset the
-    active extension tab to the default.
-    """
-    extras = dict(preserved_query or {})
-    rewritten: dict[str, Any] = dict(grantee_selector)
-    rewritten["grantees"] = [
-        {
-            **g,
-            "select_action": {
-                **g.get("select_action", {}),
-                "payload": {
-                    **(g.get("select_action", {}).get("payload") or {}),
-                    "requested_surface_id": target_surface_id,
-                    "surface_query": {
-                        **(g.get("select_action", {}).get("payload") or {}).get(
-                            "surface_query", {}
-                        ),
-                        **extras,
-                    },
-                },
-            },
-        }
-        for g in (grantee_selector.get("grantees") or [])
-    ]
-    return rewritten
-
-
-# Phase 15a — per-extension subtabs on the Extensions surface.
-# Order is the operator-facing tab order, left to right.
-# Phase 17b: ext_connect joins as the 5th tab (visitor messages
-# forwarded via SES, lead-collection sibling to the newsletter).
-_OPERATIONAL_EXTENSION_ORDER: tuple[str, ...] = (
-    "ext_aws_email",
-    "ext_analytics",
-    "ext_newsletter",
-    "ext_paypal",
-    "ext_connect",
-    # Wave 2: the resources asset-library extension (profiles contact-app,
-    # galleries, icon dedup). Not grantee-scoped, but lives on the same
-    # Extensions surface tab strip as the operational extensions.
-    "ext_resources",
-)
-_OPERATIONAL_EXTENSION_DEFAULT = "ext_aws_email"
-
-
-def _resolve_selected_extension_tool_id(
-    extensions: list[dict[str, Any]] | None,
-    requested_tool_id: str,
-) -> str:
-    """Pick the active extension tab. Honors the request when it names a
-    known operational extension; otherwise falls back to the leftmost
-    extension present in ``extensions`` (or ext_aws_email).
-    """
-    available = {
-        _as_text(ext.get("tool_id"))
-        for ext in (extensions or [])
-        if _as_text(ext.get("tool_id")) in _OPERATIONAL_EXTENSION_ORDER
-    }
-    if requested_tool_id in available:
-        return requested_tool_id
-    for tool_id in _OPERATIONAL_EXTENSION_ORDER:
-        if tool_id in available:
-            return tool_id
-    return _OPERATIONAL_EXTENSION_DEFAULT
-
-
-def _build_extension_subtab_selector(
-    extensions: list[dict[str, Any]] | None,
-    selected_tool_id: str,
-    *,
-    selected_grantee_msn: str,
-    utilities_mode: str = "grantee",
-    extension_subtab: str = "",
-) -> dict[str, Any]:
-    """Build the per-extension tab strip (Email/Analytics/.../Resources). Each
-    tab's ``select_action`` posts to /portal/api/v2/shell preserving the current
-    grantee, the overall-vs-per-grantee ``utilities_mode``, AND the active inner
-    ``extension_subtab`` — so switching the extension keeps the inner subtab
-    (Overall/Per-grantee) highlight in sync with the rendered content.
-    """
-    by_tool_id = {
-        _as_text(ext.get("tool_id")): ext for ext in (extensions or []) if isinstance(ext, dict)
-    }
-    tabs: list[dict[str, Any]] = []
-    for tool_id in _OPERATIONAL_EXTENSION_ORDER:
-        ext = by_tool_id.get(tool_id)
-        if ext is None:
-            continue
-        tabs.append(
-            {
-                "tool_id": tool_id,
-                "label": _as_text(ext.get("label")) or tool_id,
-                "summary": _as_text(ext.get("summary")),
-                "active": tool_id == selected_tool_id,
-                "select_action": {
-                    "route": "/portal/api/v2/shell",
-                    "schema": "mycite.v2.portal.shell.request.v1",
-                    "payload": {
-                        "requested_surface_id": UTILITIES_EXTENSIONS_SURFACE_ID,
-                        "surface_query": {
-                            "selected_grantee_msn": selected_grantee_msn,
-                            "selected_extension_tool_id": tool_id,
-                            "utilities_mode": utilities_mode,
-                            # Preserve the active inner subtab so switching the
-                            # extension keeps the Overall/Per-grantee highlight in
-                            # sync with the rendered content (the target extension
-                            # resolves it to its own default if it has no match).
-                            "extension_subtab": extension_subtab,
-                        },
-                    },
-                },
-            }
-        )
-    return {
-        "label": "Extension",
-        "selected_tool_id": selected_tool_id,
-        "tabs": tabs,
-        "empty_message": "No operational extensions are enabled for this grantee.",
-    }
-
-
-# Per-extension INNER subtabs (Phase: resource type browser). The active subtab
-# rides surface_query["extension_subtab"]; an extension absent from this map
-# renders with no inner strip (unchanged). The reusable convention: an extension
-# declares ordered subtabs here, the shell builds the strip, and the extension
-# renderer produces only the active subtab's CONTENT (branching on
-# ctx["extension_subtab"], defaulting to the first id).
-# Every operational extension gets the same convention: an "Overall" (global)
-# view that is the DEFAULT, plus a "Per-grantee" subtab that hosts the grantee
-# picker + that extension's per-grantee view. Resources keeps richer overall
-# subtabs (Manifest/Browse). The first id is the default subtab.
-_DEFAULT_EXTENSION_SUBTABS: tuple[dict[str, str], ...] = (
-    {"id": "overall", "label": "Overall"},
-    {"id": "per_grantee", "label": "Per-grantee"},
-)
-_EXTENSION_SUBTABS: dict[str, tuple[dict[str, str], ...]] = {
-    "ext_aws_email": _DEFAULT_EXTENSION_SUBTABS,
-    "ext_analytics": _DEFAULT_EXTENSION_SUBTABS,
-    "ext_newsletter": _DEFAULT_EXTENSION_SUBTABS,
-    "ext_paypal": _DEFAULT_EXTENSION_SUBTABS,
-    "ext_connect": _DEFAULT_EXTENSION_SUBTABS,
-    # Browse is the UNIFIED type tab: the cluster-tree hierarchy IS the manifest
-    # (per-node icon editing) AND the instance browser — there is no separate
-    # Manifest tab. Per-grantee stays its own (allocation) concern.
-    "ext_resources": (
-        {"id": "browse", "label": "Browse"},
-        {"id": "create", "label": "Create"},
-        {"id": "per_grantee", "label": "Per-grantee"},
-    ),
-}
-
-
-def _resolve_inner_subtab(tool_id: str, requested: str) -> str:
-    """The active inner subtab id: the request when it names a declared subtab,
-    else the first declared subtab, else "" (no subtabs)."""
-    subtabs = _EXTENSION_SUBTABS.get(tool_id) or ()
-    if any(sub["id"] == requested for sub in subtabs):
-        return requested
-    return subtabs[0]["id"] if subtabs else ""
-
-
-def _build_inner_subtab_selector(
-    tool_id: str,
-    active_subtab: str,
-    *,
-    selected_grantee_msn: str,
-    utilities_mode: str,
-) -> dict[str, Any]:
-    """Inner subtab strip for one extension card. Mirrors
-    ``_build_extension_subtab_selector`` but emits ``extension_subtab`` per tab
-    and keeps the active extension + grantee + mode pinned. Switching subtabs
-    drops the Browse drill-down (browse_type/view/instance omitted → reset)."""
-    tabs: list[dict[str, Any]] = []
-    for sub in _EXTENSION_SUBTABS.get(tool_id) or ():
-        sub_id = sub["id"]
-        tabs.append(
-            {
-                "id": sub_id,
-                "label": sub.get("label") or sub_id,
-                "active": sub_id == active_subtab,
-                "select_action": {
-                    "route": "/portal/api/v2/shell",
-                    "schema": "mycite.v2.portal.shell.request.v1",
-                    "payload": {
-                        "requested_surface_id": UTILITIES_EXTENSIONS_SURFACE_ID,
-                        "surface_query": {
-                            "selected_grantee_msn": selected_grantee_msn,
-                            "selected_extension_tool_id": tool_id,
-                            # The subtab IS the mode switch: Per-grantee engages
-                            # grantee mode; every other subtab (Overall/Manifest/
-                            # Browse) engages global mode — so "Overall" is the
-                            # default and per-grantee is reached via the subtab.
-                            "utilities_mode": "grantee" if sub_id == "per_grantee" else "global",
-                            "extension_subtab": sub_id,
-                        },
-                    },
-                },
-            }
-        )
-    return {"label": "View", "selected_subtab": active_subtab, "tabs": tabs}
 
 
 def _generic_workbench(surface_payload: dict[str, Any], *, visible: bool = True) -> dict[str, Any]:
@@ -1641,7 +948,7 @@ def _bundle_for_surface(
         bundle["entrypoint_id"] = PORTAL_SHELL_ENTRYPOINT_ID
         bundle["route"] = SYSTEM_ROOT_ROUTE
         bundle["tool_rows"] = tool_rows
-        for _region_key in ("control_panel", "workbench", "interface_panel"):
+        for _region_key in ("control_panel", "workbench"):
             _region = bundle.get(_region_key)
             if not isinstance(_region, dict):
                 continue
@@ -1724,62 +1031,15 @@ def _bundle_for_surface(
             ),
             "tool_rows": tool_rows,
         }
-    if selection_surface_id in {
-        UTILITIES_TOOL_EXPOSURE_SURFACE_ID,
-        UTILITIES_EXTENSIONS_SURFACE_ID,
-        UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
-    }:
-        # Phase 12h: resolve grantee/domain once, share between the
-        # surface-level selector and the per-extension ctx.
-        ctx_bundle = _build_utilities_surface_context(
-            surface_query=surface_query,
-            private_dir=private_dir,
-            webapps_root=webapps_root,
-            authority_db_file=authority_db_file,
-            portal_instance_id=portal_scope.scope_id,
-            # The Extensions surface defaults to the overall (all-grantees)
-            # view; the Grantee-Profile + legacy tool-exposure surfaces keep
-            # their single-grantee default so their behavior is unchanged.
-            default_to_global=selection_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID,
-        )
-        extensions = _build_utilities_extensions(
-            tool_exposure_policy=tool_exposure_policy,
-            ctx=ctx_bundle["ctx"],
-        )
-        if selection_surface_id == UTILITIES_EXTENSIONS_SURFACE_ID:
-            surface_payload = _surface_payload_for_extensions(
-                extensions=extensions,
-                grantee_selector=ctx_bundle["grantee_selector"],
-                selected_extension_tool_id=_as_text(
-                    (surface_query or {}).get("selected_extension_tool_id")
-                ),
-                extension_subtab=_as_text((surface_query or {}).get("extension_subtab")),
-                mode=_as_text(ctx_bundle.get("mode")) or "grantee",
-            )
-        elif selection_surface_id == UTILITIES_GRANTEE_PROFILE_SURFACE_ID:
-            surface_payload = _surface_payload_for_grantee_profile(
-                extensions=extensions,
-                grantee_selector=ctx_bundle["grantee_selector"],
-            )
-        else:
-            # Legacy tool-exposure surface kept for one transition cycle so
-            # external bookmarks resolve. Phase 14b's app.py 302-redirects
-            # this route to /portal/utilities/extensions.
-            surface_payload = _surface_payload_for_tool_exposure(
-                tool_rows,
-                extensions=extensions,
-                grantee_selector=ctx_bundle["grantee_selector"],
-            )
-    elif selection_surface_id == UTILITIES_TOOLS_SURFACE_ID:
+    if selection_surface_id == UTILITIES_TOOLS_SURFACE_ID:
         surface_payload = _surface_payload_for_tools(tool_rows)
     else:
-        # All remaining UTILITIES_SURFACE_IDS resolve to the peripherals
-        # landing. Phase 14e (cleanup): the legacy integrations surface
-        # payload builder was removed, so callers requesting
-        # ``utilities.integrations`` directly via the API now receive
-        # the peripherals payload. The HTTP route at /portal/utilities/
-        # integrations 302-redirects regardless, so this only affects
-        # API clients that hand-craft surface_id requests.
+        # portal-tool-overlay-restructure: the operator Extensions /
+        # Grantee-Profile / legacy tool-exposure surfaces were dissolved.
+        # Their HTTP routes 302-redirect, and any remaining UTILITIES_SURFACE_IDS
+        # requested directly via the API (extensions / grantee_profile /
+        # tool_exposure / integrations / peripherals) resolve to the
+        # peripherals landing.
         surface_payload = _surface_payload_for_peripherals()
     return {
         "entrypoint_id": PORTAL_SHELL_ENTRYPOINT_ID,
@@ -1880,7 +1140,6 @@ def run_portal_shell_entry(
         ),
         control_panel=bundle["control_panel"],
         workbench=bundle["workbench"],
-        interface_panel=bundle.get("interface_panel"),
         shell_state=composition_shell_state,
         control_panel_collapsed=bool(
             composition_shell_state.chrome.control_panel_collapsed if composition_shell_state is not None else False
@@ -1999,18 +1258,9 @@ def run_system_profile_basics_action(
         except Exception:
             _log.warning("system_profile_basics_audit_append_failed", exc_info=True)
             pass
-    integration_flags = _integration_flags(
-        data_dir=data_dir,
-        webapps_root=None,
-    )
-    tool_rows = _tool_posture_rows(
-        portal_scope=portal_scope,
-        tool_exposure_policy=None,
-        integration_flags=integration_flags,
-        portal_instance_id=portal_scope.scope_id,
-        authority_db_file=authority_db_file,
-        authority_mode=authority_mode,
-    )
+    # The system-workspace bundle no longer consumes tool_rows (the interface panel that
+    # rendered them was removed), so the tool-posture + integration-flag computation (each an
+    # authority-DB read) is skipped on this profile-save write path.
     workspace_bundle = build_system_workspace_bundle(
         portal_scope=portal_scope,
         portal_domain=portal_domain,
@@ -2018,7 +1268,7 @@ def run_system_profile_basics_action(
         data_dir=data_dir,
         public_dir=public_dir,
         audit_storage_file=audit_storage_file,
-        tool_rows=tool_rows,
+        tool_rows=[],
         profile_save_status="saved" if outcome is not None else "",
         authority_db_file=authority_db_file,
         authority_mode=authority_mode,
@@ -2039,7 +1289,6 @@ def run_system_profile_basics_action(
         ),
         control_panel=workspace_bundle["control_panel"],
         workbench=workspace_bundle["workbench"],
-        interface_panel=workspace_bundle.get("interface_panel"),
         shell_state=selection.shell_state,
     )
     return build_portal_runtime_envelope(

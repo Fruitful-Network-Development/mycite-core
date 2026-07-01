@@ -257,11 +257,10 @@ The frontend binds `[data-nimm-action-id]` elements to `dispatchTransition({ kin
 
 ### Shell Composition Keys
 
-- `shell_composition.interface_panel_collapsed` reports whether the public `Interface Panel` is hidden.
 - `shell_composition.workbench_collapsed` reports whether the workbench is currently hidden.
-- `shell_composition.regions.control_panel`, `regions.workbench`, and `regions.interface_panel` remain governed by the canonical `directive_panel`, `reflective_workspace`, and `presentation_surface` family contracts.
+- `shell_composition.regions.control_panel` and `regions.workbench` remain governed by the canonical `directive_panel` and `reflective_workspace` family contracts. The interface_panel region was removed (tools render in the menubar-search → full-screen overlay).
 - Retired scoped fallback keys are outside the active shell composition contract and must not reappear in runtime emission or client dispatch.
-- Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench` and `Interface Panel`.
+- Composition building, not upstream region defaults, owns the final root-vs-tool visibility posture for `Workbench`.
 - On the first V2 shell hydration, server composition wins over any stored workbench-open preference; stored layout state only resumes after hydration and user interaction.
 - Client chrome publishes route-scoped tool lock state through `data-tool-panel-lock` on `ide-shell`.
 

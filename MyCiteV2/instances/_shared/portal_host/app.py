@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import glob
+import hmac
+import html
 import json
 import logging
 import os
@@ -54,8 +56,6 @@ from MyCiteV2.packages.state_machine.portal_shell import (
     CTS_GIS_TOOL_SURFACE_ID,
     NETWORK_ROOT_SURFACE_ID,
     SYSTEM_ROOT_SURFACE_ID,
-    UTILITIES_EXTENSIONS_SURFACE_ID,
-    UTILITIES_GRANTEE_PROFILE_SURFACE_ID,
     UTILITIES_PERIPHERALS_SURFACE_ID,
     UTILITIES_ROOT_SURFACE_ID,
     UTILITIES_TOOLS_SURFACE_ID,
@@ -812,6 +812,31 @@ def _nimm_target_authority(payload: Mapping[str, Any]) -> str:
     return _as_text(payload.get("target_authority"))
 
 
+def _menubar_tool_seed() -> list[dict[str, Any]]:
+    """The live menubar-search tools, embedded in the authenticated page load so the search
+    dropdown never depends on a separate XHR (which can fail/race through the auth proxy and
+    left the dropdown permanently empty). These are the LIVE_TOOL_IDS allow-list — the exact
+    set the /portal/api/visualizers/for-sandbox endpoint filters to for the menubar."""
+    try:
+        from MyCiteV2.instances._shared.runtime.portal_palette_runtime import LIVE_TOOL_IDS
+        from MyCiteV2.packages.tools import get as _tool_get
+
+        seed: list[dict[str, Any]] = []
+        for tool_id in LIVE_TOOL_IDS:
+            tool = _tool_get(tool_id)
+            if tool is None:
+                continue
+            seed.append({
+                "tool_id": tool.tool_id,
+                "label": _as_text(getattr(tool, "label", tool_id)),
+                "summary": _as_text(getattr(tool, "summary", "")),
+                "route": _as_text(getattr(tool, "route", "")),
+            })
+        return seed
+    except Exception:
+        return []
+
+
 def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
     from MyCiteV2.packages.state_machine.portal_shell import (
         SANDBOX_DISPLAY_NAMES,
@@ -842,6 +867,7 @@ def _render_surface(surface_id: str, host_config: V2PortalHostConfig) -> str:
         shell_asset_manifest=shell_asset_manifest,
         logo_href="/portal/system",
         sandbox_display_names=sandbox_display_names,
+        menubar_tools=_menubar_tool_seed(),
     )
 
 
@@ -1866,7 +1892,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # The FND-CSM tool surface is removed; its functionality moved to the
         # Utilities extensions. Keep a literal bookmark redirect.
         if tool_slug == "fnd-csm":
-            return redirect("/portal/utilities/extensions", code=302)
+            return redirect("/portal/utilities", code=302)
         # Plan v2: the dedicated tool surfaces collapse into the unified
         # workbench at /portal/system. Old bookmarks 302 to the new shape,
         # PRESERVING + canonicalizing the incoming workbench query (document,
@@ -1910,13 +1936,21 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # Phase 14b: four dedicated surfaces under Utilities. The old
     # /tool-exposure and /integrations routes 302-redirect for one
     # transition cycle so external bookmarks keep resolving.
+    # portal-tool-overlay-restructure Phase 3: the operator extension surface is obsoleted —
+    # analytics/newsletter/connect/resources management moved to the FND website admin
+    # dashboard; paypal/aws config stays on the Grantee Profile surface. The PUBLIC /__fnd/*
+    # ingest endpoints (analytics beacon, connect form, newsletter, paypal webhook) are
+    # unaffected. 302 for one cycle so existing bookmarks resolve.
     @app.get("/portal/utilities/extensions")
-    def portal_utilities_extensions() -> str:
-        return _render_surface(UTILITIES_EXTENSIONS_SURFACE_ID, host_config)
+    def portal_utilities_extensions() -> Any:
+        return redirect("/portal/utilities", code=302)
 
     @app.get("/portal/utilities/grantee-profile")
-    def portal_utilities_grantee_profile() -> str:
-        return _render_surface(UTILITIES_GRANTEE_PROFILE_SURFACE_ID, host_config)
+    def portal_utilities_grantee_profile() -> Any:
+        # portal-tool-overlay-restructure: the operator Grantee-Profile editor
+        # surface is dissolved (paypal/aws/newsletter config now lives on the
+        # FND website admin dashboard). 302 for one cycle so bookmarks resolve.
+        return redirect("/portal/utilities", code=302)
 
     @app.get("/portal/utilities/tools")
     def portal_utilities_tools() -> str:
@@ -1932,7 +1966,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         # profile + workbench_ui into one confusing table. Operators are now
         # routed to the dedicated extensions surface. Kept as a redirect for
         # one cycle so external bookmarks still resolve.
-        return redirect("/portal/utilities/extensions", code=302)
+        return redirect("/portal/utilities", code=302)
 
     @app.get("/portal/utilities/integrations")
     def portal_utilities_integrations_legacy() -> Any:
@@ -1962,6 +1996,8 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             document_id=document_id,
             datum_address=datum_address,
             datum_store=datum_store,
+            # The menubar search dropdown lists only the live tools (allow-list).
+            live_only=True,
         )
         return jsonify(payload), 200
 
@@ -2015,8 +2051,41 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             tenant_id=tenant_id,
             sandbox_id=sandbox_id,
             datum_store=datum_store,
+            # The menubar search dropdown lists only the live tools (allow-list).
+            live_only=True,
         )
         return jsonify(payload), 200
+
+    @app.get("/portal/api/tool-panels")
+    def portal_tool_panels() -> tuple[Any, int]:
+        # Overlay tool render (portal-tool-overlay-restructure): build the panel payload(s)
+        # for the selected tool(s) and return them READ-ONLY — no shell composition, no URL /
+        # history side-effects. The menubar search → full-screen overlay fetches this and
+        # paints the panels client-side via the same container/tool renderers the (retired)
+        # interface-panel sidebar used. Per-tool params (e.g. samras_structure, agronomics_tab)
+        # ride through as extra query args to tools that declare wants_surface_query.
+        from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
+            PORTAL_TOOL_PANELS_SCHEMA,
+            _parse_tool_ids,
+            build_tool_panels,
+        )
+
+        surface_query = {k: _as_text(v) for k, v in request.args.items()}
+        # Accept ?tool= (single) or ?tools= (comma list); normalize onto surface_query.tools.
+        tool_param = _as_text(request.args.get("tool")) or _as_text(request.args.get("tools"))
+        surface_query["tools"] = tool_param
+        sandbox_id = _as_text(request.args.get("sandbox")) or _as_text(request.args.get("sandbox_id"))
+        document_id = _as_text(request.args.get("document")) or _as_text(request.args.get("document_id"))
+        datum_address = _as_text(request.args.get("datum_address"))
+        panels = build_tool_panels(
+            tool_ids=_parse_tool_ids(surface_query),
+            surface_query=surface_query,
+            authority_db_file=host_config.authority_db_file,
+            sandbox_id=sandbox_id,
+            document_id=document_id,
+            datum_address=datum_address,
+        )
+        return jsonify({"schema": PORTAL_TOOL_PANELS_SCHEMA, "panels": panels}), 200
 
     @app.post("/portal/api/resources/upload")
     def portal_resources_upload() -> tuple[Any, int]:
@@ -2465,6 +2534,59 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         except ValueError as exc:
             return _error_response("invalid_request", str(exc))
 
+    @app.post("/portal/api/v2/agro/<action>")
+    def portal_agro_write(action: str) -> tuple[Any, int]:
+        # Domain write actions for the agronomics PLAN tab (Plot Manager create-cluster, Contract
+        # Editor save). Proxy-authed like the generic mutation route; the encode-heavy transaction
+        # lives in agro_write_runtime. See MyCiteV2/instances/_shared/runtime/agro_write_runtime.py.
+        from pathlib import Path as _Path
+
+        from MyCiteV2.instances._shared.runtime.agro_write_runtime import (
+            create_cluster,
+            save_contract,
+        )
+        try:
+            payload = _json_payload()
+        except ValueError as exc:
+            return _error_response("invalid_request", str(exc))
+        db = _Path(str(host_config.authority_db_file)) if host_config.authority_db_file else None
+        if db is None or not db.exists():
+            return _error_response("unavailable", "authority db not available", status_code=503)
+        sandbox = str(payload.get("sandbox_id") or "agro_erp")
+        try:
+            if action == "save_contract":
+                result = save_contract(
+                    db, sandbox_id=sandbox, date=str(payload.get("date", "")),
+                    invoice_node=str(payload.get("invoice_node", "")),
+                    referent_node=str(payload.get("referent_node", "")),
+                    amount=str(payload.get("amount", "")), cost=str(payload.get("cost", "")),
+                    datum_address=str(payload.get("datum_address", "")),
+                )
+            elif action == "create_cluster":
+                result = create_cluster(
+                    db, sandbox_id=sandbox, plot_nodes=list(payload.get("plot_nodes") or []),
+                    day=str(payload.get("day", "")),
+                )
+            else:
+                return _error_response("unknown_action", f"unknown agro action: {action!r}")
+        except Exception as exc:
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify(result), (200 if result.get("ok") else 400)
+
+    @app.get("/portal/api/v2/datum/info")
+    def portal_datum_info() -> tuple[Any, int]:
+        # Read-only INFORMATION surface for the datum-editing overlay: the datum's hyphae
+        # abstraction path (dependency closure) + computed hyphae value.
+        from MyCiteV2.instances._shared.runtime.portal_datum_info_runtime import run_datum_info
+
+        result = run_datum_info(
+            authority_db_file=host_config.authority_db_file,
+            portal_instance_id=host_config.portal_instance_id,
+            document_id=_as_text(request.args.get("document")),
+            datum_address=_as_text(request.args.get("address")),
+        )
+        return jsonify(result), int(result.get("status_code") or (200 if result.get("ok") else 400))
+
     @app.post("/portal/api/v2/system/tools/workbench-ui")
     def portal_workbench_ui() -> tuple[Any, int]:
         from MyCiteV2.instances._shared.runtime.portal_workbench_ui_runtime import (
@@ -2489,142 +2611,6 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     # ------------------------------------------------------------------
     # FND newsletter subscribe pipeline routes
     # ------------------------------------------------------------------
-
-    @app.post("/__fnd/grantee/save")
-    def fnd_grantee_save() -> tuple[Any, int]:
-        """Phase 9 (grantee_profile_contract.md): persist edits made through
-        the ext_grantee_profile form. Accepts JSON:
-            {"msn_id": "<grantee-msn>", "fields": {<flat-or-dotted keys>}}
-
-        Loads the existing grantee JSON (matched by glob on the msn_id
-        suffix), merges in the submitted fields (including dotted-key
-        nested sub-configs like "paypal.webhook_url"), validates through
-        the GranteeProfile dataclass, and writes atomically via
-        save_grantee_profile.
-
-        Returns the persisted profile as JSON on success; 4xx on validation
-        failure; 404 when the grantee msn doesn't match any file; 500 on
-        write error.
-        """
-        import glob as _glob
-        from pathlib import Path as _Path
-
-        from MyCiteV2.packages.core.grantee import (
-            AwsSesConfig,
-            ConnectConfig,
-            GranteeProfile,
-            NewsletterConfig,
-            PaypalConfig,
-            ReceiptConfig,
-            load_grantee_profile,
-            save_grantee_profile,
-        )
-        from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
-
-        payload = _json_payload()
-        msn_id = _as_text(payload.get("msn_id"))
-        fields_raw = payload.get("fields")
-        if not msn_id or not isinstance(fields_raw, dict):
-            return jsonify({"ok": False, "error": "invalid_request"}), 400
-
-        if host_config.private_dir is None:
-            return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
-
-        # If the request arrived through a per-grantee dashboard (the auth proxy
-        # injects the grantee header), it may only edit that grantee's OWN
-        # profile — closes a cross-tenant write hole. The operator portal sends
-        # no such header and keeps full access.
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
-            resolve_grantee_from_headers as _resolve_grantee_from_headers,
-        )
-
-        _caller = _resolve_grantee_from_headers(
-            request.headers,
-            fnd_csm_root=_Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm",
-        )
-        if _caller is not None and _as_text(_caller.get("msn_id")) != msn_id:
-            return jsonify({"ok": False, "error": "grantee_not_owned"}), 403
-
-        # Find the file. Grantee files are named
-        # grantee.{fnd_msn}.{grantee_msn}.json; we match by the suffix.
-        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(
-            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
-        )
-        if len(candidates) == 0:
-            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
-        if len(candidates) > 1:
-            return jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409
-        target_path = _Path(candidates[0])
-
-        try:
-            current = load_grantee_profile(target_path)
-        except (FileNotFoundError, ValueError) as exc:
-            return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
-
-        # Split flat dotted-key fields into top-level and sub-config buckets.
-        # Phase 17a: ``connect`` joins paypal/aws_ses/newsletter as a
-        # known sub-config so the operator can edit forward_to_email
-        # via the grantee profile form.
-        identity_fields: dict[str, Any] = {}
-        sub_buckets: dict[str, dict[str, Any]] = {
-            "paypal": {},
-            "aws_ses": {},
-            "newsletter": {},
-            "connect": {},
-            "receipt": {},
-        }
-        for key, value in fields_raw.items():
-            key_text = _as_text(key)
-            if "." in key_text:
-                bucket, leaf = key_text.split(".", 1)
-                if bucket in sub_buckets:
-                    sub_buckets[bucket][leaf] = value
-                continue
-            identity_fields[key_text] = value
-
-        # Construct the next profile. The dataclass constructors validate;
-        # missing/empty fields preserve the current profile's identity but
-        # allow editing of populated values.
-        def _list_field(value: Any, current: tuple[str, ...]) -> tuple[str, ...]:
-            if isinstance(value, (list, tuple)):
-                return tuple(_as_text(v) for v in value if _as_text(v))
-            return current
-
-        def _build_sub(cls, bucket: dict[str, Any], current: Any):
-            if not bucket:
-                return current
-            merged: dict[str, Any] = current.to_dict() if current is not None else {}
-            for k, v in bucket.items():
-                merged[k] = v
-            # Drop empty-string keys for cleanliness when nothing is set.
-            non_empty = {k: v for k, v in merged.items() if v not in (None, "")}
-            if not non_empty:
-                return None
-            return cls.from_dict(merged)
-
-        try:
-            next_profile = GranteeProfile(
-                msn_id=current.msn_id,
-                label=_as_text(identity_fields.get("label", current.label)),
-                short_name=_as_text(identity_fields.get("short_name", current.short_name)),
-                domains=_list_field(identity_fields.get("domains"), current.domains),
-                users=_list_field(identity_fields.get("users"), current.users),
-                paypal=_build_sub(PaypalConfig, sub_buckets["paypal"], current.paypal),
-                aws_ses=_build_sub(AwsSesConfig, sub_buckets["aws_ses"], current.aws_ses),
-                newsletter=_build_sub(NewsletterConfig, sub_buckets["newsletter"], current.newsletter),
-                connect=_build_sub(ConnectConfig, sub_buckets["connect"], current.connect),
-                receipt=_build_sub(ReceiptConfig, sub_buckets["receipt"], current.receipt),
-            )
-        except ValueError as exc:
-            return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
-
-        try:
-            save_grantee_profile(target_path, next_profile)
-        except GranteeProfileWriteError as exc:
-            return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
-
-        return jsonify({"ok": True, "profile": next_profile.to_dict()}), 200
 
     @app.post("/__fnd/newsletter/subscribe")
     def fnd_newsletter_subscribe() -> tuple[Any, int]:
@@ -2689,13 +2675,88 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             _legacy_deprecation_headers("newsletter_contact_log", "upsert_subscriber"),
         )
 
-    @app.post("/__fnd/newsletter/unsubscribe")
-    def fnd_newsletter_unsubscribe() -> tuple[Any, int]:
+    def _newsletter_unsub_page(title: str, message: str, form_action: str = "") -> str:
+        body = f"<h1>{html.escape(title)}</h1><p>{message}</p>"
+        if form_action:
+            body += (
+                f"<form method='post' action='{form_action}'>"
+                "<button type='submit'>Confirm unsubscribe</button></form>"
+            )
+        return (
+            "<!doctype html><meta charset='utf-8'>"
+            "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+            f"<title>{html.escape(title)}</title>"
+            "<style>body{font-family:Georgia,serif;max-width:560px;margin:64px auto;"
+            "padding:0 24px;line-height:1.6;color:#222}strong{color:#000}"
+            "button{padding:10px 22px;font-size:1em;cursor:pointer;background:#444;"
+            "color:#fff;border:0;border-radius:4px}</style>" + body
+        )
+
+    def _newsletter_unsub_reply(*, ok: bool, status: int, email: str = "",
+                                error: str = "", headers=None):
+        """One-click (RFC 8058) and API callers get JSON, byte-identical to the
+        legacy behaviour. A browser confirm-form submit carries ``?via=web`` and
+        gets a friendly HTML page instead of raw JSON."""
+        if request.args.get("via") == "web":
+            if ok:
+                title = "You're unsubscribed"
+                msg = (f"<strong>{html.escape(email)}</strong> has been removed "
+                       "from this newsletter. You won't receive further messages.")
+            elif error == "contact_not_found":
+                title = "Not subscribed"
+                msg = (f"{html.escape(email) or 'That address'} isn't on this "
+                       "newsletter list — it may already have been removed.")
+            elif error in ("invalid_token", "invalid_email"):
+                title = "Link invalid or expired"
+                msg = ("This unsubscribe link is invalid. Use the link from a "
+                       "recent newsletter, or reply to the sender to be removed.")
+            else:
+                title = "Something went wrong"
+                msg = "We couldn't process this request. Please try again later."
+            return (_newsletter_unsub_page(title, msg), status,
+                    {"Content-Type": "text/html; charset=utf-8"})
+        payload: dict[str, Any] = {"ok": ok}
+        if ok:
+            payload["email"] = email
+            payload["subscribed"] = False
+        else:
+            payload["error"] = error
+        return (jsonify(payload), status, headers or {})
+
+    @app.route("/__fnd/newsletter/unsubscribe", methods=["GET", "POST"])
+    def fnd_newsletter_unsubscribe() -> Any:
         # TODO(mos-migration): replace filesystem contact log write with MOS datum upsert
         domain = _normalize_domain(request.host)
         known = _newsletter_known_domains(host_config.private_dir)
+        if request.method == "GET":
+            # Browser fallback for the in-body unsubscribe link. The mail client's
+            # one-click control POSTs (List-Unsubscribe-Post); a human who clicks
+            # the plain link issues a GET, which must NOT 405 and must NOT
+            # unsubscribe on load (mail scanners prefetch links). Render a no-JS
+            # confirm page whose form POSTs back with ?via=web.
+            html_headers = {"Content-Type": "text/html; charset=utf-8"}
+            if domain not in known:
+                return (_newsletter_unsub_page(
+                    "Unavailable", "This unsubscribe link is not valid for this site."),
+                    404, html_headers)
+            g_email = _validate_email(str(request.args.get("email") or ""))
+            g_token = str(request.args.get("token") or "").strip()
+            if not g_email or not g_token:
+                return (_newsletter_unsub_page(
+                    "Invalid link", "This unsubscribe link is incomplete. Please "
+                    "use the link from a recent newsletter."), 400, html_headers)
+            action = (
+                "/__fnd/newsletter/unsubscribe?email="
+                f"{urllib.parse.quote(g_email, safe='')}"
+                f"&amp;token={urllib.parse.quote(g_token, safe='')}&amp;via=web"
+            )
+            return (_newsletter_unsub_page(
+                "Unsubscribe?",
+                f"Stop sending the {html.escape(domain)} newsletter to "
+                f"<strong>{html.escape(g_email)}</strong>?",
+                form_action=action), 200, html_headers)
         if domain not in known:
-            return jsonify({"ok": False, "error": "domain_not_configured"}), 404
+            return _newsletter_unsub_reply(ok=False, status=404, error="domain_not_configured")
 
         # Accept token/email from query string or body
         raw_email = (
@@ -2708,23 +2769,32 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         )
         email = _validate_email(raw_email)
         if not email:
-            return jsonify({"ok": False, "error": "invalid_email"}), 400
+            return _newsletter_unsub_reply(ok=False, status=400, error="invalid_email")
 
-        # Validate HMAC token via service layer
+        # Validate the HMAC against the SAME secret the SEND path signs with —
+        # the per-tenant AWS Secrets Manager value, resolved through
+        # NewsletterService.render_unsubscribe_token (which calls
+        # _ensure_secret_value -> cloud get_or_create_secret_value, exactly as
+        # send_composed_newsletter does). Validating against the local
+        # runtime_secret_seed was a critical bug: that seed is "" when
+        # runtime_secrets.json is absent (it is, live), so every real
+        # unsubscribe link 403'd while an attacker-computable empty-key HMAC was
+        # accepted. Fail closed if the resolved secret is empty.
         try:
-            from MyCiteV2.packages.adapters.filesystem.newsletter_state import (
-                FilesystemNewsletterStateAdapter,
+            from MyCiteV2.packages.adapters.event_transport import (
+                NewsletterCloudAdapter,
             )
-            from MyCiteV2.packages.modules.cross_domain.newsletter.payload_utils import (
-                render_unsubscribe_token as _render_unsubscribe_token,
+            from MyCiteV2.packages.modules.cross_domain.newsletter import (
+                NewsletterService,
             )
-            state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
-            signing_secret = state_adapter.runtime_secret_seed(secret_kind="signing_secret")
-            expected = _render_unsubscribe_token(signing_secret, domain=domain, email=email)
-            if token_value != expected:
-                return jsonify({"ok": False, "error": "invalid_token"}), 403
+            state = _newsletter_state_adapter(host_config)
+            tenant_id = _as_text(host_config.portal_instance_id) or "fnd"
+            service = NewsletterService(state, NewsletterCloudAdapter(), tenant_id=tenant_id)
+            expected = service.render_unsubscribe_token(domain=domain, email=email)
+            if not expected or not hmac.compare_digest(token_value, expected):
+                return _newsletter_unsub_reply(ok=False, status=403, error="invalid_token")
         except Exception:
-            return jsonify({"ok": False, "error": "token_validation_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="token_validation_error")
 
         try:
             from MyCiteV2.instances._shared.runtime.portal_datum_workbench_mutation_runtime import (
@@ -2744,18 +2814,17 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 private_dir=host_config.private_dir,
             )
         except Exception:
-            return jsonify({"ok": False, "error": "storage_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="storage_error")
 
         if not result.get("ok"):
-            return jsonify({"ok": False, "error": "storage_error"}), 500
+            return _newsletter_unsub_reply(ok=False, status=500, error="storage_error")
         if not (result.get("preview") or {}).get("matched"):
             # Email wasn't on the list (or no list yet) — say so instead of a
             # misleading 200 "unsubscribed".
-            return jsonify({"ok": False, "error": "contact_not_found"}), 404
-        return (
-            jsonify({"ok": True, "email": email, "subscribed": False}),
-            200,
-            _legacy_deprecation_headers("newsletter_contact_log", "mark_unsubscribed"),
+            return _newsletter_unsub_reply(ok=False, status=404, email=email, error="contact_not_found")
+        return _newsletter_unsub_reply(
+            ok=True, status=200, email=email,
+            headers=_legacy_deprecation_headers("newsletter_contact_log", "mark_unsubscribed"),
         )
 
     @app.post("/__fnd/newsletter/dispatch-result")
@@ -2789,7 +2858,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
             state_adapter = FilesystemNewsletterStateAdapter(host_config.private_dir)
             expected_token = state_adapter.runtime_secret_seed(secret_kind="dispatch_secret")
-            if callback_token != expected_token:
+            if not hmac.compare_digest(callback_token, expected_token):
                 return jsonify({"ok": False, "error": "invalid_callback_token"}), 403
         except Exception:
             return jsonify({"ok": False, "error": "token_validation_error"}), 500
@@ -3553,16 +3622,15 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         validation + atomic write contract applies. Returns the updated
         newsletter sub-config on success.
         """
-        import glob as _glob
-        from pathlib import Path as _Path
-
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+            persist_grantee_profile,
+        )
         from MyCiteV2.packages.core.grantee import (
             AwsSesConfig,
             GranteeProfile,
             NewsletterConfig,
             PaypalConfig,
-            load_grantee_profile,
-            save_grantee_profile,
         )
         from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
 
@@ -3578,16 +3646,12 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "private_dir_not_configured"}), 500
 
-        grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
-        if len(candidates) == 0:
-            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
-        if len(candidates) > 1:
-            return jsonify({"ok": False, "error": "ambiguous_grantee_match"}), 409
-        target_path = _Path(candidates[0])
+        target_path, _perr = _grantee_file_for_msn(msn_id)
+        if _perr:
+            return _perr
 
         try:
-            current = load_grantee_profile(target_path)
+            current = load_grantee_profile_resolved(msn_id, legacy_path=target_path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
@@ -3616,7 +3680,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         del AwsSesConfig, PaypalConfig
 
         try:
-            save_grantee_profile(target_path, next_profile)
+            persist_grantee_profile(next_profile, legacy_path=target_path)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -4241,10 +4305,11 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     #   - the derived onboarding sequence still has a next_step
     #   - cooldown: no two reminders inside 24h
     #
-    # The same gates are enforced in
-    # ``utilities_extensions.email._send_reminder_action_for_profile`` so
-    # the button is hidden / disabled in the UI; this route re-checks
-    # server-side so a hand-rolled request cannot bypass the cooldown.
+    # The operator-facing reminder button was removed when the FND-CSM
+    # surface was dissolved; this route still re-checks the gates
+    # server-side (via ``utilities_extensions.email._onboarding_progress``
+    # + ``_reminder_cooldown_remaining``) so a hand-rolled request cannot
+    # bypass the cooldown.
 
     @app.post("/__fnd/email/admin/send-reminder")
     def fnd_email_admin_send_reminder() -> tuple[Any, int]:
@@ -4459,18 +4524,18 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     # OPERATOR-only mutation routes. The per-grantee /dashboard/api/ proxy
     # forwards every /__fnd/* path, so without this gate a dashboard-cred client
-    # could (a) mutate the shared resource type manifest / another grantee's
-    # assets, or (b) — most dangerous — POST /__fnd/grantee/save with ANY msn_id
-    # in the body and rewrite that grantee's config (PayPal client_secret, SES,
-    # …) cross-tenant. Reject any caller that resolves to a non-operator grantee;
+    # could mutate the shared resource type manifest / another grantee's assets
+    # cross-tenant. Reject any caller that resolves to a non-operator grantee;
     # operator requests are header-absent (or carry the operator's own msn) and
     # still pass. Grantee-scoped edits (their own site content, contacts, their
     # own newsletter) are NOT listed here — they have their own scope checks.
+    # (The former /__fnd/grantee/save route — the only cross-tenant config-write
+    # hole this gate guarded — was removed with the operator Grantee-Profile
+    # editor; per-grantee config now writes through the FND website dashboard.)
     _OPERATOR_ONLY_RESOURCE_PATHS = (
         "/__fnd/resources/profile/save",
         "/__fnd/resources/icon/dedup",
         "/__fnd/resources/field-icons/set",
-        "/__fnd/grantee/save",
     )
     _OPERATOR_ONLY_RESOURCE_PREFIXES = (
         "/__fnd/resources/manifest/",
@@ -4566,19 +4631,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
     @app.get("/__fnd/analytics.js")
     def fnd_analytics_js() -> Any:
-        # Phase 18a stub: serve an empty JS body so the existing
-        # <script src="/__fnd/analytics.js"> tags on every webdesign
-        # page stop returning 404. Phase 18b replaces this with the
-        # actual capture script from clients/_shared/site-core/.
-        site_core_path = Path(
-            "/srv/webapps/clients/_shared/site-core/js/extensions/analytics.js"
-        )
+        # Serve the browser capture script straight from the shared site-core library, so a
+        # deploy of the library propagates without restarting the portal (5-min browser cache).
+        # Prefer the configured webapps_root (keeps tests/CI hermetic — they pass a temp root)
+        # and fall back to the canonical deploy path so live serving is unchanged when
+        # webapps_root is unset/derived. A missing file serves an empty 200 (never a 404, so the
+        # existing <script src="/__fnd/analytics.js"> tags don't break).
+        rel = "clients/_shared/site-core/js/extensions/analytics.js"
+        root = _analytics_webapps_root()
+        candidates = ([Path(root) / rel] if root else []) + [Path("/srv/webapps") / rel]
         body = ""
-        if site_core_path.exists():
-            try:
-                body = site_core_path.read_text(encoding="utf-8")
-            except OSError:
-                body = ""
+        for site_core_path in candidates:
+            if site_core_path.exists():
+                try:
+                    body = site_core_path.read_text(encoding="utf-8")
+                except OSError:
+                    body = ""
+                if body:
+                    break
         response = make_response(body, 200)
         response.headers["Content-Type"] = "application/javascript; charset=utf-8"
         response.headers["Cache-Control"] = "public, max-age=300"
@@ -4595,14 +4665,43 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
 
         return _os.environ.get("MYCITE_WEBAPPS_ROOT") or None
 
-    def _campaign_tracked_url(domain: str, campaign: dict[str, Any]) -> str:
-        """Public tracked URL for a campaign: the target page on the grantee's
+    @app.get("/assets/icons/<path:filename>")
+    def fnd_asset_icon(filename: str) -> Any:
+        # Serve shared icon leaflets so the portal renders icons on :6101 (direct, no nginx).
+        # In production nginx serves /assets/ from the shared tree before the request reaches
+        # the portal; this is the dev/test + fallback path. Path-traversal guarded: only a bare
+        # .svg basename under the shared icon dir is served.
+        safe = Path(filename).name
+        if safe != filename or not safe.endswith(".svg"):
+            abort(404)
+        root = _analytics_webapps_root()
+        candidates = ([Path(root)] if root else []) + [Path("/srv/webapps")]
+        for base in candidates:
+            icon_path = base / "clients" / "_shared" / "site-core" / "icon" / safe
+            if icon_path.exists():
+                try:
+                    body = icon_path.read_bytes()
+                except OSError:
+                    break
+                response = make_response(body, 200)
+                response.headers["Content-Type"] = "image/svg+xml; charset=utf-8"
+                response.headers["Cache-Control"] = "public, max-age=300"
+                return response
+        abort(404)
+
+    def _campaign_tracked_url(
+        domain: str, campaign: dict[str, Any], *, path: str | None = None
+    ) -> str:
+        """Public tracked URL for a campaign: a landing page on the grantee's
         primary domain with the ``?fnd_c=<token>`` attribution param appended.
-        analytics.js reads ``fnd_c`` and stamps it onto the session."""
+        analytics.js reads ``fnd_c`` and stamps it onto the session. Pass
+        ``path`` to override the stored ``target_path`` so ONE campaign/token can
+        be generated for any number of landing pages (the append model — the
+        dashboard also builds these client-side for ad-hoc QR generation)."""
         from urllib.parse import quote
 
         domain = _as_text(domain)
-        target = _as_text(campaign.get("target_path")) or "/"
+        target = _as_text(path if path is not None else campaign.get("target_path")) or "/"
         if not target.startswith("/"):
             target = "/" + target
         token = quote(_as_text(campaign.get("token")), safe="")
@@ -4610,6 +4709,18 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return f"{target}?fnd_c={token}"
         sep = "&" if "?" in target else "?"
         return f"https://{domain}{target}{sep}fnd_c={token}"
+
+    def _campaign_short_url(domain: str, campaign: dict[str, Any]) -> str:
+        """Stable, editable redirect short-link — the URL to bake into a printed
+        QR. It never changes, but ``/c/<token>`` 302-redirects to the campaign's
+        CURRENT ``target_path`` (repointable in the dashboard), so an
+        already-printed code can be aimed at a new landing page without a
+        reprint. See the ``/__fnd/c/<token>`` route."""
+        from urllib.parse import quote
+
+        domain = _as_text(domain)
+        token = quote(_as_text(campaign.get("token")), safe="")
+        return f"https://{domain}/c/{token}" if domain else f"/c/{token}"
 
     def _prepare_records_visitors(visitors: list[dict[str, Any]]) -> None:
         """Resolve referrals + strip PII over a visitor list — shared by the
@@ -4934,15 +5045,37 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         return response, 200
 
     def _grantee_file_for_msn(msn_id: str):
-        """Locate the single grantee JSON for an msn. Returns (path, None) or
-        (None, error_response)."""
+        """Resolve the legacy grantee-file path for an msn. Returns (path, None)
+        or (None, error_response).
+
+        Under the leaflet cutover the identity+secrets are read/written through
+        the shared leaflets, so the legacy ``fnd-csm`` file need NOT exist: we
+        only require the grantee to exist (a leaflet for this msn) and return the
+        canonical would-be legacy path — a harmless fallback that load/persist
+        ignore while the cutover is on, so deleting the fnd-csm backups can never
+        404 a save route. With the cutover off we keep the original glob.
+        """
         import glob as _glob
         from pathlib import Path as _Path
+
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_leaflets_if_enabled,
+        )
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import OPERATOR_MSN_ID
 
         if host_config.private_dir is None:
             return None, (jsonify({"ok": False, "error": "private_dir_not_configured"}), 500)
         grantee_dir = _Path(host_config.private_dir) / "utilities" / "tools" / "fnd-csm"
-        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json")))
+
+        shared = load_grantee_leaflets_if_enabled()
+        if shared is not None:
+            if any(_as_text(g.get("msn_id")) == _as_text(msn_id) for g in shared):
+                return grantee_dir / f"grantee.{OPERATOR_MSN_ID}.{msn_id}.yaml", None
+            return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
+
+        candidates = sorted(_glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.yaml"))) or sorted(
+            _glob.glob(str(grantee_dir / f"grantee.*.{msn_id}.json"))
+        )
         if not candidates:
             return None, (jsonify({"ok": False, "error": "grantee_not_found"}), 404)
         if len(candidates) > 1:
@@ -4991,7 +5124,9 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
     def fnd_paypal_admin_config() -> tuple[Any, int]:
         """Operator/grantee-scoped read of the caller grantee's PayPal config.
         The client_secret is masked (has_secret + last-4 only)."""
-        from MyCiteV2.packages.core.grantee import load_grantee_profile
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+        )
 
         msn, err = _resolve_grantee_scope()
         if err:
@@ -5000,7 +5135,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         if perr:
             return perr
         try:
-            profile = load_grantee_profile(path)
+            profile = load_grantee_profile_resolved(msn, legacy_path=path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
         return jsonify({
@@ -5057,11 +5192,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         """
         from dataclasses import replace as _dc_replace
 
+        from MyCiteV2.instances._shared.runtime.operational_store import (
+            load_grantee_profile_resolved,
+            persist_grantee_profile,
+        )
         from MyCiteV2.packages.core.grantee import (
             PaypalConfig,
             ReceiptConfig,
-            load_grantee_profile,
-            save_grantee_profile,
         )
         from MyCiteV2.packages.core.grantee.store import GranteeProfileWriteError
 
@@ -5082,7 +5219,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return jsonify({"ok": False, "error": "invalid_mode"}), 400
 
         try:
-            profile = load_grantee_profile(path)
+            profile = load_grantee_profile_resolved(msn, legacy_path=path)
         except (FileNotFoundError, ValueError) as exc:
             return jsonify({"ok": False, "error": "grantee_load_failed", "detail": str(exc)}), 500
 
@@ -5145,7 +5282,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return jsonify({"ok": False, "error": "validation_failed", "detail": str(exc)}), 400
 
         try:
-            save_grantee_profile(path, next_profile)
+            persist_grantee_profile(next_profile, legacy_path=path)
         except GranteeProfileWriteError as exc:
             return jsonify({"ok": False, "error": "storage_error", "detail": str(exc)}), 500
 
@@ -5187,7 +5324,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     merged2["webhook_id"] = wid
                     merged2["webhook_url"] = wurl
                     next_profile = _dc_replace(next_profile, paypal=PaypalConfig.from_dict(merged2))
-                    save_grantee_profile(path, next_profile)
+                    persist_grantee_profile(next_profile, legacy_path=path)
                 except Exception as exc:
                     webhook_warning = "provisioning_failed"
                     _log.warning(
@@ -6149,6 +6286,13 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         newsletter = store.load(entity, slug) if slug else {}
         if not newsletter:
             return jsonify({"ok": False, "error": "newsletter_not_found"}), 404
+        # Idempotency guard: /save refuses to overwrite a leaflet already marked
+        # "sent", but a direct or replayed POST to /send (double-click, proxy
+        # retry, a second tab, or an ses_direct timeout+retry) would otherwise
+        # re-dispatch to the ENTIRE subscriber list. A sent leaflet is terminal;
+        # compose a new draft to send again.
+        if _as_text(newsletter.get("status")) == "sent":
+            return jsonify({"ok": False, "error": "already_sent"}), 409
 
         known = _newsletter_known_domains(host_config.private_dir)
         if domain not in known:
@@ -6225,6 +6369,28 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "sent_count": result.get("sent_count", 0),
             "failed_count": result.get("failed_count", 0),
             "newsletter": newsletter,
+        }), 200
+
+    @app.route("/__fnd/newsletter/grantee/signature", methods=["GET", "POST"])
+    def fnd_newsletter_grantee_signature() -> tuple[Any, int]:
+        """Grantee-scoped read/write of the newsletter signature/footer. The
+        unsubscribe link is always appended by the send path AFTER this text, so
+        editing the signature can never remove the unsubscribe affordance."""
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        _entity, domain, err = _grantee_newsletter_scope()
+        if err:
+            return err
+        state = _newsletter_state_adapter(host_config)
+        profile = state.load_profile(domain=domain) or {}
+        if request.method == "POST":
+            payload = _json_payload()
+            profile["signature"] = _as_text(payload.get("signature"))[:4000]
+            profile = state.save_profile(domain=domain, payload=profile)
+        return jsonify({
+            "ok": True,
+            "domain": domain,
+            "signature": _as_text(profile.get("signature")),
         }), 200
 
     @app.get("/__fnd/design/content")
@@ -6330,6 +6496,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             except ValueError as exc:
                 return jsonify({"ok": False, "error": "invalid_campaign", "detail": str(exc)}), 400
             row["tracked_url"] = _campaign_tracked_url(primary_domain, row)
+            row["short_url"] = _campaign_short_url(primary_domain, row)
             return jsonify({"ok": True, "campaign": row}), 200
 
         # GET — list + attribute. Tally over ALL of the entity's leaflets (a
@@ -6360,6 +6527,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             campaigns.append({
                 **c,
                 "tracked_url": _campaign_tracked_url(primary_domain, c),
+                "short_url": _campaign_short_url(primary_domain, c),
                 "attributed_sessions": token_sessions.get(tok, 0),
                 "attributed_visitors": len(token_visitors.get(tok, set())),
             })
@@ -6370,50 +6538,98 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "campaigns": campaigns,
         }), 200
 
-    @app.get("/__fnd/newsletter/contacts")
-    def fnd_newsletter_contacts() -> tuple[Any, int]:
-        """Read-only contact list for a grantee's first domain. Used
-        by the grantee dashboard's Contacts tab; scope-guarded so
-        only the owning grantee (or unauthenticated operator) sees it.
+    @app.route("/__fnd/analytics/campaigns/<token>", methods=["PATCH", "DELETE"])
+    def fnd_analytics_campaign_item(token: str) -> tuple[Any, int]:
+        """Edit (PATCH) or remove (DELETE) a single campaign.
+
+        The ``token`` is IMMUTABLE — editing a campaign (including repointing its
+        ``target_path``) keeps every already-printed QR / redirect short-link
+        live. Scope-guarded like the collection route: a grantee only ever
+        touches its own campaigns.
         """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             domains_for_grantee,
         )
+        from MyCiteV2.packages.adapters.filesystem import (
+            CampaignLeafletStore,
+            entity_for_domain,
+        )
 
         if host_config.private_dir is None:
             return jsonify({"ok": False, "error": "no_private_dir"}), 500
-
         requested_msn, err = _resolve_grantee_scope()
         if err:
             return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        primary_domain = domains[0] if domains else ""
+        entity = entity_for_domain(primary_domain) if primary_domain else ""
+        cstore = CampaignLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        token = _as_text(token)
 
-        domains = domains_for_grantee(requested_msn)
-        # The contact ROSTER lives in the per-entity YAML leaflet now, not the
-        # legacy JSON contact log (which holds dispatch history only). Read the
-        # COMPOSED view via the adapter so this list isn't empty/stale after the
-        # contacts cutover — same single-source-of-truth path the dashboard
-        # aggregator uses.
-        adapter = _newsletter_state_adapter(host_config)
-        contacts: list[dict[str, Any]] = []
-        for d in domains:
-            data = adapter.load_contact_log(domain=d) or {}
-            for c in data.get("contacts") or []:
-                contacts.append({**c, "_domain": d})
-        contacts.sort(key=lambda c: str(c.get("email", "")))
-        active = sum(1 for c in contacts if c.get("subscribed"))
-        return jsonify({
-            "ok": True,
-            "grantee": {
-                "msn_id": requested_msn,
-                "domains": domains,
-            },
-            "summary": {
-                "total": len(contacts),
-                "active": active,
-                "unsubscribed": len(contacts) - active,
-            },
-            "contacts": contacts,
-        }), 200
+        if request.method == "DELETE":
+            if not cstore.delete_campaign(entity, primary_domain, token):
+                return jsonify({"ok": False, "error": "campaign_not_found"}), 404
+            return jsonify({"ok": True, "deleted": token}), 200
+
+        # PATCH — only the fields present in the body change.
+        body = _json_payload()
+        kwargs: dict[str, Any] = {}
+        for field in ("label", "target_path", "source", "medium", "notes"):
+            if field in body:
+                kwargs[field] = _as_text(body.get(field))
+        try:
+            row = cstore.update_campaign(entity, primary_domain, token, **kwargs)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "invalid_campaign", "detail": str(exc)}), 400
+        if row is None:
+            return jsonify({"ok": False, "error": "campaign_not_found"}), 404
+        row = {
+            **row,
+            "tracked_url": _campaign_tracked_url(primary_domain, row),
+            "short_url": _campaign_short_url(primary_domain, row),
+        }
+        return jsonify({"ok": True, "campaign": row}), 200
+
+    @app.get("/__fnd/c/<token>")
+    def fnd_campaign_redirect(token: str):
+        """PUBLIC editable QR short-link. Resolves ``<token>`` against the
+        requesting domain's campaign registry and 302-redirects to the
+        campaign's CURRENT ``target_path`` with ``?fnd_c`` appended (so
+        analytics.js attributes the visit exactly as a direct tracked link
+        would). Repointing the campaign in the dashboard re-aims every printed
+        QR — no reprint. Unknown token / domain falls back to the site root so a
+        scanned code is never a dead end. Proxied at ``/c/<token>`` by nginx."""
+        from MyCiteV2.packages.adapters.filesystem import (
+            CampaignLeafletStore,
+            entity_for_domain,
+        )
+
+        domain = _normalize_domain(request.host)
+        token = _as_text(token)
+        fallback = f"https://{domain}/" if domain else "/"
+        if not domain or not token or host_config.private_dir is None:
+            return redirect(fallback, code=302)
+        entity = entity_for_domain(domain)
+        if not entity:
+            return redirect(fallback, code=302)
+        cstore = CampaignLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        campaign = cstore.resolve(entity, token)
+        if campaign is None:
+            return redirect(fallback, code=302)
+        return redirect(_campaign_tracked_url(domain, campaign), code=302)
+
+    # NOTE: the legacy GET /__fnd/newsletter/contacts route was removed
+    # 2026-06-27 — it duplicated GET /__fnd/contacts/list but returned
+    # UN-PROJECTED contact rows (every field incl. visitor subject/message
+    # free-text). The dashboard uses the projected /__fnd/contacts/list.
 
     @app.post("/__fnd/newsletter/inbound-capture")
     def fnd_newsletter_inbound_capture() -> tuple[Any, int]:
@@ -6901,9 +7117,24 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             },
         }), 200
 
+    def _caller_is_operator_via_header() -> bool:
+        """Cross-grantee management is unlocked ONLY for the FND operator, and
+        ONLY as asserted by the TRUSTED nginx-set X-Auth-Request-Grantee header
+        (the per-site dashboard-auth snippet hard-sets it, overriding any client
+        value). The Keycloak admin/operator-group step-up is deliberately NOT
+        honoured here yet: /dashboard/* is basic-auth and nginx does not strip a
+        client-supplied X-Auth-Request-Groups, so trusting that header would let
+        any dashboard user spoof `operator` and hijack another grantee. Re-add the
+        group claim only once /dashboard/* is behind oauth2-proxy AND nginx clears
+        inbound X-Auth-Request-*."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import OPERATOR_MSN_ID
+        return _as_text(request.headers.get("X-Auth-Request-Grantee")) == OPERATOR_MSN_ID
+
     def _resolve_grantee_scope() -> tuple[str, tuple[Any, int] | None]:
         """Resolve the requested grantee msn against the caller's scope.
         Returns (msn_id, None) on success, ("", error_response) otherwise.
+        The FND operator / a Keycloak admin-group session may target ANY grantee
+        (Phase-D cross-grantee management); a scoped client caller may not.
         """
         from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
             grantee_for_domain,
@@ -6917,13 +7148,36 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             )
         if caller is not None:
             caller_msn = _as_text(caller.get("msn_id"))
-            if requested_msn and requested_msn != caller_msn:
+            if requested_msn and requested_msn != caller_msn and not _caller_is_operator_via_header():
                 return "", (jsonify({"ok": False, "error": "scope_mismatch"}), 403)
             if not requested_msn:
                 requested_msn = caller_msn
         if not requested_msn:
             return "", (jsonify({"ok": False, "error": "missing_grantee"}), 400)
         return requested_msn, None
+
+    @app.get("/__fnd/grantees/list")
+    def fnd_grantees_list() -> tuple[Any, int]:
+        """Operator/admin only: every grantee's identity (no secrets) for the
+        FND dashboard 'Grantees' admin tab (Phase-D manage-all-grantees)."""
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            load_grantee_directory,
+        )
+        if not _caller_is_operator_via_header():
+            return jsonify({"ok": False, "error": "operator_only"}), 403
+        rows = [
+            {
+                "msn_id": _as_text(g.get("msn_id")),
+                "label": _as_text(g.get("label")),
+                "short_name": _as_text(g.get("short_name")),
+                "domains": [str(d) for d in g.get("domains") or []],
+                "users": [str(u) for u in g.get("users") or []],
+                "has_newsletter": _grantee_has_newsletter(g),
+            }
+            for g in load_grantee_directory(_configured_fnd_csm_root())
+        ]
+        rows.sort(key=lambda r: r["short_name"])
+        return jsonify({"ok": True, "grantees": rows}), 200
 
     def _parse_period_args() -> tuple[Any, Any, tuple[Any, int] | None]:
         """Parse ?from= / ?to= ISO dates, default to MTD.
@@ -7366,6 +7620,116 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
         view = _contacts_identity_view(contacts[index])
         view["domain"] = domain
         return jsonify({"ok": True, "contact": view}), 200
+
+    def _contacts_bulk_set_subscribed(*, subscribed: bool) -> tuple[Any, int]:
+        """Bulk-flip the ``subscribed`` flag across the caller grantee's
+        contacts (dashboard "Resubscribe all" / "Unsubscribe all").
+
+        Scope mirrors ``/__fnd/contacts/list``: every owned domain by
+        default, or a single owned domain when the body carries ``domain``
+        (so the action honours the dashboard's on-screen domain filter).
+        Newsletter-enabled grantees only — the subscribe flag is meaningless
+        without a newsletter, matching the column/buttons the UI hides for
+        contact-only sites. NO email is ever sent here; this only mutates
+        the flag + lifecycle stamps. Idempotent: rows already in the target
+        state are left untouched and excluded from the ``updated`` count.
+        """
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        grantee = _contacts_caller_grantee(msn)
+        if grantee is None:
+            return jsonify({"ok": False, "error": "grantee_not_found"}), 404
+        if not _grantee_has_newsletter(grantee):
+            return jsonify({"ok": False, "error": "newsletter_not_enabled"}), 403
+        owned_domains = [
+            _normalize_domain(str(d))
+            for d in grantee.get("domains") or []
+            if str(d).strip()
+        ]
+        body = request.get_json(silent=True) or {}
+        if not isinstance(body, dict):
+            return jsonify({"ok": False, "error": "body_must_be_object"}), 400
+        requested_domain = _normalize_domain(_as_text(body.get("domain")))
+        if requested_domain:
+            if requested_domain not in owned_domains:
+                return jsonify({"ok": False, "error": "domain_not_owned"}), 403
+            target_domains = [requested_domain]
+        else:
+            target_domains = owned_domains
+
+        adapter = _newsletter_state_adapter(host_config)
+        now_iso = _utc_now_iso()
+        updated = 0
+        for domain in target_domains:
+            log = adapter.load_contact_log(domain=domain) or {}
+            contacts = list(log.get("contacts") or [])
+            changed = False
+            for i, record in enumerate(contacts):
+                if not isinstance(record, dict):
+                    continue
+                if bool(record.get("subscribed")) == subscribed:
+                    continue
+                if subscribed:
+                    # "Resubscribe all" is strictly the UNDO of a prior
+                    # "Unsubscribe all": it re-subscribes only the rows carrying
+                    # the bulk-unsubscribe marker, and leaves genuine self-service
+                    # opt-outs (which never carry it) untouched. So a test blast
+                    # can be reversed without resurrecting real opt-outs.
+                    if not _as_text(record.get("bulk_unsubscribed_at")):
+                        continue
+                    row = canonical_contact_entry(
+                        existing=record, patch={"subscribed": True}, now=now_iso,
+                    )
+                    # Clear the opt-out + bulk stamps directly — canonical_
+                    # contact_entry treats an empty-string patch value as
+                    # "leave unchanged", so it cannot clear a field via the patch.
+                    row["unsubscribed_at"] = ""
+                    row["bulk_unsubscribed_at"] = ""
+                else:
+                    # "Unsubscribe all": a *temporary* operator opt-out. Stamp
+                    # unsubscribed_at and mark the row (which was subscribed a
+                    # moment ago) as bulk-unsubscribed so "Resubscribe all" can
+                    # undo exactly this set later. Keep the original signup
+                    # source so the table's Source column stays meaningful.
+                    row = canonical_contact_entry(
+                        existing=record,
+                        patch={
+                            "subscribed": False,
+                            "unsubscribed_at": now_iso,
+                            "bulk_unsubscribed_at": now_iso,
+                        },
+                        now=now_iso,
+                    )
+                contacts[i] = row
+                updated += 1
+                changed = True
+            if changed:
+                log["contacts"] = contacts
+                log["updated_at"] = now_iso
+                adapter.save_contact_log(domain=domain, payload=log)
+        return jsonify({
+            "ok": True,
+            "updated": updated,
+            "subscribed": subscribed,
+            "domain": requested_domain or "",
+            "domains": target_domains,
+        }), 200
+
+    @app.post("/__fnd/contacts/subscribe-all")
+    def fnd_contacts_subscribe_all() -> tuple[Any, int]:
+        """Dashboard bulk action — set subscribed=True for every contact in
+        scope (all owned domains, or one owned domain via body ``domain``).
+        No email is sent."""
+        return _contacts_bulk_set_subscribed(subscribed=True)
+
+    @app.post("/__fnd/contacts/unsubscribe-all")
+    def fnd_contacts_unsubscribe_all() -> tuple[Any, int]:
+        """Dashboard bulk action — set subscribed=False for every contact in
+        scope (all owned domains, or one owned domain via body ``domain``)."""
+        return _contacts_bulk_set_subscribed(subscribed=False)
 
     # ------------------------------------------------------------------
     # Grantee self-service email management — add / edit / remove a

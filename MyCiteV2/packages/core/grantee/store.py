@@ -15,10 +15,11 @@ No process-wide state. Each call opens and closes its own file handle.
 
 from __future__ import annotations
 
-import json
 import os
 import tempfile
 from pathlib import Path
+
+import yaml
 
 from .schema import GranteeProfile
 
@@ -39,9 +40,9 @@ def load_grantee_profile(path: str | Path) -> GranteeProfile:
         raise FileNotFoundError(f"grantee profile not found: {file_path}")
     raw = file_path.read_text(encoding="utf-8")
     try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"grantee profile is not valid JSON: {file_path} ({exc})") from exc
+        payload = yaml.safe_load(raw)
+    except yaml.YAMLError as exc:
+        raise ValueError(f"grantee profile is not valid YAML/JSON: {file_path} ({exc})") from exc
     return GranteeProfile.from_dict(payload)
 
 
@@ -71,7 +72,7 @@ def save_grantee_profile(
     parent.mkdir(parents=True, exist_ok=True)
 
     payload = profile.to_dict()
-    serialized = json.dumps(payload, indent=2, sort_keys=False) + "\n"
+    serialized = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
 
     # Atomic write: temp file in same directory + os.replace.
     temp_fd, temp_name = tempfile.mkstemp(prefix=".grantee_", suffix=".tmp", dir=str(parent))

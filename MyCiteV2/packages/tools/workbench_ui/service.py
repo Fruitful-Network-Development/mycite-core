@@ -968,7 +968,7 @@ class WorkbenchUiReadService:
             "Mutation slots (new-document / new-datum forms) are emitted by the workbench runtime when the resolved sandbox is writable; this read service itself stays read-only.",
         ]
 
-        interface_panel_sections = [
+        selection_summary_sections = [
             {
                 "title": "Selection",
                 "rows": [
@@ -982,7 +982,7 @@ class WorkbenchUiReadService:
                 ],
             }
         ]
-        interface_panel_sections.append(
+        selection_summary_sections.append(
             {
                 "title": "Lens Resolution",
                 "rows": [
@@ -995,7 +995,7 @@ class WorkbenchUiReadService:
                 ],
             }
         )
-        interface_panel_sections.append(
+        selection_summary_sections.append(
             {
                 "title": "Hyphae Identity",
                 "rows": [
@@ -1007,7 +1007,7 @@ class WorkbenchUiReadService:
             }
         )
         if source_visibility == "show":
-            interface_panel_sections.append(
+            selection_summary_sections.append(
                 {
                     "title": "Source Metadata",
                     "rows": [
@@ -1016,7 +1016,7 @@ class WorkbenchUiReadService:
                     ],
                 }
             )
-        interface_panel_sections.append(
+        selection_summary_sections.append(
             {
                 "title": "Directive Overlay",
                 "rows": _overlay_summary_rows(overlay, event_rows=overlay_events),
@@ -1127,5 +1127,5 @@ class WorkbenchUiReadService:
                 },
                 "notes": notes,
             },
-            "interface_panel_sections": interface_panel_sections,
+            "selection_summary_sections": selection_summary_sections,
         }

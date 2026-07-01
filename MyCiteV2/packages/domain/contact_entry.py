@@ -44,6 +44,11 @@ _STR_FIELDS: tuple[str, ...] = (
     "updated_at",
     "subscribed_at",
     "unsubscribed_at",
+    # set ONLY by the operator "unsubscribe all" bulk action, on rows that were
+    # subscribed at that moment. "Resubscribe all" re-subscribes exactly the rows
+    # carrying this marker (then clears it), so it undoes the temporary bulk
+    # opt-out without resurrecting people who genuinely opted out on their own.
+    "bulk_unsubscribed_at",
     # newsletter dispatch
     "last_newsletter_sent_at",
     "last_message_id",

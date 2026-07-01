@@ -159,6 +159,70 @@ class SendComposedNewsletterTests(unittest.TestCase):
                 domain="example.com", subject="Hi", body_text="B",
                 dispatcher_callback_url="cb", inbound_callback_url="ib", ses_sender=None)
 
+    def test_unsubscribe_url_encodes_email(self):
+        # An address with reserved characters (e.g. a Gmail "+tag") must be
+        # percent-encoded in the unsubscribe link, or the '+' decodes to a space
+        # and the token no longer matches → the recipient can't unsubscribe.
+        st = _FakeState({"list_address": "news@example.com", "aws_region": "us-east-1"},
+                        [{"email": "a+tag@x.com", "subscribed": True}])
+        svc = NewsletterService(st, _FakeCloud(), tenant_id="fnd")
+        seen = {}
+
+        def ses(*, to, subject, body_text, reply_to, unsubscribe_url):
+            seen["url"] = unsubscribe_url
+            return "mid"
+
+        svc.send_composed_newsletter(
+            domain="example.com", subject="Hi", body_text="Body",
+            dispatcher_callback_url="cb", inbound_callback_url="ib", ses_sender=ses)
+        self.assertIn("email=a%2Btag%40x.com", seen["url"])
+        self.assertNotIn("a+tag@x.com", seen["url"])
+
+    def test_signature_appended_to_body(self):
+        # The grantee-editable signature is inserted after the body; the
+        # unsubscribe link is appended by the transport AFTER that, so the
+        # signature can never displace the unsubscribe affordance.
+        st = _FakeState({"list_address": "news@example.com", "aws_region": "us-east-1",
+                         "signature": "-- Fruitful Network Development"},
+                        [{"email": "a@x.com", "subscribed": True}])
+        svc = NewsletterService(st, _FakeCloud(), tenant_id="fnd")
+        seen = {}
+
+        def ses(*, to, subject, body_text, reply_to, unsubscribe_url):
+            seen["body"] = body_text
+            return "mid"
+
+        svc.send_composed_newsletter(
+            domain="example.com", subject="Hi", body_text="Body",
+            dispatcher_callback_url="cb", inbound_callback_url="ib", ses_sender=ses)
+        self.assertIn("Body", seen["body"])
+        self.assertIn("-- Fruitful Network Development", seen["body"])
+        self.assertLess(seen["body"].index("Body"),
+                        seen["body"].index("-- Fruitful"))
+
+    def test_render_unsubscribe_token_matches_send(self):
+        # The token the unsubscribe ROUTE validates (via
+        # NewsletterService.render_unsubscribe_token) must equal the token the
+        # SEND path bakes into each link — both resolve the signing secret from
+        # the SAME cloud source. Regression for the secret-source divergence
+        # (route used the empty local seed) that 403'd every real unsubscribe.
+        from urllib.parse import parse_qs, urlparse
+        st = _FakeState({"list_address": "news@example.com", "aws_region": "us-east-1"},
+                        [{"email": "a@x.com", "subscribed": True}])
+        svc = NewsletterService(st, _FakeCloud(), tenant_id="fnd")
+        baked = {}
+
+        def ses(*, to, subject, body_text, reply_to, unsubscribe_url):
+            baked["url"] = unsubscribe_url
+            return "mid"
+
+        svc.send_composed_newsletter(
+            domain="example.com", subject="Hi", body_text="B",
+            dispatcher_callback_url="cb", inbound_callback_url="ib", ses_sender=ses)
+        sent_token = parse_qs(urlparse(baked["url"]).query)["token"][0]
+        verify_token = svc.render_unsubscribe_token(domain="example.com", email="a@x.com")
+        self.assertEqual(sent_token, verify_token)
+
 
 # --- routes: /__fnd/newsletter/grantee/{save,list} ---------------------------
 
@@ -211,6 +275,30 @@ class NewsletterGranteeRoutesTests(unittest.TestCase):
                         json={"slug": "spring_update", "subject": "Spring update",
                               "body_text": "y"}, headers=H)
         self.assertEqual(r.status_code, 409, r.get_data(as_text=True))
+
+    def test_send_rejected_after_sent(self):
+        # A direct or replayed POST to /send for an already-sent leaflet must NOT
+        # re-dispatch to the whole list — the idempotency guard returns 409
+        # before any transport is touched.
+        client, tmp = self._client()
+        store = NewsletterLeafletStore(private_dir=tmp / "private", webapps_root=tmp / "webapps")
+        ent = entity_for_domain(DOMAIN)
+        store.save(ent, {"slug": "spring_update", "subject": "Spring update",
+                         "body_text": "x", "status": "sent", "created_at": "2026-06-01T00:00:00Z"})
+        r = client.post("/__fnd/newsletter/grantee/send",
+                        json={"slug": "spring_update"}, headers=H)
+        self.assertEqual(r.status_code, 409, r.get_data(as_text=True))
+        self.assertEqual(r.get_json().get("error"), "already_sent")
+
+    def test_signature_save_and_load(self):
+        client, _ = self._client()
+        r = client.post("/__fnd/newsletter/grantee/signature",
+                        json={"signature": "Warmly,\nThe FND team"}, headers=H)
+        self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
+        self.assertEqual(r.get_json()["signature"], "Warmly,\nThe FND team")
+        got = client.get("/__fnd/newsletter/grantee/signature", headers=H)
+        self.assertEqual(got.status_code, 200, got.get_data(as_text=True))
+        self.assertEqual(got.get_json()["signature"], "Warmly,\nThe FND team")
 
     def test_grantee_without_newsletter_block_is_gated(self):
         """A grantee whose config JSON has no `newsletter` block cannot reach

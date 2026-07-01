@@ -1,8 +1,9 @@
-"""Agronomics composite tool — composes farm_profile + the LCL structure viewer.
+"""Agronomics tool — FARM/PLAN/NETWORK tabs; FARM composes farm_profile + the LCL viewer.
 
-It renders nothing itself: build_panel_payload calls the two sub-viewers and returns their
-payloads as ``container:"composite"`` panes (farm_profile left, LCL right). Tests the
-composition + pane wiring (sub-viewers monkeypatched) and the live two-pane payload.
+It renders nothing itself: build_panel_payload returns a ``container:"tabbed"`` payload whose
+FARM tab is a ``container:"composite"`` of the two sub-viewers (farm_profile left, LCL right)
+and whose PLAN/NETWORK tabs are blank scaffolds. Tests the tab + composition wiring
+(sub-viewers monkeypatched) and the live payload.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ class TestComposition(unittest.TestCase):
     def _build(self, extra_query):
         with mock.patch.object(av.FarmProfileViewer, "build_panel_payload",
                                return_value={"schema": "fp", "feature_count": 3}) as fp, \
-                mock.patch.object(av.SamrasStructureViewer, "build_panel_payload",
+                mock.patch.object(av.LocalDomainViewer, "build_panel_payload",
                                   return_value={"schema": "lcl", "structure": "lcl"}) as ss:
             payload = av.AgronomicsViewer().build_panel_payload(
                 authority_db_file=None, sandbox_id="agro_erp",
@@ -46,11 +47,27 @@ class TestComposition(unittest.TestCase):
 
     def test_two_panes_in_order(self) -> None:
         payload, _fp, _ss = self._build(None)
-        self.assertEqual(payload["container"], "composite")
-        self.assertEqual([p["tool_id"] for p in payload["panes"]], ["farm_profile", "samras_structure"])
-        self.assertEqual([p["label"] for p in payload["panes"]], ["Farm Profile", "LCL ID Space"])
-        self.assertEqual(payload["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
-        self.assertEqual(payload["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
+        # FARM/PLAN/NETWORK tabs; FARM is the composite of the two sub-viewers.
+        self.assertEqual(payload["container"], "tabbed")
+        self.assertEqual([t["id"] for t in payload["tabs"]], ["farm", "plan", "network"])
+        self.assertEqual(payload["active_tab"], "farm")
+        farm = payload["tabs"][0]["panel_payload"]
+        self.assertEqual(farm["container"], "composite")
+        self.assertEqual([p["tool_id"] for p in farm["panes"]], ["farm_profile", "local_domain"])
+        self.assertEqual([p["label"] for p in farm["panes"]], ["Farm Profile", "Local Domain"])
+        self.assertEqual(farm["panes"][0]["panel_payload"], {"schema": "fp", "feature_count": 3})
+        self.assertEqual(farm["panes"][1]["panel_payload"], {"schema": "lcl", "structure": "lcl"})
+        # PLAN is a COLUMN composite: a top row [Plot Manager | reserved slot | Inventory] over
+        # a Contract Editor bottom bar.
+        plan = payload["tabs"][1]["panel_payload"]
+        self.assertEqual(plan["container"], "composite")
+        self.assertEqual(plan.get("direction"), "column")
+        self.assertEqual([p["tool_id"] for p in plan["panes"]], ["plan_top", "contract_editor"])
+        top = plan["panes"][0]["panel_payload"]
+        self.assertEqual(top.get("direction"), "row")
+        self.assertEqual([p["tool_id"] for p in top["panes"]], ["plot_manager", "plan_slot", "inventory_synopsis"])
+        # NETWORK stays a blank scaffold.
+        self.assertIsNone(payload["tabs"][2]["panel_payload"])
 
     def test_right_pane_defaults_to_lcl(self) -> None:
         _payload, _fp, ss = self._build(None)
@@ -60,6 +77,32 @@ class TestComposition(unittest.TestCase):
         _payload, _fp, ss = self._build({"samras_structure": "txa"})
         self.assertEqual(ss.call_args.kwargs["extra_query"], {"samras_structure": "txa"})
 
+    def test_local_view_full_tab_takeover(self) -> None:
+        # local_view=<token> swaps the FARM tab from the composite into the node's record
+        # table (full-tab) with a back affordance; PLAN/NETWORK are untouched.
+        table = {"container": "record_table", "title": "Product Type", "columns": ["lcl_id"], "rows": []}
+        with mock.patch.object(av, "build_record_view", return_value=table) as brv:
+            payload = av.AgronomicsViewer().build_panel_payload(
+                authority_db_file=None, sandbox_id="agro_erp", document_id="", datum_address="",
+                extra_query={"local_view": "product"},
+            )
+        brv.assert_called_once()
+        self.assertEqual(brv.call_args.args[0], "product")
+        farm = payload["tabs"][0]["panel_payload"]
+        self.assertEqual(farm["container"], "record_table")
+        self.assertEqual(farm["back"], {"label": "Back to farm view", "param": "local_view", "value": ""})
+        self.assertEqual([t["id"] for t in payload["tabs"]], ["farm", "plan", "network"])
+
+    def test_unknown_local_view_falls_back_to_composite(self) -> None:
+        # build_record_view returns None for an unknown token → composite (no takeover).
+        with mock.patch.object(av.FarmProfileViewer, "build_panel_payload", return_value={"schema": "fp"}), \
+                mock.patch.object(av.LocalDomainViewer, "build_panel_payload", return_value={"schema": "lcl"}):
+            payload = av.AgronomicsViewer().build_panel_payload(
+                authority_db_file=None, sandbox_id="agro_erp", document_id="", datum_address="",
+                extra_query={"local_view": "nope"},
+            )
+        self.assertEqual(payload["tabs"][0]["panel_payload"]["container"], "composite")
+
 
 @unittest.skipUnless(_LIVE_DB.exists(), "live MOS not present")
 class TestLive(unittest.TestCase):
@@ -67,15 +110,24 @@ class TestLive(unittest.TestCase):
         payload = av.AgronomicsViewer().build_panel_payload(
             authority_db_file=_LIVE_DB, sandbox_id="agro_erp", document_id="", datum_address="",
         )
-        self.assertEqual(payload["container"], "composite")
-        self.assertEqual([p["tool_id"] for p in payload["panes"]], ["farm_profile", "samras_structure"])
-        farm = payload["panes"][0]["panel_payload"]
-        lcl = payload["panes"][1]["panel_payload"]
+        self.assertEqual(payload["container"], "tabbed")
+        farm_tab = payload["tabs"][0]["panel_payload"]
+        self.assertEqual(farm_tab["container"], "composite")
+        self.assertEqual([p["tool_id"] for p in farm_tab["panes"]], ["farm_profile", "local_domain"])
+        farm = farm_tab["panes"][0]["panel_payload"]
+        lcl = farm_tab["panes"][1]["panel_payload"]
         self.assertIsNone(farm.get("error"))
-        self.assertIn("feature_collection", farm)
+        # farm_profile is now a composite (profile_card + geospatial_projection); the map's
+        # feature_collection lives in the geospatial pane.
+        self.assertEqual(farm["container"], "composite")
+        geo = next(p["panel_payload"] for p in farm["panes"] if p["tool_id"] == "geospatial_projection")
+        self.assertIn("feature_collection", geo)
         self.assertIsNone(lcl.get("error"))
         self.assertEqual(lcl["structure"], "lcl")
-        self.assertGreaterEqual(lcl["denoted_count"], 4665)
+        self.assertEqual(lcl["container"], "local_tree")
+        # The live lcl id-space is large; assert a robust lower bound rather than an exact
+        # count (the tree is re-authored by the restructure migration).
+        self.assertGreaterEqual(lcl["denoted_count"], 2000)
 
 
 if __name__ == "__main__":

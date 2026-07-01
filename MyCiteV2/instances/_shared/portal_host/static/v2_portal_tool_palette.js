@@ -60,7 +60,7 @@
         return payload;
       })
       .catch(function () {
-        return { schema: "", tools: [] };
+        return { schema: "", tools: [], _error: true };
       });
   }
 
@@ -99,7 +99,7 @@
         };
       })
       .catch(function () {
-        return { schema: "", tools: [], visualizers: [], sandboxes: [], documents: [] };
+        return { schema: "", tools: [], visualizers: [], sandboxes: [], documents: [], _error: true };
       });
   }
 
@@ -172,8 +172,20 @@
     return fetcher(ctx).then(function (payload) {
       var query = inputEl ? inputEl.value : "";
       var items = payload.tools || payload.visualizers || [];
-      renderList(listEl, filterTools(items, query), ctx);
+      if (payload._error && !items.length) {
+        // Fetch failed — KEEP whatever we already have (e.g. the server-embedded seed delivered
+        // with the authenticated page). Only show the retry message if we have nothing at all.
+        if (!(target.__paletteTools && target.__paletteTools.length)) {
+          target.__paletteTools = [];
+          if (listEl) {
+            listEl.innerHTML =
+              '<p class="portal-tool-palette__empty portal-tool-palette__error">Couldn’t load tools — click here and retry.</p>';
+          }
+        }
+        return payload;
+      }
       target.__paletteTools = items;
+      renderList(listEl, filterTools(items, query), ctx);
       return payload;
     });
   }
@@ -190,11 +202,41 @@
       '<div data-palette-list class="portal-tool-palette__results" hidden></div>';
     var inputEl = target.querySelector("[data-palette-input]");
     var listEl = target.querySelector("[data-palette-list]");
+    // Seed from the server-embedded tool list (window.__MYCITE_V2_MENUBAR_TOOLS, delivered WITH the
+    // authenticated page load) so the dropdown populates with NO dependency on the background XHR —
+    // which can fail/race through the auth proxy and otherwise leaves the search permanently empty.
+    var seed = (typeof window !== "undefined" && Array.isArray(window.__MYCITE_V2_MENUBAR_TOOLS))
+      ? window.__MYCITE_V2_MENUBAR_TOOLS
+      : [];
+    if (seed.length) {
+      target.__paletteTools = seed.slice();
+      renderList(listEl, seed, ctx);
+    }
     if (inputEl) {
+      // Re-fetch on focus when the list is empty. The mount-time fetch runs at page load and can
+      // race or fail (auth/session not yet settled, a transient error) — and the palette otherwise
+      // never recovers (it fetches once and only filters the stored list). Fetching again when the
+      // user actively engages the search, well after load, reliably populates it.
+      inputEl.addEventListener("focus", function () {
+        var tools = target.__paletteTools || [];
+        if (!tools.length) {
+          refresh(target, ctx).then(function () { if (listEl) listEl.removeAttribute("hidden"); });
+        } else {
+          renderList(listEl, filterTools(tools, inputEl.value), ctx);
+          if (listEl) listEl.removeAttribute("hidden");
+        }
+      });
       inputEl.addEventListener("input", function () {
         var tools = target.__paletteTools || [];
+        if (!tools.length) {
+          // still empty (initial fetch failed/raced) — try again, then render what arrives
+          refresh(target, ctx).then(function () {
+            renderList(listEl, filterTools(target.__paletteTools || [], inputEl.value), ctx);
+            if (listEl) listEl.removeAttribute("hidden");
+          });
+        }
         renderList(listEl, filterTools(tools, inputEl.value), ctx);
-        if (listEl) listEl.toggleAttribute("hidden", !inputEl.value.trim());
+        if (listEl) listEl.removeAttribute("hidden");
       });
     }
     refresh(target, ctx);

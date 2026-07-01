@@ -15,10 +15,8 @@ from MyCiteV2.packages.core.datum_ops.datum_resolve import (
     resolve_coordinate as _ring_coords,
 )
 from MyCiteV2.packages.tools import get as tools_get
-from MyCiteV2.packages.tools.farm_profile_viewer import (
-    FarmProfileViewer,
-    _feature,
-)
+from MyCiteV2.packages.tools.farm_profile_viewer import FarmProfileViewer
+from MyCiteV2.packages.tools.geospatial_projection_viewer import _feature
 
 _LIVE_DB = Path("/srv/webapps/mycite/fnd/private/mos_authority.sqlite3")
 
@@ -65,18 +63,26 @@ class TestFarmProfileViewerLive(unittest.TestCase):
         )
         self.assertIsNone(payload.get("error"))
         self.assertEqual(payload["schema"], "mycite.v2.portal.workbench.tool.farm_profile.v1")
-        features = payload["feature_collection"]["features"]
+        # farm_profile is now a composite of profile_card + geospatial_projection.
+        self.assertEqual(payload["container"], "composite")
+        panes = {p["tool_id"]: p["panel_payload"] for p in payload["panes"]}
+        geo = panes["geospatial_projection"]
+        prof = panes["profile_card"]
+        features = geo["feature_collection"]["features"]
         kinds = {f["properties"]["kind"] for f in features}
-        self.assertIn("field", kinds, "must project the property field polygons")
-        self.assertIn("plot", kinds, "must show plot squares (migrated or live preview)")
-        self.assertEqual(payload["feature_count"], len(features))
+        self.assertIn("parcel", kinds, "must project the parcels")
+        self.assertIn("field", kinds, "must project the field inside the largest parcel")
+        self.assertIn("plot", kinds, "must show plot squares tiling the field")
+        self.assertEqual(geo["feature_count"], len(features))
+        # plot features carry their lcl node for selection.
+        self.assertTrue(any(f["properties"].get("lcl_node") for f in features if f["properties"]["kind"] == "plot"))
         # Every projected polygon is a closed GeoJSON ring with >= 4 positions.
         for f in features:
             ring = f["geometry"]["coordinates"][0]
             self.assertGreaterEqual(len(ring), 4)
             self.assertEqual(ring[0], ring[-1])
-        labels = {fld["label"] for fld in payload["fields"]}
-        self.assertTrue({"title", "fields", "plots", "plots_source"} <= labels)
+        labels = {fld["label"] for fld in prof["fields"]}
+        self.assertTrue({"title", "parcels", "field", "plots", "plots_source"} <= labels)
 
 
 if __name__ == "__main__":

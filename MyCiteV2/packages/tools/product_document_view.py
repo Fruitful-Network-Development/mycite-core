@@ -20,7 +20,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from MyCiteV2.packages.core.datum_ops.datum_resolve import NameIndex, cached_index
+from MyCiteV2.packages.core.datum_ops.datum_resolve import NameIndex, cached_index, decode_label
 from MyCiteV2.packages.ports.datum_store import (
     AuthoritativeDatumDocument,
 )
@@ -51,11 +51,14 @@ _PAIR_FIELDS: tuple[str, ...] = (
     "raunkiaerality",
     "gestation",
     "spacing",
+    "singular_unit_weight",
 )
 # Which fields resolve against which sibling document's node→label index.
 _LCL_FIELDS = {"product_id", "rotation_group", "propagule", "genesis", "ownership", "raunkiaerality"}
 _TXA_FIELDS = {"taxonomy_id"}
 _UNIT_FIELDS = {"gestation", "spacing"}
+# Nominal (136-bit ASCII) fields → decode to text (e.g. "0.07 g").
+_NOMINAL_FIELDS = {"singular_unit_weight"}
 
 
 def _rows(document: AuthoritativeDatumDocument) -> list[Any]:
@@ -128,7 +131,7 @@ def build_product_rows(
     products: list[dict[str, Any]] = []
     for row in _rows(product_doc):
         addr = _as_text(row.datum_address)
-        if not addr.startswith("4-9-"):
+        if not addr.startswith("4-10-"):  # vg-10 since the singular_unit_weight append
             continue
         raw = row.raw
         if not (isinstance(raw, list) and raw and isinstance(raw[0], list)):
@@ -149,6 +152,8 @@ def build_product_rows(
                 resolved = lcl_index.resolve(magnitude)
             elif field in _TXA_FIELDS:
                 resolved = txa_index.resolve(magnitude)
+            elif field in _NOMINAL_FIELDS:
+                resolved = decode_label(magnitude)  # 136-bit ASCII nominal → "0.07 g"
             elif field in _UNIT_FIELDS:
                 resolved = magnitude  # already a scalar count
             if field == "product_id" and resolved:

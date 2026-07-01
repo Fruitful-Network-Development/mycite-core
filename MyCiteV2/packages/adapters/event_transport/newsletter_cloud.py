@@ -55,11 +55,22 @@ def _split_s3_uri(s3_uri: str) -> tuple[str, str]:
 
 
 class NewsletterCloudAdapter(NewsletterCloudPort):
-    def _client(self, service_name: str, *, region: str | None = None) -> Any:
-        import boto3
+    def __init__(self) -> None:
+        # Cache boto3 clients per (service, region). Each client builds a session
+        # + TLS pool, so re-creating one per call (every secret fetch / enqueue)
+        # is wasted work on the send hot path. Mirrors AwsCloudPeripheral.
+        self._clients: dict[tuple[str, str | None], Any] = {}
 
-        kwargs = {"region_name": region} if region else {}
-        return boto3.client(service_name, **kwargs)
+    def _client(self, service_name: str, *, region: str | None = None) -> Any:
+        key = (service_name, region)
+        client = self._clients.get(key)
+        if client is None:
+            import boto3
+
+            kwargs = {"region_name": region} if region else {}
+            client = boto3.client(service_name, **kwargs)
+            self._clients[key] = client
+        return client
 
     def get_or_create_secret_value(
         self,

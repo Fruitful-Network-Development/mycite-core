@@ -176,10 +176,6 @@ class DashboardProfilesTests(unittest.TestCase):
             "/__fnd/resources/profile/save",
             "/__fnd/resources/manifest/set-icon-ref",
             "/__fnd/resources/asset/delete",
-            # grantee/save takes msn_id from the BODY and rewrites that grantee's
-            # config (PayPal client_secret, SES, …) — must be operator-only or a
-            # dashboard-cred client could tamper with any grantee cross-tenant.
-            "/__fnd/grantee/save",
         ):
             resp = client.post(
                 path, headers={"X-Auth-Request-Grantee": CVCC}, json={}
@@ -190,19 +186,20 @@ class DashboardProfilesTests(unittest.TestCase):
     def test_operator_gate_fails_closed_on_unresolvable_grantee(self) -> None:
         # A PRESENT but unresolvable X-Auth-Request-Grantee (e.g. the fnd-csm dir
         # is unreadable, or a stale msn) must be DENIED, not treated as operator.
+        # (Exercised here via a still-gated resource route; the former
+        # /__fnd/grantee/save route was removed with the operator editor.)
         client = self._client()
         resp = client.post(
-            "/__fnd/grantee/save",
+            "/__fnd/resources/profile/save",
             headers={"X-Auth-Request-Grantee": "9-9-9-not-a-real-msn"},
             json={},
         )
         self.assertEqual(resp.status_code, 403, resp.get_data(as_text=True))
         self.assertEqual(resp.get_json().get("error"), "operator_only")
         # No grantee header at all == operator (portal oauth) → gate passes, so
-        # the handler runs and rejects on the empty body (invalid_request), NOT
-        # operator_only.
-        resp2 = client.post("/__fnd/grantee/save", json={})
-        self.assertEqual(resp2.get_json().get("error"), "invalid_request")
+        # the handler runs and rejects on its own terms (NOT operator_only).
+        resp2 = client.post("/__fnd/resources/profile/save", json={})
+        self.assertNotEqual(resp2.get_json().get("error"), "operator_only")
 
 
 if __name__ == "__main__":

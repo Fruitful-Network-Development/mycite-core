@@ -139,11 +139,11 @@ class RegistryPostconditionTests(unittest.TestCase):
 
 
 class CompositionPostconditionTests(unittest.TestCase):
-    def test_interface_panel_honors_region_visibility(self) -> None:
-        # TASK-interface-panel-migration: the interface_panel is REVIVED as the tool
-        # surface. The composition no longer force-hides it — it is visible iff the
-        # region payload marks visible=True (the workbench-ui tool-surface builder does
-        # so), and hidden otherwise. It is never the primary surface.
+    def test_interface_panel_region_is_removed(self) -> None:
+        # portal-tool-overlay-restructure: the interface_panel region was removed (tools render
+        # in the menubar-search → full-screen overlay). The composition never emits it on any
+        # surface and no longer accepts an interface_panel kwarg or emits an
+        # interface_panel_collapsed flag. The workbench is the only foreground region.
         for surface_id in (
             "system.root",
             "network.root",
@@ -152,7 +152,7 @@ class CompositionPostconditionTests(unittest.TestCase):
             "system.tools.cts_gis",
             WORKBENCH_UI_TOOL_SURFACE_ID,
         ):
-            shown = build_shell_composition_payload(
+            composition = build_shell_composition_payload(
                 active_surface_id=surface_id,
                 portal_instance_id="fnd",
                 page_title="t",
@@ -160,32 +160,11 @@ class CompositionPostconditionTests(unittest.TestCase):
                 activity_items=[],
                 control_panel={},
                 workbench={"visible": True},
-                interface_panel={"visible": True},
                 shell_state=None,
             )
-            self.assertTrue(
-                shown["regions"]["interface_panel"]["visible"],
-                f"interface_panel must honor visible=True for surface={surface_id}",
-            )
-            self.assertFalse(shown["interface_panel_collapsed"])
-            self.assertFalse(shown["regions"]["interface_panel"]["primary_surface"])
-
-            hidden = build_shell_composition_payload(
-                active_surface_id=surface_id,
-                portal_instance_id="fnd",
-                page_title="t",
-                page_subtitle="",
-                activity_items=[],
-                control_panel={},
-                workbench={"visible": True},
-                interface_panel={},  # no tool surface -> stays hidden
-                shell_state=None,
-            )
-            self.assertFalse(
-                hidden["regions"]["interface_panel"]["visible"],
-                f"interface_panel must stay hidden without a tool surface for surface={surface_id}",
-            )
-            self.assertTrue(hidden["interface_panel_collapsed"])
+            self.assertNotIn("interface_panel", composition["regions"], surface_id)
+            self.assertNotIn("interface_panel_collapsed", composition, surface_id)
+            self.assertEqual(composition["foreground_shell_region"], "center-workbench", surface_id)
 
 
 class VestigialInterfacePanelReferencesTests(unittest.TestCase):
@@ -230,7 +209,7 @@ class VestigialInterfacePanelReferencesTests(unittest.TestCase):
         "packages/tools/workbench_ui/service.py",
         "packages/modules/cross_domain/cts_gis/compiled_artifact.py",
     }
-    ALLOWED_TOTAL_CEILING = 320  # vestigial references — cleanup follow-up
+    ALLOWED_TOTAL_CEILING = 29  # interface_panel: comments + surface-posture constant + component-frame contract refs
 
     def test_interface_panel_references_are_bounded(self) -> None:
         repo_mycite = REPO_ROOT / "MyCiteV2"
@@ -330,7 +309,7 @@ class LegacyFndCsmRedirectTests(unittest.TestCase):
             "Preservation contract: legacy FND-CSM URL must redirect to Utilities",
         )
         # FND-CSM surface removed; functionality lives in Utilities extensions.
-        self.assertEqual(resp.headers["Location"], "/portal/utilities/extensions")
+        self.assertEqual(resp.headers["Location"], "/portal/utilities")
 
 
 if __name__ == "__main__":

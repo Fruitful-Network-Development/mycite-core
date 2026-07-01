@@ -436,48 +436,5 @@ class NewsletterAdminRoutesTests(unittest.TestCase):
         self.assertEqual(resp.get_json()["error"], "grantee_not_found")
 
 
-@unittest.skipUnless(FLASK_AVAILABLE, "Flask not installed in this environment")
-class NewsletterExtensionPayloadAdminFormsTests(unittest.TestCase):
-    """The newsletter extension payload must surface the new admin
-    forms + per-row remove_actions so the JS renderer can wire them.
-    """
-
-    def test_payload_includes_admin_forms_and_remove_actions(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.newsletter import (
-            _build_newsletter_extension_payload,
-        )
-
-        tmp = Path(tempfile.mkdtemp(prefix="phase14d1_payload_"))
-        (tmp / "utilities" / "tools" / "fnd-csm").mkdir(parents=True)
-        payload = _build_newsletter_extension_payload(
-            grantee={
-                "msn_id": "alpha",
-                "users": ["sender@alpha.example.test", "alt@alpha.example.test"],
-                "newsletter": {"selected_sender_address": "sender@alpha.example.test"},
-            },
-            domain="alpha.example.test",
-            private_dir=tmp,
-        )
-        admin_forms = payload.get("admin_forms") or []
-        frame_ids = {f.get("frame_id") for f in admin_forms}
-        self.assertIn("newsletter_add_subscriber", frame_ids)
-        self.assertIn("newsletter_set_sender", frame_ids)
-
-    def test_payload_drops_set_sender_form_when_no_users(self) -> None:
-        from MyCiteV2.instances._shared.runtime.utilities_extensions.newsletter import (
-            _build_newsletter_extension_payload,
-        )
-
-        tmp = Path(tempfile.mkdtemp(prefix="phase14d1_payload_nousers_"))
-        payload = _build_newsletter_extension_payload(
-            grantee={"msn_id": "alpha", "users": []},
-            domain="alpha.example.test",
-            private_dir=tmp,
-        )
-        admin_forms = payload.get("admin_forms") or []
-        frame_ids = {f.get("frame_id") for f in admin_forms}
-        self.assertNotIn("newsletter_set_sender", frame_ids)
-
-
 if __name__ == "__main__":
     unittest.main()

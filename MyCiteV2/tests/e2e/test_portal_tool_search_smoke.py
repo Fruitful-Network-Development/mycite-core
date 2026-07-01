@@ -19,14 +19,14 @@ authority DB:
      Playwright or chromium is unavailable.
 
 Selectors are taken from the live front-end, not invented:
-  - menu-bar mount  : ``[data-tool-palette-mount]``  (templates/portal.html)
+  - menu-bar mount  : ``[data-menubar-tool-search-mount]``  (templates/portal.html)
   - search input    : ``[data-palette-input]``       (v2_portal_tool_palette.js mount())
   - results list    : ``[data-palette-list]``        (")
   - tool entries    : ``.portal-tool-palette__item`` carrying ``[data-tool-id]``
                        / ``[data-route]``             (")
-The dispatch handler (v2_portal_shell_core.js mountMenubarToolPalette) appends
-the picked ``tool_id`` to ``surface_query.tools`` and reloads the shell, which
-renders the tool as a removable viz box in the workbench region.
+The dispatch handler (v2_portal_shell_core.js mountMenubarToolSearch → openToolOverlay)
+fetches ``/portal/api/tool-panels`` for the picked ``tool_id`` and renders it into the
+full-screen overlay (``#portalToolOverlay``) — NOT a shell reload.
 """
 
 from __future__ import annotations
@@ -60,8 +60,8 @@ def test_http_endpoints_smoke(portal_server: str) -> None:
     assert status_html == 200, f"/portal/system returned {status_html}"
     # The shell must carry the menu-bar tool-search mount the browser test
     # targets — a cheap guard that the surface rendered, not just 200'd.
-    assert b"data-tool-palette-mount" in body_html, (
-        "rendered /portal/system is missing the [data-tool-palette-mount] menu-bar node"
+    assert b"data-menubar-tool-search-mount" in body_html, (
+        "rendered /portal/system is missing the [data-menubar-tool-search-mount] menu-bar node"
     )
 
     status_json, body_json = _http_get(
@@ -75,6 +75,24 @@ def test_http_endpoints_smoke(portal_server: str) -> None:
     for tool in tools:
         assert tool.get("tool_id"), f"tool entry missing tool_id: {tool}"
         assert "route" in tool, f"tool entry missing route: {tool}"
+    # portal-tool-overlay-restructure: the search dropdown lists only the live allow-list.
+    assert {t["tool_id"] for t in tools} == {"agronomics", "farm_profile", "samras_structure"}, (
+        f"search should list only the live tools, got {sorted(t['tool_id'] for t in tools)}"
+    )
+
+    # The overlay fetches /portal/api/tool-panels for the picked tool; agronomics renders as a
+    # tabbed (FARM/PLAN/NETWORK) widget with the farm_profile+LCL composite under FARM.
+    status_tp, body_tp = _http_get(
+        f"{base}/portal/api/tool-panels?tool=agronomics&sandbox=agro_erp",
+        accept="application/json",
+    )
+    assert status_tp == 200, f"/portal/api/tool-panels returned {status_tp}"
+    tp = json.loads(body_tp)
+    panels = tp.get("panels")
+    assert isinstance(panels, list) and panels, "tool-panels payload had no panels"
+    agro = panels[0]["panel_payload"]
+    assert agro.get("container") == "tabbed", agro.get("container")
+    assert [t["id"] for t in agro.get("tabs", [])] == ["farm", "plan", "network"], agro.get("tabs")
 
     ARTIFACTS_DIR.mkdir(parents=True, exist_ok=True)
     (ARTIFACTS_DIR / "tools_eligible.json").write_text(
@@ -104,12 +122,12 @@ def test_tool_search_dropdown_and_mount(portal_server: str, page) -> None:
     # Load the system surface and wait for the shell JS to mount the palette
     # into the menu-bar tool-search node.
     page.goto(f"{base}/portal/system", wait_until="networkidle", timeout=20000)
-    page.wait_for_selector("[data-tool-palette-mount]", timeout=15000)
+    page.wait_for_selector("[data-menubar-tool-search-mount]", timeout=15000)
     page.wait_for_selector(
-        "[data-tool-palette-mount] [data-palette-input]", timeout=15000
+        "[data-menubar-tool-search-mount] [data-palette-input]", timeout=15000
     )
 
-    search_input = page.locator("[data-tool-palette-mount] [data-palette-input]")
+    search_input = page.locator("[data-menubar-tool-search-mount] [data-palette-input]")
 
     # Drive the palette's real `input` handler (v2_portal_tool_palette.js binds
     # 'input' -> renderList(filterTools(...))); an empty filter lists all tools.
@@ -129,9 +147,12 @@ def test_tool_search_dropdown_and_mount(portal_server: str, page) -> None:
     # Items render as <li.portal-tool-palette__item data-tool-id=...>; the click
     # handler is bound on the <li> itself. Assert on DOM attachment (not CSS
     # visibility) and tolerate the data-dependent empty case.
-    items = page.locator("[data-tool-palette-mount] .portal-tool-palette__item")
+    # The menubar search dropdown reveals on focus (an empty input keeps it hidden by
+    # design), so focus it before locating/clicking the eligible-tool items.
+    page.locator("[data-menubar-tool-search-mount] [data-palette-input]").click()
+    items = page.locator("[data-menubar-tool-search-mount] .portal-tool-palette__item")
     try:
-        items.first.wait_for(state="attached", timeout=8000)
+        items.first.wait_for(state="visible", timeout=8000)
         item_count = items.count()
     except PlaywrightTimeoutError:
         item_count = 0
@@ -149,14 +170,15 @@ def test_tool_search_dropdown_and_mount(portal_server: str, page) -> None:
     picked_tool_id = first_item.get_attribute("data-tool-id")
     assert picked_tool_id, "first tool entry had no data-tool-id"
 
-    # Clicking the item dispatches: the shell appends the tool to
-    # surface_query.tools and reloads the shell (POST /portal/api/v2/shell),
-    # mounting the tool box into the workbench region.
+    # Clicking the item opens the full-screen overlay: the dispatch handler fetches
+    # /portal/api/tool-panels for the picked tool and renders it into #portalToolOverlay
+    # (no shell reload).
     with page.expect_response(
-        lambda r: "/portal/api/v2/shell" in r.url and r.request.method == "POST",
+        lambda r: "/portal/api/tool-panels" in r.url and r.request.method == "GET",
         timeout=15000,
     ):
         first_item.click()
 
-    page.wait_for_selector("#portalWorkbench", timeout=15000)
+    page.wait_for_selector("#portalToolOverlay:not([hidden])", timeout=15000)
+    page.wait_for_selector("#portalToolOverlay [data-tool-overlay-content]", timeout=15000)
     page.screenshot(path=str(screenshot_path), full_page=True)

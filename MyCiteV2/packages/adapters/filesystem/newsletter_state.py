@@ -187,6 +187,7 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
         body["dispatch_callback_secret_name"] = _as_text(body.get("dispatch_callback_secret_name"))
         body["inbound_callback_secret_name"] = _as_text(body.get("inbound_callback_secret_name"))
         body["updated_at"] = _as_text(body.get("updated_at")) or ""
+        body["signature"] = _as_text(body.get("signature"))[:4000]
         _write_json(self._profile_path(token), body)
         return body
 
@@ -354,6 +355,7 @@ class FilesystemNewsletterStateAdapter(NewsletterStatePort):
             ),
             "delivery_mode": "inbound-mail-workflow",
             "aws_region": "us-east-1",
+            "signature": "",
             "dispatch_queue_url": "",
             "dispatch_queue_arn": "",
             "dispatcher_lambda_name": "newsletter-dispatcher",
