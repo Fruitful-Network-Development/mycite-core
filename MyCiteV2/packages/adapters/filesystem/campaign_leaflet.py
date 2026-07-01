@@ -148,6 +148,58 @@ class CampaignLeafletStore:
         self._write(entity, domain, campaigns)
         return row
 
+    def update_campaign(
+        self,
+        entity: str,
+        domain: str,
+        token: str,
+        *,
+        label: str | None = None,
+        target_path: str | None = None,
+        source: str | None = None,
+        medium: str | None = None,
+        notes: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Edit an existing campaign in place. The ``token`` (attribution key
+        baked into printed QR/redirect links) is IMMUTABLE, so editing a
+        campaign — including repointing its ``target_path`` — never breaks an
+        already-printed code. Only the provided fields change (``None`` = leave
+        as-is). Returns the updated row, or ``None`` if the token is unknown."""
+        token = _txt(token)
+        campaigns = self.list_campaigns(entity)
+        found = next((c for c in campaigns if _txt(c.get("token")) == token), None)
+        if found is None:
+            return None
+        if label is not None:
+            lab = _txt(label)
+            if not lab:
+                raise ValueError("campaign label is required")
+            found["label"] = lab
+        if target_path is not None:
+            found["target_path"] = _normalize_target_path(target_path)
+        if source is not None:
+            found["source"] = _txt(source)
+        if medium is not None:
+            m = _txt(medium).lower()
+            found["medium"] = m if m in _VALID_MEDIUMS else "link"
+        if notes is not None:
+            found["notes"] = _txt(notes)
+        found["updated_at"] = _now_iso()
+        self._write(entity, domain, campaigns)
+        return found
+
+    def delete_campaign(self, entity: str, domain: str, token: str) -> bool:
+        """Remove a campaign by token. Returns True iff a row was removed. The
+        token is retired: any lingering ``?fnd_c=<token>`` visits simply stop
+        attributing (the GET handler only tallies tokens still in the registry)."""
+        token = _txt(token)
+        campaigns = self.list_campaigns(entity)
+        kept = [c for c in campaigns if _txt(c.get("token")) != token]
+        if len(kept) == len(campaigns):
+            return False
+        self._write(entity, domain, kept)
+        return True
+
     def resolve(self, entity: str, token: str) -> dict[str, Any] | None:
         token = _txt(token)
         for c in self.list_campaigns(entity):

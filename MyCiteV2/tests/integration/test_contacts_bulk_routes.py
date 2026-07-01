@@ -42,7 +42,7 @@ SEED_TS = "2026-06-01T00:00:00+00:00"
 
 
 def _contact(email: str, subscribed: bool, *, source: str = "website_signup",
-             unsubscribed_at: str = "") -> dict:
+             unsubscribed_at: str = "", bulk_unsubscribed_at: str = "") -> dict:
     row = canonical_contact_entry(
         existing=None,
         patch={"email": email, "subscribed": subscribed, "source": source},
@@ -50,6 +50,8 @@ def _contact(email: str, subscribed: bool, *, source: str = "website_signup",
     )
     if unsubscribed_at:
         row["unsubscribed_at"] = unsubscribed_at
+    if bulk_unsubscribed_at:
+        row["bulk_unsubscribed_at"] = bulk_unsubscribed_at
     return row
 
 
@@ -102,21 +104,54 @@ class ContactsBulkRoutesTests(unittest.TestCase):
         rows = self._rows(tmp)
         self.assertFalse(any(rows[e]["subscribed"] for e in rows))
         self.assertTrue(rows["a@client.example.test"]["unsubscribed_at"])  # stamped
+        # flipped rows are marked so "Resubscribe" can undo exactly this set
+        self.assertTrue(rows["a@client.example.test"]["bulk_unsubscribed_at"])
+        self.assertTrue(rows["b@client.example.test"]["bulk_unsubscribed_at"])
 
-    def test_subscribe_all_reactivates_explicit_optout(self):
+    def test_resubscribe_only_undoes_bulk_and_spares_optout(self):
+        # "Resubscribe" is the strict UNDO of a prior "Unsubscribe all": it
+        # restores rows carrying the bulk marker and leaves genuine opt-outs off.
         client, tmp = self._client()
         self._seed(tmp, [
-            _contact("a@client.example.test", True),  # already on
+            # temporarily bulk-unsubscribed a moment ago -> should be restored
+            _contact("a@client.example.test", False, bulk_unsubscribed_at=SEED_TS,
+                     unsubscribed_at=SEED_TS),
+            # genuine self-service opt-out (no bulk marker) -> must stay off
             _contact("b@client.example.test", False, source="unsubscribe_link",
                      unsubscribed_at=SEED_TS),
         ])
         r = client.post("/__fnd/contacts/subscribe-all", json={}, headers=HC)
         self.assertEqual(r.status_code, 200, r.get_data(as_text=True))
-        self.assertEqual(r.get_json()["updated"], 1)  # only the opt-out flips
-        b = self._rows(tmp)["b@client.example.test"]
-        self.assertTrue(b["subscribed"])
-        self.assertTrue(b["subscribed_at"])       # stamped on re-subscribe
-        self.assertEqual(b["unsubscribed_at"], "")  # stale opt-out stamp cleared
+        self.assertEqual(r.get_json()["updated"], 1)  # only the bulk row flips
+        rows = self._rows(tmp)
+        a = rows["a@client.example.test"]
+        self.assertTrue(a["subscribed"])
+        self.assertTrue(a["subscribed_at"])            # stamped on re-subscribe
+        self.assertEqual(a["unsubscribed_at"], "")     # stale opt-out stamp cleared
+        self.assertEqual(a["bulk_unsubscribed_at"], "")  # marker consumed
+        b = rows["b@client.example.test"]
+        self.assertFalse(b["subscribed"])              # genuine opt-out untouched
+
+    def test_bulk_unsubscribe_then_resubscribe_round_trip(self):
+        client, tmp = self._client()
+        self._seed(tmp, [
+            _contact("a@client.example.test", True),
+            _contact("b@client.example.test", True),
+            # genuine opt-out present the whole time; must never be resurrected
+            _contact("c@client.example.test", False, source="unsubscribe_link",
+                     unsubscribed_at=SEED_TS),
+        ])
+        un = client.post("/__fnd/contacts/unsubscribe-all", json={}, headers=HC)
+        self.assertEqual(un.get_json()["updated"], 2)   # a,b (c already off)
+        mid = self._rows(tmp)
+        self.assertTrue(mid["a@client.example.test"]["bulk_unsubscribed_at"])
+        self.assertEqual(mid["c@client.example.test"].get("bulk_unsubscribed_at", ""), "")
+        re = client.post("/__fnd/contacts/subscribe-all", json={}, headers=HC)
+        self.assertEqual(re.get_json()["updated"], 2)   # a,b restored; c spared
+        fin = self._rows(tmp)
+        self.assertTrue(fin["a@client.example.test"]["subscribed"])
+        self.assertTrue(fin["b@client.example.test"]["subscribed"])
+        self.assertFalse(fin["c@client.example.test"]["subscribed"])  # opt-out stays off
 
     def test_idempotent_second_call_updates_zero(self):
         client, tmp = self._client()

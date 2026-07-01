@@ -4689,14 +4689,19 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                 return response
         abort(404)
 
-    def _campaign_tracked_url(domain: str, campaign: dict[str, Any]) -> str:
-        """Public tracked URL for a campaign: the target page on the grantee's
+    def _campaign_tracked_url(
+        domain: str, campaign: dict[str, Any], *, path: str | None = None
+    ) -> str:
+        """Public tracked URL for a campaign: a landing page on the grantee's
         primary domain with the ``?fnd_c=<token>`` attribution param appended.
-        analytics.js reads ``fnd_c`` and stamps it onto the session."""
+        analytics.js reads ``fnd_c`` and stamps it onto the session. Pass
+        ``path`` to override the stored ``target_path`` so ONE campaign/token can
+        be generated for any number of landing pages (the append model — the
+        dashboard also builds these client-side for ad-hoc QR generation)."""
         from urllib.parse import quote
 
         domain = _as_text(domain)
-        target = _as_text(campaign.get("target_path")) or "/"
+        target = _as_text(path if path is not None else campaign.get("target_path")) or "/"
         if not target.startswith("/"):
             target = "/" + target
         token = quote(_as_text(campaign.get("token")), safe="")
@@ -4704,6 +4709,18 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             return f"{target}?fnd_c={token}"
         sep = "&" if "?" in target else "?"
         return f"https://{domain}{target}{sep}fnd_c={token}"
+
+    def _campaign_short_url(domain: str, campaign: dict[str, Any]) -> str:
+        """Stable, editable redirect short-link — the URL to bake into a printed
+        QR. It never changes, but ``/c/<token>`` 302-redirects to the campaign's
+        CURRENT ``target_path`` (repointable in the dashboard), so an
+        already-printed code can be aimed at a new landing page without a
+        reprint. See the ``/__fnd/c/<token>`` route."""
+        from urllib.parse import quote
+
+        domain = _as_text(domain)
+        token = quote(_as_text(campaign.get("token")), safe="")
+        return f"https://{domain}/c/{token}" if domain else f"/c/{token}"
 
     def _prepare_records_visitors(visitors: list[dict[str, Any]]) -> None:
         """Resolve referrals + strip PII over a visitor list — shared by the
@@ -6479,6 +6496,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             except ValueError as exc:
                 return jsonify({"ok": False, "error": "invalid_campaign", "detail": str(exc)}), 400
             row["tracked_url"] = _campaign_tracked_url(primary_domain, row)
+            row["short_url"] = _campaign_short_url(primary_domain, row)
             return jsonify({"ok": True, "campaign": row}), 200
 
         # GET — list + attribute. Tally over ALL of the entity's leaflets (a
@@ -6509,6 +6527,7 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             campaigns.append({
                 **c,
                 "tracked_url": _campaign_tracked_url(primary_domain, c),
+                "short_url": _campaign_short_url(primary_domain, c),
                 "attributed_sessions": token_sessions.get(tok, 0),
                 "attributed_visitors": len(token_visitors.get(tok, set())),
             })
@@ -6518,6 +6537,94 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
             "primary_domain": primary_domain,
             "campaigns": campaigns,
         }), 200
+
+    @app.route("/__fnd/analytics/campaigns/<token>", methods=["PATCH", "DELETE"])
+    def fnd_analytics_campaign_item(token: str) -> tuple[Any, int]:
+        """Edit (PATCH) or remove (DELETE) a single campaign.
+
+        The ``token`` is IMMUTABLE — editing a campaign (including repointing its
+        ``target_path``) keeps every already-printed QR / redirect short-link
+        live. Scope-guarded like the collection route: a grantee only ever
+        touches its own campaigns.
+        """
+        from MyCiteV2.instances._shared.runtime.utilities_extensions.tolling import (
+            domains_for_grantee,
+        )
+        from MyCiteV2.packages.adapters.filesystem import (
+            CampaignLeafletStore,
+            entity_for_domain,
+        )
+
+        if host_config.private_dir is None:
+            return jsonify({"ok": False, "error": "no_private_dir"}), 500
+        requested_msn, err = _resolve_grantee_scope()
+        if err:
+            return err
+        domains = domains_for_grantee(
+            requested_msn, fnd_csm_root=_configured_fnd_csm_root()
+        )
+        primary_domain = domains[0] if domains else ""
+        entity = entity_for_domain(primary_domain) if primary_domain else ""
+        cstore = CampaignLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        token = _as_text(token)
+
+        if request.method == "DELETE":
+            if not cstore.delete_campaign(entity, primary_domain, token):
+                return jsonify({"ok": False, "error": "campaign_not_found"}), 404
+            return jsonify({"ok": True, "deleted": token}), 200
+
+        # PATCH — only the fields present in the body change.
+        body = _json_payload()
+        kwargs: dict[str, Any] = {}
+        for field in ("label", "target_path", "source", "medium", "notes"):
+            if field in body:
+                kwargs[field] = _as_text(body.get(field))
+        try:
+            row = cstore.update_campaign(entity, primary_domain, token, **kwargs)
+        except ValueError as exc:
+            return jsonify({"ok": False, "error": "invalid_campaign", "detail": str(exc)}), 400
+        if row is None:
+            return jsonify({"ok": False, "error": "campaign_not_found"}), 404
+        row = {
+            **row,
+            "tracked_url": _campaign_tracked_url(primary_domain, row),
+            "short_url": _campaign_short_url(primary_domain, row),
+        }
+        return jsonify({"ok": True, "campaign": row}), 200
+
+    @app.get("/__fnd/c/<token>")
+    def fnd_campaign_redirect(token: str):
+        """PUBLIC editable QR short-link. Resolves ``<token>`` against the
+        requesting domain's campaign registry and 302-redirects to the
+        campaign's CURRENT ``target_path`` with ``?fnd_c`` appended (so
+        analytics.js attributes the visit exactly as a direct tracked link
+        would). Repointing the campaign in the dashboard re-aims every printed
+        QR — no reprint. Unknown token / domain falls back to the site root so a
+        scanned code is never a dead end. Proxied at ``/c/<token>`` by nginx."""
+        from MyCiteV2.packages.adapters.filesystem import (
+            CampaignLeafletStore,
+            entity_for_domain,
+        )
+
+        domain = _normalize_domain(request.host)
+        token = _as_text(token)
+        fallback = f"https://{domain}/" if domain else "/"
+        if not domain or not token or host_config.private_dir is None:
+            return redirect(fallback, code=302)
+        entity = entity_for_domain(domain)
+        if not entity:
+            return redirect(fallback, code=302)
+        cstore = CampaignLeafletStore(
+            private_dir=host_config.private_dir,
+            webapps_root=_analytics_webapps_root(),
+        )
+        campaign = cstore.resolve(entity, token)
+        if campaign is None:
+            return redirect(fallback, code=302)
+        return redirect(_campaign_tracked_url(domain, campaign), code=302)
 
     # NOTE: the legacy GET /__fnd/newsletter/contacts route was removed
     # 2026-06-27 — it duplicated GET /__fnd/contacts/list but returned
@@ -7565,18 +7672,37 @@ def create_app(config: V2PortalHostConfig | None = None) -> Flask:
                     continue
                 if bool(record.get("subscribed")) == subscribed:
                     continue
-                patch: dict[str, Any] = {"subscribed": subscribed}
-                if not subscribed:
-                    # Operator-initiated opt-out: stamp unsubscribed_at, keep
-                    # the original signup source so the table's Source column
-                    # stays meaningful.
-                    patch["unsubscribed_at"] = now_iso
-                row = canonical_contact_entry(existing=record, patch=patch, now=now_iso)
                 if subscribed:
-                    # Re-opt-in clears the stale opt-out stamp. canonical_
-                    # contact_entry can't clear it via the patch (an empty
-                    # string there means "leave unchanged"), so clear it here.
+                    # "Resubscribe all" is strictly the UNDO of a prior
+                    # "Unsubscribe all": it re-subscribes only the rows carrying
+                    # the bulk-unsubscribe marker, and leaves genuine self-service
+                    # opt-outs (which never carry it) untouched. So a test blast
+                    # can be reversed without resurrecting real opt-outs.
+                    if not _as_text(record.get("bulk_unsubscribed_at")):
+                        continue
+                    row = canonical_contact_entry(
+                        existing=record, patch={"subscribed": True}, now=now_iso,
+                    )
+                    # Clear the opt-out + bulk stamps directly — canonical_
+                    # contact_entry treats an empty-string patch value as
+                    # "leave unchanged", so it cannot clear a field via the patch.
                     row["unsubscribed_at"] = ""
+                    row["bulk_unsubscribed_at"] = ""
+                else:
+                    # "Unsubscribe all": a *temporary* operator opt-out. Stamp
+                    # unsubscribed_at and mark the row (which was subscribed a
+                    # moment ago) as bulk-unsubscribed so "Resubscribe all" can
+                    # undo exactly this set later. Keep the original signup
+                    # source so the table's Source column stays meaningful.
+                    row = canonical_contact_entry(
+                        existing=record,
+                        patch={
+                            "subscribed": False,
+                            "unsubscribed_at": now_iso,
+                            "bulk_unsubscribed_at": now_iso,
+                        },
+                        now=now_iso,
+                    )
                 contacts[i] = row
                 updated += 1
                 changed = True

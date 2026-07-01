@@ -122,6 +122,84 @@ class AnalyticsRecordsCampaignsTests(unittest.TestCase):
         tokens = {c["token"] for c in listed["campaigns"]}
         self.assertIn(row["token"], tokens)
 
+    def _make_campaign(self, client, **over):
+        body = {"label": "QR", "target_path": "/summer", "source": "ig", "medium": "qr"}
+        body.update(over)
+        return client.post(
+            "/__fnd/analytics/campaigns", json=body,
+            headers={"X-Auth-Request-Grantee": FND},
+        ).get_json()["campaign"]
+
+    def test_campaign_carries_short_url(self):
+        client = self._client()
+        row = self._make_campaign(client)
+        # The redirect short-link (for a printed QR) is stable + domain-qualified.
+        self.assertEqual(row["short_url"], f"https://{DOMAIN}/c/{row['token']}")
+
+    def test_campaign_edit_keeps_token_repoints_target(self):
+        client = self._client()
+        row = self._make_campaign(client, target_path="/summer")
+        token = row["token"]
+        resp = client.patch(
+            f"/__fnd/analytics/campaigns/{token}",
+            json={"label": "Renamed", "target_path": "/fall", "medium": "print"},
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        edited = resp.get_json()["campaign"]
+        self.assertEqual(edited["token"], token)          # token immutable
+        self.assertEqual(edited["label"], "Renamed")
+        self.assertEqual(edited["target_path"], "/fall")
+        self.assertEqual(edited["medium"], "print")
+        self.assertIn("/fall?fnd_c=" + token, edited["tracked_url"])
+
+    def test_campaign_edit_unknown_token_404(self):
+        resp = self._client().patch(
+            "/__fnd/analytics/campaigns/nope999",
+            json={"label": "x"}, headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_campaign_delete(self):
+        client = self._client()
+        token = self._make_campaign(client)["token"]
+        resp = client.delete(
+            f"/__fnd/analytics/campaigns/{token}",
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
+        listed = client.get(
+            "/__fnd/analytics/campaigns", headers={"X-Auth-Request-Grantee": FND}
+        ).get_json()
+        self.assertNotIn(token, {c["token"] for c in listed["campaigns"]})
+        # second delete is a 404 (already gone)
+        again = client.delete(
+            f"/__fnd/analytics/campaigns/{token}",
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        self.assertEqual(again.status_code, 404)
+
+    def test_campaign_redirect_follows_current_target(self):
+        client = self._client()
+        row = self._make_campaign(client, target_path="/summer")
+        token = row["token"]
+        # /c/<token> 302-redirects to the CURRENT target with ?fnd_c appended.
+        r1 = client.get(f"/__fnd/c/{token}", headers={"Host": DOMAIN})
+        self.assertEqual(r1.status_code, 302)
+        self.assertEqual(r1.headers["Location"], f"https://{DOMAIN}/summer?fnd_c={token}")
+        # Repoint the campaign; the SAME short-link now redirects to the new page.
+        client.patch(
+            f"/__fnd/analytics/campaigns/{token}", json={"target_path": "/fall"},
+            headers={"X-Auth-Request-Grantee": FND},
+        )
+        r2 = client.get(f"/__fnd/c/{token}", headers={"Host": DOMAIN})
+        self.assertEqual(r2.headers["Location"], f"https://{DOMAIN}/fall?fnd_c={token}")
+
+    def test_campaign_redirect_unknown_token_falls_back(self):
+        r = self._client().get("/__fnd/c/bogus12", headers={"Host": DOMAIN})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["Location"], f"https://{DOMAIN}/")
+
     def test_cross_grantee_rejected(self):
         resp = self._client().get(
             "/__fnd/analytics/records?grantee=3-2-3-17-77-3-6-1-1-2",

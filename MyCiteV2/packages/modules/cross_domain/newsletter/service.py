@@ -359,6 +359,10 @@ class NewsletterService:
                 current["source"] = "unsubscribe_link"
                 current["unsubscribed_at"] = now_iso
                 current["updated_at"] = now_iso
+                # A genuine self-service opt-out supersedes any temporary bulk
+                # "unsubscribe all" state, so a later "resubscribe all" will NOT
+                # resurrect this person.
+                current["bulk_unsubscribed_at"] = ""
                 updated = current
             contacts.append(current)
         contact_log["contacts"] = contacts
